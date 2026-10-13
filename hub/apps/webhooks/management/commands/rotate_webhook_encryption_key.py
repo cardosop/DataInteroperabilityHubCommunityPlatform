@@ -53,7 +53,7 @@ class Command(BaseCommand):
             help="Scope rotation to a single tenant (UUID). When omitted, all tenants are processed.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         old_key = options["old_key"]
         new_key = options["new_key"]
         dry_run = options["dry_run"]

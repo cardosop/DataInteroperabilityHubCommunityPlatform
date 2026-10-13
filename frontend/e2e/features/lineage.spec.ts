@@ -5,148 +5,33 @@
  * (ContractLineageVisualization → React Flow graph). There is no
  * standalone /lineage route.
  *
- * Test flow: ensure-contract-via-API → /contracts/{id} → click Lineage tab →
- * assert React Flow renderer OR empty state (both acceptable).
+ * Test flow: login → seed a 3-contract DAG via API (Phase 228
+ * REQ-LIN-005) → /contracts/{id} → click Lineage tab → assert React
+ * Flow graph with the known 3-node/2-edge cardinality.
  * Real backend only; no mocks.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../fixtures/auth';
 import { assertListPageLoads, loginAndNavigateToRoute } from '../fixtures/helpers';
 // Phase 228 (REQ-LIN-005, 228.0.16) — DAG seeding helper.
 import { seedLineageDag } from '../fixtures/lineage-fixtures';
 
-const __currentFile = fileURLToPath(import.meta.url);
-const __currentDir = path.dirname(__currentFile);
-
-// Canonical API base — same resolution chain used by every other
-// page.request.* call-site in this repo (e.g. multi-tenancy-isolation.spec.ts:25-31,
-// JOURNEY-CONTRACT-V310-LIFECYCLE.spec.ts:31-38). Using a relative `/api/v1/...`
-// path against `page.request` would resolve against `PLAYWRIGHT_BASE_URL`
-// (the FRONTEND host on staging — `stagingmeshant-internal.example.com`), but the API
-// is on a separate subdomain (`api.stagingmeshant-internal.example.com`), and the
-// httpOnly auth cookies are bound to the API host. Sending a request to the
-// frontend host either misses the cookies entirely (different-origin cookie
-// scope) OR reaches a proxy that strips them — either way the backend
-// returns 401 AUTH_UNAUTHORIZED. The full-URL form is the only correct path.
-const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
-const API_BASE =
-  process.env.E2E_API_BASE_URL ||
-  (process.env.VITE_PROXY_TARGET
-    ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1`
-    : null) ||
-  (process.env.VITE_API_BASE_URL?.startsWith('http')
-    ? process.env.VITE_API_BASE_URL
-    : `http://localhost:${DEFAULT_API_PORT}/api/v1`);
-
-/**
- * Read a contract fixture from the canonical /tests/fixtures/contracts/ dir.
- * Path navigation: lineage.spec.ts → e2e → frontend → repo-root → tests/fixtures/contracts.
- */
-function readContractFixture(name: string): string {
-  const fixtureDir = path.resolve(__currentDir, '..', '..', '..', 'tests', 'fixtures', 'contracts');
-  return fs.readFileSync(path.join(fixtureDir, name), 'utf-8');
-}
-
-/**
- * Create a contract via API using the page's existing access_token.
- *
- * Two staging-specific constraints together force the canonical pattern below:
- *
- *   1. CROSS-SUBDOMAIN HOST — `PLAYWRIGHT_BASE_URL=stagingmeshant-internal.example.com`
- *      and the API is at `api.stagingmeshant-internal.example.com`. A relative URL
- *      against `page.request` would target the frontend host, which neither
- *      mounts /api/v1/ routes directly nor shares cookies with the API host.
- *      Cycle 5 staged this exact failure: 401 AUTH_UNAUTHORIZED. We MUST use
- *      the full API URL (`API_BASE`).
- *
- *   2. NO SECOND LOGIN — staging deploys with `USE_HTTPONLY_AUTH_COOKIES=True`
- *      AND a one-active-refresh-token-per-user policy. Calling `loginViaApi`
- *      a second time rotates the user's refresh token; the browser's existing
- *      cookie still holds the pre-rotation value; the next page navigation
- *      gets 401 → /login redirect (cycle 4 surfaced this in the lineage
- *      Success path). We MUST reuse the access_token already in localStorage
- *      from `loginUser`, NOT issue a fresh API login.
- *
- * The canonical resolution: read `access_token` from the page's localStorage,
- * pass it as an explicit `Authorization: Bearer …` header, and POST to
- * `${API_BASE}/contracts/`. This is the same pattern used by
- * multi-tenancy-isolation.spec.ts:51-62 and ensures (a) the request hits the
- * API host where the backend lives and (b) doesn't rotate any tokens.
- *
- * Returns the contract id (UUID). Throws on failure with full diagnostics so
- * we never silently swallow a setup error.
- */
-async function ensureContractViaApi(page: Page): Promise<string> {
-  const raw = readContractFixture('odcs_v3_1_0_minimal.yaml');
-  const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
-  if (!accessToken) {
-    throw new Error(
-      'Lineage setup: no access_token in localStorage after loginUser. ' +
-        'Cookie/storage policy may be blocking persistence; check the ' +
-        'browser context and login flow.',
-    );
-  }
-  // Backend choices are UPPERCASE (Django TextChoices, case-sensitive):
-  //   hub/apps/contracts/models.py:48 → OriginalSpecType.ODCS = "ODCS"
-  //   hub/apps/contracts/models.py:54 → OriginalFormat.YAML  = "YAML"
-  // Sending lowercase raises a 400 VALIDATION_ERROR from
-  // serializers.ChoiceField. JOURNEY-CONTRACT-V310-LIFECYCLE.spec.ts:147 uses
-  // the uppercase form correctly; the previous lowercase here was a divergence.
-  const res = await page.request.post(`${API_BASE}/contracts/`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    data: {
-      original_raw: raw,
-      original_spec_type: 'ODCS',
-      original_format: 'YAML',
-    },
-  });
-  if (!res.ok()) {
-    const body = await res.text().catch(() => '');
-    throw new Error(
-      `Lineage setup: POST ${API_BASE}/contracts/ returned ${res.status()}. ` +
-        `Body: ${body.slice(0, 300)}. ` +
-        `The lineage test requires a contract to exist; creating one via the ` +
-        `same API the UI uses is the deterministic way to seed test data on ` +
-        `staging.`,
-    );
-  }
-  const data = (await res.json()) as { id?: string };
-  if (!data.id) {
-    throw new Error(
-      `Lineage setup: POST ${API_BASE}/contracts/ returned 2xx but no id in body. ` +
-        `Response: ${JSON.stringify(data).slice(0, 300)}.`,
-    );
-  }
-  return data.id;
-}
-
 test.describe('Feature: Lineage', () => {
-  test.setTimeout(120000);
+  // Budget arithmetic: login (60s helper cap) + contracts-list assert
+  // (60s) + navigation helper (60s) + terminal wait (30s) + the churn-
+  // recovery retry below (30s) + lineage-tab/graph waits (30s) — the
+  // old 120s cap expired mid-flow when a mid-batch stall forced the
+  // recovery path (b7 #33). 180s lets the strict assertions run to
+  // completion so a persistent error fails with the precise message
+  // instead of an opaque budget-wall browser-close.
+  test.setTimeout(180000);
 
   test.describe('Success', () => {
     test('contract lineage tab renders graph or empty state', async ({ page }) => {
       // Authenticate explicitly — storageState token can expire during long runs.
       const user = await getTestUser();
       await loginUser(page, user);
-
-      // Navigate to contracts list — verifies the route renders without 500
-      // before we go deeper. The list may be empty on a fresh staging DB; we
-      // create our own contract below so the lineage assertion has a target
-      // regardless of pre-existing data.
-      await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-      await assertListPageLoads(
-        page,
-        '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
-        { timeout: 60000 },
-      );
 
       // Seed a contract via API so the lineage tab has something to render
       // against. Previously this test skipped when no contracts existed —
@@ -159,6 +44,30 @@ test.describe('Feature: Lineage', () => {
       // Pass `page` (not a separately-issued API token) so the request shares
       // the browser's existing session — see ensureContractViaApi for the
       // staging-specific token-rotation rationale.
+      //
+      // Phase 11.1 — the access_token is MEMORY-ONLY and dies on a full
+      // page reload (authStore: "after page reload, access_token is
+      // lost"); after `page.goto` the cookie-restore path authenticates
+      // the app WITHOUT repopulating apiClient's module memory, so
+      // __getAccessToken() reads null. The seed MUST run on the same
+      // page loginUser leaves — before any goto — while the token is
+      // still in module memory (b6 lineage failure: the probe after the
+      // contracts-list goto saw no token and threw). Poll briefly for
+      // auth-init to settle before giving up.
+      let accessToken: string | null = null;
+      for (let attempt = 0; attempt < 20 && !accessToken; attempt += 1) {
+        accessToken = await page.evaluate(() => {
+          const g = (window as unknown as { __getAccessToken?: () => string | null })
+            .__getAccessToken;
+          return typeof g === 'function' ? g() : null;
+        });
+        if (!accessToken) await page.waitForTimeout(500);
+      }
+      if (!accessToken) {
+        throw new Error(
+          'Lineage setup: access_token never materialised in apiClient memory after loginUser (Phase 11.1 in-memory token lost before the probe).',
+        );
+      }
       // Phase 228 (REQ-LIN-005, 228.0.15-16): seed a 3-contract linear DAG
       // (root → mid → leaf) so the lineage graph has known cardinality.
       // The leaf contract's lineage tab shows the full upstream chain
@@ -167,12 +76,19 @@ test.describe('Feature: Lineage', () => {
       // which silently passed on a backend regression that returned
       // empty lineage; the strict-content assertion below now catches
       // such regressions deterministically.
-      const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
-      if (!accessToken) {
-        throw new Error('Lineage setup: no access_token in localStorage after loginUser.');
-      }
       const dag = await seedLineageDag(page, 3, { accessToken });
       const contractId = dag.leafId;
+
+      // Navigate to contracts list — verifies the route renders without 500
+      // before we go deeper. The list may be empty on a fresh staging DB; we
+      // create our own contract below so the lineage assertion has a target
+      // regardless of pre-existing data.
+      await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
+      await assertListPageLoads(
+        page,
+        '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
+        { timeout: 60000 },
+      );
 
       // Navigate directly to the seeded contract's detail page using
       // `loginAndNavigateToRoute` — NOT a bare `page.goto`.
@@ -224,21 +140,39 @@ test.describe('Feature: Lineage', () => {
       // regression (we just created it), not a feature gate. The previous
       // version's `test.skip(true, 'Lineage tab not visible — feature may be
       // gated...')` masked exactly this regression behind a green skip.
-      const errorDisplayCount = await page
+      const errorDisplay = page
         .locator('.error-display, [data-testid="error-display"]')
-        .count();
-      if (errorDisplayCount > 0) {
-        const errText = await page
-          .locator('.error-display, [data-testid="error-display"]')
-          .first()
-          .textContent()
-          .catch(() => '');
+        .first();
+      if ((await errorDisplay.count()) > 0) {
+        // Churn recovery (b7 #33): a mid-batch gunicorn recycle kills the
+        // in-flight GET for the contract we just created — the page renders
+        // its ErrorDisplay with a Retry affordance. Use the app's recovery
+        // ONCE before classifying this as a product regression.
+        // intentional: diagnostic-only read — an empty read just skips the retry and the strict re-check below reports the visible state.
+        const errText = (await errorDisplay.textContent().catch(() => '')) ?? '';
+        if (
+          /NETWORK_ERROR|Network Error|Failed to fetch|connection|INTERNAL_ERROR|SERVICE_UNAVAILABLE|ECONNREFUSED|timed out/i.test(
+            errText
+          )
+        ) {
+          await errorDisplay.locator('button:has-text("Retry")').first().click();
+          // intentional: single retry for transient mid-batch churn — the strict re-check below must pass or the test fails.
+          await page
+            .locator('[data-testid="contract-detail-page"], .contract-detail-page')
+            .first()
+            .waitFor({ state: 'visible', timeout: 30000 })
+            .catch(() => null);
+        }
+      }
+      if ((await errorDisplay.count()) > 0) {
+        // intentional: diagnostic-only read — an empty read just means no error surface rendered and the message falls back to the generic form.
+        const errText = (await errorDisplay.textContent().catch(() => '')) ?? '';
         throw new Error(
           `Contract detail page rendered an ErrorDisplay for contract ${contractId} ` +
             `that we just created via POST /api/v1/contracts/. This means ` +
             `useContract's GET /api/v1/contracts/${contractId}/ failed — ` +
             `a real regression (likely tenant scoping, normalization stuck, or ` +
-            `serializer drift). Error text: "${(errText ?? '').slice(0, 300)}"`,
+            `serializer drift). Error text: "${errText.slice(0, 300)}"`,
         );
       }
 

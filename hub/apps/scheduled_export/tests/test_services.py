@@ -91,14 +91,14 @@ class ScheduledExportServiceCRUDTest(TestCase):
             schedule_config={"cron": "0 0 * * *", "timezone": "UTC"},
             source_scope={"asset_ids": [str(self.asset.id)]},
         )
-        self.assertEqual(export.name, "Daily Export")
-        self.assertEqual(export.status, ScheduledExportStatus.ACTIVE)
-        self.assertIsNotNone(export.next_run_at)
-        self.assertEqual(
+        assert export.name == "Daily Export"
+        assert export.status == ScheduledExportStatus.ACTIVE
+        assert export.next_run_at is not None
+        assert (
             AuditEvent.objects.filter(
                 resource_type="SCHEDULED_EXPORT", action="CREATED", resource_id=str(export.id)
-            ).count(),
-            1,
+            ).count()
+            == 1
         )
 
     def test_create_scheduled_export_validation_error_business_rules(self):
@@ -113,7 +113,7 @@ class ScheduledExportServiceCRUDTest(TestCase):
                 schedule_config={"cron": "0 0 * * *", "timezone": "UTC"},
                 source_scope={"asset_ids": [str(self.asset.id)]},
             )
-        self.assertEqual(cm.exception.code, "BUSINESS_RULES_VALIDATION")
+        assert cm.exception.code == "BUSINESS_RULES_VALIDATION"
 
     def test_update_scheduled_export_success(self):
         """Service update_scheduled_export updates fields and emits audit."""
@@ -133,13 +133,13 @@ class ScheduledExportServiceCRUDTest(TestCase):
             name="Updated Name",
             status=ScheduledExportStatus.PAUSED,
         )
-        self.assertEqual(updated.name, "Updated Name")
-        self.assertEqual(updated.status, ScheduledExportStatus.PAUSED)
-        self.assertEqual(
+        assert updated.name == "Updated Name"
+        assert updated.status == ScheduledExportStatus.PAUSED
+        assert (
             AuditEvent.objects.filter(
                 resource_type="SCHEDULED_EXPORT", action="UPDATED", resource_id=str(export.id)
-            ).count(),
-            1,
+            ).count()
+            == 1
         )
 
     def test_update_scheduled_export_not_found(self):
@@ -170,7 +170,7 @@ class ScheduledExportServiceCRUDTest(TestCase):
                 scheduled_export_id=str(export.id),
                 name="Updated",
             )
-        self.assertEqual(cm.exception.code, "TENANT_REQUIRED")
+        assert cm.exception.code == "TENANT_REQUIRED"
 
     def test_delete_scheduled_export_success(self):
         """Service delete_scheduled_export removes export and emits audit."""
@@ -188,12 +188,12 @@ class ScheduledExportServiceCRUDTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        self.assertFalse(ScheduledExport.objects.filter(id=export.id).exists())
-        self.assertEqual(
+        assert not ScheduledExport.objects.filter(id=export.id).exists()
+        assert (
             AuditEvent.objects.filter(
                 resource_type="SCHEDULED_EXPORT", action="DELETED", resource_id=str(export.id)
-            ).count(),
-            1,
+            ).count()
+            == 1
         )
 
     def test_delete_scheduled_export_not_found(self):
@@ -253,8 +253,8 @@ class ScheduledExportServiceRunLifecycleTest(TestCase):
             user_id=str(self.user.id),
             prefect_flow_run_id="pf-123",
         )
-        self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
-        self.assertEqual(run.prefect_flow_run_id, "pf-123")
+        assert run.status == ScheduledExportRunStatus.RUNNING
+        assert run.prefect_flow_run_id == "pf-123"
 
     def test_create_export_run_idempotency_prefect_flow_run_id(self):
         """Same prefect_flow_run_id returns existing run."""
@@ -270,7 +270,7 @@ class ScheduledExportServiceRunLifecycleTest(TestCase):
             user_id=str(self.user.id),
             prefect_flow_run_id="pf-idem",
         )
-        self.assertEqual(run1.id, run2.id)
+        assert run1.id == run2.id
 
     def test_create_export_run_tenant_required(self):
         """create_export_run raises ValidationError when tenant_id is missing."""
@@ -279,7 +279,7 @@ class ScheduledExportServiceRunLifecycleTest(TestCase):
             service_no_tenant.create_export_run(
                 scheduled_export_id=str(self.export.id),
             )
-        self.assertEqual(cm.exception.code, "TENANT_REQUIRED")
+        assert cm.exception.code == "TENANT_REQUIRED"
 
     def test_create_export_run_not_found(self):
         """create_export_run raises NotFoundError for non-existent scheduled_export_id."""
@@ -306,11 +306,11 @@ class ScheduledExportServiceRunLifecycleTest(TestCase):
             items_failed=2,
             completed_at=timezone.now().isoformat(),
         )
-        self.assertEqual(updated.status, ScheduledExportRunStatus.COMPLETED)
-        self.assertEqual(updated.items_found, 10)
-        self.assertEqual(updated.items_exported, 8)
-        self.assertEqual(updated.items_failed, 2)
-        self.assertIsNotNone(updated.completed_at)
+        assert updated.status == ScheduledExportRunStatus.COMPLETED
+        assert updated.items_found == 10
+        assert updated.items_exported == 8
+        assert updated.items_failed == 2
+        assert updated.completed_at is not None
 
     def test_update_export_run_not_found(self):
         """update_export_run raises NotFoundError for non-existent run_id."""
@@ -392,12 +392,12 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        self.assertTrue(result["success"])
-        self.assertEqual(result["item_type"], "dataset")
-        self.assertEqual(result["item_id"], str(self.dataset.id))
-        self.assertIn("upload_url", result)
-        self.assertIn("upload_method", result)
-        self.assertIn("s3://process-bucket/", result["upload_url"])
+        assert result["success"]
+        assert result["item_type"] == "dataset"
+        assert result["item_id"] == str(self.dataset.id)
+        assert "upload_url" in result
+        assert "upload_method" in result
+        assert "s3://process-bucket/" in result["upload_url"]
 
     def test_process_export_item_file_success(self):
         """process_export_item with file_id returns upload instructions."""
@@ -407,10 +407,10 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        self.assertTrue(result["success"])
-        self.assertEqual(result["item_type"], "file")
-        self.assertEqual(result["item_id"], str(self.file.id))
-        self.assertIn("upload_url", result)
+        assert result["success"]
+        assert result["item_type"] == "file"
+        assert result["item_id"] == str(self.file.id)
+        assert "upload_url" in result
 
     def test_process_export_item_tenant_required(self):
         """process_export_item raises ValidationError when tenant_id is missing."""
@@ -420,7 +420,7 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
                 run_id=str(self.run.id),
                 dataset_id=str(self.dataset.id),
             )
-        self.assertEqual(cm.exception.code, "TENANT_REQUIRED")
+        assert cm.exception.code == "TENANT_REQUIRED"
 
     def test_process_export_item_run_not_found(self):
         """process_export_item raises NotFoundError for non-existent run_id."""
@@ -438,7 +438,7 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
                 run_id=str(self.run.id),
                 tenant_id=str(self.tenant.id),
             )
-        self.assertEqual(cm.exception.code, "ITEM_REQUIRED")
+        assert cm.exception.code == "ITEM_REQUIRED"
 
     def test_process_export_item_multiple_items_rejected(self):
         """process_export_item raises ValidationError when both dataset_id and file_id provided."""
@@ -449,7 +449,7 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
                 file_id=str(self.file.id),
                 tenant_id=str(self.tenant.id),
             )
-        self.assertEqual(cm.exception.code, "MULTIPLE_ITEMS")
+        assert cm.exception.code == "MULTIPLE_ITEMS"
 
     def test_process_export_item_export_not_active(self):
         """process_export_item raises ValidationError when scheduled export is not ACTIVE."""
@@ -465,7 +465,7 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
                 dataset_id=str(self.dataset.id),
                 tenant_id=str(self.tenant.id),
             )
-        self.assertEqual(cm.exception.code, "EXPORT_NOT_ACTIVE")
+        assert cm.exception.code == "EXPORT_NOT_ACTIVE"
 
     def test_process_export_item_item_not_in_scope(self):
         """process_export_item raises ValidationError when item is not in source_scope."""
@@ -483,7 +483,7 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
                 file_id=str(other_file.id),
                 tenant_id=str(self.tenant.id),
             )
-        self.assertEqual(cm.exception.code, "ITEM_NOT_IN_SCOPE")
+        assert cm.exception.code == "ITEM_NOT_IN_SCOPE"
 
     def test_process_export_item_dataset_not_found(self):
         """process_export_item raises NotFoundError when dataset_id does not exist."""
@@ -524,7 +524,7 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
             file_id=str(self.file.id),
             tenant_id=str(self.tenant.id),
         )
-        self.assertIn("gs://gcs-bucket/", result["upload_url"])
+        assert "gs://gcs-bucket/" in result["upload_url"]
 
     def test_process_export_item_destination_azure_blob(self):
         """process_export_item returns Azure Blob URL for AZURE_BLOB destination."""
@@ -551,5 +551,5 @@ class ScheduledExportServiceProcessExportItemTest(TestCase):
             file_id=str(self.file.id),
             tenant_id=str(self.tenant.id),
         )
-        self.assertIn("blob.core.windows.net", result["upload_url"])
-        self.assertIn("azure-container", result["upload_url"])
+        assert "blob.core.windows.net" in result["upload_url"]
+        assert "azure-container" in result["upload_url"]

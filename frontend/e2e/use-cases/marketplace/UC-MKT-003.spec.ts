@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { getConsumerTestUser, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 import { createAssetViaApi } from '../../fixtures/api-assets';
@@ -33,7 +34,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
         contentSelector: '.listing-detail-main, [data-testid="listing-detail-main"], .listing-detail-page, .error-display, [data-testid="error-display"], main',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth not available');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth not available');
       }
       await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -76,21 +77,38 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
       }
-      const link = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // Gate-off terminal state (MP-001 convention, W16-guarded).
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'marketplace gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'marketplace gate bounced to /unavailable — transient snapshot failure'
+      );
+      const link = page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').first();
       // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await link.count()) > 0) {
         await link.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
-        const purchaseBtn = page.locator('button:has-text("Purchase"), button:has-text("Request"), a:has-text("Purchase")');
-        const hasDetail = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) > 0;
-        const hasPurchase = (await purchaseBtn.count()) > 0;
-        expect(hasDetail || hasPurchase).toBe(true) /* acceptable states */;
+        // The detail route's LAZY CHUNK + listing fetch mount the page
+        // AFTER the URL changes — a synchronous count() here races the
+        // chunk load and reads the still-mounted list page (zero detail,
+        // zero purchase) every single run (b6 #6). Auto-retrying
+        // visibility on the terminal union absorbs the mount latency; a
+        // real regression (error page, empty detail, missing CTA) still
+        // fails once the budget expires.
+        const detailOrPurchase = page.locator(
+          '.listing-detail-main, [data-testid="listing-detail-main"], button:has-text("Purchase"), button:has-text("Request"), a:has-text("Purchase")'
+        );
+        await expect(detailOrPurchase.first()).toBeVisible({ timeout: 15000 });
       }
     });
 

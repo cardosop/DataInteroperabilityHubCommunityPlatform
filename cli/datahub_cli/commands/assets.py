@@ -3,6 +3,7 @@ Asset management commands.
 """
 
 import json
+from typing import Any
 
 import click
 
@@ -69,7 +70,7 @@ def list_assets(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list assets: {e}")
+        raise click.ClickException(f"Failed to list assets: {e}") from e
 
 
 @assets.command("get")
@@ -112,7 +113,7 @@ def get_asset(asset_id: str, include: str | None, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get asset: {e}")
+        raise click.ClickException(f"Failed to get asset: {e}") from e
 
 
 @assets.command("create")
@@ -162,7 +163,7 @@ def create_asset(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create asset: {e}")
+        raise click.ClickException(f"Failed to create asset: {e}") from e
 
 
 @assets.command("update")
@@ -213,7 +214,7 @@ def update_asset(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update asset: {e}")
+        raise click.ClickException(f"Failed to update asset: {e}") from e
 
 
 @assets.command("delete")
@@ -221,6 +222,19 @@ def update_asset(
 @click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
 def delete_asset(asset_id: str, confirm: bool):
     """Delete an asset"""
+    try:
+        # Check existence FIRST so the user gets the real 404 for a bad
+        # id instead of a confirmation prompt that aborts without ever
+        # consulting the API ("Are you sure?" on a nonexistent asset is
+        # misleading — the mid-journey E2E asserts a clean not-found
+        # error).  The GET is the existence probe; the DELETE below is
+        # the destructive step.
+        api_client.get(f"assets/{asset_id}/")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to delete asset: {e}") from e
+
     if not confirm and not click.confirm(f"Are you sure you want to delete asset {asset_id}?"):
         click.echo("Cancelled.")
         return
@@ -232,9 +246,12 @@ def delete_asset(asset_id: str, confirm: bool):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to delete asset: {e}")
+        raise click.ClickException(f"Failed to delete asset: {e}") from e
 
 
+def _raise_activation_error(exc: Exception) -> None:
+    """Wrap an activation failure into the CLI error shape (TRY301 helper)."""
+    raise click.ClickException(f"Failed to activate asset: {exc}") from exc
 @assets.command("activate")
 @click.argument("asset_id")
 @click.option(
@@ -244,14 +261,21 @@ def delete_asset(asset_id: str, confirm: bool):
     default="table",
     help="Output format",
 )
+
+
 def activate_asset(asset_id: str, output_format: str):
     """Activate an asset"""
-    try:
+
+    def _get_version() -> Any:
         # Fetch current asset to get version for optimistic locking
         asset_data = api_client.get(f"assets/{asset_id}/")
         version = asset_data.get("version")
         if version is None:
             raise click.ClickException("Could not read asset version (required for activation)")
+        return version
+
+    try:
+        version = _get_version()
 
         result = api_client.post(
             f"assets/{asset_id}/activate/",
@@ -267,4 +291,4 @@ def activate_asset(asset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to activate asset: {e}")
+        _raise_activation_error(e)

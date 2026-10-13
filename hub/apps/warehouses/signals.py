@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender="assets.Asset")
-def index_live_query_asset_on_save(sender, instance, **kwargs):
+def index_live_query_asset_on_save(sender, instance, **_kwargs):
     """Phase 275.E.3k — trigger search reindex when a LIVE_QUERY asset is saved."""
     from hub.apps.assets.models import DataStrategy
 

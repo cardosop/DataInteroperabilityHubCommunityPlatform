@@ -85,9 +85,11 @@ test.describe('Phase 260.7.J — multipart abort + resume full chain', () => {
     await page.goto('/files');
     await waitForAppMainReady(page, { timeout: 30_000 });
 
-    const accessToken = await page.evaluate(() =>
-      localStorage.getItem('access_token')
-    );
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
     expect(accessToken, 'access_token after login').toBeTruthy();
     const authHeader = {
       Authorization: `Bearer ${accessToken}`,
@@ -98,7 +100,16 @@ test.describe('Phase 260.7.J — multipart abort + resume full chain', () => {
 
     // --- 1. POST /files/init/ — large enough to trigger multipart.
     // 30 MiB is below the 100 MiB multipart threshold, so we send
-    // upload_method=sdk + size>100MB to force the multipart path.
+    // size>100MB to force the multipart path (multipart is size-driven
+    // in hub/apps/files/views.py — upload_method only selects how the
+    // presigned URLs are signed). We use upload_method=browser (NOT
+    // sdk): the browser method makes the backend sign every chunk URL
+    // against the host-published MinIO endpoint (localhost:9010 in the
+    // test stack, via `_presign_part_url_for_browser`) — the same
+    // contract the production multipartUploader uses. sdk URLs are
+    // signed against http://minio-test:9000, unreachable from the host,
+    // and the host-rewrite fallback below cannot re-sign the SigV4
+    // host header (b7 #37: ECONNREFUSED 127.0.0.1:9000).
     // The backend's chunk-size policy at validators.py:288-300
     // returns 5 MiB chunks for files <100MB; we need to override
     // by passing a size that triggers multipart explicitly. Use
@@ -143,7 +154,7 @@ test.describe('Phase 260.7.J — multipart abort + resume full chain', () => {
       name: uploadName,
       content_type: 'text/csv',
       size: 105 * 1024 * 1024,  // 105 MiB → multipart fires
-      upload_method: 'sdk',
+      upload_method: 'browser',
     };
     // Multipart-upload init. The contract pinned by this spec is the
     // S3 round-trip behaviour (init → multiple chunk PUTs → abort →
@@ -208,19 +219,37 @@ test.describe('Phase 260.7.J — multipart abort + resume full chain', () => {
       // directly. Buffer.alloc(chunk_size, partNumber & 0xff) keeps
       // the body small + deterministic.
       const partBody = Buffer.alloc(initJson.chunk_size, partNumber & 0xff);
-      const putResp = await page.request.fetch(presignedUrl, {
-        method: 'PUT',
-        data: partBody,
-        headers: { 'Content-Type': 'application/octet-stream' },
-      });
-      // MinIO sometimes needs an alternate endpoint when running in
-      // docker-compose.test.yml; fall back to the same logic the
-      // file-download-ui spec uses (line 64-69 of that spec).
-      if (!putResp.ok()) {
+      // With upload_method=browser the backend signs the presigned URL
+      // against the host-published MinIO endpoint (localhost:9010 in the
+      // test stack — `_presign_part_url_for_browser`), so the direct PUT
+      // succeeds from the host. Keep the fallback for defence-in-depth:
+      // if the URL still carries the container-internal endpoint
+      // (http://minio-test:9000 — a stale backend or a non-test stack),
+      // the direct PUT THROWS (EHOSTUNREACH / ECONNREFUSED, host cannot
+      // resolve Docker service names) or returns non-OK; fall back on
+      // BOTH (the old `if (!putResp.ok())` guard missed the thrown case
+      // entirely).
+      let putResp: Awaited<ReturnType<typeof page.request.fetch>> | null = null;
+      try {
+        putResp = await page.request.fetch(presignedUrl, {
+          method: 'PUT',
+          data: partBody,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        });
+      } catch {
+        putResp = null;
+      }
+      if (!putResp || !putResp.ok()) {
         const url = new URL(presignedUrl);
-        const altPort = url.port || '9010';
+        // Resolve the host-published MinIO port the same way the backend
+        // does (`_presign_part_url_for_browser` / storage.py): the
+        // MINIO_TEST_API_PORT env, defaulting to 9010. NEVER reuse
+        // url.port — that is the container-internal 9000, which the test
+        // stack does not publish on the host (b7 #37: ECONNREFUSED on
+        // 127.0.0.1:9000).
+        const altPort = process.env.MINIO_TEST_API_PORT || '9010';
         const altResp = await page.request.fetch(
-          `http://127.0.0.1:${altPort}${url.pathname}${url.search}`,
+          `http://localhost:${altPort}${url.pathname}${url.search}`,
           {
             method: 'PUT',
             data: partBody,
@@ -254,9 +283,11 @@ test.describe('Phase 260.7.J — multipart abort + resume full chain', () => {
 
     // Re-fetch the auth token after reload (login is persisted via
     // localStorage so the user is still authenticated).
-    const reloadedToken = await page.evaluate(() =>
-      localStorage.getItem('access_token')
-    );
+    const reloadedToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
     expect(reloadedToken).toBeTruthy();
     const reloadedAuthHeader = {
       Authorization: `Bearer ${reloadedToken}`,

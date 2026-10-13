@@ -9,13 +9,13 @@ between the Hub and external data marketplaces.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from hub.apps.assets.models import AssetSourceType
 
 
-class MarketplaceType(str, Enum):
+class MarketplaceType(StrEnum):
     """
     Enumeration of supported data marketplace types.
 
@@ -42,7 +42,7 @@ class MarketplaceType(str, Enum):
     IN_MEMORY_FAKE = "IN_MEMORY_FAKE"
 
 
-class SyncDirection(str, Enum):
+class SyncDirection(StrEnum):
     """
     Enumeration of synchronization directions.
 
@@ -54,7 +54,7 @@ class SyncDirection(str, Enum):
     BIDIRECTIONAL = "BIDIRECTIONAL"
 
 
-class SyncStatus(str, Enum):
+class SyncStatus(StrEnum):
     """
     Enumeration of synchronization operation statuses.
 
@@ -66,6 +66,7 @@ class SyncStatus(str, Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     PARTIAL = "PARTIAL"
+    CANCELLED = "CANCELLED"
 
 
 @dataclass
@@ -785,12 +786,13 @@ class DataMarketplaceConnector(ABC):
 
         try:
             result = func(*args, **kwargs)
-            return result
         except Exception as e:
             status = "error"
             error_type = type(e).__name__
             error_message = str(e)
             raise
+        else:
+            return result
         finally:
             duration = time.time() - start_time
 

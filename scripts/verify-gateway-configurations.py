@@ -51,91 +51,89 @@ def check_traefik_routes(routes_file: Path) -> dict:
 
         # Check for old patterns in route rules
         for old_pattern in OLD_PATTERNS:
-            if old_pattern in content:
-                # Check if it's in a PathPrefix rule
-                if "PathPrefix" in content:
-                    # Extract PathPrefix rules
-                    pathprefix_pattern = r"PathPrefix\(`([^`]+)`\)"
-                    matches = re.findall(pathprefix_pattern, content)
+            if old_pattern in content and "PathPrefix" in content:
+                # Extract PathPrefix rules
+                pathprefix_pattern = r"PathPrefix\(`([^`]+)`\)"
+                matches = re.findall(pathprefix_pattern, content)
 
-                    for match in matches:
-                        if old_pattern in match:
-                            issues.append(
-                                {
-                                    "type": "old_pattern_in_route",
-                                    "pattern": old_pattern,
-                                    "route": match,
-                                    "line": content[: content.find(match)].count("\n") + 1,
-                                }
-                            )
+                for match in matches:
+                    if old_pattern in match:
+                        issues.append(
+                            {
+                                "type": "old_pattern_in_route",
+                                "pattern": old_pattern,
+                                "route": match,
+                                "line": content[: content.find(match)].count("\n") + 1,
+                            }
+                        )
 
         # Verify compliance and DQ routes use standardized patterns
-        if "/api/v1/compliance" in content:
+        if "/api/v1/compliance" in content and "/api/v1/compliance/compliance-runs" in content:
             # Should use /api/v1/compliance (not /api/v1/compliance/compliance-runs)
-            if "/api/v1/compliance/compliance-runs" in content:
-                issues.append(
-                    {
-                        "type": "old_compliance_pattern",
-                        "pattern": "/api/v1/compliance/compliance-runs",
-                        "message": "Should use /api/v1/compliance (runs handled by service)",
-                    }
-                )
+            issues.append(
+                {
+                    "type": "old_compliance_pattern",
+                    "pattern": "/api/v1/compliance/compliance-runs",
+                    "message": "Should use /api/v1/compliance (runs handled by service)",
+                }
+            )
 
-        if "/api/v1/dq" in content:
+        if "/api/v1/dq" in content and "/api/v1/dq/dq-runs" in content:
             # Should use /api/v1/dq (not /api/v1/dq/dq-runs)
-            if "/api/v1/dq/dq-runs" in content:
-                issues.append(
-                    {
-                        "type": "old_dq_pattern",
-                        "pattern": "/api/v1/dq/dq-runs",
-                        "message": "Should use /api/v1/dq (runs handled by service)",
-                    }
-                )
+            issues.append(
+                {
+                    "type": "old_dq_pattern",
+                    "pattern": "/api/v1/dq/dq-runs",
+                    "message": "Should use /api/v1/dq (runs handled by service)",
+                }
+            )
 
         # Verify routes are properly configured
-        if "compliance-service" in content:
-            # Compliance service route should use /api/v1/compliance
-            if "PathPrefix(`/api/v1/compliance`)" not in content:
-                # Check if it exists at all
-                if "compliance-service" in content and "PathPrefix" in content:
-                    # Extract the rule for compliance-service
-                    compliance_match = re.search(
-                        r'compliance-service:.*?rule:\s*"PathPrefix\(`([^`]+)`\)"',
-                        content,
-                        re.DOTALL,
+        # Compliance service route should use /api/v1/compliance
+        if (
+            "compliance-service" in content
+            and "PathPrefix(`/api/v1/compliance`)" not in content
+            and "PathPrefix" in content
+        ):
+            # Extract the rule for compliance-service
+            compliance_match = re.search(
+                r'compliance-service:.*?rule:\s*"PathPrefix\(`([^`]+)`\)"',
+                content,
+                re.DOTALL,
+            )
+            if compliance_match:
+                route_path = compliance_match.group(1)
+                if route_path != "/api/v1/compliance":
+                    issues.append(
+                        {
+                            "type": "incorrect_compliance_route",
+                            "found": route_path,
+                            "expected": "/api/v1/compliance",
+                        }
                     )
-                    if compliance_match:
-                        route_path = compliance_match.group(1)
-                        if route_path != "/api/v1/compliance":
-                            issues.append(
-                                {
-                                    "type": "incorrect_compliance_route",
-                                    "found": route_path,
-                                    "expected": "/api/v1/compliance",
-                                }
-                            )
 
-        if "dq-service" in content:
-            # DQ service route should use /api/v1/dq
-            if "PathPrefix(`/api/v1/dq`)" not in content:
-                # Check if it exists at all
-                if "dq-service" in content and "PathPrefix" in content:
-                    # Extract the rule for dq-service
-                    dq_match = re.search(
-                        r'dq-service:.*?rule:\s*"PathPrefix\(`([^`]+)`\)"', content, re.DOTALL
+        # DQ service route should use /api/v1/dq
+        if (
+            "dq-service" in content
+            and "PathPrefix(`/api/v1/dq`)" not in content
+            and "PathPrefix" in content
+        ):
+            # Extract the rule for dq-service
+            dq_match = re.search(
+                r'dq-service:.*?rule:\s*"PathPrefix\(`([^`]+)`\)"', content, re.DOTALL
+            )
+            if dq_match:
+                route_path = dq_match.group(1)
+                if route_path != "/api/v1/dq":
+                    issues.append(
+                        {
+                            "type": "incorrect_dq_route",
+                            "found": route_path,
+                            "expected": "/api/v1/dq",
+                        }
                     )
-                    if dq_match:
-                        route_path = dq_match.group(1)
-                        if route_path != "/api/v1/dq":
-                            issues.append(
-                                {
-                                    "type": "incorrect_dq_route",
-                                    "found": route_path,
-                                    "expected": "/api/v1/dq",
-                                }
-                            )
 
-    except Exception as e:
+    except (OSError, ValueError) as e:
         return {
             "file": str(routes_file),
             "exists": True,
@@ -185,34 +183,30 @@ def check_kubernetes_ingress(ingress_file: Path) -> dict:
         metadata = ingress.get("metadata", {})
         name = metadata.get("name", "")
 
-        if "compliance" in name.lower():
+        if "compliance" in name.lower() and "rules" in ingress["spec"]:
             # Compliance service ingress should use / or /api/v1/compliance
             # (not /compliance-runs)
-            if "rules" in ingress["spec"]:
-                for rule in ingress["spec"]["rules"]:
-                    if "http" in rule and "paths" in rule["http"]:
-                        for path in rule["http"]["paths"]:
-                            path_value = path.get("path", "")
-                            if "/compliance-runs" in path_value:
-                                issues.append(
-                                    {
-                                        "type": "old_compliance_pattern_in_ingress",
-                                        "path": path_value,
-                                    }
-                                )
+            for rule in ingress["spec"]["rules"]:
+                if "http" in rule and "paths" in rule["http"]:
+                    for path in rule["http"]["paths"]:
+                        path_value = path.get("path", "")
+                        if "/compliance-runs" in path_value:
+                            issues.append(
+                                {
+                                    "type": "old_compliance_pattern_in_ingress",
+                                    "path": path_value,
+                                }
+                            )
 
-        if "dq" in name.lower() or "dq-service" in name.lower():
+        if ("dq" in name.lower() or "dq-service" in name.lower()) and "rules" in ingress["spec"]:
             # DQ service ingress should use / or /api/v1/dq
             # (not /dq-runs)
-            if "rules" in ingress["spec"]:
-                for rule in ingress["spec"]["rules"]:
-                    if "http" in rule and "paths" in rule["http"]:
-                        for path in rule["http"]["paths"]:
-                            path_value = path.get("path", "")
-                            if "/dq-runs" in path_value:
-                                issues.append(
-                                    {"type": "old_dq_pattern_in_ingress", "path": path_value}
-                                )
+            for rule in ingress["spec"]["rules"]:
+                if "http" in rule and "paths" in rule["http"]:
+                    for path in rule["http"]["paths"]:
+                        path_value = path.get("path", "")
+                        if "/dq-runs" in path_value:
+                            issues.append({"type": "old_dq_pattern_in_ingress", "path": path_value})
 
     except yaml.YAMLError as e:
         return {
@@ -222,7 +216,7 @@ def check_kubernetes_ingress(ingress_file: Path) -> dict:
             "issues": [],
             "issue_count": 0,
         }
-    except Exception as e:
+    except (OSError, KeyError, TypeError, ValueError) as e:
         return {
             "file": str(ingress_file),
             "exists": True,

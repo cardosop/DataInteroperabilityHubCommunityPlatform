@@ -26,6 +26,7 @@ from hub.apps.integrations.models import (
 if TYPE_CHECKING:
     from hub.apps.assets.models import Asset
     from hub.apps.contracts.models import Contract
+    from hub.apps.orchestration.models import WorkflowInstance, WorkflowStep
     from hub.apps.tenants.models import Tenant
 
 logger = structlog.get_logger(__name__)
@@ -211,7 +212,7 @@ class DiscoveryServiceMixin:
         sync_job: MarketplaceSyncJob | None = None,
         tenant_id: str | None = None,
         user_id: str | None = None,
-        request: Any | None = None,
+        _request: Any | None = None,
         skip_resource_downloads: bool = False,
         skip_semantic_mapping: bool = False,
         data_strategy: str = "METADATA_ONLY",
@@ -287,7 +288,6 @@ class DiscoveryServiceMixin:
             Asset,
             AssetSourceType,
             AssetStatus,
-            AssetVisibility,
         )
         from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.schema_inference import (
@@ -303,7 +303,19 @@ class DiscoveryServiceMixin:
             record_span_exception,
             set_span_status,
         )
-        from hub.apps.semantic.utils import map_asset_to_semantic, map_contract_to_semantic
+
+        # Phase 313 — semantic is the paid layer; in core-only mode the
+        # import raises RuntimeError and the mapping closures below
+        # degrade to None (their try/except already treats mapping
+        # failure as non-critical).
+        try:
+            from hub.apps.semantic.utils import (
+                map_asset_to_semantic,
+                map_contract_to_semantic,
+            )
+        except (RuntimeError, ModuleNotFoundError):
+            map_asset_to_semantic = None  # type: ignore[assignment]
+            map_contract_to_semantic = None  # type: ignore[assignment]
         from hub.apps.tenants.models import Tenant
 
         User = get_user_model()
@@ -343,6 +355,21 @@ class DiscoveryServiceMixin:
             cross_region_consent=cross_region_consent,
         )
 
+        def _validate_asset_mapping(mapping: MarketplaceAssetMapping) -> dict[str, Any]:
+            """Validate the asset mapping shape and return its asset_data."""
+            if not isinstance(mapping, MarketplaceAssetMapping):
+                raise ValidationError(
+                    "asset_mapping must be a MarketplaceAssetMapping instance",
+                    details={"type": type(mapping).__name__},
+                )
+            asset_data = mapping.asset_data
+            if not asset_data or not isinstance(asset_data, dict):
+                raise ValidationError(
+                    "asset_mapping.asset_data must be a non-empty dictionary",
+                    details={"asset_data": asset_data},
+                )
+            return asset_data
+
         with transaction.atomic():
             try:
                 # Create span for distributed tracing
@@ -353,19 +380,8 @@ class DiscoveryServiceMixin:
                 tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
                 user_obj = self.get_resource_or_raise(User, effective_user_id)
 
-                # Validate asset_mapping
-                if not isinstance(asset_mapping, MarketplaceAssetMapping):
-                    raise ValidationError(
-                        "asset_mapping must be a MarketplaceAssetMapping instance",
-                        details={"type": type(asset_mapping).__name__},
-                    )
-
-                asset_data = asset_mapping.asset_data
-                if not asset_data or not isinstance(asset_data, dict):
-                    raise ValidationError(
-                        "asset_mapping.asset_data must be a non-empty dictionary",
-                        details={"asset_data": asset_data},
-                    )
+                # Validate asset_mapping (raises ValidationError, caught below)
+                asset_data = _validate_asset_mapping(asset_mapping)
 
                 # Extract asset fields
                 asset_name = asset_data.get("name") or "Untitled Asset"
@@ -842,19 +858,20 @@ class DiscoveryServiceMixin:
                                 # Cleanup temp file
                                 try:
                                     os.remove(downloaded_path)
-                                except Exception as e:
+                                except OSError as e:
                                     logger.debug(
                                         "integrations_non_critical_failed",
                                         extra={"error_type": type(e).__name__, "error": str(e)},
                                     )
 
-                                return {"file": file_obj, "dataset": dataset}
                             except Exception as e:
                                 logger.warning(
                                     f"Failed to download and process resource {resource.resource_id}: {e}",
                                     exc_info=True,
                                 )
                                 return None
+                            else:
+                                return {"file": file_obj, "dataset": dataset}
 
                         # Execute downloads in parallel for performance
                         # Note: In test environments, use sequential execution to avoid transaction isolation issues
@@ -1005,8 +1022,6 @@ class DiscoveryServiceMixin:
                     },
                 )
 
-                return asset
-
             except (ValidationError, NotFoundError) as e:
                 if span:
                     record_span_exception(e)
@@ -1035,6 +1050,8 @@ class DiscoveryServiceMixin:
                     },
                 )
                 raise ServiceError(f"Failed to create federated asset with contracts: {e}") from e
+            else:
+                return asset
             finally:
                 if span_context:
                     try:
@@ -1198,36 +1215,35 @@ class DiscoveryServiceMixin:
             # Contract already exists, return it
             return existing_contracts
 
-        # Calculate next version based on ALL contracts for this asset
-        # (constraint is on tenant+asset+version, not spec_type)
-        from django.db.models import Max
-
-        max_version = (
-            Contract.objects.filter(tenant=tenant_obj, asset=asset).aggregate(
-                max_version=Max("version")
-            )["max_version"]
-            or 0
+        # W4.4 (R2-I1) — version allocation under the asset lock (the
+        # pre-fix aggregate-Max read raced on the version uniqueness
+        # constraint) + the deterministic conflict translation.
+        from hub.apps.contracts.services.contract_service import (
+            contract_version_conflict_to_409,
+            locked_contract_version,
         )
-        next_version = max_version + 1
 
         odps_version = odps_metadata.get("version", "4.1")
-        odps_contract = Contract.objects.create(
-            tenant=tenant_obj,
-            asset=asset,
-            version=next_version,
-            status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODPS,
-            original_spec_version=str(odps_version),
-            original_format=OriginalFormat.JSON,
-            original_raw=json.dumps(odps_product, indent=2, ensure_ascii=False),
-            hub_contract_version="1.0.0",
-            hub_contract_json=hub_contract,
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            normalization_errors=[],
-            normalization_warnings=[],
-            created_by=user_obj,
-        )
+        with locked_contract_version(
+            tenant_id=str(tenant_obj.id), asset=asset
+        ) as next_version, contract_version_conflict_to_409():
+            odps_contract = Contract.objects.create(
+                tenant=tenant_obj,
+                asset=asset,
+                version=next_version,
+                status=ContractStatus.DRAFT,
+                original_spec_type=OriginalSpecType.ODPS,
+                original_spec_version=str(odps_version),
+                original_format=OriginalFormat.JSON,
+                original_raw=json.dumps(odps_product, indent=2, ensure_ascii=False),
+                hub_contract_version="1.0.0",
+                hub_contract_json=hub_contract,
+                validation_status=ValidationStatus.VALID,
+                normalization_status=NormalizationStatus.NORMALIZED_OK,
+                normalization_errors=[],
+                normalization_warnings=[],
+                created_by=user_obj,
+            )
 
         return odps_contract
 
@@ -1419,35 +1435,34 @@ class DiscoveryServiceMixin:
             # Contract already exists, return it
             return existing_contracts
 
-        # Calculate next version based on ALL contracts for this asset
-        # (constraint is on tenant+asset+version, not spec_type)
-        from django.db.models import Max
-
-        max_version = (
-            Contract.objects.filter(tenant=tenant_obj, asset=asset).aggregate(
-                max_version=Max("version")
-            )["max_version"]
-            or 0
+        # W4.4 (R2-I1) — version allocation under the asset lock (the
+        # pre-fix aggregate-Max read raced on the version uniqueness
+        # constraint) + the deterministic conflict translation.
+        from hub.apps.contracts.services.contract_service import (
+            contract_version_conflict_to_409,
+            locked_contract_version,
         )
-        next_version = max_version + 1
 
-        odcs_contract = Contract.objects.create(
-            tenant=tenant_obj,
-            asset=asset,
-            version=next_version,
-            status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.2",
-            original_format=OriginalFormat.JSON,
-            original_raw=json.dumps(hub_contract, indent=2, ensure_ascii=False),
-            hub_contract_version="1.0.0",
-            hub_contract_json=hub_contract,
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            normalization_errors=[],
-            normalization_warnings=[],
-            created_by=user_obj,
-        )
+        with locked_contract_version(
+            tenant_id=str(tenant_obj.id), asset=asset
+        ) as next_version, contract_version_conflict_to_409():
+            odcs_contract = Contract.objects.create(
+                tenant=tenant_obj,
+                asset=asset,
+                version=next_version,
+                status=ContractStatus.DRAFT,
+                original_spec_type=OriginalSpecType.ODCS,
+                original_spec_version="3.0.2",
+                original_format=OriginalFormat.JSON,
+                original_raw=json.dumps(hub_contract, indent=2, ensure_ascii=False),
+                hub_contract_version="1.0.0",
+                hub_contract_json=hub_contract,
+                validation_status=ValidationStatus.VALID,
+                normalization_status=NormalizationStatus.NORMALIZED_OK,
+                normalization_errors=[],
+                normalization_warnings=[],
+                created_by=user_obj,
+            )
 
         return odcs_contract
 
@@ -1830,7 +1845,12 @@ class DiscoveryServiceMixin:
                     )
 
                     result = AssetCreationWorkflow._activate_asset_task(
-                        {"auto_activate": True}, workflow_instance, step
+                        # Discovery already mapped the asset to semantic in
+                        # STEP 6 — the workflow's activation-time mapping
+                        # would map the same asset twice.
+                        {"auto_activate": True, "skip_semantic_mapping": True},
+                        workflow_instance,
+                        step,
                     )
                     step.status = StepStatus.COMPLETED
                     step.output_data = result

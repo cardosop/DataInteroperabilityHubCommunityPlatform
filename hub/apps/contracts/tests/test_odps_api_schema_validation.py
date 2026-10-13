@@ -15,12 +15,17 @@ import json
 import uuid
 from typing import Any
 
+import pytest
+from django.conf import settings as _settings
 from rest_framework import status
 
 try:
-    import jsonschema
+    from jsonschema import SchemaError, validate
     from jsonschema import ValidationError as JSONSchemaValidationError
-    from jsonschema import validate
+
+    # RefResolutionError is deprecated in jsonschema >= 4.18 — the
+    # underlying exception type lives in `referencing`.
+    from referencing.exceptions import Unresolvable
 
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
@@ -33,6 +38,23 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.users.models import Role, UserRole
+
+# The suite validates ODPS product creation / export / linking schemas —
+# all of which run the paid marketplace ProductCreationWorkflow. In
+# core-only mode those endpoints return FEATURE_NOT_AVAILABLE (404), so
+# the whole module is skipped there (per-class skips below remain for
+# clarity in full mode).
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "ODPS product creation / export / linking schemas come from "
+            "the paid marketplace workflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404)."
+        ),
+    ),
+]
 
 
 class APISchemaValidationTestBase(ContractsAPITestBase):
@@ -154,11 +176,12 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
 
         try:
             validate(instance=data, schema=schema)
-            return True, None
         except JSONSchemaValidationError as e:
             return False, str(e)
-        except Exception as e:
+        except (SchemaError, Unresolvable) as e:
             return False, f"Schema validation error: {e!s}"
+        else:
+            return True, None
 
     def _get_contract_response_schema(self) -> dict[str, Any]:
         """Get JSON Schema for Contract response."""
@@ -266,8 +289,28 @@ class APIResponseSchemaValidationTest(APISchemaValidationTestBase):
     API Response Schema Validation Tests (Task 10.1.10.1)
 
     Validates all ODPS creation, export, linking, and query endpoints return correct schemas.
+
+    The creation/export/link response schemas are built from the paid
+    Product-First workflow output; the class is skipped in core-only mode.
     """
 
+    pytestmark = pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Response schemas are built from the paid marketplace "
+            "ProductCreationWorkflow output — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404)."
+        ),
+    )
+
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_create_response_schema(self):
         """Test that product creation endpoint returns correct schema."""
         # Arrange
@@ -294,6 +337,14 @@ class APIResponseSchemaValidationTest(APISchemaValidationTestBase):
         self.assertIn("odcs_contract", data)
         self.assertIn("workflow_instance_id", data)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_create_response_contract_structure(self):
         """Test that product creation response contracts have required fields."""
         # Arrange
@@ -552,8 +603,11 @@ class APIRequestSchemaValidationTest(APISchemaValidationTestBase):
 
         # Assert
         # Invalid UUID format should be rejected at the API boundary
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
-            f"Expected 400 for invalid UUID format, got {response.status_code}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            f"Expected 400 for invalid UUID format, got {response.status_code}",
+        )
         data = response.json()
         self.assertIn("error", data or {})
 

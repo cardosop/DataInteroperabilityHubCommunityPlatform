@@ -128,13 +128,13 @@ class TestValidationMetrics(MonitoringValidationTestBase):
         }
         # Counter metric
         labeled_counter = workflow_business_rules_validations_total.labels(**expected_labels)
-        self.assertTrue(hasattr(labeled_counter, "inc"),
-                        "Labeled counter should support inc()")
+        self.assertTrue(hasattr(labeled_counter, "inc"), "Labeled counter should support inc()")
         labeled_counter.inc()
         # Histogram metric
         labeled_hist = workflow_business_rules_validation_duration_seconds.labels(**expected_labels)
-        self.assertTrue(hasattr(labeled_hist, "observe"),
-                        "Labeled histogram should support observe()")
+        self.assertTrue(
+            hasattr(labeled_hist, "observe"), "Labeled histogram should support observe()"
+        )
         labeled_hist.observe(0.5)
 
 
@@ -176,9 +176,13 @@ class TestValidationLogging(MonitoringValidationTestBase):
             self.assertIsInstance(log_output, str)
             # The workflow engine should log at least one message during step execution.
             # Verify the log output is non-empty and contains the workflow name.
-            self.assertGreater(len(log_output), 0,
-                               "Expected at least one log message during workflow step execution")
-            self.assertIn(self.workflow_name, log_output,
-                          "Log output should reference the workflow name")
+            self.assertGreater(
+                len(log_output),
+                0,
+                "Expected at least one log message during workflow step execution",
+            )
+            self.assertIn(
+                self.workflow_name, log_output, "Log output should reference the workflow name"
+            )
         finally:
             logger.removeHandler(handler)

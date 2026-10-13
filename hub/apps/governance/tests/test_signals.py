@@ -70,7 +70,7 @@ class GovernanceSignalTest(TestCase):
                     continue
                 ref = receiver_tuple[1]
                 # weakref.ref or weakref.WeakMethod (not ReferenceType subclass)
-                if hasattr(ref, "__call__"):
+                if callable(ref):
                     try:
                         obj = ref()
                     except TypeError:

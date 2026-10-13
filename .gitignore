@@ -1,4 +1,11 @@
 openspec/
+# The ACTIVE change is source-of-truth documentation — track it (the
+# rest of the openspec tree stays local-only). Prevents the repeated
+# "ignored file" friction when committing change records.
+!openspec/
+!openspec/changes/
+!openspec/changes/preprod01/
+openspec/changes/preprod01/tasks.md.bak
 InputDocs/
 AGENTS.md
 .cursor/
@@ -21,6 +28,7 @@ pip-delete-this-directory.txt
 
 # Django
 *.log
+!hub/apps/transformation/tests/fixtures/sample_dbt.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -32,6 +40,8 @@ db.sqlite3-journal
 .env
 .env.dev
 .env.staging
+.staging-known-good-sha
+.staging-known-good-config.yml
 .env.local
 .env.*.local
 .env.test
@@ -92,8 +102,10 @@ core.*
 terraform.tfvars
 .terraform.lock.hcl
 
-# Playwright test artifacts
-frontend/test-results/
+frontend/test-results/*
+# U.8: the committed failure-baseline floor (check-test-baseline.cjs input) ships
+!frontend/test-results/baseline.json
+
 frontend/playwright-report/
 
 # AWS CLI installer artifacts
@@ -120,9 +132,6 @@ audit-reports/*
 # during interactive compose-from-repo-root sessions.
 CACHED
 transferring
-[builder
-[internal]
-[stage-1
 
 # Playwright test result captures (`npx playwright test --reporter line
 # > tests-results.txt`). Belong in CI artifact paths, never the repo.
@@ -156,3 +165,48 @@ server.*.log
 
 # E2E test journey result captures (CI artifacts, not source).
 tests/e2e/journey_results/
+
+# mutmut artifacts (Phase Q.5.3)
+.mutmut-cache
+mutants/
+backups/
+tests/integration/databricks_e2e/report/
+
+# SDK regeneration staging dirs (generated output; never commit)
+.sdk-regen-*/
+# Test-run duckdb export artifacts
+/export-*.duckdb
+
+# ── Pilot-readiness 1.1 — run artefacts must never enter the campaign diff ──
+# Enforced by scripts/partition_preprod01_check.py (batch logs, report dirs,
+# backups, probe files). Files stay on disk; they are excluded from git.
+/b[0-9]*.txt
+/f[0-9]*.txt
+/e2e-results-*.txt
+/testci.txt
+/cilint.txt
+/OK
+/.env.test.bak-*
+# Timestamped backups of any env file (credential re-init rehearsals) —
+# they carry the same secrets as the files they back up.
+/.env*.bak-*
+/dlt-staging/
+/frontend/f*.txt
+/frontend/front*.txt
+/test_reports_e2e/
+/test_reports_integration/
+/test_reports_performance/
+/test-results/
+.claude/settings.json
+# W0.6 (oss-release-remediation): private key material and the staging
+# secrets dir must never re-enter the tracked tree — the postgres TLS
+# keys were committed once (dropped by the W0.4 rewrite); the staging
+# secrets dir carries provider secrets (W0.7 ExternalSecrets).
+*.key
+*.pem
+# only the ExternalSecret MANIFESTS ship (referenced store keys,
+# never values — the contracts pinned by the secrets-contract suites);
+# runtime secret material under the dir stays out.
+infrastructure/staging/secrets/*
+!infrastructure/staging/secrets/*.yaml
+infrastructure/staging/config-artifacts/

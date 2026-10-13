@@ -7,7 +7,8 @@ Main SDK client with authentication, error handling, and retry logic.
 import asyncio
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import httpx
 
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 def calculate_backoff_delay(
     attempt: int,
     base_delay: float = 1.0,
-    error: Optional[Exception] = None,
+    error: Exception | None = None,
 ) -> float:
     """
     Calculate exponential backoff delay.
@@ -70,10 +71,7 @@ def _maybe_raise_mvp_gated(response: httpx.Response) -> None:
     if detected is None:
         return
     prefix, feature = detected
-    if "/api/v1/" in request_url:
-        endpoint = request_url.split("/api/v1/", 1)[1]
-    else:
-        endpoint = request_url
+    endpoint = request_url.split("/api/v1/", 1)[1] if "/api/v1/" in request_url else request_url
     raise MVPGatedFeatureError(
         feature=feature,
         prefix=prefix,
@@ -96,6 +94,11 @@ def is_retryable_error(error: Exception) -> bool:
         return True
 
     if isinstance(error, DataHubError):
+        # 409 idempotency-in-progress is a "retry shortly" state: the
+        # same-key retry replays the stored result once the in-flight
+        # request completes (hub emits IDEMPOTENCY_REQUEST_IN_PROGRESS).
+        if error.http_status == 409 and error.code == "IDEMPOTENCY_REQUEST_IN_PROGRESS":
+            return True
         # Retry on 5xx errors and 429 (rate limit)
         return error.http_status >= 500 or error.http_status == 429
 
@@ -122,7 +125,7 @@ class DataHubClient:
             raise ValueError("base_url is required")
 
         self.config = config
-        self.token_refresh_callback: Optional[Callable[[], Awaitable[str]]] = None
+        self.token_refresh_callback: Callable[[], Awaitable[str]] | None = None
 
         # Create httpx client
         self.client = httpx.AsyncClient(
@@ -283,10 +286,10 @@ class DataHubClient:
             payload = json.loads(base64.urlsafe_b64decode(payload_b64))
             exp = payload.get("exp", 0)
             return time.time() > exp
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
             return False
 
-    async def _get_headers(self) -> Dict[str, str]:
+    async def _get_headers(self) -> dict[str, str]:
         """
         Get request headers with authentication.
 
@@ -345,10 +348,11 @@ class DataHubClient:
                     return False
 
                 logger.debug(f"Token refreshed successfully. New token: {new_token[:20]}...")
-                return True
             except Exception as e:
-                logger.error(f"Token refresh failed: {e}")
-                raise UnauthorizedError("Token refresh failed")
+                logger.exception("Token refresh failed")
+                raise UnauthorizedError("Token refresh failed") from e
+            else:
+                return True
         return False
 
     async def request(
@@ -373,7 +377,7 @@ class DataHubClient:
             NetworkError: On network errors
         """
         max_retries = self.config.max_retries
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         token_refresh_attempted = (
             False  # Track if token refresh was attempted to prevent infinite loops
         )
@@ -435,14 +439,15 @@ class DataHubClient:
                         )
 
                         # For export/download endpoints, check format parameter
-                        if "/export" in url_lower or "/download" in url_lower:
+                        if ("/export" in url_lower or "/download" in url_lower) and isinstance(
+                            request_params, dict
+                        ):
                             # Try to get format from params if available
-                            if isinstance(request_params, dict):
-                                format_param = request_params.get("format", "").lower()
-                                if format_param == "odcs":
-                                    is_odcs_endpoint = True
-                                elif format_param == "odps":
-                                    is_odps_endpoint = True
+                            format_param = request_params.get("format", "").lower()
+                            if format_param == "odcs":
+                                is_odcs_endpoint = True
+                            elif format_param == "odps":
+                                is_odps_endpoint = True
 
                         # Try ODCS error parsing first (for ODCS endpoints)
                         if is_odcs_endpoint:
@@ -450,7 +455,7 @@ class DataHubClient:
 
                             try:
                                 raise parse_odcs_error(error_data)
-                            except Exception:
+                            except (DataHubError, AttributeError, TypeError):
                                 # If ODCS parsing fails, fall back to standard error parsing
                                 logger.debug(
                                     "[DataHub SDK] ODCS error parsing failed, "
@@ -464,7 +469,7 @@ class DataHubClient:
 
                             try:
                                 raise parse_odps_error(error_data)
-                            except Exception:
+                            except (DataHubError, AttributeError, TypeError):
                                 # If ODPS parsing fails, fall back to standard error parsing
                                 logger.debug(
                                     "[DataHub SDK] ODPS error parsing failed, "
@@ -495,9 +500,7 @@ class DataHubClient:
                             f"HTTP {response.status_code}: {response.text}",
                             "HTTP_ERROR",
                             response.status_code,
-                        )
-
-                return response
+                        ) from None
 
             except httpx.HTTPStatusError as e:
                 last_error = e
@@ -526,7 +529,7 @@ class DataHubClient:
 
                         try:
                             raise parse_odps_error(error_data)
-                        except Exception:
+                        except (DataHubError, AttributeError, TypeError):
                             # If ODPS parsing fails, fall back to standard error parsing
                             logger.debug(
                                 "[DataHub SDK] ODPS error parsing failed in "
@@ -553,7 +556,7 @@ class DataHubClient:
                         f"HTTP {e.response.status_code}: {e.response.text}",
                         "HTTP_ERROR",
                         e.response.status_code,
-                    )
+                    ) from None
 
             except httpx.RequestError as e:
                 # Preserve the underlying error info — str(e) can be empty
@@ -563,7 +566,7 @@ class DataHubClient:
 
                 # Don't retry on last attempt or non-retryable errors
                 if attempt >= max_retries or not is_retryable_error(last_error):
-                    raise last_error
+                    raise last_error from None
 
                 # Calculate backoff delay
                 delay = calculate_backoff_delay(attempt, error=last_error)
@@ -585,17 +588,20 @@ class DataHubClient:
                         f"Unexpected error: {str(e)}",
                         "UNEXPECTED_ERROR",
                         0,
-                    )
+                    ) from None
 
                 delay = calculate_backoff_delay(attempt, error=last_error)
                 await asyncio.sleep(delay)
+
+            else:
+                return response
 
         # If we get here, all retries failed
         if last_error:
             raise last_error
         raise DataHubError("Request failed after retries", "REQUEST_FAILED", 0)
 
-    async def get(self, url: str, **kwargs: Any) -> Dict[str, Any]:
+    async def get(self, url: str, **kwargs: Any) -> dict[str, Any]:
         """
         GET request
 
@@ -609,7 +615,7 @@ class DataHubClient:
         response = await self.request("GET", url, **kwargs)
         return response.json()
 
-    async def check_health(self) -> Dict[str, Any]:
+    async def check_health(self) -> dict[str, Any]:
         """GET /health/ — check API health status.
 
         The health endpoint lives at the server root (``/health/``), not
@@ -633,8 +639,8 @@ class DataHubClient:
         return response.json()
 
     async def post(
-        self, url: str, data: Optional[Dict[str, Any]] = None, **kwargs: Any
-    ) -> Dict[str, Any]:
+        self, url: str, data: dict[str, Any] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         """
         POST request
 
@@ -650,8 +656,8 @@ class DataHubClient:
         return response.json()
 
     async def patch(
-        self, url: str, data: Optional[Dict[str, Any]] = None, **kwargs: Any
-    ) -> Dict[str, Any]:
+        self, url: str, data: dict[str, Any] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         """
         PATCH request
 
@@ -666,7 +672,7 @@ class DataHubClient:
         response = await self.request("PATCH", url, json=data, **kwargs)
         return response.json()
 
-    async def delete(self, url: str, **kwargs: Any) -> Optional[Dict[str, Any]]:
+    async def delete(self, url: str, **kwargs: Any) -> dict[str, Any] | None:
         """
         DELETE request
 

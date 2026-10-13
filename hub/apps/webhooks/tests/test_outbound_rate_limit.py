@@ -32,6 +32,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+import redis
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -69,11 +70,12 @@ def _redis_or_skip():
 
         client = get_redis_client()
         client.ping()
-        return client
     except Exception as exc:  # pragma: no cover — env-dependent
         import unittest
 
         raise unittest.SkipTest(f"Redis required: {exc}") from exc
+    else:
+        return client
 
 
 class _RateLimitTestBase(TestCase):
@@ -133,7 +135,7 @@ class _RateLimitTestBase(TestCase):
             client = get_redis_client()
             for key in client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*"):
                 client.delete(key)
-        except Exception:  # pragma: no cover
+        except (ImportError, redis.RedisError):  # pragma: no cover
             pass
 
     def _trigger_one(self) -> None:

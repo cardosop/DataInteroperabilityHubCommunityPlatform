@@ -58,6 +58,11 @@ test.describe('Phase 3 Quality Gates @deprecated', () => {
     await expect(page).toHaveURL(/\/assets\/create/, { timeout: 30000 });
     console.log('On asset create page, URL:', page.url());
 
+    // Phase 250.6.B — the create route opens on the type-picker step;
+    // re-enter via the deep-link bypass to drive the form directly
+    // (picker coverage lives in journeys/dpo/asset-type-picker.spec.ts).
+    await page.goto('/assets/create?skip=picker', { waitUntil: 'domcontentloaded' });
+
     // Wait for form to be ready
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
@@ -69,7 +74,8 @@ test.describe('Phase 3 Quality Gates @deprecated', () => {
     await page.fill('input[id="asset-name"]', 'Test Asset for Quality Gates');
     await page.fill('input[id="asset-key"]', assetKey);
     await page.fill('textarea[id="asset-description"]', 'Test asset for DQ and Compliance');
-    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
+    // Phase 250.3.B.5 (D250.4) — the legacy visibility select no longer
+    // exists on the form; visibility is derived server-side from status.
     console.log('Form filled');
 
     const submitButton = page.locator('button:has-text("Create Asset")');

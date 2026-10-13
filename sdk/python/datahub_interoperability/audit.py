@@ -2,7 +2,7 @@
 Audit operations for DataHub SDK.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -13,28 +13,28 @@ class AuditAPI:
 
     async def list_events(
         self,
-        resource_type: Optional[str] = None,
-        action: Optional[str] = None,
+        resource_type: str | None = None,
+        action: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
         if resource_type:
             params["resource_type"] = resource_type
         if action:
             params["action"] = action
         return await self.client.get("audit/events/", params=params)
 
-    async def get_event(self, event_id: str) -> Dict[str, Any]:
+    async def get_event(self, event_id: str) -> dict[str, Any]:
         return await self.client.get(f"audit/events/{event_id}/")
 
     async def export_events(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         format: str = "json",
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"format": format}
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"format": format}
         if start_date:
             params["start_date"] = start_date
         if end_date:

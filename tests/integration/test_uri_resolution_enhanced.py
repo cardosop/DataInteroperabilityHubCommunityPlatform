@@ -33,9 +33,10 @@ def check_semantic_service_available():
     try:
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check(use_cache=False)
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 class URIResolutionEnhancedTest(TestCase):

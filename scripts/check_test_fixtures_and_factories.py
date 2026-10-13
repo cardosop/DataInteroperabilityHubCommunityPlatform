@@ -174,7 +174,7 @@ class TestFixturesAndFactoriesChecker:
             with open(py_file, encoding="utf-8") as f:
                 content = f.read()
                 endpoints.extend(self._find_urls_in_text(content))
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             pass
         return endpoints
 
@@ -187,15 +187,11 @@ class TestFixturesAndFactoriesChecker:
         elif isinstance(data, list):
             for i, item in enumerate(data):
                 endpoints.extend(self._extract_endpoints_from_dict(item, f"{path}[{i}]"))
-        elif isinstance(data, str):
+        elif isinstance(data, str) and (
+            "/api/v1/" in data or "localhost:" in data or "http://" in data or "https://" in data
+        ):
             # Check if string contains endpoint-like patterns
-            if (
-                "/api/v1/" in data
-                or "localhost:" in data
-                or "http://" in data
-                or "https://" in data
-            ):
-                endpoints.append(data)
+            endpoints.append(data)
         return endpoints
 
     def _find_urls_in_text(self, text: str) -> list[str]:
@@ -221,7 +217,7 @@ class TestFixturesAndFactoriesChecker:
                 for pattern in patterns:
                     matches = re.findall(pattern, content)
                     endpoints.extend(matches)
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             pass
         return list(set(endpoints))
 
@@ -242,7 +238,7 @@ class TestFixturesAndFactoriesChecker:
                         "mock_data",
                     ]
                 )
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             return False
 
     def _extract_factory_classes(self, tree: ast.AST, file_path: Path) -> list[dict[str, Any]]:
@@ -284,7 +280,7 @@ class TestFixturesAndFactoriesChecker:
                 "total_factory_classes": len(self.factory_classes),
                 "total_endpoint_urls": len(self.endpoint_urls),
                 "fixture_files_by_type": self._count_by_type(self.fixture_files, "type"),
-                "factories_by_file": len(set(f["file_path"] for f in self.factory_classes)),
+                "factories_by_file": len({f["file_path"] for f in self.factory_classes}),
             },
             "fixture_files": self.fixture_files,
             "factory_classes": self.factory_classes,

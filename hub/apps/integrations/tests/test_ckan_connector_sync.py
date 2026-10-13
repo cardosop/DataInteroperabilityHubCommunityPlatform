@@ -22,6 +22,8 @@ import pytest
 from django.test import SimpleTestCase, TestCase
 
 from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.services.base import ConnectionError as HubConnectionError
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
     MarketplaceListing,
@@ -29,7 +31,6 @@ from hub.apps.integrations.base import (
     SyncResult,
     SyncStatus,
 )
-from hub.apps.core.services.base import ConnectionError as HubConnectionError
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
     create_test_connector,
@@ -51,9 +52,10 @@ def has_write_permissions() -> bool:
 
     try:
         result = connector.authenticate({"api_key": api_key})
-        return result
     except (HubConnectionError, ValueError):
         return False
+    else:
+        return result
 
 
 @pytest.mark.integration
@@ -76,7 +78,7 @@ class TestCKANConnectorSyncOperations(TestCase):
 
         super().setUpClass()
 
-        try:
+        def _setup() -> None:
             # Create connector using centralized utility
             cls.connector = create_test_connector(verify_connection=True)
 
@@ -89,6 +91,9 @@ class TestCKANConnectorSyncOperations(TestCase):
 
             # Track created packages for cleanup
             cls.created_package_ids = []
+
+        try:
+            _setup()
         except Exception:
             cls._rollback_atomics(cls.cls_atomics)
             raise
@@ -123,7 +128,19 @@ class TestCKANConnectorSyncOperations(TestCase):
         if not listings:
             self.skipTest("No listings available for testing")
 
-        listing_ids = [listing.marketplace_id for listing in listings[:2]]
+        # Stale Solr entries (packages deleted after seeding) can still
+        # appear in search results but 404 on package_show — filter them
+        # out so sync_pull only receives resolvable listing IDs.
+        listing_ids = []
+        for listing in listings[:2]:
+            try:
+                self.connector.get_listing(listing.marketplace_id)
+                listing_ids.append(listing.marketplace_id)
+            except NotFoundError:
+                continue
+        if not listing_ids:
+            self.skipTest("No resolvable listings available for testing")
+
         result = self.connector.sync_pull(listing_ids=listing_ids)
 
         self.assertIsInstance(result, SyncResult)
@@ -184,7 +201,7 @@ class TestCKANConnectorSyncOperations(TestCase):
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(
             any(fake_id in err for err in result.errors),
-            f"Errors should mention {fake_id}: {result.errors}"
+            f"Errors should mention {fake_id}: {result.errors}",
         )
 
     def test_sync_pull_empty_result(self):
@@ -341,7 +358,7 @@ class TestCKANConnectorSyncPushUnit(SimpleTestCase):
         }
 
     @staticmethod
-    def _odps_metadata_provider(asset_id: str) -> dict[str, Any]:
+    def _odps_metadata_provider(_asset_id: str) -> dict[str, Any]:
         return {"product_name": "Test Product", "version": "1.0.0"}
 
     # ── basic sync_push ──────────────────────────────────────────────────
@@ -428,9 +445,7 @@ class TestCKANConnectorSyncPushUnit(SimpleTestCase):
 
     def test_sync_operations_connection_error_push(self):
         """sync_push() on a connector with an unreachable base_url still raises NotImplementedError."""
-        invalid_connector = CKANConnector(
-            base_url="https://invalid-ckan-instance-xyz-12345.com"
-        )
+        invalid_connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
 
         with self.assertRaises(NotImplementedError):
             invalid_connector.sync_push(
@@ -459,7 +474,6 @@ class TestCKANConnectorSyncPullStatusUnit(SimpleTestCase):
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.map_to_hub_asset")
     def test_sync_pull_returns_partial_on_mixed_results(self, mock_map, mock_get):
         """sync_pull returns PARTIAL when some listings succeed and some fail."""
-        from hub.apps.assets.models import AssetSourceType
 
         mock_get.side_effect = [
             MarketplaceListing(

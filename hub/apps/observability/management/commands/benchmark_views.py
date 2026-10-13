@@ -234,7 +234,7 @@ class Command(BaseCommand):
             help="Output results as JSON.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         exit_code = run_benchmarks(
             views=options.get("views"),
             save_as_baseline=options["baseline"],

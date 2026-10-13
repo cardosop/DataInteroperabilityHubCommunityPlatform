@@ -42,9 +42,12 @@ Bypass contract
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from django.http import HttpRequest, HttpResponse
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from django.http import HttpRequest, HttpResponse
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +86,7 @@ class ImpersonationMiddleware:
             from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
             payload = JWTTokenGenerator.decode_access_token(token, verify_version=False)
-        except Exception:  # pragma: no cover — token decoding is best-effort
+        except Exception:
             return
         if not payload:
             return

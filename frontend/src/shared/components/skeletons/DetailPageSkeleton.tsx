@@ -10,7 +10,10 @@ const FIELD_COUNT = 6;
 
 export function DetailPageSkeleton() {
   return (
-    <div style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--layout-content-max-width, 1200px)', margin: '0 auto' }}>
+    <div
+      data-testid="detail-page-skeleton"
+      style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--layout-content-max-width, 1200px)', margin: '0 auto' }}
+    >
       {/* Breadcrumb skeleton */}
       <div style={{ display: 'flex', gap: 'var(--spacing-sm, 8px)', marginBottom: 'var(--spacing-md, 16px)' }}>
         <Skeleton.Line width="80px" />

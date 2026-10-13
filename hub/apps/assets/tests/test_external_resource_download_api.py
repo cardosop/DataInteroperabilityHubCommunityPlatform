@@ -106,9 +106,7 @@ class ExternalResourceDownloadAPITest(TestCase):
     def test_list_external_resources_returns_correct_shape(self):
         """GET external-resources/ returns 200 with correct count, resources
         list, and each resource contains all required fields."""
-        response = self.client.get(
-            f"/api/v1/assets/{self.federated_asset.id}/external-resources/"
-        )
+        response = self.client.get(f"/api/v1/assets/{self.federated_asset.id}/external-resources/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
         self.assertIn("resources", data)
@@ -117,9 +115,7 @@ class ExternalResourceDownloadAPITest(TestCase):
         self.assertEqual(len(data["resources"]), 2)
 
         # Pick resource "res-123" and verify every required field.
-        res = next(
-            (r for r in data["resources"] if r["resource_id"] == "res-123"), None
-        )
+        res = next((r for r in data["resources"] if r["resource_id"] == "res-123"), None)
         self.assertIsNotNone(res, "resource 'res-123' must be in the response")
         self.assertEqual(res["name"], "Test Resource 1")
         self.assertEqual(res["format"], "CSV")
@@ -161,12 +157,9 @@ class ExternalResourceDownloadAPITest(TestCase):
             is_current=True,
         )
 
-        response = self.client.get(
-            f"/api/v1/assets/{self.federated_asset.id}/external-resources/"
-        )
+        response = self.client.get(f"/api/v1/assets/{self.federated_asset.id}/external-resources/")
         resource_1 = next(
-            (r for r in response.data["resources"]
-             if r["resource_id"] == "res-123"), None
+            (r for r in response.data["resources"] if r["resource_id"] == "res-123"), None
         )
         self.assertTrue(resource_1["is_downloaded"])
         self.assertEqual(resource_1["file_id"], str(file_obj.id))
@@ -181,9 +174,8 @@ class ExternalResourceDownloadAPITest(TestCase):
         test_content = b"id,name\n1,Test\n2,Data"
 
         # Create a temporary file for testing
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(test_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
         self.addCleanup(
             lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
         )
@@ -261,9 +253,8 @@ class ExternalResourceDownloadAPITest(TestCase):
 
         test_content = b"id,name\n1,Test\n2,Data"
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(test_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
         self.addCleanup(
             lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
         )
@@ -436,9 +427,8 @@ class ExternalResourceDownloadAPITest(TestCase):
 
         test_content = b"id,name\n1,Test\n2,Data"
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(test_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
         self.addCleanup(
             lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
         )
@@ -477,9 +467,8 @@ class ExternalResourceDownloadAPITest(TestCase):
 
         test_content = b"id,name\n1,Test\n2,Data"
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(test_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
         self.addCleanup(
             lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
         )

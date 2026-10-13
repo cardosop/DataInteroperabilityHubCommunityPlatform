@@ -1,0 +1,44 @@
+# W0.4 history-rewrite exclusion list — git filter-repo --invert-paths
+# --paths-from-file. LITERAL entries (the installed filter-repo build
+# matches paths literally, not as regexes — proven on a planted fixture):
+# exact file names, or directory prefixes that exclude everything below.
+# Templates and live infra files survive: only real credential material
+# is scrubbed.
+#
+# Verified by scripts/verify_history_rewrite.py on a fresh clone of the
+# rewritten repository (W0.4 evidence).
+
+# Real environment files anywhere in the tree (templates survive — they
+# carry placeholder values only, per Phase 313 rotation).
+.env
+.env.dev
+.env.staging
+.env.test
+
+# Staging restore tarballs (archived to S3 before the push — W0.6/S5).
+backups/
+
+# TLS private keys + CA (regenerated in W0.5).
+infrastructure/postgres/certs/
+
+# Leaked-credential docs: marketplace guides carrying real private keys
+# and the API-audit example dumps carrying real connection strings
+# (W0.2 exhaustive scan, HIGH-class + credential-class findings).
+docs/MARKETPLACE_AND_CONNECTORS.md
+docs/MARKETPLACE_GCP_GUIDE.md
+docs/MARKETPLACE_ORACLE_GUIDE.md
+docs/docs/MARKETPLACE_AND_CONNECTORS.md
+docs/docs/deprecated-doc/marketplace-originals/
+docs/api-audit/code-examples-audit.json
+docs/docs/api-audit/code-examples-audit.json
+docs/docs/deprecated-doc/api-audit/code-examples-audit.json
+
+# Committed run-artifact dumps with connection strings (W12.1 litter class).
+services/api-gateway/TEST_RESULTS.md
+services/api-gateway/TEST_RESULTS_FINAL.md
+
+# Scratch openspec dirs carrying credential examples (W12.1 ghost artifacts).
+openspec/changes/testreview1/
+openspec/changes/workflows1/artifacts/
+
+.claude/settings.json

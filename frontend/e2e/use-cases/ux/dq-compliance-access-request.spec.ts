@@ -64,7 +64,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
       .locator('button:has-text("Create DQ run")')
       .or(page.locator('.dq-create-run-btn'));
     if ((await createBtn.count()) === 0) {
-      test.skip(true, 'Create DQ run button not rendered — DQ feature may not be enabled');
+      test.skip((await createBtn.count()) === 0, 'Create DQ run button not rendered — DQ feature may not be enabled');
       return;
     }
     await createBtn.first().click();
@@ -136,7 +136,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
       .locator('button:has-text("Create compliance run")')
       .or(page.locator('.compliance-create-run-btn'));
     if ((await createBtn.count()) === 0) {
-      test.skip(true, 'Create compliance run button not rendered — compliance feature may not be enabled');
+      test.skip((await createBtn.count()) === 0, 'Create compliance run button not rendered — compliance feature may not be enabled');
       return;
     }
     await createBtn.first().click();

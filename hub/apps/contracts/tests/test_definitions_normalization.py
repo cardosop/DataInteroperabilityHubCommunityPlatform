@@ -43,9 +43,9 @@ class TestDefinitionNormalization(TestCase):
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         assert "definitions" in hub_contract
@@ -96,9 +96,9 @@ class TestDefinitionNormalization(TestCase):
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         assert "definitions" in hub_contract
@@ -127,9 +127,9 @@ class TestDefinitionNormalization(TestCase):
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         assert "definitions" in hub_contract
@@ -234,9 +234,9 @@ class TestDefinitionNormalization(TestCase):
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         # definitions should not be present if not in source
@@ -259,9 +259,9 @@ class TestDefinitionNormalization(TestCase):
         )
 
         # Should still normalize but skip invalid definitions
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         # definitions should not be present if invalid

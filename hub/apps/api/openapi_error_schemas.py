@@ -140,7 +140,7 @@ STANDARD_ERROR_RESPONSES = {
 
 
 def get_standard_error_responses(
-    include_status_codes: list[int] = None,
+    include_status_codes: list[int] | None = None,
 ) -> dict:
     """
     Get standard error responses for OpenAPI spec.

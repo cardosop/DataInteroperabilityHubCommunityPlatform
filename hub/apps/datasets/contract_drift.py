@@ -24,9 +24,10 @@ Two design choices worth noting:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from hub.apps.datasets.models import Dataset
+if TYPE_CHECKING:
+    from hub.apps.datasets.models import Dataset
 
 
 def compute_dataset_contract_drift(dataset: Dataset) -> dict[str, Any]:

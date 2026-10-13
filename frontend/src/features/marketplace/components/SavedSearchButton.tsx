@@ -43,7 +43,7 @@ export function SavedSearchButton({ currentFilters, onApply }: SavedSearchButton
 
   const handleSave = () => {
     if (!nameInput.trim()) return;
-    const { page, page_size, ...filterData } = currentFilters;
+    const { page: _page, page_size: _pageSize, ...filterData } = currentFilters;
     const name = nameInput.trim();
     createMutation.mutate({
       name,

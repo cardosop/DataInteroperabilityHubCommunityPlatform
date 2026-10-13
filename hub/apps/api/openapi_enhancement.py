@@ -93,9 +93,12 @@ For API support, contact: support@datahub.example.com
                 "url": "https://docs.datahub.example.com",
             }
 
-        # Add license
+        # Add license (core is Apache-2.0 — D1)
         if "license" not in info:
-            info["license"] = {"name": "Proprietary", "url": "https://datahub.example.com/license"}
+            info["license"] = {
+                "name": "Apache-2.0",
+                "url": "https://www.apache.org/licenses/LICENSE-2.0",
+            }
 
         # Add terms of service
         if "termsOfService" not in info:
@@ -118,8 +121,8 @@ For API support, contact: support@datahub.example.com
                 continue
 
             # Enhance each operation
-            for method, operation in path_item.items():
-                if not isinstance(operation, dict) or method not in [
+            for method, raw_operation in path_item.items():
+                if not isinstance(raw_operation, dict) or method not in [
                     "get",
                     "post",
                     "patch",
@@ -128,6 +131,7 @@ For API support, contact: support@datahub.example.com
                 ]:
                     continue
 
+                operation = raw_operation
                 # Add request body examples for POST/PATCH
                 if method in ["post", "patch", "put"]:
                     operation = OpenAPISpecEnhancer._add_request_examples(
@@ -676,7 +680,7 @@ For API support, contact: support@datahub.example.com
 
     @staticmethod
     def _enhance_operation_description(
-        operation: dict[str, Any], path: str, method: str
+        operation: dict[str, Any], _path: str, _method: str
     ) -> dict[str, Any]:
         """Enhance operation descriptions."""
         # Descriptions are already set via extend_schema decorators

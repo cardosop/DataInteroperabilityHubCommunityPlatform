@@ -173,7 +173,8 @@ class DQRunViewSetTest(DQAPITestBase):
         results = response.data.get("results", [])
         # Must have results for the loop assertion to be meaningful
         self.assertGreater(
-            len(results), 0,
+            len(results),
+            0,
             "Filtering by PENDING status should return at least one result",
         )
         # Should only return pending runs
@@ -191,7 +192,8 @@ class DQRunViewSetTest(DQAPITestBase):
         results = response.data.get("results", [])
         # Must have results for the loop assertion to be meaningful
         self.assertGreater(
-            len(results), 0,
+            len(results),
+            0,
             "Filtering by dataset_id should return at least one result",
         )
         # Should only return runs for this dataset
@@ -205,7 +207,8 @@ class DQRunViewSetTest(DQAPITestBase):
         # Should return 200 with empty results (invalid UUID is ignored)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            len(response.data.get("results", [])), 0,
+            len(response.data.get("results", [])),
+            0,
             "Invalid dataset_id should return empty results",
         )
 
@@ -285,7 +288,8 @@ class DQRunViewSetTest(DQAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Results should still be returned — invalid date doesn't filter
         self.assertGreater(
-            len(response.data.get("results", [])), 0,
+            len(response.data.get("results", [])),
+            0,
             "Invalid date should be ignored; results should still be returned",
         )
 
@@ -299,13 +303,14 @@ class DQRunViewSetTest(DQAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", [])
         self.assertGreater(
-            len(results), 0,
+            len(results),
+            0,
             "Latest DQ run should be within future date_to range",
         )
 
     def test_list_dq_runs_pagination(self):
         """Test that list endpoint returns paginated results."""
-        for i in range(5):
+        for _i in range(5):
             job = Job.objects.create(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,
@@ -330,9 +335,9 @@ class DQRunViewSetTest(DQAPITestBase):
         self.assertGreaterEqual(response.data["count"], 6)
         # Verify per-page truncation: page_size=2 → at most 2 results
         self.assertLessEqual(
-            len(response.data["results"]), 2,
-            f"page_size=2 should return at most 2 results, "
-            f"got {len(response.data['results'])}",
+            len(response.data["results"]),
+            2,
+            f"page_size=2 should return at most 2 results, got {len(response.data['results'])}",
         )
 
     def test_list_dq_runs_default_ordering(self):
@@ -359,22 +364,19 @@ class DQRunViewSetTest(DQAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", [])
         self.assertGreaterEqual(
-            len(results), 2,
+            len(results),
+            2,
             "Need at least 2 results to verify ordering",
         )
         for i in range(len(results) - 1):
-                created_i = datetime.fromisoformat(
-                    results[i]["created_at"].replace("Z", "+00:00")
-                )
-                created_j = datetime.fromisoformat(
-                    results[i + 1]["created_at"].replace("Z", "+00:00")
-                )
-                self.assertGreaterEqual(
-                    created_i,
-                    created_j,
-                    f"Results must be ordered by created_at DESC; "
-                    f"found {created_i} before {created_j} at index {i}",
-                )
+            created_i = datetime.fromisoformat(results[i]["created_at"].replace("Z", "+00:00"))
+            created_j = datetime.fromisoformat(results[i + 1]["created_at"].replace("Z", "+00:00"))
+            self.assertGreaterEqual(
+                created_i,
+                created_j,
+                f"Results must be ordered by created_at DESC; "
+                f"found {created_i} before {created_j} at index {i}",
+            )
 
     # ========== RETRIEVE ENDPOINT TESTS ==========
 
@@ -865,18 +867,14 @@ class DQAlertingRuleViewSetTest(DQAPITestBase):
         self.assertGreaterEqual(len(response.data["results"]), 1)
 
     def test_retrieve_alerting_rule(self):
-        response = self.client.get(
-            f"/api/v1/dq/alerting-rules/{self.rule.id}/"
-        )
+        response = self.client.get(f"/api/v1/dq/alerting-rules/{self.rule.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Test Rule")
         self.assertEqual(response.data["threshold"], 80.0)
 
     def test_create_alerting_rule(self):
         data = {"asset_id": str(self.asset.id), "threshold": 90.0}
-        response = self.client.post(
-            "/api/v1/dq/alerting-rules/", data, format="json"
-        )
+        response = self.client.post("/api/v1/dq/alerting-rules/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["threshold"], 90.0)
         self.assertIn("id", response.data)
@@ -898,20 +896,14 @@ class DQAlertingRuleViewSetTest(DQAPITestBase):
         self.assertEqual(self.rule.threshold, 70.0)
 
     def test_delete_alerting_rule(self):
-        response = self.client.delete(
-            f"/api/v1/dq/alerting-rules/{self.rule.id}/"
-        )
+        response = self.client.delete(f"/api/v1/dq/alerting-rules/{self.rule.id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         from hub.apps.dq.models import DQAlertingRule
 
-        self.assertFalse(
-            DQAlertingRule.objects.filter(id=self.rule.id).exists()
-        )
+        self.assertFalse(DQAlertingRule.objects.filter(id=self.rule.id).exists())
 
     def test_filter_alerting_rules_by_enabled(self):
-        response = self.client.get(
-            "/api/v1/dq/alerting-rules/?enabled=true"
-        )
+        response = self.client.get("/api/v1/dq/alerting-rules/?enabled=true")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for r in response.data["results"]:
             self.assertTrue(r["enabled"])
@@ -952,9 +944,7 @@ class DQAlertingRuleViewSetAuditorTest(DQAPITestBase):
 
     def test_auditor_cannot_create_alerting_rule(self):
         data = {"asset_id": str(self.asset.id), "threshold": 80.0}
-        response = self.client.post(
-            "/api/v1/dq/alerting-rules/", data, format="json"
-        )
+        response = self.client.post("/api/v1/dq/alerting-rules/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_auditor_cannot_update_alerting_rule(self):
@@ -971,9 +961,7 @@ class DQAlertingRuleViewSetAuditorTest(DQAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_auditor_cannot_delete_alerting_rule(self):
-        response = self.client.delete(
-            f"/api/v1/dq/alerting-rules/{self.rule.id}/"
-        )
+        response = self.client.delete(f"/api/v1/dq/alerting-rules/{self.rule.id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 

@@ -284,6 +284,29 @@ export type SecurityHeaderProblem = {
   detail: string;
 };
 
+/**
+ * close-test-coverage-gaps 4.4 — Vite dev-server exemption.
+ *
+ * The dev server signs its responses with ``X-Vite-Security-Headers-Rev``
+ * (vite.config.ts securityHeadersPlugin) and its CSP deliberately ships
+ * ``script-src 'unsafe-inline'`` — Vite's HMR client injection requires
+ * it in dev. That is a documented dev-mode deviation, not a
+ * hardening regression; the nginx-parity contract is pinned separately
+ * by security/csp-enforce.spec.ts. For dev-marked responses the guard
+ * drops ONLY the unsafe-inline problem — missing headers, wrong modes,
+ * and unsafe-eval still fail the test, and non-dev responses (nginx /
+ * staging) are untouched.
+ */
+export function filterSecurityHeaderProblemsForDevServer(
+  headers: Record<string, string>,
+  problems: SecurityHeaderProblem[],
+): SecurityHeaderProblem[] {
+  const lower: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
+  if (lower['x-vite-security-headers-rev'] === undefined) return problems;
+  return problems.filter((p) => p.reason !== 'csp-allows-unsafe-inline-script');
+}
+
 export type SecurityHeaderBuffer = {
   problems: SecurityHeaderProblem[];
   /** True when at least one observed HTML response carried at least one
@@ -613,7 +636,10 @@ export const test = base.extend<{
           buffer.evidenceObserved = true;
         }
         const isHttps = url.startsWith('https://');
-        const problems = evaluateSecurityHeaders(url, headers, isHttps);
+        const problems = filterSecurityHeaderProblemsForDevServer(
+          headers,
+          evaluateSecurityHeaders(url, headers, isHttps),
+        );
         if (problems.length > 0) {
           buffer.problems.push(...problems);
         }

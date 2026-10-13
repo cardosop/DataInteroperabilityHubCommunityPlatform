@@ -277,7 +277,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       '/assets/00000000-0000-0000-0000-000000000000',
       {
         timeout: 60000,
-        contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .unavailable-page, [data-testid="unavailable-page"], h1',
+        contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .unavailable-page, [data-testid="unavailable-page"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]',
         acceptRedirectToLogin: true,
       }
     );
@@ -297,7 +297,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
 
     // Page must render something meaningful — error display, redirect, or content
     const hasHandledState =
-      (await page.locator('.error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .asset-detail-page, [data-testid="asset-detail-page"], h1').count()) > 0;
+      (await page.locator('.error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .asset-detail-page, [data-testid="asset-detail-page"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
     expect(hasHandledState, 'Expected a handled UI state (error-display, unavailable, or content)').toBe(true);
   });
 

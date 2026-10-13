@@ -114,7 +114,7 @@ test.describe('226.G1 — Scheduled ingestion delete guarantee chain @critical @
       // test cannot fire without a row to delete, so we skip rather than
       // emit a misleading failure.
       test.skip(
-        true,
+        !ingestRes.ok(),
         `Could not provision scheduled ingestion (status=${ingestRes.status()} body=${body.slice(0, 200)}). ` +
           `Likely MVP_MODE-gated (404), plan-limit (403), or config-validation (400). ` +
           `Skipping destroy guarantee — gate-condition is upstream, not in the destroy path.`,

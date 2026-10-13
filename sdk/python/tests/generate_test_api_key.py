@@ -6,6 +6,7 @@ Can be run from Docker container to create test API key.
 
 import os
 import sys
+from contextlib import suppress
 
 # Add /app to path so hub module can be found
 if "/app" not in sys.path:
@@ -13,10 +14,8 @@ if "/app" not in sys.path:
 
 # Change to hub directory for Django setup
 original_cwd = os.getcwd()
-try:
-    os.chdir("/app/hub")
-except OSError:
-    pass  # Directory may not exist, continue anyway
+with suppress(OSError):
+    os.chdir("/app/hub")  # Directory may not exist, continue anyway
 
 # Set Django settings
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")

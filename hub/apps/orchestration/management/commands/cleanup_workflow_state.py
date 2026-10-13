@@ -54,7 +54,7 @@ class Command(BaseCommand):
             help="Clean up orphaned workflow states (states without instances)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         archive_days = options["archive_days"]
         delete_days = options["delete_days"]
         dry_run = options["dry_run"]

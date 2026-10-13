@@ -15,6 +15,7 @@ import json
 import pytest
 from datahub_cli.main import cli
 from tests.pytest_mvp_skip import skip_if_mvp_mode
+from tests.use_cases.conftest import register_connection_cleanup
 
 pytestmark = [pytest.mark.mvp, skip_if_mvp_mode]
 
@@ -33,6 +34,7 @@ class TestMarketplaceConnectionE2E:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """Test complete lifecycle: create -> list -> get ->
         update -> test -> delete"""
@@ -67,6 +69,7 @@ class TestMarketplaceConnectionE2E:
         connection_id = create_data["id"]
         assert connection_id is not None
         assert create_data["name"] == "E2E Test Snowflake Connection"
+        register_connection_cleanup(cleanup_registry, connection_id)
 
         # Step 2: List connections
         result = runner.invoke(
@@ -81,10 +84,7 @@ class TestMarketplaceConnectionE2E:
         )
         assert result.exit_code == 0, f"List failed: {result.output}"
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         assert any(conn.get("id") == connection_id for conn in connections), (
             "Created connection not found in list"
         )
@@ -172,6 +172,7 @@ class TestMarketplaceConnectionE2E:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """Test creating multiple connections with different
         marketplace types"""
@@ -219,6 +220,7 @@ class TestMarketplaceConnectionE2E:
             assert result.exit_code == 0, f"Failed to create {mkt_type}: {result.output}"
             cid = json.loads(result.output)["id"]
             connection_ids.append(cid)
+            register_connection_cleanup(cleanup_registry, cid)
 
         # List all connections
         result = runner.invoke(
@@ -233,10 +235,7 @@ class TestMarketplaceConnectionE2E:
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
 
         for conn_id in connection_ids:
             assert any(conn.get("id") == conn_id for conn in connections), (
@@ -259,6 +258,7 @@ class TestMarketplaceConnectionE2E:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """Test filtering connections by marketplace type and
         active status"""
@@ -312,6 +312,7 @@ class TestMarketplaceConnectionE2E:
             assert result.exit_code == 0
             cid = json.loads(result.output)["id"]
             connection_ids.append(cid)
+            register_connection_cleanup(cleanup_registry, cid)
 
         # Filter by marketplace type
         result = runner.invoke(
@@ -328,10 +329,7 @@ class TestMarketplaceConnectionE2E:
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         for conn in connections:
             assert conn["marketplace_type"] == "SNOWFLAKE_DATA_MARKETPLACE"
 
@@ -350,10 +348,7 @@ class TestMarketplaceConnectionE2E:
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         for conn in connections:
             assert conn["is_active"] is True
 

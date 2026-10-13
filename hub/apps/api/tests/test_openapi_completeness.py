@@ -55,6 +55,15 @@ class TestOpenAPICompleteness(TestCase):
             "/api/v1/semantic/",
             "/api/v1/users/",
         ]
+        # Phase 313 — in core-only mode the paid prefixes are not mounted
+        # (their apps are absent from INSTALLED_APPS).
+        import os
+
+        from hub.apps.manifest import _PAID_MODULES
+
+        if os.environ.get("HUB_CORE_ONLY") == "1":
+            paid_prefixes = {f"/api/v1/{module.split('.')[-1]}/" for module in _PAID_MODULES}
+            expected_prefixes = [p for p in expected_prefixes if p not in paid_prefixes]
         for prefix in expected_prefixes:
             matching = [p for p in paths if p.startswith(prefix)]
             assert len(matching) > 0, (

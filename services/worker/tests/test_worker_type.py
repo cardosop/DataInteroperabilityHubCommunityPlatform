@@ -23,6 +23,7 @@ import logging
 import os
 import sys
 import types
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 # -------------------------------------------------------------------
@@ -233,7 +234,7 @@ class TestWorkerTypeLight:
 class TestWorkerTypeAllAndDefaults:
     """WORKER_TYPE=all → all queues; absent/unknown fall back."""
 
-    _ALL = {"job_critical", "job_default", "job_low"}
+    _ALL: ClassVar[set] = {"job_critical", "job_default", "job_low"}
 
     def test_all_joins_all_queues(self):
         _, queues, _ = _run_main({"WORKER_TYPE": "all"})

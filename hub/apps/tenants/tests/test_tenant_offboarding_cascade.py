@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import unittest
 import uuid
+from typing import ClassVar
 
 import pytest
 from django.core.files.base import ContentFile
@@ -34,7 +35,10 @@ _E2E_SECRET = "test-tenant-offboard-cascade-secret-not-for-production"
 class TenantOffboardingSignalTests(TransactionTestCase):
     """Model-level Tenant.delete(): per-file audits + DB rows cleared + storage."""
 
-    databases = {"default", "admin"}
+    # W4.3 (E3) — the hard-delete pre-sweep erases BaaS usage records,
+    # which route through the dedicated 'baas' alias; the cascade path
+    # must be allowed to touch it (pre-fix the path never did).
+    databases: ClassVar[set[str]] = {"default", "admin", "baas"}
 
     def setUp(self):
         super().setUp()
@@ -120,7 +124,10 @@ class TenantOffboardingSignalTests(TransactionTestCase):
 class TenantDestroyCascadeApiTests(TransactionTestCase):
     """DELETE /tenants/{id}/?cascade=true — gated; User RESTRICT workaround."""
 
-    databases = {"default", "admin"}
+    # W4.3 (E3) — the hard-delete pre-sweep erases BaaS usage records,
+    # which route through the dedicated 'baas' alias; the cascade path
+    # must be allowed to touch it (pre-fix the path never did).
+    databases: ClassVar[set[str]] = {"default", "admin", "baas"}
 
     def setUp(self):
         self.client = APIClient()

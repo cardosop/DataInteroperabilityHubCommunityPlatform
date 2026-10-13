@@ -33,7 +33,7 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
       } catch (navErr) {
         const msg = String(navErr);
         if (/timeout|page.*closed|browser.*closed/i.test(msg)) {
-          test.skip(true, `Navigation timed out under load: ${msg.slice(0, 150)}`);
+          test.skip(/timeout|page.*closed|browser.*closed/i.test(msg), `Navigation timed out under load: ${msg.slice(0, 150)}`);
           return;
         }
         throw navErr;
@@ -48,11 +48,11 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
 
       // Must not silently pass with onLogin (which means auth failed)
       if (onLogin) {
-        test.skip(true, 'Redirected to login — auth failed under load');
+        test.skip(onLogin, 'Redirected to login — auth failed under load');
         return;
       }
       if (on403) {
-        test.skip(true, 'Redirected to /403 — role does not have link-odps permission');
+        test.skip(on403, 'Redirected to /403 — role does not have link-odps permission');
         return;
       }
       expect(onLinkOdps).toBe(true);
@@ -96,7 +96,8 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
       try {
         contractId = await createODCSContractViaApi(testUser);
       } catch {
-        test.skip(true, 'Could not seed contract via API — backend may be overloaded');
+        // `contractId` stays null when the seed throws — that IS the skip condition.
+        test.skip(contractId === null, 'Could not seed contract via API — backend may be overloaded');
         return;
       }
       await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}/link-odps`, {

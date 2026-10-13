@@ -260,6 +260,8 @@ class SchemaInferenceE2ETest(E2ETestBase):
 
     def test_schema_inference_parquet_format(self):
         """Test Parquet schema inference"""
+        # TICKET=PREPRO01-283 EXPIRES=2026-12-31 — requires real Parquet
+        # file generation (pyarrow fixture + multipart upload), deferred.
         # Note: Parquet files are binary, so we'd need actual Parquet file content
         # For E2E test, we'll test that Parquet format is recognized
         # In real scenario, would use actual Parquet file

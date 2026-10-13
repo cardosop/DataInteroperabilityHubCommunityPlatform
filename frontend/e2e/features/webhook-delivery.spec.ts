@@ -72,12 +72,12 @@ async function getDeliveryRows(
   webhookId: string,
 ): Promise<DeliveryRow[]> {
   const res = await ctx.page.request.get(
-    `${API_BASE}/webhooks/${webhookId}/deliveries/?page_size=20`,
+    `${API_BASE}/webhooks/webhooks/${webhookId}/deliveries/?page_size=20`,
     { headers: { Authorization: `Bearer ${ctx.token}` } },
   );
   if (!res.ok()) {
     throw new Error(
-      `GET /webhooks/${webhookId}/deliveries/ returned ${res.status()}: ${(await res.text()).slice(0, 200)}`,
+      `GET /webhooks/webhooks/${webhookId}/deliveries/ returned ${res.status()}: ${(await res.text()).slice(0, 200)}`,
     );
   }
   const body = (await res.json()) as { results?: DeliveryRow[] } | DeliveryRow[];
@@ -118,6 +118,17 @@ interface SinkProbeResult {
  * The secret is sourced from `process.env.E2E_TEST_SECRET` (set in the
  * test runner environment to match the backend's setting). Without it,
  * we cannot read back what the sink received and the test is moot.
+ *
+ * The returned ``sinkUrl`` is the REGISTRATION target — i.e. the URL
+ * the webhook DELIVERY EXECUTOR will POST to. The test stack runs
+ * ``WEBHOOK_ASYNC_DELIVERY=False`` (delivery is inline inside the API
+ * container) and publishes the API as host ``8001`` → container
+ * ``8000`` (docker-compose.test.yml). A host-published loopback URL
+ * (localhost:8001) is unreachable FROM INSIDE the API container, so we
+ * register the webhook with the container-reachable URL
+ * (localhost:8000 — the API's own listener) while the spec reads the
+ * sink back through the page-relative API path (vite proxy), which is
+ * host-side. Non-loopback origins (staging) pass through unchanged.
  */
 async function probeSink(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,10 +146,22 @@ async function probeSink(
     originBase = `${url.protocol}//${url.host}`;
   }
   originBase = originBase.replace(/\/$/, '');
-  const sinkUrl = originBase.endsWith('/api/v1')
+  const hostSinkUrl = originBase.endsWith('/api/v1')
     ? `${originBase}/test/webhook-sink/${sinkId}/`
     : `${originBase}/api/v1/test/webhook-sink/${sinkId}/`;
-  return { e2eToken, sinkUrl };
+  let registerUrl = hostSinkUrl;
+  try {
+    const parsedOrigin = new URL(originBase);
+    const hostPort =
+      parsedOrigin.port || (parsedOrigin.protocol === 'https:' ? '443' : '80');
+    if (/^(localhost|127\.0\.0\.1)$/.test(parsedOrigin.hostname) && hostPort === '8001') {
+      // intentional: test-stack mapping (8001:8000) — the in-container delivery executor reaches the API on its own :8000 listener.
+      registerUrl = `http://localhost:8000/api/v1/test/webhook-sink/${sinkId}/`;
+    }
+  } catch {
+    // intentional: best-effort URL inspection — a parse failure keeps the host-derived URL.
+  }
+  return { e2eToken, sinkUrl: registerUrl };
 }
 
 async function pollUntil<T>(
@@ -161,6 +184,42 @@ async function pollUntil<T>(
   );
 }
 
+/**
+ * Delete stale ACTIVE webhooks the test itself did not register.
+ *
+ * Every run registers a new ACTIVE webhook in the shared E2E tenant and
+ * never removes it — 11+ accumulate across runs, some pointing at dead
+ * sink URLs (yesterday's localhost:8001 registrations). Each asset.created
+ * trigger then fires ALL of them: the dead-URL deliveries record connection
+ * failures on the SHARED ``webhook-delivery`` circuit breaker until it
+ * opens and rejects THIS test's own delivery attempts (observed:
+ * ``circuit_breaker_open_reject`` → DEAD_LETTER rows with NULL
+ * http_status_code where the forced-failure contract expects 503).
+ * Deleting the leftovers makes each test's trigger fire only its own
+ * webhook and keeps the breaker unpolluted.
+ */
+async function deleteStaleWebhooks(
+  ctx: AuthCtx,
+  eventTypes: string[],
+): Promise<void> {
+  const res = await ctx.page.request.get(
+    `${API_BASE}/webhooks/webhooks/?page_size=100`,
+    { headers: { Authorization: `Bearer ${ctx.token}` } },
+  );
+  if (!res.ok()) return;
+  const body = (await res.json()) as {
+    results?: Array<{ id: string; event_types?: string[]; status?: string }>;
+  };
+  for (const w of body.results ?? []) {
+    const overlaps = (w.event_types ?? []).some((t) => eventTypes.includes(t));
+    if (overlaps && w.status === 'ACTIVE') {
+      await ctx.page.request.delete(`${API_BASE}/webhooks/webhooks/${w.id}/`, {
+        headers: { Authorization: `Bearer ${ctx.token}` },
+      });
+    }
+  }
+}
+
 test.describe('Feature: Webhook delivery', () => {
   test.setTimeout(180_000);
 
@@ -169,7 +228,7 @@ test.describe('Feature: Webhook delivery', () => {
     const probe = await probeSink(page, sinkId);
     if (!probe.e2eToken) {
       test.skip(
-        true,
+        !probe.e2eToken,
         'E2E_TEST_SECRET is not set on the test runner; cannot read the sink. ' +
           'Configure it in CI to match the backend `E2E_TEST_SECRET` setting.',
       );
@@ -179,13 +238,16 @@ test.describe('Feature: Webhook delivery', () => {
     const token = await login(page, provider.email, provider.password);
     const ctx: AuthCtx = { page, token };
 
+    // Remove stale webhooks left by previous runs BEFORE triggering events.
+    await deleteStaleWebhooks(ctx, ['asset.created']);
+
     // Sanity: confirm the sink is enabled on this backend before registering.
     const sinkProbe = await page.request.get(
       `${API_BASE}/test/webhook-sink/${sinkId}/?token=${encodeURIComponent(probe.e2eToken!)}`,
     );
     if (!sinkProbe.ok()) {
       test.skip(
-        true,
+        !sinkProbe.ok(),
         `webhook sink endpoint unavailable on this backend (status=${sinkProbe.status()}). ` +
           `Verify hub.apps.api.webhook_sink_views is wired and ENVIRONMENT in (test, staging, debug).`,
       );
@@ -194,7 +256,7 @@ test.describe('Feature: Webhook delivery', () => {
     // Register the webhook. ``url`` must be absolute and SSRF-safe — the
     // sink lives behind the same public hostname as the API in staging,
     // so it passes the SSRF guard.
-    const webhookCreateRes = await page.request.post(`${API_BASE}/webhooks/`, {
+    const webhookCreateRes = await page.request.post(`${API_BASE}/webhooks/webhooks/`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       data: {
         name: `E2E Webhook Delivery ${Date.now()}`,
@@ -211,7 +273,7 @@ test.describe('Feature: Webhook delivery', () => {
       // SSRF guard rejects local/loopback URLs — local dev hits this, staging doesn't.
       if (/SSRF|private|reserved IP|not permitted/i.test(body)) {
         test.skip(
-          true,
+          /SSRF|private|reserved IP|not permitted/i.test(body),
           `webhook create blocked by SSRF guard for sink URL ${probe.sinkUrl}. ` +
             `This spec is intended for environments where the sink resolves to a public IP.`,
         );
@@ -273,23 +335,28 @@ test.describe('Feature: Webhook delivery', () => {
     const sinkId = randomUUID();
     const probe = await probeSink(page, sinkId);
     if (!probe.e2eToken) {
-      test.skip(true, 'E2E_TEST_SECRET not set; cannot exercise retry/DLQ subflow');
+      test.skip(!probe.e2eToken, 'E2E_TEST_SECRET not set; cannot exercise retry/DLQ subflow');
     }
     const provider = await getTestUser();
     const token = await login(page, provider.email, provider.password);
+    const ctx: AuthCtx = { page, token };
+
+    // Same isolation as the happy-path test — stale webhooks from earlier
+    // runs would fire alongside this test's own registration.
+    await deleteStaleWebhooks(ctx, ['asset.created']);
 
     const sinkProbe = await page.request.get(
       `${API_BASE}/test/webhook-sink/${sinkId}/?token=${encodeURIComponent(probe.e2eToken!)}`,
     );
     if (!sinkProbe.ok()) {
-      test.skip(true, `webhook sink unavailable on this backend (${sinkProbe.status()})`);
+      test.skip(!sinkProbe.ok(), `webhook sink unavailable on this backend (${sinkProbe.status()})`);
     }
 
     // Webhook URL with the forced-failure query so EVERY delivery attempt
     // returns 503. Real outbound retry policy applies; the spec asserts
     // that the platform retried and ultimately marked the row FAILED.
     const failingUrl = `${probe.sinkUrl}?fail=503`;
-    const createRes = await page.request.post(`${API_BASE}/webhooks/`, {
+    const createRes = await page.request.post(`${API_BASE}/webhooks/webhooks/`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       data: {
         name: `E2E Webhook Retry/DLQ ${Date.now()}`,
@@ -306,7 +373,7 @@ test.describe('Feature: Webhook delivery', () => {
     if (!createRes.ok()) {
       const body = (await createRes.text()).slice(0, 400);
       if (/SSRF|private|reserved IP|not permitted/i.test(body)) {
-        test.skip(true, `SSRF guard blocked sink URL — environment-specific skip`);
+        test.skip(/SSRF|private|reserved IP|not permitted/i.test(body), `SSRF guard blocked sink URL — environment-specific skip`);
       }
       throw new Error(`webhook create failed: ${createRes.status()}: ${body}`);
     }
@@ -316,7 +383,6 @@ test.describe('Feature: Webhook delivery', () => {
 
     // Wait for the delivery row to converge to FAILED (after max_retries
     // exhaust). The sink will have recorded ≥ 1 attempt regardless.
-    const ctx: AuthCtx = { page, token };
     const failedRow = await pollUntil<DeliveryRow | null>(
       async () => {
         const rows = await getDeliveryRows(ctx, webhook.id);

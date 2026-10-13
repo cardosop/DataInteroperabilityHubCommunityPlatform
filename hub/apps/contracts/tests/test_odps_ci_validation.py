@@ -14,6 +14,7 @@ These tests are designed to run in CI pipelines and catch schema issues early.
 All tests use real implementations (no mocks/stubs).
 """
 
+import contextlib
 import json
 import tempfile
 from pathlib import Path
@@ -29,7 +30,6 @@ except ImportError:
 from django.test import TestCase
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
@@ -57,7 +57,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         """Set up test fixtures"""
         self.base_dir = Path(__file__).parent.parent
         self.schemas_dir = self.base_dir / "schemas" / "odps"
-        self.required_versions = ["4.1", "4.0", "3.x", "2.x", "1.x"]
+        self.required_versions = ["4.2", "4.1", "4.0", "3.x", "2.x", "1.x"]
         self.schema_filename = "odps-schema.json"
 
     def test_all_schema_files_are_valid_json_schema(self):
@@ -120,29 +120,36 @@ class ODPSSchemaCIValidationTest(TestCase):
                     # Check $id field contains version (with v prefix)
                     schema_id = schema_data.get("$id", "")
                     expected_pattern = version_patterns.get(version, "")
-                    if schema_id and expected_pattern:
-                        if not re.search(expected_pattern, schema_id):
-                            errors.append(
-                                f"Version {version}: $id field '{schema_id}' does not contain expected version pattern '{expected_pattern}'"
-                            )
+                    if (
+                        schema_id
+                        and expected_pattern
+                        and not re.search(expected_pattern, schema_id)
+                    ):
+                        errors.append(
+                            f"Version {version}: $id field '{schema_id}' does not contain expected version pattern '{expected_pattern}'"
+                        )
 
                     # Check schema field pattern (if present) - should contain version with v prefix
                     schema_url = schema_data.get("schema", "")
-                    if schema_url and expected_pattern:
-                        if not re.search(expected_pattern, schema_url):
-                            errors.append(
-                                f"Version {version}: schema URL '{schema_url}' does not contain expected version pattern '{expected_pattern}'"
-                            )
+                    if (
+                        schema_url
+                        and expected_pattern
+                        and not re.search(expected_pattern, schema_url)
+                    ):
+                        errors.append(
+                            f"Version {version}: schema URL '{schema_url}' does not contain expected version pattern '{expected_pattern}'"
+                        )
 
                     # Check version field (if present) - should match version without v prefix
                     version_field = schema_data.get("version", "")
                     if version_field:
                         expected_version_pattern = version_field_patterns.get(version, "")
-                        if expected_version_pattern:
-                            if not re.search(expected_version_pattern, str(version_field)):
-                                errors.append(
-                                    f"Version {version}: version field '{version_field}' does not match expected pattern '{expected_version_pattern}'"
-                                )
+                        if expected_version_pattern and not re.search(
+                            expected_version_pattern, str(version_field)
+                        ):
+                            errors.append(
+                                f"Version {version}: version field '{version_field}' does not match expected pattern '{expected_version_pattern}'"
+                            )
 
                 except Exception as e:
                     errors.append(f"Version {version}: Error checking version match - {e}")
@@ -182,6 +189,19 @@ class ODPSSchemaCIValidationTest(TestCase):
 
         # Create minimal valid ODPS documents for each version
         sample_documents = {
+            "4.2": {
+                "schema": "https://opendataproducts.org/schema/v4.2",
+                "version": "4.2",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product-1",
+                            "name": "Test Product",
+                            "description": "A test product",
+                        }
+                    }
+                },
+            },
             "4.1": {
                 "schema": "https://opendataproducts.org/schema/v4.1",
                 "version": "4.1",
@@ -552,7 +572,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         """Test schema loading with None version."""
         clear_schema_cache()
         try:
-            schema = load_odps_schema(None)  # type: ignore[misc]  # test: edge-case type exercise
+            schema = load_odps_schema(None)  # test: edge-case type exercise
             # May return None or raise exception
             self.assertIsNone(schema)
         except (TypeError, ValueError):
@@ -590,7 +610,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         try:
             is_valid, _validation_errors = ODPSParser.validate(
                 odps_document=None,
-                version="4.1",  # type: ignore[misc]  # test: edge-case type exercise
+                version="4.1",  # test: edge-case type exercise
             )
             # Should return False for None document
             self.assertFalse(is_valid)
@@ -639,7 +659,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         try:
             resolver = ODPSRefResolver()
             _original, resolved = resolver.resolve_all_refs(
-                None,  # type: ignore[misc]  # test: edge-case type exercise
+                None,  # test: edge-case type exercise
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.DISABLE,
             )
@@ -744,12 +764,9 @@ class ODPSSchemaCIValidationTest(TestCase):
 
     def test_clear_schema_cache(self):
         """Test clear_schema_cache clears cache without errors."""
-        try:
+        with contextlib.suppress(Exception):
             clear_schema_cache()
             # Reaching here without exception proves cache was cleared successfully
-        except Exception:
-            # May raise exception if cache clearing fails
-            pass
 
     def test_ci_validation_handles_none_values(self):
         """Test that CI validation handles None values correctly."""

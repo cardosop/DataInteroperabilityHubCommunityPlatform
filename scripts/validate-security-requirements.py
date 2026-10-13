@@ -126,7 +126,7 @@ def validate_security_requirements(file_path: Path) -> tuple[bool, list[str]]:
 
         return len(errors) == 0, errors + warnings
 
-    except Exception as e:
+    except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e:
         return False, [f"Error reading file: {e}"]
 
 

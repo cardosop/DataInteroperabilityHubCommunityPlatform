@@ -39,7 +39,7 @@ class SlowHandlerTimeoutTest(TestCase):
         """
 
         def slow_handler(*args):
-            time.sleep(10)  # noqa: sleep-needed — test timing requirement
+            time.sleep(10)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         with self.assertRaises(TimeoutError) as ctx:
             _run_with_timeout(
@@ -84,7 +84,7 @@ class SlowHandlerTimeoutTest(TestCase):
         """
 
         def slow(*args):
-            time.sleep(10)  # noqa: sleep-needed — test timing requirement
+            time.sleep(10)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         with self.assertRaises(TimeoutError):
             _run_with_timeout(slow, args=(), timeout_seconds=0.3)

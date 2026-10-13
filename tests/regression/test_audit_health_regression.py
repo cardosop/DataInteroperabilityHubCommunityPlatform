@@ -15,6 +15,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -38,6 +39,10 @@ class AuditHealthRegressionTestBase(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # Raw audit-event endpoints are role-gated (TENANT_ADMIN/AUDITOR,
+        # Phase 224.3.1) — grant the role so the regression covers the
+        # endpoint contract, not authorization.
+        ensure_user_has_tenant_admin_role(self.user)
         self.client.force_authenticate(user=self.user)
 
 

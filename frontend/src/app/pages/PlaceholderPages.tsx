@@ -14,7 +14,11 @@ export const AISearchPage = () => <div>AI Search Page (Phase 7+)</div>;
 export const JobsPage = () => <div>Jobs Page (Phase 2+)</div>;
 export const GovernancePage = () => <div>Governance Page (Phase 2+)</div>;
 export const AdminPage = () => <div>Admin Page (Phase 2+)</div>;
-export const NotFoundPage = () => <div className="not-found-page" role="alert">404 - Page Not Found</div>;
+export const NotFoundPage = () => (
+  <div className="not-found-page" role="alert" data-testid="not-found">
+    404 - Page Not Found
+  </div>
+);
 export const ForbiddenPage = () => (
   <div data-testid="forbidden-page">403 - Forbidden</div>
 );

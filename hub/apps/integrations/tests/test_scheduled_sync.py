@@ -13,7 +13,6 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.db.models.signals import post_save
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -345,8 +344,9 @@ class ScheduledSyncServiceUnitTest(TestCase):
             action="SCHEDULED_SYNC_CREATED",
             resource_id=str(scheduled_sync.id),
         )
-        self.assertEqual(audit_events.count(), 1,
-            "Expected exactly one SCHEDULED_SYNC_CREATED audit event")
+        self.assertEqual(
+            audit_events.count(), 1, "Expected exactly one SCHEDULED_SYNC_CREATED audit event"
+        )
         audit_event = audit_events.first()
         self.assertEqual(audit_event.actor_user, self.user)
         self.assertEqual(audit_event.tenant, self.tenant)
@@ -378,8 +378,9 @@ class ScheduledSyncServiceUnitTest(TestCase):
             action="SCHEDULED_SYNC_DELETED",
             resource_id=scheduled_sync_id,
         )
-        self.assertEqual(audit_events.count(), 1,
-            "Expected exactly one SCHEDULED_SYNC_CREATED audit event")
+        self.assertEqual(
+            audit_events.count(), 1, "Expected exactly one SCHEDULED_SYNC_CREATED audit event"
+        )
         audit_event = audit_events.first()
         self.assertEqual(audit_event.actor_user, self.user)
         self.assertEqual(audit_event.tenant, self.tenant)

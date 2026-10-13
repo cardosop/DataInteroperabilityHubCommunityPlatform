@@ -10,8 +10,8 @@ import pytest
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
-from hub.apps.datasets.tests.test_base import DatasetsTestBase
 from hub.apps.datasets.schema_evolution import CompatibilityLevel
+from hub.apps.datasets.tests.test_base import DatasetsTestBase
 from hub.apps.datasets.version_comparison import VersionComparisonService
 from hub.apps.datasets.versioning import VersionHistoryManager
 from hub.apps.files.models import File, FileStatus
@@ -206,24 +206,37 @@ class VersionComparisonServiceTest(DatasetsTestBase):
     def test_compare_versions_without_data_diff(self):
         """compare_versions with include_data_diff=False skips data diff."""
         v1 = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "data_type": "string"}]},
-            row_count=100, format="CSV", version=1, created_by=self.user,
+            row_count=100,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         file2 = File.objects.create(
-            tenant=self.tenant, name="v2.csv", content_type="text/csv",
-            size=2000, status=FileStatus.ACTIVE, storage_path="t/v2.csv",
-            content_sha256="abc", created_by=self.user,
+            tenant=self.tenant,
+            name="v2.csv",
+            content_type="text/csv",
+            size=2000,
+            status=FileStatus.ACTIVE,
+            storage_path="t/v2.csv",
+            content_sha256="abc",
+            created_by=self.user,
         )
         v2 = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=file2,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=file2,
             schema_json={"fields": [{"name": "col1", "data_type": "integer"}]},
-            row_count=200, format="CSV", version=2, created_by=self.user,
+            row_count=200,
+            format="CSV",
+            version=2,
+            created_by=self.user,
         )
 
-        comparison = VersionComparisonService.compare_versions(
-            v1, v2, include_data_diff=False
-        )
+        comparison = VersionComparisonService.compare_versions(v1, v2, include_data_diff=False)
         self.assertIsNone(comparison.data_diff)
         self.assertIsNotNone(comparison.schema_diff)
 
@@ -435,8 +448,7 @@ class VersionComparisonServiceTest(DatasetsTestBase):
 
         comparison = VersionComparisonService.compare_versions(v1, v2)
 
-        self.assertIsNotNone(comparison.schema_diff,
-                             "compare_versions must populate schema_diff")
+        self.assertIsNotNone(comparison.schema_diff, "compare_versions must populate schema_diff")
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -449,8 +461,9 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         # Non-existent (unsaved) versions — compare_versions returns a
         # VersionComparison without raising (graceful degradation).
         comparison = VersionComparisonService.compare_versions(fake_v1, fake_v2)
-        self.assertIsNotNone(comparison.schema_diff,
-                             "schema_diff must be populated even for non-persisted datasets")
+        self.assertIsNotNone(
+            comparison.schema_diff, "schema_diff must be populated even for non-persisted datasets"
+        )
 
     def test_version_comparison_failure_same_version(self):
         """Test version comparison with same version (failure scenario)"""
@@ -467,8 +480,11 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         # Compare same version to itself — no changes expected.
         comparison = VersionComparisonService.compare_versions(v1, v1)
 
-        self.assertEqual(len(comparison.schema_diff.changes), 0,
-                         "Same-version comparison must produce zero changes")
+        self.assertEqual(
+            len(comparison.schema_diff.changes),
+            0,
+            "Same-version comparison must produce zero changes",
+        )
 
     # ========== EDGE CASES ==========
 
@@ -581,5 +597,6 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         )
 
         comparison = VersionComparisonService.compare_versions(v1, v2)
-        self.assertIsNotNone(comparison.schema_diff,
-                             "compare_versions must populate schema_diff for valid datasets")
+        self.assertIsNotNone(
+            comparison.schema_diff, "compare_versions must populate schema_diff for valid datasets"
+        )

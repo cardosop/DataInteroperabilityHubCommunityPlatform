@@ -211,7 +211,7 @@ class Phase227DocumentedCodesAreEmittedAtRuntimeTest(SimpleTestCase):
                     continue
                 try:
                     text = path.read_text(encoding="utf-8")
-                except Exception:
+                except (UnicodeDecodeError, OSError):
                     continue
                 if code in text:
                     hits.append(rel)

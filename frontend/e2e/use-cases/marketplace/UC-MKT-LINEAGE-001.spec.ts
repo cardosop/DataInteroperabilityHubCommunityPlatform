@@ -19,13 +19,14 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, getTestUser } from '../../fixtures/auth';
+import { getConsumerTestUser, getTestUser, loginViaApi } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import {
   createListingViaApi,
   publishListingViaApi,
 } from '../../fixtures/api-marketplace';
+import { seedLineageDag } from '../../fixtures/lineage-fixtures';
 
 test.describe('UC-MKT-LINEAGE-001: Pre-purchase summary lineage', () => {
   test.setTimeout(120_000);
@@ -36,10 +37,27 @@ test.describe('UC-MKT-LINEAGE-001: Pre-purchase summary lineage', () => {
       forceNew: true,
       ensureActivated: true,
     });
+    // Seed lineage: a contract DAG linked to the asset gives the
+    // listing-level lineage a root to walk — a fresh asset has no
+    // contract, so get_for_asset returns an empty graph and the panel
+    // lands in the `-empty` state (b6 skip: "Fresh asset has no lineage
+    // rows — summary-graph contract not exercisable").
+    const providerAuth = await loginViaApi(providerUser.email, providerUser.password);
+    await seedLineageDag(page, 3, { accessToken: providerAuth.access_token, assetId });
     const listingId = await createListingViaApi(providerUser, assetId);
     await publishListingViaApi(providerUser, listingId);
 
     const consumerUser = await getConsumerTestUser();
+    // The summary-tier wire response MUST NOT carry transformation
+    // IP — captured at the network level so we can prove it end-to-end
+    // (a frontend filter that hides the field would still fail the
+    // assertion). Registered BEFORE navigation: the lineage fetch fires
+    // during page load, and a waitForResponse registered afterwards only
+    // sees FUTURE responses (b6 masked bug — the old skip path never
+    // reached the await).
+    const lineageResponsePromise = page.waitForResponse((res) =>
+      res.url().includes(`/marketplace/listings/${listingId}/lineage/`),
+    );
     await loginAndNavigateToRoute(
       page,
       consumerUser,
@@ -50,18 +68,47 @@ test.describe('UC-MKT-LINEAGE-001: Pre-purchase summary lineage', () => {
           '.listing-detail-main, [data-testid="listing-detail-main"], .listing-detail-page, .error-display, [data-testid="error-display"], main',
       },
     );
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to login — auth not available');
+    const onLogin = page.url().includes('/login');
+    test.skip(onLogin, 'Redirected to login — auth not available');
+    if (onLogin) {
+      return;
     }
     await waitForLoadingComplete(page, { timeout: 15_000 });
 
-    // The capability flag may be off in some environments; if the
-    // panel is not present skip the test.  This is the
-    // env-portability concession matching the F1 rollout's
-    // staging-first-then-prod cadence.
+    // The panel renders four states with distinct testids: `-loading`
+    // (entitlement + lineage fetch in flight — waitForLoadingComplete
+    // does NOT cover it, the skeleton has no spinner class), `-error`
+    // (the lineage endpoint 404s when
+    // lineage.cross_tenant_marketplace is off — flag-off env), `-empty`
+    // (fresh asset with no lineage rows — a data state, NOT a
+    // capability state), and `-panel` (success, data-detail set).
+    // Probe the terminal states only so a still-fetching panel is not
+    // misread as flag-off, then skip with the HONEST reason.
+    // intentional: best-effort terminal-state wait — the branch below is
+    // the verdict; absence is a legitimate gated/loading outcome.
+    await page
+      .locator(
+        '[data-testid="listing-lineage-panel"], [data-testid="listing-lineage-panel-error"], [data-testid="listing-lineage-panel-empty"]'
+      )
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .catch(() => null);
+
     const panel = page.getByTestId('listing-lineage-panel');
-    if ((await panel.count()) === 0) {
-      test.skip(true, 'Lineage capability flag off in this environment');
+    const panelMissing = (await panel.count()) === 0;
+    if (panelMissing) {
+      let reason: string;
+      if ((await page.getByTestId('listing-lineage-panel-loading').count()) > 0) {
+        reason = 'Lineage panel still loading — fetch did not settle within 30s';
+      } else if ((await page.getByTestId('listing-lineage-panel-empty').count()) > 0) {
+        reason =
+          'Fresh asset has no lineage rows — summary-graph contract not exercisable (data state, not capability)';
+      } else {
+        reason =
+          'Lineage endpoint unavailable — lineage.cross_tenant_marketplace capability off in this environment';
+      }
+      test.skip(panelMissing, reason);
+      return;
     }
 
     // Section landmark is labelled.
@@ -70,13 +117,9 @@ test.describe('UC-MKT-LINEAGE-001: Pre-purchase summary lineage', () => {
     // Purchase CTA is visible — buyer is unentitled.
     await expect(page.getByTestId('listing-lineage-purchase-cta')).toBeVisible();
 
-    // The summary-tier wire response MUST NOT carry transformation
-    // IP — captured at the network level so we can prove it
-    // end-to-end (a frontend filter that hides the field would still
-    // fail this assertion).
-    const lineageResponse = await page.waitForResponse((res) =>
-      res.url().includes(`/marketplace/listings/${listingId}/lineage/`),
-    );
+    // Await the response captured from page load (see the
+    // lineageResponsePromise registration above).
+    const lineageResponse = await lineageResponsePromise;
     const body = await lineageResponse.json();
     for (const link of body?.links ?? []) {
       expect(link).not.toHaveProperty('transformation_ref');

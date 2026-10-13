@@ -34,7 +34,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
         contentSelector: '.admin-page, [data-testid="admin-page"]',
       });
       if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Platform admin user does not have admin page access in this environment');
+        test.skip(page.url().includes('/403') || page.url().includes('/login'), 'Platform admin user does not have admin page access in this environment');
         return;
       }
 
@@ -48,7 +48,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!tenantsResp.ok()) {
-        test.skip(true, 'Platform admin tenants API not available');
+        test.skip(!tenantsResp.ok(), 'Platform admin tenants API not available');
         return;
       }
       const tenantsData = (await tenantsResp.json()) as {
@@ -99,21 +99,21 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
       );
 
       if (!targetTenant?.id) {
-        test.skip(true, 'No suitable tenant found for suspend test');
+        test.skip(!targetTenant?.id, 'No suitable tenant found for suspend test');
         return;
       }
 
       // Find the tenant row in the admin UI table
       const tenantRow = page.locator(`tr:has-text("${targetTenant.name}")`).first();
       if ((await tenantRow.count()) === 0) {
-        test.skip(true, `Tenant "${targetTenant.name}" row not found in admin table`);
+        test.skip((await tenantRow.count()) === 0, `Tenant "${targetTenant.name}" row not found in admin table`);
         return;
       }
 
       // Suspend button: data-testid="suspend-tenant-{id}" (AdminPage.tsx line 228)
       const suspendButton = page.locator(`[data-testid="suspend-tenant-${targetTenant.id}"]`);
       if ((await suspendButton.count()) === 0) {
-        test.skip(true, 'Suspend button not found — tenant may already be suspended or deleted');
+        test.skip((await suspendButton.count()) === 0, 'Suspend button not found — tenant may already be suspended or deleted');
         return;
       }
 

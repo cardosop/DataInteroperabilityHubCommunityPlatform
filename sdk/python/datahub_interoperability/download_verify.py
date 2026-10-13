@@ -23,8 +23,10 @@ The HTTP boundary is the only side-effect surface:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional, Protocol, Union
+from typing import Any, Protocol
 
 __all__ = [
     "ChecksumMismatchError",
@@ -46,7 +48,7 @@ _SHA256_HEX_LEN = 64
 # --------------------------------------------------------------------- #
 
 
-def compute_sha256(data: Union[bytes, Iterable[bytes], Iterator[bytes]]) -> str:
+def compute_sha256(data: bytes | Iterable[bytes] | Iterator[bytes]) -> str:
     """Return the lowercase hex SHA-256 digest of ``data``.
 
     Accepts either a single ``bytes`` blob OR an iterable of byte
@@ -84,7 +86,7 @@ def sha_equals_constant_time(a: object, b: object) -> bool:
     al = a.lower()
     bl = b.lower()
     diff = 0
-    for ca, cb in zip(al, bl):
+    for ca, cb in zip(al, bl, strict=False):
         diff |= ord(ca) ^ ord(cb)
     return diff == 0
 
@@ -94,12 +96,12 @@ class VerifyResult:
     """Structured outcome from :func:`verify_blob`."""
 
     status: str  # "matched" | "mismatched" | "skipped"
-    expected: Optional[str]
-    actual: Optional[str]
-    reason: Optional[str] = None  # populated when status == "skipped"
+    expected: str | None
+    actual: str | None
+    reason: str | None = None  # populated when status == "skipped"
 
 
-def verify_blob(content: bytes, expected: Optional[str]) -> VerifyResult:
+def verify_blob(content: bytes, expected: str | None) -> VerifyResult:
     """Verify a single blob's SHA-256 against the expected hex digest.
 
     Returns ``VerifyResult.status``:
@@ -156,8 +158,8 @@ class DownloadResult:
     status: str  # "matched" | "skipped"
     content: bytes
     filename: str
-    expected: Optional[str]
-    actual: Optional[str]
+    expected: str | None
+    actual: str | None
 
 
 class _FilesAPILike(Protocol):
@@ -229,12 +231,10 @@ async def download_file_with_verification(
 
     # Mismatch — best-effort audit + refuse-to-return.
     actual = result.actual or compute_sha256(content)
-    try:
+    # Audit-endpoint failures must NOT mask the corruption error;
+    # the raise below is the load-bearing safety contract.
+    with suppress(Exception):
         await files_api.report_checksum_mismatch(file_id, actual)
-    except Exception:
-        # Audit-endpoint failures must NOT mask the corruption error;
-        # the raise below is the load-bearing safety contract.
-        pass
     raise ChecksumMismatchError(
         file_id=file_id,
         expected=str(expected),

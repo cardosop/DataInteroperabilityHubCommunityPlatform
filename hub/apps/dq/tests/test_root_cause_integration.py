@@ -77,10 +77,17 @@ class RootCauseAnalysisIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-    def _create_dq_run(self, dataset, overall_status="PASS", quality_score=90.0,
-                       checks_json=None, completed_at=None,
-                       profile_key="intake_basic_gx", engine=DQEngine.GREAT_EXPECTATIONS,
-                       status=DQRunStatus.SUCCEEDED):
+    def _create_dq_run(
+        self,
+        dataset,
+        overall_status="PASS",
+        quality_score=90.0,
+        checks_json=None,
+        completed_at=None,
+        profile_key="intake_basic_gx",
+        engine=DQEngine.GREAT_EXPECTATIONS,
+        status=DQRunStatus.SUCCEEDED,
+    ):
         """Create a DQRun with an associated Job in a single call.
 
         Reduces the copy-paste ``Job + DQRun`` creation that was

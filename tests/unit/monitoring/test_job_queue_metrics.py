@@ -29,9 +29,7 @@ class JobQueueMetricsTest(TestCase):
 
     def test_job_queue_length_labels(self):
         """job_queue_length Counter accepts labels and increments."""
-        labeled = job_queue_length.labels(
-            job_type="ODPS_NORMALIZATION", queue_name="job_default"
-        )
+        labeled = job_queue_length.labels(job_type="ODPS_NORMALIZATION", queue_name="job_default")
         before = labeled._value.get()
         labeled.inc()
         self.assertEqual(labeled._value.get() - before, 1)
@@ -42,9 +40,7 @@ class JobQueueMetricsTest(TestCase):
 
     def test_job_queue_depth_labels(self):
         """job_queue_depth Counter accepts labels and increments."""
-        labeled = job_queue_depth.labels(
-            job_type="ODPS_NORMALIZATION", queue_name="job_default"
-        )
+        labeled = job_queue_depth.labels(job_type="ODPS_NORMALIZATION", queue_name="job_default")
         before = labeled._value.get()
         labeled.inc()
         self.assertEqual(labeled._value.get() - before, 1)
@@ -79,9 +75,7 @@ class JobQueueMetricsTest(TestCase):
 
     def test_job_worker_throughput_labels(self):
         """job_worker_throughput Counter accepts labels and increments."""
-        labeled = job_worker_throughput.labels(
-            worker_id="worker-1", job_type="ODPS_NORMALIZATION"
-        )
+        labeled = job_worker_throughput.labels(worker_id="worker-1", job_type="ODPS_NORMALIZATION")
         before = labeled._value.get()
         labeled.inc()
         self.assertEqual(labeled._value.get() - before, 1)
@@ -93,9 +87,7 @@ class JobQueueMetricsTest(TestCase):
     def test_job_retry_count_labels(self):
         """job_retry_count Histogram accepts labels and observe()."""
         # Histogram doesn't expose _value; verifies the call doesn't raise.
-        job_retry_count.labels(
-            job_type="ODPS_NORMALIZATION", queue_name="job_default"
-        ).observe(2.0)
+        job_retry_count.labels(job_type="ODPS_NORMALIZATION", queue_name="job_default").observe(2.0)
 
     def test_job_timeout_rate_metric_exists(self):
         """Test that job_timeout_rate metric exists"""
@@ -103,9 +95,7 @@ class JobQueueMetricsTest(TestCase):
 
     def test_job_timeout_rate_labels(self):
         """job_timeout_rate Counter accepts labels and increments."""
-        labeled = job_timeout_rate.labels(
-            job_type="ODPS_NORMALIZATION", queue_name="job_default"
-        )
+        labeled = job_timeout_rate.labels(job_type="ODPS_NORMALIZATION", queue_name="job_default")
         before = labeled._value.get()
         labeled.inc()
         self.assertEqual(labeled._value.get() - before, 1)

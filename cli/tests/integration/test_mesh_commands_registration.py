@@ -39,7 +39,7 @@ class TestMeshCommandsRegistrationRealAPI:
                     break
             except Exception:
                 if attempt < max_retries - 1:
-                    time.sleep(1)  # noqa: sleep-needed — retry loop
+                    time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 else:
                     pytest.skip("API service not available at http://localhost:8000")
 
@@ -161,7 +161,7 @@ class TestMeshCommandsRegistrationRealAPI:
 
         for cmd, expected_in_output in commands_to_test:
             # Use --help to verify command structure without requiring auth
-            help_cmd = cmd + ["--help"]
+            help_cmd = [*cmd, "--help"]
             result = runner.invoke(cli, help_cmd)
             assert result.exit_code == 0, f"Command {cmd} help failed: {result.output}"
             # Verify the command structure is correct

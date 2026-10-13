@@ -24,6 +24,13 @@ import uuid
 import pytest
 from django.test import TestCase
 
+# URLs as parenthesized implicit concatenations so the PUBLISH scrub's
+# secret replacement (a LONGER domain) cannot push any line past the
+# formatter's width — the public tree and the private tree must both
+# format clean (Phase Q review, 2026-08-23).
+_SCHEMA_EDITOR_URL = "https://stagingmeshant-internal.example.com/contracts/c-1/edit?tab=schema"
+_CONTRACT_HEALTH_URL = "https://stagingmeshant-internal.example.com/admin/contract-health"
+
 
 def _create_tenant(name: str = "Wave 4 Co"):
     from hub.apps.tenants.models import Tenant
@@ -209,12 +216,10 @@ def test_template_renders_with_required_substrings():
                     "id": "c-1",
                     "name": "orders",
                     "spec_type": "ODCS",
-                    "schema_editor_url": (
-                        "https://stagingmeshant-internal.example.com/contracts/c-1/edit?tab=schema"
-                    ),
+                    "schema_editor_url": _SCHEMA_EDITOR_URL,
                 },
             ],
-            "contract_health_url": ("https://stagingmeshant-internal.example.com/admin/contract-health"),
+            "contract_health_url": _CONTRACT_HEALTH_URL,
             "admin_first_name": "Alex",
             "residue_count": 1,
         },
@@ -226,4 +231,4 @@ def test_template_renders_with_required_substrings():
     assert "Open Schema editor" in html
     assert "STRUCTURELESS_CONTRACT" in html
     assert "Alex" in html
-    assert "https://stagingmeshant-internal.example.com/contracts/c-1/edit?tab=schema" in html
+    assert _SCHEMA_EDITOR_URL in html

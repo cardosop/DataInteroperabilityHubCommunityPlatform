@@ -100,7 +100,7 @@ def test_key_validation():
     # Normalization error
     try:
         normalize_idempotency_key("invalid key")
-        assert False, "Should raise IdempotencyKeyFormatError"
+        raise AssertionError("Should raise IdempotencyKeyFormatError")
     except IdempotencyKeyFormatError:
         print_pass("Normalization raises error for invalid key")
 
@@ -208,7 +208,10 @@ def test_middleware():
     print_test("Middleware Tests")
 
     factory = RequestFactory()
-    get_response = lambda req: JsonResponse({"id": "123"}, status=201)
+
+    def get_response(_req):
+        return JsonResponse({"id": "123"}, status=201)
+
     middleware = IdempotencyMiddleware(get_response)
 
     # Test should_process_idempotency

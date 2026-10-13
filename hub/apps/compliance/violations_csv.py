@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 
 def iter_violation_csv_bytes(violations: Iterable[dict[str, Any]] | None) -> Iterator[bytes]:

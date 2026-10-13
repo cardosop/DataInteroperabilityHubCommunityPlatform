@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                 'db_table': 'virtual_datasets',
                 'ordering': ['-created_at'],
                 'indexes': [models.Index(fields=['tenant'], name='virtual_dat_tenant__03bd99_idx'), models.Index(fields=['created_by'], name='virtual_dat_created_ce48c5_idx'), models.Index(fields=['query_type'], name='virtual_dat_query_t_3e7604_idx'), models.Index(fields=['status'], name='virtual_dat_status_19f0fa_idx'), models.Index(fields=['created_at'], name='virtual_dat_created_945d8c_idx'), models.Index(fields=['tenant', 'status'], name='virtual_dat_tenant__bb3c12_idx'), models.Index(fields=['tenant', 'query_type'], name='virtual_dat_tenant__7e2064_idx'), models.Index(fields=['tenant', 'created_at'], name='virtual_dat_tenant__4fcb10_idx')],
-                'constraints': [models.UniqueConstraint(fields=('tenant', 'name', 'version'), name='unique_virtual_dataset_name_version_per_tenant')],
+                'constraints': [models.UniqueConstraint(fields=['tenant', 'name', 'version'], name='unique_virtual_dataset_name_version_per_tenant')],
             },
         ),
     ]

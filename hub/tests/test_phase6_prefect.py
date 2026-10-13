@@ -64,7 +64,7 @@ def _find_monkey_patches(path: pathlib.Path) -> list[str]:
             for target in node.targets:
                 try:
                     target_src = ast.unparse(target)
-                except Exception:  # pragma: no cover — defensive
+                except ValueError:  # pragma: no cover — ast.unparse rejects unsupported nodes
                     continue
                 if any(target_src.startswith(p) for p in _PATCH_PREFIXES):
                     violations.append(

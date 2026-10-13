@@ -213,7 +213,8 @@ class TestODPSNormalizerRegistration(TestCase):
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "4.1", contract_data)
         assert normalizer is not None
-        assert hasattr(normalizer, "normalize") and hasattr(normalizer, "supports")
+        assert hasattr(normalizer, "normalize")
+        assert hasattr(normalizer, "supports")
 
     def test_get_normalizer_returns_odps_normalizer_for_different_versions(self):
         """Test that get_normalizer returns ODPS normalizer for different ODPS versions."""
@@ -229,7 +230,8 @@ class TestODPSNormalizerRegistration(TestCase):
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "4.0", contract_data_4_0)
         assert normalizer is not None
-        assert hasattr(normalizer, "normalize") and hasattr(normalizer, "supports")
+        assert hasattr(normalizer, "normalize")
+        assert hasattr(normalizer, "supports")
 
         # Test with ODPS 3.x
         contract_data_3_x = {
@@ -240,7 +242,8 @@ class TestODPSNormalizerRegistration(TestCase):
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "3.9", contract_data_3_x)
         assert normalizer is not None
-        assert hasattr(normalizer, "normalize") and hasattr(normalizer, "supports")
+        assert hasattr(normalizer, "normalize")
+        assert hasattr(normalizer, "supports")
 
     def test_odps_normalizer_supports_method(self):
         """Test that registered ODPS normalizer supports() method works correctly."""

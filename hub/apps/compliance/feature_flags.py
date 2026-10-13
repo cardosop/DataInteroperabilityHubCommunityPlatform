@@ -12,11 +12,15 @@ Scopes:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from rest_framework import status
 from rest_framework.response import Response
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import get_request_tenant
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
 
 ERR_COMPLIANCE_DISABLED = "COMPLIANCE_DISABLED"
 ERR_WAREHOUSE_COMPLIANCE_DISABLED = "WAREHOUSE_COMPLIANCE_DISABLED"

@@ -6,6 +6,7 @@ Uses the sample_dbt_project fixture and real file I/O (no mocks for
 filesystem operations).
 """
 
+import contextlib
 import json
 import os
 import uuid
@@ -142,13 +143,17 @@ class TestProfileResolution:
         class TestError(Exception):
             pass
 
-        try:
+        work_dir = None
+
+        def _run_context():
+            nonlocal work_dir
             with executor._profile_context():
                 work_dir = executor.work_dir
                 assert os.path.isdir(work_dir)
                 raise TestError("simulated failure")
-        except TestError:
-            pass
+
+        with contextlib.suppress(TestError):
+            _run_context()
 
         # Work dir must be cleaned up despite the exception
         assert not os.path.exists(work_dir)

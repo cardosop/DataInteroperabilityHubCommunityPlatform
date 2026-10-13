@@ -17,6 +17,7 @@ Use --reuse-db after first run to reuse test database and speed up.
 
 import json
 import uuid
+from typing import ClassVar
 
 import pytest
 
@@ -24,15 +25,15 @@ pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, ValidationStatus
+from hub.apps.marketplace.workflows.marketplace_publication import (
+    MarketplacePublicationWorkflow,
+)
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from hub.apps.orchestration.workflows.dataset_creation import DatasetCreationWorkflow
-from hub.apps.orchestration.workflows.marketplace_publication import (
-    MarketplacePublicationWorkflow,
-)
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.workflows.scheduled_ingestion import (
     ScheduledIngestionWorkflow,
 )
@@ -115,7 +116,7 @@ def _valid_odcs_contract():
 class TestProductCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E tests for ProductCreationWorkflow with business rules (Phase 6.2.1)."""
 
-    workflow_classes = [ProductCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ProductCreationWorkflow]
 
     def test_successful_execution_with_business_rules_validation(self):
         """Verify business rules validation at each step, results in state_data, workflow completes."""
@@ -181,7 +182,7 @@ class TestProductCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
 class TestContractCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E tests for ContractCreationWorkflow with business rules (Phase 6.2.2)."""
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_successful_execution_with_business_rules_validation(self):
         """Success path: validation at each step, workflow completes."""
@@ -220,7 +221,7 @@ class TestContractCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
 class TestAssetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E tests for AssetCreationWorkflow with business rules (Phase 6.2.3)."""
 
-    workflow_classes = [ContractCreationWorkflow, AssetCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow, AssetCreationWorkflow]
 
     def test_successful_execution_contract_first_with_business_rules(self):
         """Contract-first: create contract then run asset_creation with contract_id."""
@@ -284,7 +285,7 @@ class TestAssetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
 class TestMarketplacePublicationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E tests for MarketplacePublicationWorkflow with business rules (Phase 6.2.4)."""
 
-    workflow_classes = [
+    workflow_classes: ClassVar[list] = [
         ContractCreationWorkflow,
         AssetCreationWorkflow,
         MarketplacePublicationWorkflow,
@@ -361,7 +362,7 @@ class TestMarketplacePublicationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
 class TestDatasetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E tests for DatasetCreationWorkflow with business rules (Phase 6.2.5)."""
 
-    workflow_classes = [DatasetCreationWorkflow]
+    workflow_classes: ClassVar[list] = [DatasetCreationWorkflow]
 
     def test_validation_failure_when_missing_required_input(self):
         """Missing file_id / invalid input: workflow fails."""
@@ -380,7 +381,7 @@ class TestDatasetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
 class TestScheduledIngestionWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E tests for ScheduledIngestionWorkflow with business rules (Phase 6.2.5)."""
 
-    workflow_classes = [ScheduledIngestionWorkflow]
+    workflow_classes: ClassVar[list] = [ScheduledIngestionWorkflow]
 
     def test_workflow_registered_and_accepts_minimal_input(self):
         """Workflow is registered and runs (may fail on missing config but validation runs)."""

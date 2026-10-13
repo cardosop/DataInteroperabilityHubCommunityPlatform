@@ -58,7 +58,9 @@ test.describe('Auth UI closure — Visitor persona (no mocks) @critical', () => 
     if (mailhogReachable) {
       try {
         await fetch(`${MAILHOG_BASE_URL}/api/v1/messages`, { method: 'DELETE' });
-      } catch { /* best-effort cleanup */ }
+      } catch {
+        /* intentional: best-effort MailHog cleanup before the reachability check */
+      }
     }
     // Also skip if MailHog is reachable but SMTP delivery is broken (worker-service
     // not sending emails).  The waitForPasswordResetEmail function detects this and
@@ -68,7 +70,7 @@ test.describe('Auth UI closure — Visitor persona (no mocks) @critical', () => 
     } catch (err) {
       const msg = String((err as Error).message ?? '');
       if (msg.includes('zero messages after 3 polls') || msg.includes('SMTP delivery path')) {
-        test.skip(true, `MailHog reachable but SMTP delivery not functioning: ${msg}`);
+        test.skip(msg.includes('zero messages after 3 polls') || msg.includes('SMTP delivery path'), `MailHog reachable but SMTP delivery not functioning: ${msg}`);
         return;
       }
       throw err;

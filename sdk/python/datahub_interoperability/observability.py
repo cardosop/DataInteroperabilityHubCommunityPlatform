@@ -4,7 +4,7 @@ Observability operations for DataHub SDK.
 Provides methods for monitoring data freshness, volume, schema drift, pipelines, SLAs, and incidents.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -27,10 +27,10 @@ class ObservabilityAPI:
 
     async def get_freshness(
         self,
-        dataset_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get data freshness monitoring metrics.
 
@@ -42,7 +42,7 @@ class ObservabilityAPI:
         Returns:
             Freshness metrics
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if dataset_id:
             params["dataset_id"] = dataset_id
         if start_date:
@@ -54,10 +54,10 @@ class ObservabilityAPI:
 
     async def get_volume(
         self,
-        dataset_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get data volume monitoring metrics.
 
@@ -69,7 +69,7 @@ class ObservabilityAPI:
         Returns:
             Volume metrics
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if dataset_id:
             params["dataset_id"] = dataset_id
         if start_date:
@@ -81,8 +81,8 @@ class ObservabilityAPI:
 
     async def get_schema_drift(
         self,
-        dataset_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get schema drift detection results.
 
@@ -92,7 +92,7 @@ class ObservabilityAPI:
         Returns:
             Schema drift data
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if dataset_id:
             params["dataset_id"] = dataset_id
 
@@ -100,10 +100,10 @@ class ObservabilityAPI:
 
     async def get_pipelines(
         self,
-        pipeline_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        pipeline_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get pipeline monitoring metrics.
 
@@ -115,7 +115,7 @@ class ObservabilityAPI:
         Returns:
             Pipeline metrics
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if pipeline_id:
             params["pipeline_id"] = pipeline_id
         if start_date:
@@ -127,8 +127,8 @@ class ObservabilityAPI:
 
     async def get_slas(
         self,
-        dataset_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get data SLA monitoring.
 
@@ -138,7 +138,7 @@ class ObservabilityAPI:
         Returns:
             SLA monitoring data
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if dataset_id:
             params["dataset_id"] = dataset_id
 
@@ -146,11 +146,11 @@ class ObservabilityAPI:
 
     async def list_incidents(
         self,
-        status: Optional[str] = None,
-        severity: Optional[str] = None,
+        status: str | None = None,
+        severity: str | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List data incidents.
 
@@ -163,7 +163,7 @@ class ObservabilityAPI:
         Returns:
             Paginated response with incidents
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -180,7 +180,7 @@ class ObservabilityAPI:
         severity: str,
         description: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create data incident.
 
@@ -193,7 +193,7 @@ class ObservabilityAPI:
         Returns:
             Created incident
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "dataset_id": dataset_id,
             "severity": severity,
             "description": description,
@@ -206,7 +206,7 @@ class ObservabilityAPI:
         self,
         incident_id: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update data incident.
 

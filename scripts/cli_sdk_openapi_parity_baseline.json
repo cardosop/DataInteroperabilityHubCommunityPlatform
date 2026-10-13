@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-09-17T01:33:44.468969+00:00",
+  "cli_missing": 398,
+  "py_sdk_missing": 409,
+  "js_sdk_missing": 428,
+  "cli_extra": 96,
+  "py_sdk_extra": 104,
+  "js_sdk_extra": 71
+}

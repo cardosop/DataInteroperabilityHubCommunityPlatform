@@ -1,0 +1,144 @@
+{
+  "PENDING": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "PENDING" }
+  },
+  "QUEUED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "QUEUED" }
+  },
+  "RUNNING": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "RUNNING" }
+  },
+  "TERMINATING": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "TERMINATING" }
+  },
+  "WAITING_FOR_RETRY": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "WAITING_FOR_RETRY" }
+  },
+  "BLOCKED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "BLOCKED" }
+  },
+  "INTERNAL_ERROR": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "INTERNAL_ERROR",
+      "result_state": "FAILED",
+      "state_message": "Internal error in the jobs service"
+    },
+    "run_duration": 1000,
+    "cluster_spec": { "num_workers": 1 }
+  },
+  "SKIPPED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "SKIPPED" },
+    "run_duration": 0,
+    "cluster_spec": { "num_workers": 1 }
+  },
+  "TERMINATED_SUCCESS": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": { "life_cycle_state": "TERMINATED", "result_state": "SUCCESS" },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_SUCCESS_WITH_FAILURES": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "SUCCESS_WITH_FAILURES"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_FAILED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "FAILED",
+      "state_message": "Task etl failed: OOM"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_TIMEDOUT": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "TIMEDOUT",
+      "state_message": "Run exceeded the timeout"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_MAXIMUM_CONCURRENT_RUNS_REACHED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "MAXIMUM_CONCURRENT_RUNS_REACHED",
+      "state_message": "Maximum concurrent runs reached"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_UPSTREAM_FAILED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "UPSTREAM_FAILED",
+      "state_message": "Upstream task upstream-etl failed"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_CANCELED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "CANCELED",
+      "state_message": "Run canceled by user"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_UPSTREAM_CANCELED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "UPSTREAM_CANCELED",
+      "state_message": "Upstream task upstream-etl canceled"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "TERMINATED_EXCLUDED": {
+    "job_id": "job-matrix",
+    "run_id": 9101,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "EXCLUDED",
+      "state_message": "Run excluded by the queueing policy"
+    },
+    "run_duration": 60000,
+    "cluster_spec": { "num_workers": 2 }
+  }
+}

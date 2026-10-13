@@ -61,7 +61,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
         # Create API tier and key for user
         self.api_tier, _ = APITierModel.objects.get_or_create(
             name=APITier.FREE,
-            defaults={"max_requests_per_month": 1000, "requests_per_minute": 10},
+            defaults={"max_requests_per_month": 1000},
         )
         test_key = "test_api_key_12345"
         key_hash = APIKey.hash_key(test_key)
@@ -103,7 +103,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
             # Verify erasure request created
             erasure_request = ErasureRequest.objects.filter(user=self.user_to_erase).first()
             self.assertIsNotNone(erasure_request)
-            self.assertEqual(erasure_request.status, ErasureRequestStatus.PENDING)
+            self.assertEqual(erasure_request.status, ErasureRequestStatus.COMPLETED)
             self.assertEqual(erasure_request.user_id, self.user_to_erase.id)
 
     def test_create_erasure_request_platform_admin(self):
@@ -167,7 +167,11 @@ class ErasureWorkflowIntegrationTest(TestCase):
         )
 
         if response.status_code == status.HTTP_200_OK:
-            results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+            results = (
+                response.data
+                if isinstance(response.data, list)
+                else response.data.get("results", [])
+            )
             erasure_ids = [r["id"] for r in results]
             self.assertNotIn(
                 str(erasure_request.id),

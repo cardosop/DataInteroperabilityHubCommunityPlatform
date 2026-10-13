@@ -33,7 +33,7 @@ class Command(BaseCommand):
             help="Number of events to delete per batch.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         batch_size = options["batch_size"]
 

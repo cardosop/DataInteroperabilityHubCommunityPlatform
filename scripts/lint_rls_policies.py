@@ -86,7 +86,7 @@ def _extract_meta_flag(meta_cls: ast.ClassDef, flag_name: str) -> bool | None:
                 if isinstance(target, ast.Name) and target.id == flag_name:
                     try:
                         value = ast.literal_eval(stmt.value)
-                    except Exception:
+                    except (ValueError, TypeError, SyntaxError):
                         return None
                     if isinstance(value, bool):
                         return value
@@ -101,7 +101,7 @@ def _extract_meta_db_table(meta_cls: ast.ClassDef) -> str | None:
                 if isinstance(target, ast.Name) and target.id == "db_table":
                     try:
                         value = ast.literal_eval(stmt.value)
-                    except Exception:
+                    except (ValueError, TypeError, SyntaxError):
                         return None
                     if isinstance(value, str):
                         return value
@@ -123,18 +123,24 @@ def _call_is_tenant_fk(call: ast.Call) -> bool:
         first = call.args[0]
         if isinstance(first, ast.Name) and first.id == "Tenant":
             return True
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            if first.value in {"Tenant", "tenants.Tenant"} or first.value.endswith(".Tenant"):
-                return True
+        if (
+            isinstance(first, ast.Constant)
+            and isinstance(first.value, str)
+            and (first.value in {"Tenant", "tenants.Tenant"} or first.value.endswith(".Tenant"))
+        ):
+            return True
 
     for keyword in call.keywords:
         if keyword.arg == "to":
             value = keyword.value
             if isinstance(value, ast.Name) and value.id == "Tenant":
                 return True
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                if value.value in {"Tenant", "tenants.Tenant"} or value.value.endswith(".Tenant"):
-                    return True
+            if (
+                isinstance(value, ast.Constant)
+                and isinstance(value.value, str)
+                and (value.value in {"Tenant", "tenants.Tenant"} or value.value.endswith(".Tenant"))
+            ):
+                return True
 
     return False
 
@@ -179,9 +185,12 @@ def _tenant_models_from_source(
 
         has_tenant_fk = False
         for stmt in node.body:
-            if isinstance(stmt, ast.Assign) or isinstance(stmt, ast.AnnAssign):
-                if isinstance(stmt.value, ast.Call) and _call_is_tenant_fk(stmt.value):
-                    has_tenant_fk = True
+            if (
+                isinstance(stmt, (ast.Assign, ast.AnnAssign))
+                and isinstance(stmt.value, ast.Call)
+                and _call_is_tenant_fk(stmt.value)
+            ):
+                has_tenant_fk = True
             if has_tenant_fk:
                 break
 
@@ -204,11 +213,11 @@ def _parse_allowlist(allowlist_path: Path) -> set[str]:
     if payload is None:
         return set()
     if not isinstance(payload, dict):
-        raise RuntimeError("Allowlist file must contain a top-level mapping.")
+        raise TypeError("Allowlist file must contain a top-level mapping.")
 
     entries = payload.get("tables", [])
     if not isinstance(entries, list):
-        raise RuntimeError("Allowlist key 'tables' must be a list.")
+        raise TypeError("Allowlist key 'tables' must be a list.")
 
     allowed_tables: set[str] = set()
     for item in entries:
@@ -243,10 +252,43 @@ def _policy_matches_table(sql_text: str, table_name: str) -> bool:
             flags=re.IGNORECASE,
         ),
     ]
+    # Phase P.9 — resolve the f-string table bindings to their literal
+    # values. The previous check only recognized the SCALAR form
+    # ``t = "table"``; the house RLS pattern (semantic/0019, baas/0010,
+    # marketplace/0030) binds names inside a LIST LITERAL and interpolates
+    # via ``ON {t}`` where ``t`` is bound by a for-loop / generator over
+    # that list — the table name never appears in either accepted shape,
+    # so fully-correct migrations were false-FAILed.
+    name_to_tables: dict[str, set[str]] = {}
+    for match in re.finditer(r"(?m)^\s*(\w+)\s*=\s*\[([^\]]*)\]", normalized_sql_text):
+        tables = {t.lower() for t in re.findall(r'["\']([^"\']+)["\']', match.group(2))}
+        name_to_tables[match.group(1)] = tables
+    for match in re.finditer(r"\bfor\s+(\w+)\s+in\s+(\w+)\b", normalized_sql_text):
+        target, iterable = match.group(1), match.group(2)
+        if iterable in name_to_tables:
+            name_to_tables[target] = name_to_tables[iterable]
+
+    def _tables_bound_to(var_name: str) -> set[str]:
+        return name_to_tables.get(var_name, set())
+
     for statement_match in statement_pattern.finditer(normalized_sql_text):
         statement = statement_match.group(0)
         if any(pattern.search(statement) for pattern in target_patterns):
             return True
+        # f-string form (RunPython style): ``CREATE POLICY ... ON {t}``
+        # where the same file binds the literal table name to ``t`` —
+        # either as a scalar or through a list literal + loop variable.
+        var_match = re.search(r"\bon\s+\{(?P<var>\w+)\}", statement, flags=re.IGNORECASE)
+        if var_match:
+            var_name = var_match.group("var")
+            if table_name.lower() in _tables_bound_to(var_name):
+                return True
+            if re.search(
+                rf"\b{re.escape(var_name)}\s*=\s*[\"']{table_pattern}[\"']",
+                normalized_sql_text,
+                flags=re.IGNORECASE,
+            ):
+                return True
     return False
 
 
@@ -305,7 +347,13 @@ def lint_rls_policy_pairing(
         current_source = current_path.read_text(encoding="utf-8")
         base_source = _file_at_ref(repo_root, merge_base, model_path)
         current_models = _tenant_models_from_source(current_source, app_label, model_path)
-        base_models = _tenant_models_from_source(base_source, app_label, model_path)
+        try:
+            base_models = _tenant_models_from_source(base_source, app_label, model_path)
+        except SyntaxError:
+            # The base snapshot can hold fragment-style modules (method-only
+            # files that are concatenated into a class body at import time)
+            # which never parsed standalone; they carry no model definitions.
+            base_models = {}
 
         for model_name, current_model in current_models.items():
             if model_name not in base_models:

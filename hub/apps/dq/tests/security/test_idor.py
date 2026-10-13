@@ -33,10 +33,9 @@ authorization properties (where applicable):
    here as a deliberate change.
 
 > **Note on the spec's `/quality/root-cause-analysis/`**: the spec
-> uses hyphens but the actual `@action(url_path=...)` is
-> underscore (`root_cause_analysis`). The tests target the
-> underscore form — same path the spec amendment in 240.3.E.2
-> already aligned to.
+> uses hyphens; the deprecated alias route was renamed to the
+> kebab-case form during the Phase 313 hardening round, and the
+> tests target the canonical kebab path.
 
 Real Django ORM rows + real DRF `APIClient`. No mocks. The
 external dq-service is NOT exercised — endpoints under test are
@@ -664,7 +663,9 @@ class DQQualityScorecardsIDORTests(_DQIDORTestBase):
 
 
 class DQQualityRootCauseIDORTests(_DQIDORTestBase):
-    URL = "/api/v1/quality/root_cause_analysis/"
+    # kebab-case canonical path (the snake_case alias was renamed per the
+    # URL standards gate in the Phase 313 hardening round).
+    URL = "/api/v1/quality/root-cause-analysis/"
 
     def test_no_auth_returns_401(self):
         response = self.client.get(self.URL)
@@ -722,7 +723,7 @@ class DQEndpointsAuthenticationContractTests(_DQIDORTestBase):
         "/api/v1/quality/anomalies/",
         "/api/v1/quality/trends/",
         "/api/v1/quality/scorecards/",
-        "/api/v1/quality/root_cause_analysis/",
+        "/api/v1/quality/root-cause-analysis/",
     )
 
     def test_every_endpoint_requires_authentication(self):
@@ -732,7 +733,8 @@ class DQEndpointsAuthenticationContractTests(_DQIDORTestBase):
 
         # Probe each spec endpoint; ``self.dq_run_b.id`` is just a
         # syntactically-valid UUID for the detail / results paths.
-        urls = list(self.SPEC_ENDPOINTS) + [
+        urls = [
+            *list(self.SPEC_ENDPOINTS),
             f"/api/v1/dq/runs/{self.dq_run_b.id}/",
             f"/api/v1/dq/runs/{self.dq_run_b.id}/results/",
         ]

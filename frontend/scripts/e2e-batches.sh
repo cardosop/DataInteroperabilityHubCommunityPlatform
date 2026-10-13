@@ -137,6 +137,9 @@ case "${1:-}" in
     # phase2–phase7 removed: superseded by journey specs in batches 3–6.
     # They remain on disk (run manually via batch 9) until deletion sign-off.
     # Reduce workers to 2: ~220 tests × 3 projects; same OOM risk as batch5 at 4 workers
+    # The file-virus-scan spec (e2e/features) is opt-in: the test stack now
+    # provisions clamav-test (profile) + CLAMAV_ENABLED=true, so opt batch 7 in.
+    export RUN_FILE_VIRUS_SCAN_E2E=1
     run_batch 7 "features, phase7.5, phase8, governance, scheduled" \
       --workers=1 \
       e2e/features/ \

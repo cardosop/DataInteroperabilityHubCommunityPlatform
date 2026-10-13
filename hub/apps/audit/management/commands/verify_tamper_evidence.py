@@ -28,7 +28,7 @@ class Command(BaseCommand):
             help="Verify a specific Merkle root by ID.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         since = options["since"]
         root_id = options.get("merkle_root_id")
 

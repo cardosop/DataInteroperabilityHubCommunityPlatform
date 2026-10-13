@@ -56,10 +56,10 @@ def _get_connector_factory_for_credentials():
             ),
         )
         from connectors.factory import SourceConnectorFactory
-
-        return SourceConnectorFactory
     except ImportError:
         return None
+    else:
+        return SourceConnectorFactory
 
 
 def _sync_deployment_via_prefect_integration_service(
@@ -105,7 +105,6 @@ def _sync_deployment_via_prefect_integration_service(
         )
         scheduled_ingestion.deployment_sync_status = "FAILED"
         scheduled_ingestion.save(update_fields=["deployment_sync_status"])
-        return False
     except Exception as e:
         logger.warning(
             "Prefect integration service sync error for scheduled ingestion %s: %s",
@@ -115,6 +114,8 @@ def _sync_deployment_via_prefect_integration_service(
         )
         scheduled_ingestion.deployment_sync_status = "FAILED"
         scheduled_ingestion.save(update_fields=["deployment_sync_status"])
+        return False
+    else:
         return False
 
 
@@ -159,7 +160,6 @@ def _trigger_deployment_via_prefect_integration_service(
             resp.status_code,
             error_msg,
         )
-        return False, None, error_msg
     except Exception as e:
         logger.warning(
             "Prefect integration service trigger error for scheduled ingestion %s: %s",
@@ -168,6 +168,8 @@ def _trigger_deployment_via_prefect_integration_service(
             exc_info=True,
         )
         return False, None, str(e)
+    else:
+        return False, None, error_msg
 
 
 class ScheduledIngestionViewSet(viewsets.ModelViewSet):
@@ -178,7 +180,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = ScheduledIngestionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "id"
 
     def get_queryset(self):
@@ -201,6 +203,14 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
 
+        # Filter by asset if provided — the dataset → schedule lookup
+        # surface (the DatasetScheduleEditModal's load-bearing filter;
+        # without it a dataset-scoped modal would list every schedule
+        # in the tenant).
+        asset_filter = self.request.query_params.get("asset_id")
+        if asset_filter:
+            queryset = queryset.filter(asset_id=asset_filter)
+
         return queryset
 
     def get_serializer_class(self):
@@ -209,7 +219,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
             return ScheduledIngestionCreateSerializer
         return ScheduledIngestionSerializer
 
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """Create scheduled ingestion via service (validates via ScheduledIngestionBusinessRules)."""
         # Fail-fast: check plan limit BEFORE expensive serializer validation
         # (connection testing). Avoids wasted round-trips to S3/external services
@@ -376,7 +386,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         old_status = scheduled_ingestion.status
 
         # Use service layer for update (Phase 24.7.1)
-        tenant_id, tenant = get_request_tenant(self.request)
+        _tenant_id, tenant = get_request_tenant(self.request)
         if not tenant:
             from rest_framework.exceptions import ValidationError
 
@@ -401,7 +411,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                     **update_data,
                 )
             except ServiceValidationError as e:
-                raise ValidationError(str(e))
+                raise ValidationError(str(e)) from e
 
             # Sync with Prefect if deployment exists
             # ====================================================================
@@ -496,7 +506,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
             )
         return response
 
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Phase 25.9.1 — Ordered delete: remove Prefect deployment *before* DB record.
 
@@ -652,6 +662,44 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
         parameters = serializer.validated_data.get("parameters", {})
 
+        # 6.2 — the dlt dispatch spine: a dlt-flagged tenant executes the
+        # canonical entrypoint (the hub performs the read). b7 #18 — the
+        # execution is ASYNC: the pipeline runs on the RQ worker via
+        # hub.apps.scheduled_ingestion.tasks.execute_scheduled_ingestion_run.
+        # The old synchronous ``execute_ingestion_run`` inside the request
+        # held the trigger response open for the ENTIRE pipeline duration —
+        # the E2E's 90s waitForResponse budget exhausted all 3 attempts and
+        # burned the whole 300s test timeout on a request that never
+        # answered. The trigger now returns run_id immediately with the run
+        # PENDING; the worker finalizes COMPLETED/FAILED.
+        if getattr(scheduled_ingestion.tenant, "data_movement_enabled", False):
+            from hub.apps.scheduled_ingestion.tasks import (
+                execute_scheduled_ingestion_run,
+            )
+
+            run = ScheduledIngestionRun.objects.create(
+                scheduled_ingestion=scheduled_ingestion,
+                status=ScheduledIngestionRunStatus.PENDING,
+                started_at=timezone.now(),
+            )
+            transaction.on_commit(
+                lambda: execute_scheduled_ingestion_run.delay(
+                    str(run.id), str(scheduled_ingestion.tenant_id)
+                )
+            )
+            return Response(
+                {
+                    "run_id": str(run.id),
+                    "run_status": run.status,
+                    "files_found": 0,
+                    "files_processed": 0,
+                    "files_failed": 0,
+                    "datasets_created": 0,
+                    "error_message": None,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         try:
             # Trigger deployment via prefect-integration-service HTTP API
             # This avoids requiring prefect library in api-service
@@ -785,7 +833,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         responses={200: ScheduledIngestionRunSerializer(many=True)},
     )
     @action(detail=True, methods=["get"])
-    def runs(self, request, id=None):
+    def runs(self, _request, id=None):
         """
         List runs for a scheduled ingestion.
         """
@@ -1088,6 +1136,9 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
         start_time = time.time()
 
+        def timeout_handler(_signum, _frame):
+            raise TimeoutError("Connection test timed out after 30 seconds")
+
         try:
             # Get source config with credentials
             source_config = scheduled_ingestion.get_source_config() or {}
@@ -1110,9 +1161,6 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
             # Test connection with timeout (30 seconds)
             import signal
-
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Connection test timed out after 30 seconds")
 
             # Set timeout (Unix only)
             if hasattr(signal, "SIGALRM"):
@@ -1216,7 +1264,7 @@ class ScheduledIngestionRunViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = ScheduledIngestionRunSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "id"
 
     def get_queryset(self):

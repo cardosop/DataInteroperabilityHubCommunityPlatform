@@ -62,10 +62,10 @@ class RetryJitterTest(TestCase):
     def test_jitter_within_bounds(self, mock_now):
         """Run 100 samples, assert all jittered next_retry_at is within [0.75x, 1.25x] range."""
         base_interval = 30  # seconds (index 2 of default retry_intervals=[1,5,30,300,1800])
-        mock_now.return_value = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        mock_now.return_value = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
 
         for _ in range(100):
-            webhook, delivery = _make_webhook_and_delivery()
+            _webhook, delivery = _make_webhook_and_delivery()
             delivery.status = DeliveryStatus.FAILED
             delivery.attempt_number = 2
             delivery.save(update_fields=["status", "attempt_number"])
@@ -87,7 +87,7 @@ class RetryJitterTest(TestCase):
     @patch.object(timezone, "now")
     def test_schedule_retry_uses_custom_webhook_intervals(self, mock_now):
         """_schedule_retry uses webhook.retry_intervals when set."""
-        mock_now.return_value = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        mock_now.return_value = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
 
         webhook, delivery = _make_webhook_and_delivery()
         # Custom retry_intervals must match max_retries (5) per model validation.
@@ -105,8 +105,8 @@ class RetryJitterTest(TestCase):
         self.assertEqual(delivery.attempt_number, 1)
         # base_interval=20, jittered in [15, 30]
         delta = (delivery.next_retry_at - mock_now.return_value).total_seconds()
-        self.assertGreaterEqual(delta, 15)   # 20 * 0.75
-        self.assertLessEqual(delta, 30)      # 20 * 1.25
+        self.assertGreaterEqual(delta, 15)  # 20 * 0.75
+        self.assertLessEqual(delta, 30)  # 20 * 1.25
 
     def test_default_retry_intervals(self):
         """Default retry intervals are [1, 5, 30, 300, 1800]."""
@@ -121,7 +121,7 @@ class RetryJitterTest(TestCase):
 
     def test_schedule_retry_increments_attempt_number(self):
         """_schedule_retry increments attempt_number on the delivery."""
-        webhook, delivery = _make_webhook_and_delivery()
+        _webhook, delivery = _make_webhook_and_delivery()
         delivery.attempt_number = 0
         delivery.save(update_fields=["attempt_number"])
 
@@ -132,7 +132,7 @@ class RetryJitterTest(TestCase):
 
     def test_schedule_retry_sets_next_retry_at(self):
         """_schedule_retry always sets a non-null next_retry_at (when not DEAD_LETTER)."""
-        webhook, delivery = _make_webhook_and_delivery()
+        _webhook, delivery = _make_webhook_and_delivery()
         delivery.attempt_number = 1
         delivery.save(update_fields=["attempt_number"])
 
@@ -144,7 +144,7 @@ class RetryJitterTest(TestCase):
 
     def test_schedule_retry_dead_letter_when_max_retries_exceeded(self):
         """When attempt_number >= max_retries, delivery is marked DEAD_LETTER."""
-        webhook, delivery = _make_webhook_and_delivery()
+        _webhook, delivery = _make_webhook_and_delivery()
         delivery.attempt_number = 5  # equal to max_retries
         delivery.save(update_fields=["attempt_number"])
 

@@ -63,7 +63,6 @@ class FileUploadTest(TestCase):
         # 201=success; 400=validation; 503=S3 unavailable; 500=internal (see module docstring)
         self.assertIn(response.status_code, [201, 400, 500, 503])  # noqa: broad-status-codes
 
-
         if response.status_code == 201:
             self.assertIn("file_id", response.data or {})
 
@@ -82,7 +81,6 @@ class FileUploadTest(TestCase):
 
         # 201=success; 400=validation; 503=S3 unavailable; 500=internal
         self.assertIn(response.status_code, [201, 400, 500, 503])  # noqa: broad-status-codes
-
 
 
 class FileDownloadTest(TestCase):
@@ -117,7 +115,6 @@ class FileDownloadTest(TestCase):
 
         # 200=success; 404=not found (tenant isolation); 503=S3 unavailable; 500=internal
         self.assertIn(response.status_code, [200, 403, 404, 500, 503])  # noqa: broad-status-codes
-
 
     def test_file_download_nonexistent(self):
         """Test file download for nonexistent file — single expected 404."""
@@ -194,6 +191,7 @@ class FileStorageIntegrationTest(TestCase):
             self.assertIsNotNone(client)
         except Exception as exc:
             import logging
+
             logging.getLogger(__name__).warning(
                 "S3StorageClient init failed (credentials/env): %s", exc
             )

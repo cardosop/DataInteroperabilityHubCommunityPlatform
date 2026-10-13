@@ -10,21 +10,21 @@ Re-enqueues itself until the remote job reaches a terminal state or the
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import timedelta
-from typing import TypeVar
+from typing import TYPE_CHECKING
 
 from django.utils import timezone
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 logger = logging.getLogger(__name__)
 
-_T = TypeVar("_T")
 
-
-def _run_with_tenant_context(
+def _run_with_tenant_context[T](
     tenant_id: str | None,
-    func: Callable[[], _T],
-) -> _T:
+    func: Callable[[], T],
+) -> T:
     """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
     is provided, or directly when it is ``None``.
 
@@ -73,7 +73,9 @@ def poll_compliance_job(run_id, tenant_id: str | None = None) -> None:
     # --- Load run with related objects to avoid N+1 in Model.clean() ----
     def _load_run():
         try:
-            return ComplianceRun.objects.select_related("job", "asset", "dataset", "file").get(id=run_id)
+            return ComplianceRun.objects.select_related("job", "asset", "dataset", "file").get(
+                id=run_id
+            )
         except ComplianceRun.DoesNotExist:
             logger.warning(
                 "poll_compliance_job: run not found",
@@ -151,7 +153,7 @@ def poll_compliance_job(run_id, tenant_id: str | None = None) -> None:
     # --- Poll remote job --------------------------------------------------
     client = ComplianceServiceClient()
     try:
-        result = client.get_scan_result(job_id)
+        result = client.get_scan_result(job_id, tenant_id=tenant_id)
     except Exception as exc:
         logger.warning(
             "poll_compliance_job: client error, will retry",

@@ -7,7 +7,8 @@ Databricks Marketplace.
 
 Features:
 - Circuit breaker protection
-- Retry logic with exponential backoff
+- Retry logic with exponential backoff (delegated to the shared
+  DatabricksApiClient since task 1.7 — public behavior unchanged)
 - Distributed tracing
 - Harvest-only operations (PULL direction)
 
@@ -26,9 +27,11 @@ from django.conf import settings
 from hub.apps.assets.models import AssetSourceType
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
+    CircuitBreakerError,
     get_redis_client,
 )
 from hub.apps.core.services.base import NotFoundError
+from hub.apps.databricks_admin.client import DatabricksApiClient, DatabricksApiError
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
@@ -116,8 +119,60 @@ class DatabricksConnector(DataMarketplaceConnector):
             redis_client=get_redis_client(),
         )
 
+        # Task 1.7 — the retry/backoff/status-classification machinery is
+        # delegated to the shared control-plane client (transport mode).
+        # The delegate rides THIS connector's httpx client and backoff
+        # policy, and the connector's own breaker keeps ownership of
+        # failure accounting (use_breaker=False), so the public behavior
+        # is unchanged.
+        self._api_client = self._build_api_client()
+
         # Track authentication state
         self._authenticated = False
+
+    def _build_api_client(self) -> DatabricksApiClient:
+        """Build the delegate wired to this connector's transport + policy."""
+        return DatabricksApiClient(
+            base_url=self.host,
+            credential_config={"token": self.token},
+            auth_mode="PAT",
+            client=self.client,
+            use_breaker=False,
+            # The client's max_retries counts TOTAL attempts; the
+            # connector's counts RETRIES after the first attempt
+            # (range(max_retries + 1)) — +1 preserves the 3-attempt
+            # public behavior.
+            max_retries=self.max_retries + 1,
+            backoff_waiter=self._backoff_wait,
+        )
+
+    def _backoff_wait(self, attempt: int) -> None:
+        """Backoff policy the delegate calls between retry attempts.
+
+        Keeps the connector's documented deterministic exponential backoff
+        (``backoff_factor * 2**attempt``) rather than the client's jittered
+        default — the public behavior before the task 1.7 delegation.
+        """
+        delay = self.backoff_factor * (2**attempt)
+        time.sleep(delay)
+
+    @property
+    def max_retries(self) -> int:
+        """Retries after the first attempt (public config attribute).
+
+        A property (not a plain attribute) because the pre-1.7 retry loop
+        read this PER CALL: a runtime mutation must change the retry
+        budget, so the setter re-wires the delegate (which snapshots the
+        budget at build time). ``backoff_factor`` needs no such wiring —
+        the injected waiter reads it live per attempt.
+        """
+        return self._max_retries
+
+    @max_retries.setter
+    def max_retries(self, value: int) -> None:
+        self._max_retries = value
+        if getattr(self, "_api_client", None) is not None:
+            self._api_client = self._build_api_client()
 
     def _is_transient_error(self, status_code: int) -> bool:
         """
@@ -174,10 +229,14 @@ class DatabricksConnector(DataMarketplaceConnector):
             return f"HTTP {response.status_code}"
 
     def _map_databricks_error(
-        self, error: httpx.HTTPStatusError, context: str = "", operation: str = ""
+        self, error: httpx.HTTPStatusError, context: str = "", _operation: str = ""
     ) -> Exception:
         """
         Map Databricks API error to appropriate connector exception.
+
+        Retained for direct-call compatibility; the delegated request path
+        (task 1.7) maps classified ``DatabricksApiError``s through
+        ``_map_client_error`` instead.
 
         Args:
             error: httpx.HTTPStatusError from Databricks API
@@ -291,10 +350,13 @@ class DatabricksConnector(DataMarketplaceConnector):
         """
         Make HTTP request with retry logic and circuit breaker protection.
 
-        Implements retry logic with exponential backoff for transient failures:
+        The retry/backoff/status-classification machinery is delegated to
+        ``DatabricksApiClient`` (task 1.7) — this method keeps the public
+        contract unchanged:
         - Retries on Databricks API errors with status 429 (Too Many Requests), 500, 502, 503, 504 (server errors)
         - Don't retry on 400, 401, 403, 404 (client errors)
         - Uses exponential backoff: delay = backoff_factor * (2 ** attempt)
+        - The connector's own circuit breaker wraps the whole call
 
         Args:
             method: HTTP method (GET, POST, PUT, DELETE)
@@ -326,119 +388,76 @@ class DatabricksConnector(DataMarketplaceConnector):
         kwargs["headers"].update(self._get_default_headers())
 
         # Extract operation name from endpoint for logging
-        operation = endpoint.split("/")[-1] if endpoint else "unknown"
+        operation = endpoint.rsplit("/", maxsplit=1)[-1] if endpoint else "unknown"
 
-        def execute_request() -> httpx.Response:
-            """Execute HTTP request with retry logic."""
-            last_exception = None
-
-            for attempt in range(self.max_retries + 1):
-                try:
-                    response = self.client.request(method, endpoint, **kwargs)
-                    response.raise_for_status()
-                    # Log success on retry
-                    if attempt > 0:
-                        self._log_with_context(
-                            "info",
-                            f"Databricks API request succeeded after {attempt} retries",
-                            operation=operation,
-                            attempt=attempt + 1,
-                            max_retries=self.max_retries + 1,
-                        )
-                    return response
-                except httpx.HTTPStatusError as e:
-                    status_code = e.response.status_code
-                    error_message = self._extract_error_message(e.response)
-
-                    # Check if error is transient and should be retried
-                    if self._is_transient_error(status_code) and attempt < self.max_retries:
-                        delay = self.backoff_factor * (2**attempt)
-                        self._log_with_context(
-                            "warning",
-                            f"Databricks API returned {status_code}. Retrying in {delay}s...",
-                            operation=operation,
-                            error_code=status_code,
-                            error_message=error_message,
-                            attempt=attempt + 1,
-                            max_retries=self.max_retries + 1,
-                            delay=delay,
-                        )
-                        time.sleep(delay)
-                        last_exception = e
-                        continue
-
-                    # Non-transient error or max retries exceeded - map and raise
-                    mapped_error = self._map_databricks_error(e, context="", operation=operation)
-                    # Log error with structured context
-                    self._log_with_context(
-                        "error",
-                        f"Databricks API error: {error_message}",
-                        operation=operation,
-                        error_code=status_code,
-                        error_message=error_message,
-                    )
-                    raise mapped_error
-                except httpx.RequestError as e:
-                    # Retry on network errors
-                    if attempt < self.max_retries:
-                        delay = self.backoff_factor * (2**attempt)
-                        self._log_with_context(
-                            "warning",
-                            f"Network error connecting to Databricks. Retrying in {delay}s...",
-                            operation=operation,
-                            error_message=str(e),
-                            attempt=attempt + 1,
-                            max_retries=self.max_retries + 1,
-                            delay=delay,
-                        )
-                        time.sleep(delay)
-                        last_exception = e
-                        continue
-                    # Log error and raise
-                    self._log_with_context(
-                        "error",
-                        f"Network error connecting to Databricks: {e}",
-                        operation=operation,
-                        error_message=str(e),
-                    )
-                    raise ConnectionError(f"Network error connecting to Databricks: {e}") from e
-
-            # Max retries exceeded
-            if last_exception:
-                self._log_with_context(
-                    "error",
-                    "Max retries exceeded for Databricks API request",
-                    operation=operation,
-                    attempt=self.max_retries + 1,
-                    max_retries=self.max_retries + 1,
-                )
-                raise ConnectionError(
-                    "Max retries exceeded for Databricks API request."
-                ) from last_exception
-            raise ConnectionError("Max retries exceeded for Databricks API request.")
-
-        # Execute with circuit breaker protection
+        # Task 1.7 — the retry/backoff/classification loop is delegated to
+        # the shared DatabricksApiClient; this method keeps the connector's
+        # public contract: its OWN circuit breaker wraps the whole call
+        # (one overall failure per request, not one per internal retry)
+        # and the client's error family maps back onto the connector's
+        # exception surface.
         try:
-            return self._circuit_breaker.call(execute_request)
-        except Exception as e:
-            # Handle circuit breaker open state gracefully
-            if isinstance(e, Exception) and "circuit breaker" in str(e).lower():
-                self._log_with_context(
-                    "error",
-                    f"Circuit breaker is open for Databricks connector: {e}",
-                    operation=operation,
-                )
-                raise ConnectionError(
-                    f"Circuit breaker is open for Databricks connector: {e}"
-                ) from e
-            # Log other errors
+            return self._circuit_breaker.call(
+                lambda: self._api_client.request_path(method, endpoint, **kwargs)
+            )
+        except CircuitBreakerError as exc:
             self._log_with_context(
                 "error",
-                f"Databricks connector request failed: {e}",
+                f"Circuit breaker is open for Databricks connector: {exc}",
                 operation=operation,
-                error_message=str(e),
+            )
+            raise ConnectionError(
+                f"Circuit breaker is open for Databricks connector: {exc}"
+            ) from exc
+        except DatabricksApiError as exc:
+            mapped_error = self._map_client_error(exc, context="")
+            self._log_with_context(
+                "error",
+                f"Databricks API error: {exc}",
+                operation=operation,
+                error_code=exc.status_code,
+                error_message=str(exc),
+            )
+            raise mapped_error from exc
+        except Exception as exc:
+            self._log_with_context(
+                "error",
+                f"Databricks connector request failed: {exc}",
+                operation=operation,
+                error_message=str(exc),
             )
             raise
+
+    def _map_client_error(self, error: DatabricksApiError, context: str = "") -> Exception:
+        """
+        Map a delegated ``DatabricksApiClient`` error onto the connector's
+        public exception contract (the same mapping ``_map_databricks_error``
+        applies to ``httpx.HTTPStatusError``).
+
+        Args:
+            error: Classified client error carrying a status_code
+            context: Additional context string for error messages
+
+        Returns:
+            Mapped exception (NotFoundError, PermissionError, ValueError,
+            ConnectionError)
+        """
+        status_code = error.status_code
+        if error.code == "DATABRICKS_CONNECTION_ERROR":
+            # Transport-level failure after retries — no status code.
+            return ConnectionError(f"{context}Network error connecting to Databricks: {error}")
+        if status_code == 404:
+            return NotFoundError(f"{context}Resource not found in Databricks: {error}")
+        elif status_code == 403:
+            return PermissionError(f"{context}Permission denied: {error}")
+        elif status_code == 400:
+            return ValueError(f"{context}Invalid request: {error}")
+        elif self._is_transient_error(status_code):
+            # Transient errors exhausted the retry budget.
+            return ConnectionError(f"{context}Transient Databricks error ({status_code}): {error}")
+        else:
+            # Other errors (e.g. 401) are connection errors.
+            return ConnectionError(f"{context}Databricks error ({status_code}): {error}")
 
     @property
     def marketplace_type(self) -> MarketplaceType:
@@ -499,18 +518,25 @@ class DatabricksConnector(DataMarketplaceConnector):
             headers=self._get_default_headers(),
             follow_redirects=True,
         )
+        # Re-wire the delegate to the new transport/token (task 1.7).
+        self._api_client = self._build_api_client()
 
         # Test connection using test_connection()
-        try:
+        def _build() -> bool:
             if not self.test_connection():
                 raise ConnectionError("Connection test failed")
             self._authenticated = True
             logger.info(f"Successfully authenticated with Databricks workspace at {self.host}")
             return True
+
+        try:
+            result = _build()
         except Exception as e:
             self._authenticated = False
-            logger.error(f"Databricks authentication failed: {e}")
+            logger.exception("Databricks authentication failed")
             raise ConnectionError(f"Unable to authenticate with Databricks workspace: {e}") from e
+        else:
+            return result
 
     def test_connection(self) -> bool:
         """
@@ -547,19 +573,19 @@ class DatabricksConnector(DataMarketplaceConnector):
                 return False
         except httpx.HTTPStatusError as e:
             self._authenticated = False
-            logger.error(
-                f"Databricks connection test failed with HTTP {e.response.status_code}: {e}"
+            logger.exception(
+                f"Databricks connection test failed with HTTP {e.response.status_code}"
             )
             raise ConnectionError(
                 f"Unable to connect to Databricks workspace: HTTP {e.response.status_code}"
             ) from e
         except httpx.RequestError as e:
             self._authenticated = False
-            logger.error(f"Databricks connection test failed with network error: {e}")
+            logger.exception("Databricks connection test failed with network error")
             raise ConnectionError(f"Unable to connect to Databricks workspace: {e}") from e
         except Exception as e:
             self._authenticated = False
-            logger.error(f"Databricks connection test failed: {e}")
+            logger.exception("Databricks connection test failed")
             raise ConnectionError(f"Unable to connect to Databricks workspace: {e}") from e
 
     # Discovery operations implementation
@@ -620,11 +646,9 @@ class DatabricksConnector(DataMarketplaceConnector):
         created_at = None
         updated_at = None
         if share_data.get("created_at"):
-            try:
-                # Databricks timestamps are in milliseconds
+            # Databricks timestamps are in milliseconds
+            with contextlib.suppress(ValueError, TypeError):
                 created_at = datetime.fromtimestamp(share_data["created_at"] / 1000, tz=UTC)
-            except (ValueError, TypeError):
-                pass
         if share_data.get("updated_at"):
             with contextlib.suppress(ValueError, TypeError):
                 updated_at = datetime.fromtimestamp(share_data["updated_at"] / 1000, tz=UTC)
@@ -725,12 +749,12 @@ class DatabricksConnector(DataMarketplaceConnector):
                     )
                     continue
 
-            return listings
-
         except httpx.HTTPStatusError as e:
             raise ConnectionError(f"Databricks API error: {e}") from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Unable to connect to Databricks workspace: {e}") from e
+        else:
+            return listings
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
         """
@@ -787,10 +811,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                 raise ValueError("listing_id must be a non-empty string")
 
             # First verify share exists
-            try:
-                self._get_share_details(listing_id)
-            except NotFoundError:
-                raise
+            self._get_share_details(listing_id)
 
             resources = []
 
@@ -841,12 +862,26 @@ class DatabricksConnector(DataMarketplaceConnector):
                                             "schema_name": schema.get("name"),
                                         }
                                     )
-                        except Exception as e:
+                        except (
+                            AttributeError,
+                            ConnectionError,
+                            NotFoundError,
+                            PermissionError,
+                            TypeError,
+                            ValueError,
+                        ) as e:
                             logger.debug(
                                 f"Failed to query schemas for catalog '{catalog_name}': {e}"
                             )
                             continue
-                except Exception as e:
+                except (
+                    AttributeError,
+                    ConnectionError,
+                    NotFoundError,
+                    PermissionError,
+                    TypeError,
+                    ValueError,
+                ) as e:
                     logger.warning(f"Failed to query catalogs for share '{listing_id}': {e}")
 
             if not schemas:
@@ -869,12 +904,14 @@ class DatabricksConnector(DataMarketplaceConnector):
                         else:
                             continue
                         resource_id = (
-                            f"{catalog_n}.{schema_n}.{table_n}" if catalog_n
+                            f"{catalog_n}.{schema_n}.{table_n}"
+                            if catalog_n
                             else f"{schema_n}.{table_n}"
                         )
                         resource_url = (
                             f"{self.host}/#unity-catalog/table/{catalog_n}/{schema_n}/{table_n}"
-                            if catalog_n else None
+                            if catalog_n
+                            else None
                         )
                         shared_as = obj.get("shared_as", table_n)
                         resource = MarketplaceResource(
@@ -968,13 +1005,18 @@ class DatabricksConnector(DataMarketplaceConnector):
                         )
                         resources.append(resource)
 
-                except Exception as e:
+                except (
+                    AttributeError,
+                    ConnectionError,
+                    NotFoundError,
+                    PermissionError,
+                    TypeError,
+                    ValueError,
+                ) as e:
                     logger.warning(
                         f"Failed to list tables for schema '{schema_name}' in share '{listing_id}': {e}"
                     )
                     continue
-
-            return resources
 
         except NotFoundError:
             raise
@@ -986,6 +1028,8 @@ class DatabricksConnector(DataMarketplaceConnector):
             raise ConnectionError(f"Failed to list resources for share '{listing_id}': {e}") from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Unable to connect to Databricks workspace: {e}") from e
+        else:
+            return resources
 
     def _extract_odps_metadata(self, share_data: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -1110,7 +1154,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                     ).isoformat()
                 elif isinstance(created_at, str):
                     lifecycle["created"] = created_at
-            except Exception:
+            except (OverflowError, OSError, ValueError):
                 pass
 
         updated_at = share_data.get("updated_at")
@@ -1122,7 +1166,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                     ).isoformat()
                 elif isinstance(updated_at, str):
                     lifecycle["lastUpdated"] = updated_at
-            except Exception:
+            except (OverflowError, OSError, ValueError):
                 pass
 
         if lifecycle:
@@ -1211,13 +1255,14 @@ class DatabricksConnector(DataMarketplaceConnector):
             # to grant access. We'll check if we can access the share directly.
             # If the share is already accessible, we don't need to create a recipient.
             logger.info(f"Share '{share_name}' is accessible (no recipient creation needed)")
-            return {"name": f"{share_name}_recipient", "share_name": share_name, "status": "active"}
 
         except NotFoundError:
             raise
         except Exception as e:
             logger.error(f"Failed to consume share '{share_name}': {e}", exc_info=True)
             raise ConnectionError(f"Unable to consume share '{share_name}': {e}") from e
+        else:
+            return {"name": f"{share_name}_recipient", "share_name": share_name, "status": "active"}
 
     def _create_catalog_from_share(self, share_name: str) -> str:
         """
@@ -1244,7 +1289,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                 if catalog_response.status_code == 200:
                     logger.info(f"Catalog '{catalog_name}' already exists")
                     return catalog_name
-            except Exception:
+            except (ConnectionError, NotFoundError, PermissionError, ValueError):
                 # Catalog doesn't exist, we'll create it
                 pass
 
@@ -1256,11 +1301,12 @@ class DatabricksConnector(DataMarketplaceConnector):
             logger.info(
                 f"Catalog '{catalog_name}' will be created when accessing share '{share_name}'"
             )
-            return catalog_name
 
         except Exception as e:
             logger.error(f"Failed to create catalog from share '{share_name}': {e}", exc_info=True)
             raise ConnectionError(f"Unable to create catalog from share '{share_name}': {e}") from e
+        else:
+            return catalog_name
 
     def _extract_schema_from_table(self, table_full_name: str) -> dict[str, Any]:
         """
@@ -1277,7 +1323,8 @@ class DatabricksConnector(DataMarketplaceConnector):
             NotFoundError: If table not found
             ConnectionError: If unable to connect to Databricks
         """
-        try:
+
+        def _build() -> dict[str, Any]:
             # Parse table name
             parts = table_full_name.split(".")
             if len(parts) != 3:
@@ -1317,6 +1364,8 @@ class DatabricksConnector(DataMarketplaceConnector):
 
             return {"schema": {"fields": fields}}
 
+        try:
+            result = _build()
         except NotFoundError:
             raise
         except httpx.HTTPStatusError as e:
@@ -1334,6 +1383,8 @@ class DatabricksConnector(DataMarketplaceConnector):
             raise ConnectionError(
                 f"Unable to extract schema from table '{table_full_name}': {e}"
             ) from e
+        else:
+            return result
 
     def _map_databricks_type(self, databricks_type: str) -> str:
         """
@@ -1347,50 +1398,48 @@ class DatabricksConnector(DataMarketplaceConnector):
         """
         databricks_type_upper = databricks_type.upper()
 
-        # String types
-        if databricks_type_upper in ["STRING", "VARCHAR", "CHAR", "TEXT", "BINARY"]:
-            return "string"
-
-        # Number types
-        if databricks_type_upper in [
-            "INT",
-            "INTEGER",
-            "BIGINT",
-            "SMALLINT",
-            "TINYINT",
-            "FLOAT",
-            "DOUBLE",
-            "DECIMAL",
-            "NUMERIC",
-            "REAL",
-        ]:
-            return "number"
-
-        # Boolean type
-        if databricks_type_upper == "BOOLEAN":
-            return "boolean"
-
-        # Date/Time types
-        if databricks_type_upper in ["TIMESTAMP", "DATE", "TIMESTAMP_NTZ", "TIMESTAMP_LTZ"]:
-            return "datetime"
+        exact_type_map = {
+            "STRING": "string",
+            "VARCHAR": "string",
+            "CHAR": "string",
+            "TEXT": "string",
+            "BINARY": "string",
+            "INT": "number",
+            "INTEGER": "number",
+            "BIGINT": "number",
+            "SMALLINT": "number",
+            "TINYINT": "number",
+            "FLOAT": "number",
+            "DOUBLE": "number",
+            "DECIMAL": "number",
+            "NUMERIC": "number",
+            "REAL": "number",
+            "BOOLEAN": "boolean",
+            "TIMESTAMP": "datetime",
+            "DATE": "datetime",
+            "TIMESTAMP_NTZ": "datetime",
+            "TIMESTAMP_LTZ": "datetime",
+            "STRUCT": "object",
+            "MAP": "object",
+        }
+        if databricks_type_upper in exact_type_map:
+            return exact_type_map[databricks_type_upper]
 
         # Array type
         if databricks_type_upper.startswith("ARRAY"):
             return "array"
 
-        # Struct/Map types
-        if (
-            databricks_type_upper in ["STRUCT", "MAP"]
-            or databricks_type_upper.startswith("STRUCT")
-            or databricks_type_upper.startswith("MAP")
-        ):
+        # Struct/Map parameterized types
+        if databricks_type_upper.startswith(("STRUCT", "MAP")):
             return "object"
 
         # Default to string
         logger.warning(f"Unknown Databricks type '{databricks_type}', mapping to 'string'")
         return "string"
 
-    def _download_table(self, table_full_name: str, destination_path: str, file_format: str) -> str:
+    def _download_table(
+        self, table_full_name: str, _destination_path: str, _file_format: str
+    ) -> str:
         """
         Download data from a Databricks table to a file.
 
@@ -1408,13 +1457,13 @@ class DatabricksConnector(DataMarketplaceConnector):
             IOError: If unable to write to destination path
         """
 
-        try:
+        def _build() -> str:
             # Parse table name
             parts = table_full_name.split(".")
             if len(parts) != 3:
                 raise ValueError(f"Invalid table name format: {table_full_name}")
 
-            catalog_name, schema_name, table_name = parts
+            _catalog_name, _schema_name, _table_name = parts
 
             # For Databricks, we need to use SQL API to query the table
             # Since we don't have direct SQL execution capability in the connector,
@@ -1438,6 +1487,8 @@ class DatabricksConnector(DataMarketplaceConnector):
                 f"This feature will be enhanced in a future version."
             )
 
+        try:
+            result = _build()
         except NotFoundError:
             raise
         except NotImplementedError:
@@ -1445,6 +1496,8 @@ class DatabricksConnector(DataMarketplaceConnector):
         except Exception as e:
             logger.error(f"Failed to download table '{table_full_name}': {e}", exc_info=True)
             raise ConnectionError(f"Unable to download table '{table_full_name}': {e}") from e
+        else:
+            return result
 
     def download_resource(self, resource_id: str, destination_path: str) -> str:
         """
@@ -1485,7 +1538,8 @@ class DatabricksConnector(DataMarketplaceConnector):
 
         def execute_download() -> str:
             """Execute download with circuit breaker protection."""
-            try:
+
+            def _build() -> str:
                 # Ensure destination directory exists
                 os.makedirs(
                     os.path.dirname(destination_path) if os.path.dirname(destination_path) else ".",
@@ -1521,11 +1575,11 @@ class DatabricksConnector(DataMarketplaceConnector):
                     except NotFoundError:
                         raise NotFoundError(
                             f"Share '{share_name}' not found in Databricks Unity Catalog"
-                        )
+                        ) from None
                     except PermissionError as e:
                         raise PermissionError(
                             f"Permission denied to consume share '{share_name}': {e}"
-                        )
+                        ) from e
 
                     # Step 2: Create catalog from share
                     try:
@@ -1534,7 +1588,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                     except PermissionError as e:
                         raise PermissionError(
                             f"Permission denied to create catalog from share '{share_name}': {e}"
-                        )
+                        ) from e
 
                     # Step 3: List tables in the catalog
                     # Get schemas in the catalog
@@ -1627,6 +1681,8 @@ class DatabricksConnector(DataMarketplaceConnector):
                         f"Invalid resource_id format. Expected share name or 'share.catalog.schema.table', got: {resource_id}"
                     )
 
+            try:
+                result = _build()
             except NotFoundError:
                 raise
             except PermissionError:
@@ -1638,6 +1694,8 @@ class DatabricksConnector(DataMarketplaceConnector):
             except Exception as e:
                 logger.error(f"Failed to download resource '{resource_id}': {e}", exc_info=True)
                 raise ConnectionError(f"Unable to download resource: {e}") from e
+            else:
+                return result
 
         return self._circuit_breaker.call(execute_download)
 

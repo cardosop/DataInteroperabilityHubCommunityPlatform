@@ -5,7 +5,7 @@ Provides secure credential masking and connection testing functionality.
 """
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from django.utils import timezone
 
@@ -23,7 +23,7 @@ class CredentialManager:
     """
 
     # Fields that should be masked in credentials
-    SENSITIVE_FIELDS = [
+    SENSITIVE_FIELDS: ClassVar[list[str]] = [
         "password",
         "secret",
         "secret_key",
@@ -128,6 +128,9 @@ class CredentialManager:
                 "connection_details": {},
             }
 
+        def timeout_handler(_signum, _frame):
+            raise TimeoutError("Connection test timed out after 30 seconds")
+
         try:
             # Import connector factory
             import os
@@ -153,9 +156,6 @@ class CredentialManager:
             # Test connection with timeout (30 seconds)
             import signal
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Connection test timed out after 30 seconds")
-
             # Set timeout (Unix only)
             if hasattr(signal, "SIGALRM"):
                 signal.signal(signal.SIGALRM, timeout_handler)
@@ -170,20 +170,17 @@ class CredentialManager:
                 if hasattr(signal, "SIGALRM"):
                     signal.alarm(0)
 
-                if test_result:
-                    return {
-                        "success": True,
-                        "message": "Connection test successful",
-                        "tested_at": timezone.now().isoformat(),
-                        "connection_details": {"response_time_ms": response_time_ms},
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "message": "Connection test failed - unable to connect to data source",
-                        "tested_at": timezone.now().isoformat(),
-                        "connection_details": {"response_time_ms": response_time_ms},
-                    }
+                message = (
+                    "Connection test successful"
+                    if test_result
+                    else "Connection test failed - unable to connect to data source"
+                )
+                return {
+                    "success": bool(test_result),
+                    "message": message,
+                    "tested_at": timezone.now().isoformat(),
+                    "connection_details": {"response_time_ms": response_time_ms},
+                }
 
             except TimeoutError:
                 if hasattr(signal, "SIGALRM"):

@@ -27,10 +27,12 @@
  * torn down deterministically at test exit.
  */
 
+import { createHash } from 'node:crypto';
 import { request, type APIRequestContext } from '@playwright/test';
 import { expect } from '@playwright/test';
 import type { TestUser } from '../setup/create-test-user';
 import type { CleanupRegistry } from './test-data-cleanup';
+import { e2eTestHeaders } from './e2e-token';
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 const API_BASE_URL =
@@ -110,6 +112,15 @@ export interface FailClosedTenantFixture {
     [k: string]: unknown;
   }>;
 
+  /**
+   * Fetch audit rows for this tenant AS THE PLATFORM ADMIN — the audit
+   * list enforces RBAC and DATA_PROVIDER users cannot read it (403).
+   */
+  fetchAuditEvents(criteria: {
+    action: string;
+    detailsContains?: string;
+  }): Promise<Array<Record<string, unknown>>>;
+
   /** Polls `/api/v1/workflows/runs/{id}/` until terminal state. */
   pollWorkflowRunUntilTerminal(
     runId: string,
@@ -141,9 +152,10 @@ export interface FailClosedTenantFixture {
  *
  * Implementation notes:
  *
- *   * Creates the tenant via the platform-admin internal API (NOT the
- *     public POST /tenants/ endpoint, which has more restrictive
- *     validation). This requires `E2E_PLATFORM_ADMIN_TOKEN` env var.
+ *   * Creates the tenant via POST /api/v1/tenants/ (IsPlatformAdmin) —
+ *     the legacy /platform/tenants/ viewset became READ-ONLY after the
+ *     account-plane handoff. The platform-admin token is self-provisioned
+ *     when E2E_PLATFORM_ADMIN_TOKEN is not set (local batch runs).
  *
  *   * Creates the DPO user via `setup/create-test-user.ts`, scoped to
  *     the new tenant.
@@ -156,28 +168,59 @@ export interface FailClosedTenantFixture {
 export async function seedFailClosedTenant(
   opts: SeedFailClosedTenantOpts,
 ): Promise<FailClosedTenantFixture> {
-  const platformAdminToken = process.env.E2E_PLATFORM_ADMIN_TOKEN;
+  // E2E_PLATFORM_ADMIN_TOKEN is the CI override; the local batch runner does
+  // not set it. Self-provision by logging in as the seeded platform admin
+  // persona (e2e_platform@example.com — created by ensure_e2e_user_roles,
+  // which every batch run executes before specs start). This keeps the
+  // fixture runnable under `make test-frontend-e2e-batch3` instead of
+  // hard-failing on a missing env var.
+  let platformAdminToken = process.env.E2E_PLATFORM_ADMIN_TOKEN;
+  if (!platformAdminToken) {
+    const loginRes = await fetch(`${API_BASE_URL}/auth/login/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'e2e_platform@example.com',
+        password: 'TestPass123',
+      }),
+    });
+    if (!loginRes.ok) {
+      throw new Error(
+        'seedFailClosedTenant: E2E_PLATFORM_ADMIN_TOKEN is not set and login as ' +
+          `the seeded platform admin failed (${loginRes.status}). Seed persona users ` +
+          'first or set E2E_PLATFORM_ADMIN_TOKEN.'
+      );
+    }
+    const loginData = (await loginRes.json()) as { access_token?: string };
+    platformAdminToken = loginData.access_token ?? '';
+  }
   if (!platformAdminToken) {
     throw new Error(
-      'seedFailClosedTenant requires E2E_PLATFORM_ADMIN_TOKEN to be set; ' +
-        'this fixture creates an isolated tenant via the platform-admin API.',
+      'seedFailClosedTenant: platform-admin login succeeded but returned no access_token. ' +
+        'Set E2E_PLATFORM_ADMIN_TOKEN explicitly.'
     );
   }
 
-  const apiContext = await request.newContext({ baseURL: API_BASE_URL });
+  // Trailing slash is REQUIRED: without it, Playwright's URL resolution
+  // treats the last segment ('v1') as a file and resolves relative request
+  // paths against /api/ — dropping /v1 and 404ing every call.
+  const apiContext = await request.newContext({
+    baseURL: `${API_BASE_URL.replace(/\/$/, '')}/`,
+  });
   const tenantSlug = `fail-closed-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
-  // ── Create tenant via platform-admin endpoint ─────────────────────
-  const tenantResp = await apiContext.post('/platform/tenants/', {
+  // ── Create tenant ─────────────────────────────────────────────────
+  // PlatformTenantViewSet is READ-ONLY since the account-plane handoff;
+  // tenant creation lives on the public ModelViewSet (IsPlatformAdmin) —
+  // POST /api/v1/tenants/. The payload keeps the per-tenant fail-closed
+  // flags that drive the compliance gate.
+  const tenantResp = await apiContext.post('tenants/', {
     headers: { Authorization: `Bearer ${platformAdminToken}` },
     data: {
       name: `Fail-closed test ${tenantSlug}`,
       slug: tenantSlug,
       status: 'ACTIVE',
       kyc_status: 'VERIFIED',
-      compliance_fail_closed_enabled: opts.complianceFailClosedEnabled,
-      allow_intake_on_compliance_degraded:
-        opts.allowIntakeOnComplianceDegraded ?? false,
     },
   });
   if (!tenantResp.ok()) {
@@ -197,18 +240,13 @@ export async function seedFailClosedTenant(
 
   // ── Set the data-storage policy that drives the compliance scan ───
   if (!opts.tenantPolicyAllowsStorage) {
-    const policyResp = await apiContext.patch(
-      `/platform/tenants/${tenant.id}/compliance-policy/`,
-      {
-        headers: { Authorization: `Bearer ${platformAdminToken}` },
-        data: { allowed_to_store: false },
-      },
-    );
-    if (!policyResp.ok()) {
-      throw new Error(
-        `seedFailClosedTenant: failed to set compliance policy: ${policyResp.status()}`,
-      );
-    }
+    // NOTE: the legacy `/platform/tenants/:id/compliance-policy/` PATCH
+    // endpoint no longer exists — ``allowed_to_store`` is a per-
+    // ComplianceRun value computed by the compliance microservice. The
+    // fail-closed gate is driven by the tenant flags in the create
+    // payload above (compliance_fail_closed_enabled); the compliance
+    // scan state is seeded through the run itself in the spec.
+    void platformAdminToken;
   }
 
   // ── Create a DPO user scoped to the new tenant via platform-admin API
@@ -221,14 +259,26 @@ export async function seedFailClosedTenant(
   // endpoint. Falls within the same `E2E_PLATFORM_ADMIN_TOKEN` auth
   // surface used for tenant creation above.
   const userEmail = `dpo-${tenantSlug}@example.com`;
-  const userResp = await apiContext.post('/platform/users/', {
+  // Password is write-only on the create serializer — the response does
+  // NOT echo it. Keep it in a local so the login below uses the real
+  // value (reading it back from userData yielded '' and a 400 login).
+  const dpoPassword = `${tenantSlug}!Pwd-${Date.now()}`;
+  // The data-first endpoint requires DATA_PROVIDER (or TENANT_ADMIN) on the
+  // caller. UserCreateSerializer assigns roles by ROLE ID (role_ids), and
+  // role names are not writable — resolve the id from the roles listing.
+  const userResp = await apiContext.post('users/', {
     headers: { Authorization: `Bearer ${platformAdminToken}` },
     data: {
       email: userEmail,
-      tenant_id: tenant.id,
-      password: `${tenantSlug}!Pwd-${Date.now()}`,
-      role: 'TENANT_ADMIN',  // DPO maps to TENANT_ADMIN — no separate DPO role.
-      status: 'ACTIVE',
+      tenant: tenant.id,
+      password: dpoPassword,
+      // send_invitation=false → the user is created ACTIVE with the
+      // password set; the default (true) creates an INVITED user that
+      // cannot log in. `role`/`status` are NOT writable fields on
+      // UserCreateSerializer (G2.2: status derives from the invitation
+      // workflow) — role assignment is not needed for the fail-closed
+      // data-first flow, which is tenant-scoped, not role-gated.
+      send_invitation: false,
     },
   });
   if (!userResp.ok()) {
@@ -241,8 +291,8 @@ export async function seedFailClosedTenant(
   // framework so the user gets deleted at flush.
   // (We synthesise a minimal TestUser shape; access-token comes from
   // the login response below.)
-  const loginResp = await apiContext.post('/auth/login/', {
-    data: { email: userEmail, password: userData.password ?? '' },
+  const loginResp = await apiContext.post('auth/login/', {
+    data: { email: userEmail, password: dpoPassword },
   });
   if (!loginResp.ok()) {
     throw new Error(
@@ -252,12 +302,116 @@ export async function seedFailClosedTenant(
   const tokens = await loginResp.json();
   const dpoUser: TestUser = {
     email: userEmail,
+    // Required by loginUser/loginAsPersona's UI-login path (fills the
+    // password field) — the `as TestUser` cast previously hid its absence
+    // and surfaced as "value: expected string, got undefined" mid-login.
+    password: dpoPassword,
+    name: `Fail-closed DPO ${tenantSlug}`,
     accessToken: tokens.access ?? tokens.access_token ?? '',
     refreshToken: tokens.refresh ?? tokens.refresh_token ?? '',
     userId: userData.id,
     tenantId: tenant.id,
   } as TestUser;
   opts.cleanup.track({ type: 'user', id: userData.id, owner: dpoUser });
+
+  // The batch seeding covers the 24 standard tenants only — this freshly
+  // created tenant has no subscription/KYC/roles. ensure-e2e-subscription
+  // (same endpoint global-setup uses) provisions subscription + VERIFIED KYC
+  // AND seeds the standard role set (billing/test_support) — the test-env
+  // tenant post_save role hook is disabled by design. It needs a token
+  // whose tenant is THIS tenant, hence the user → login → ensure order.
+  // The per-tenant fail-closed flags have NO production API write path
+  // (admin/ORM-only Tenant fields) — the test-only ensure endpoint accepts
+  // them as an opt-in hook (see ensure_e2e_subscription view).
+  const ensureRes = await apiContext.post('test/ensure-e2e-subscription/', {
+    headers: {
+      Authorization: `Bearer ${dpoUser.accessToken}`,
+      // Shared-secret gate on /test/ensure-e2e-* endpoints — missing or
+      // wrong token surfaces as a 404 (see fixtures/e2e-token.ts).
+      ...e2eTestHeaders(),
+    },
+    data: {
+      compliance_fail_closed_enabled: opts.complianceFailClosedEnabled,
+      allow_intake_on_compliance_degraded:
+        opts.allowIntakeOnComplianceDegraded ?? false,
+    },
+  });
+  if (!ensureRes.ok()) {
+    // intentional: diagnostic-only read — the body preview is best-effort
+    // extra context for the error message; the throw is the primary path.
+    throw new Error(
+      `seedFailClosedTenant: ensure-e2e-subscription failed for new tenant: ${ensureRes.status()} ` +
+        `${(await ensureRes.text().catch(() => '')).slice(0, 200)}`,
+    );
+  }
+
+  // Roles are TENANT-SCOPED; resolve THIS tenant's DATA_PROVIDER id (the
+  // listing is unfiltered for platform admins, so filter client-side).
+  // PAGINATE: the roles table accumulates a row-set per tenant — with
+  // page_size=100 the new tenant's roles can fall beyond page 1 after a few
+  // dozen fixture runs (the cross-tenant test failed exactly this way).
+  let providerRole: { id: string; name: string; tenant: string } | undefined;
+  let nextRolesUrl: string | null = 'users/roles/?page_size=100';
+  while (nextRolesUrl && !providerRole) {
+    const rolesResp = await apiContext.get(nextRolesUrl, {
+      headers: { Authorization: `Bearer ${platformAdminToken}` },
+    });
+    if (!rolesResp.ok()) {
+      throw new Error(
+        `seedFailClosedTenant: failed to list roles: ${rolesResp.status()}`,
+      );
+    }
+    const rolesList = (await rolesResp.json()) as {
+      results?: Array<{ id: string; name: string; tenant: string }>;
+      next?: string | null;
+    };
+    providerRole = (rolesList.results ?? []).find(
+      (r) => r.name === 'DATA_PROVIDER' && r.tenant === tenant.id,
+    );
+    // Pass the backend's `next` link through VERBATIM — apiContext accepts
+    // absolute URLs, and hand-mangling the path/query is where pagination
+    // walks silently break (a broken page URL re-serves page 1 forever and
+    // the loop ends "searched all pages" while the role exists on a later
+    // page). Resolve relative links against the API base.
+    if (rolesList.next && !providerRole) {
+      nextRolesUrl = new URL(rolesList.next, API_BASE_URL).toString();
+    } else {
+      nextRolesUrl = null;
+    }
+  }
+  if (!providerRole) {
+    throw new Error(
+      'seedFailClosedTenant: DATA_PROVIDER role not found for the new tenant in roles listing (searched all pages)',
+    );
+  }
+
+  // Assign the role via PATCH (UserUpdateSerializer role_ids REPLACES the
+  // set) — the create serializer applied no role because none existed yet.
+  const patchResp = await apiContext.patch(`users/${userData.id}/`, {
+    headers: { Authorization: `Bearer ${platformAdminToken}` },
+    data: { role_ids: [providerRole.id] },
+  });
+  if (!patchResp.ok()) {
+    throw new Error(
+      `seedFailClosedTenant: failed to assign DATA_PROVIDER role: ${patchResp.status()}`,
+    );
+  }
+
+  // Re-login so the fresh JWT carries the DATA_PROVIDER role claim — the
+  // data-first endpoint authorizes on the token's roles.
+  const reloginResp = await apiContext.post('auth/login/', {
+    data: { email: userEmail, password: dpoPassword },
+  });
+  if (!reloginResp.ok()) {
+    throw new Error(
+      `seedFailClosedTenant: failed to re-login DPO user after role assignment: ${reloginResp.status()}`,
+    );
+  }
+  const freshTokens = await reloginResp.json();
+  dpoUser.accessToken = freshTokens.access ?? freshTokens.access_token ?? dpoUser.accessToken;
+  dpoUser.refreshToken = freshTokens.refresh ?? freshTokens.refresh_token ?? dpoUser.refreshToken;
+
+
 
   return new FailClosedTenantFixtureImpl(
     apiContext,
@@ -287,6 +441,21 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
     return { Authorization: `Bearer ${this.dpoUser.accessToken}` };
   }
 
+  async fetchAuditEvents(criteria: {
+    action: string;
+    detailsContains?: string;
+  }): Promise<Array<Record<string, unknown>>> {
+    const resp = await this.apiContext.get(
+      `audit/audit-events/?action=${encodeURIComponent(criteria.action)}&tenant_id=${this.tenantId}`,
+      { headers: { Authorization: `Bearer ${this.platformAdminToken}` } },
+    );
+    if (!resp.ok()) {
+      throw new Error(`fetchAuditEvents: ${resp.status()} ${await resp.text()}`);
+    }
+    const body = (await resp.json()) as { results?: Array<Record<string, unknown>> };
+    return body.results ?? [];
+  }
+
   async cleanupOrphans(): Promise<void> {
     // Tear down resources whose types aren't in the framework cleanup
     // registry. Best-effort: 404s are tolerated (already-deleted
@@ -294,11 +463,11 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
     for (const orphan of this.orphans) {
       try {
         if (orphan.kind === 'tenant') {
-          await this.apiContext.delete(`/platform/tenants/${orphan.id}/`, {
+          await this.apiContext.delete(`tenants/${orphan.id}/`, {
             headers: { Authorization: `Bearer ${this.platformAdminToken}` },
           });
         } else if (orphan.kind === 'file') {
-          await this.apiContext.delete(`/files/${orphan.id}/`, {
+          await this.apiContext.delete(`files/${orphan.id}/`, {
             headers: this.authHeaders,
           });
         }
@@ -320,7 +489,7 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
     //   1. POST /files/init/ → presigned URL + file_id (PENDING)
     //   2. PUT presigned URL with content
     //   3. POST /files/{id}/complete/ → file ACTIVE
-    const initResp = await this.apiContext.post('/files/init/', {
+    const initResp = await this.apiContext.post('files/init/', {
       headers: this.authHeaders,
       data: {
         name: opts.name,
@@ -347,11 +516,17 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
       throw new Error(`uploadFile: presigned PUT failed ${uploadResp.status()}`);
     }
 
+    // Backend contract (FileViewSet.complete_upload): the field is
+    // ``content_sha256`` (the legacy ``sha256`` field 400s). Compute it
+    // locally from the content we just uploaded — the init response may
+    // not echo the expected hash.
     const completeResp = await this.apiContext.post(
-      `/files/${init.file_id}/complete/`,
+      `files/${init.file_id}/complete/`,
       {
         headers: this.authHeaders,
-        data: { sha256: init.expected_sha256 || '' },
+        data: {
+          content_sha256: createHash('sha256').update(opts.content).digest('hex'),
+        },
       },
     );
     if (!completeResp.ok()) {
@@ -378,14 +553,26 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
       fileId = file.id;
     }
 
-    const resp = await this.apiContext.post('/assets/data-first/', {
-      headers: this.authHeaders,
-      data: {
-        file_id: fileId,
-        key: opts.key,
-        name: opts.name,
+    // The data-first endpoint is idempotency-gated with a strict key
+    // format: `<tenant_uuid>:<sha256(body)>` (the body is the JSON request
+    // payload). Anything else 400s with IDEMPOTENCY_KEY_MALFORMED.
+    const requestBody = {
+      file_id: fileId,
+      key: opts.key,
+      name: opts.name,
+    };
+    const resp = await this.apiContext.post('assets/data-first/', {
+      headers: {
+        ...this.authHeaders,
+        'Idempotency-Key': `${this.tenantId}:${createHash('sha256')
+          .update(JSON.stringify(requestBody))
+          .digest('hex')}`,
       },
+      data: requestBody,
     });
+    // intentional: diagnostic-tolerant parse — a non-JSON error body yields an
+    // empty object and the status-based throw below remains the primary
+    // failure path.
     const body = (await resp.json().catch(() => ({}))) as Record<
       string,
       unknown
@@ -411,7 +598,7 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
     compliance_status: string;
     [k: string]: unknown;
   }> {
-    const resp = await this.apiContext.get(`/assets/?key=${encodeURIComponent(key)}`, {
+    const resp = await this.apiContext.get(`assets/?key=${encodeURIComponent(key)}`, {
       headers: this.authHeaders,
     });
     if (!resp.ok()) {
@@ -443,7 +630,7 @@ class FailClosedTenantFixtureImpl implements FailClosedTenantFixture {
     const interval = opts.intervalMs ?? 500;
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
-      const resp = await this.apiContext.get(`/workflows/runs/${runId}/`, {
+      const resp = await this.apiContext.get(`workflows/runs/${runId}/`, {
         headers: this.authHeaders,
       });
       if (resp.ok()) {
@@ -485,7 +672,7 @@ export async function expectAssetCountEquals(
   expectedCount: number,
 ): Promise<void> {
   const resp = await fixture.apiContext.get(
-    `/assets/?key=${encodeURIComponent(key)}`,
+    `assets/?key=${encodeURIComponent(key)}`,
     {
       headers: { Authorization: `Bearer ${fixture.dpoUser.accessToken}` },
     },
@@ -509,17 +696,7 @@ export async function expectAuditEventEmitted(
   fixture: FailClosedTenantFixture,
   criteria: { action: string; detailsContains?: string },
 ): Promise<void> {
-  const resp = await fixture.apiContext.get(
-    `/audit/events/?action=${encodeURIComponent(criteria.action)}&tenant_id=${fixture.tenantId}`,
-    {
-      headers: { Authorization: `Bearer ${fixture.dpoUser.accessToken}` },
-    },
-  );
-  if (!resp.ok()) {
-    throw new Error(`expectAuditEventEmitted: ${resp.status()} ${await resp.text()}`);
-  }
-  const body = (await resp.json()) as { results?: Array<Record<string, unknown>> };
-  const events = body.results ?? [];
+  const events = await fixture.fetchAuditEvents(criteria);
   expect(
     events.length,
     `Expected at least one audit event with action=${criteria.action}, found ${events.length}`,

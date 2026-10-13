@@ -134,7 +134,7 @@ def strip_volatile(obj):
 
 
 def cli_json(*args):
-    cmd = [DATAHUB_CLI] + list(args) + ["--format", "json"]
+    cmd = [DATAHUB_CLI, *list(args), "--format", "json"]
     token = _api_token()
     env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
     if token:

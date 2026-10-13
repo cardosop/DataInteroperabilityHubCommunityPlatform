@@ -98,7 +98,7 @@ def check_migration_file(filepath: Path) -> dict[str, any]:
             (r"ForeignKey\(", "ForeignKey - verify on_delete parameter"),
         ]
 
-        for pattern, message in field_checks:
+        for pattern, _message in field_checks:
             matches = re.findall(pattern, content)
             if matches:
                 # These are generally fine, just note them
@@ -119,7 +119,7 @@ def check_migration_file(filepath: Path) -> dict[str, any]:
                 # These operations are generally compatible
                 pass
 
-    except Exception as e:
+    except (OSError, ValueError) as e:
         issues.append(f"Error reading file: {e}")
 
     return {
@@ -144,7 +144,7 @@ def check_migration_dependencies(filepath: Path) -> list[str]:
             # Check for any problematic dependencies
             # Generally, migrations should only depend on other migrations
 
-    except Exception as e:
+    except (OSError, ValueError) as e:
         issues.append(f"Error checking dependencies: {e}")
 
     return issues

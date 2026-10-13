@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -26,27 +28,21 @@ import uuid
 from datetime import datetime, timedelta
 
 import pytest
+
+# Phase U / U.3 — the public tree excludes hub.apps.baas (paid);
+# these suites drive full-mode baas flows, so the whole module
+# skips cleanly there instead of collection/runtime erroring.
+pytest.importorskip("hub.apps.baas")
 import requests
 from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestBaaSUsageCommandsRealAPI:
@@ -223,8 +219,8 @@ print('BAAS_API_KEY_ID_END')
                 in_auth_key = False
                 in_baas_id = False
 
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line == "AUTH_API_KEY_START":
                         in_auth_key = True
                         continue
@@ -245,8 +241,8 @@ print('BAAS_API_KEY_ID_END')
 
                 # Fallback: if markers didn't work, try old method
                 if not api_key or not baas_api_key_id:
-                    for line in output_lines:
-                        line = line.strip()
+                    for raw_line in output_lines:
+                        line = raw_line.strip()
                         if line.startswith("BAAS_API_KEY_ID:"):
                             baas_api_key_id = line.split(":", 1)[1].strip()
                         elif (
@@ -277,17 +273,19 @@ print('BAAS_API_KEY_ID_END')
                             api_key = line
 
                 # Store BaaS API key ID for later use
-                if baas_api_key_id:
+                if baas_api_key_id and not hasattr(
+                    TestBaaSUsageCommandsRealAPI, "_class_baas_api_key_id"
+                ):
                     # Store in a way that persists across fixture calls
-                    if not hasattr(TestBaaSUsageCommandsRealAPI, "_class_baas_api_key_id"):
-                        TestBaaSUsageCommandsRealAPI._class_baas_api_key_id = baas_api_key_id
+                    TestBaaSUsageCommandsRealAPI._class_baas_api_key_id = baas_api_key_id
 
                 # If we have API key but not BaaS API key ID, try to get it from API
                 if api_key and not baas_api_key_id:
                     baas_api_key_id = self._get_baas_api_key_id(api_key)
-                    if baas_api_key_id:
-                        if not hasattr(TestBaaSUsageCommandsRealAPI, "_class_baas_api_key_id"):
-                            TestBaaSUsageCommandsRealAPI._class_baas_api_key_id = baas_api_key_id
+                    if baas_api_key_id and not hasattr(
+                        TestBaaSUsageCommandsRealAPI, "_class_baas_api_key_id"
+                    ):
+                        TestBaaSUsageCommandsRealAPI._class_baas_api_key_id = baas_api_key_id
 
                 return api_key
         except Exception as e:
@@ -347,8 +345,8 @@ print('BAAS_API_KEY_ID_END')
             pass
         return None
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_command(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_command(self, api_service_available):
         """Test usage stats command with real API"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -364,8 +362,8 @@ print('BAAS_API_KEY_ID_END')
         assert "avg_response_time_ms" in data
         assert data["total_requests"] >= 0  # May be 0 if no usage data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_with_date_range(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_with_date_range(self, api_service_available):
         """Test usage stats with date range filter"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -393,8 +391,8 @@ print('BAAS_API_KEY_ID_END')
         data = json.loads(result.output)
         assert "total_requests" in data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_with_api_key_filter(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_with_api_key_filter(self, api_service_available):
         """Test usage stats with API key filter"""
         if not self.api_key or not self.api_key_id:
             pytest.skip("No API key available for testing")
@@ -408,8 +406,8 @@ print('BAAS_API_KEY_ID_END')
         data = json.loads(result.output)
         assert "total_requests" in data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_command(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_command(self, api_service_available):
         """Test usage by-endpoint command with real API"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -424,8 +422,8 @@ print('BAAS_API_KEY_ID_END')
             assert "method" in data[0]
             assert "total_requests" in data[0]
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_with_filters(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_with_filters(self, api_service_available):
         """Test usage by-endpoint with filters"""
         if not self.api_key or not self.api_key_id:
             pytest.skip("No API key available for testing")
@@ -455,8 +453,8 @@ print('BAAS_API_KEY_ID_END')
         data = json.loads(result.output)
         assert isinstance(data, list)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_table_format(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_table_format(self, api_service_available):
         """Test usage by-endpoint in table format"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -466,8 +464,8 @@ print('BAAS_API_KEY_ID_END')
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
         assert "Endpoint" in result.output or "No usage data found" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_table_format(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_table_format(self, api_service_available):
         """Test usage stats in table format"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -478,8 +476,8 @@ print('BAAS_API_KEY_ID_END')
         assert "Usage Statistics" in result.output
         assert "Total Requests" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_invalid_date_format(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_invalid_date_format(self, api_service_available):
         """Test usage stats with invalid date format"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -489,8 +487,8 @@ print('BAAS_API_KEY_ID_END')
         assert result.exit_code != 0, "Should fail with invalid date format"
         assert "format" in result.output.lower() or "invalid" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_invalid_date_range(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_invalid_date_range(self, api_service_available):
         """Test usage stats with invalid date range"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -512,8 +510,8 @@ print('BAAS_API_KEY_ID_END')
         assert result.exit_code != 0, "Should fail with invalid date range"
         assert "before" in result.output.lower() or "range" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_invalid_date_format(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_invalid_date_format(self, api_service_available):
         """Test usage by-endpoint with invalid date format"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -525,8 +523,8 @@ print('BAAS_API_KEY_ID_END')
         assert result.exit_code != 0, "Should fail with invalid date format"
         assert "format" in result.output.lower() or "invalid" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_invalid_api_key_id(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_invalid_api_key_id(self, api_service_available):
         """Test usage by-endpoint with invalid API key ID format"""
         if not self.api_key:
             pytest.skip("No API key available for testing")
@@ -538,8 +536,8 @@ print('BAAS_API_KEY_ID_END')
         assert result.exit_code != 0, "Should fail with invalid API key ID format"
         assert "format" in result.output.lower() or "invalid" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_tenant_command(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_tenant_command(self, api_service_available):
         """Test usage by-tenant command with real API (may fail if endpoint doesn't exist)"""
         if not self.api_key:
             pytest.skip("No API key available for testing")

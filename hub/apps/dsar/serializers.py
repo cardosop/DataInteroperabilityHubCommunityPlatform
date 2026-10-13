@@ -55,7 +55,11 @@ class DSARRequestSerializer(serializers.ModelSerializer):
 
 
 class PublicDsarSubmitSerializer(serializers.Serializer):
-    tenant_id = serializers.UUIDField()
+    # W1.2b (oss-release-remediation): the public ingress takes the
+    # tenant's PUBLIC identifier (slug), not a raw tenant UUID — a
+    # client-supplied UUID was a scoping capability (the cross-tenant
+    # leak class). The view resolves the slug server-side.
+    tenant_slug = serializers.SlugField()
     request_type = serializers.ChoiceField(choices=DSARRequestType.choices)
     subject_email = serializers.EmailField()
     subject_name = serializers.CharField(required=False, allow_blank=True, default="")

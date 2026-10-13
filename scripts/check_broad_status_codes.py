@@ -71,9 +71,8 @@ def _has_noqa_at(source: str, lineno: int) -> bool:
     lines = source.split("\n")
     for offset in range(-3, 4):
         idx = lineno - 1 - offset
-        if 0 <= idx < len(lines):
-            if "# noqa: broad-status-codes" in lines[idx]:
-                return True
+        if 0 <= idx < len(lines) and "# noqa: broad-status-codes" in lines[idx]:
+            return True
     return False
 
 
@@ -82,7 +81,7 @@ def check_file(file_path: str, max_codes: int) -> list[tuple[int, str, int]]:
     try:
         with open(file_path, encoding="utf-8") as fh:
             source = fh.read()
-    except Exception:
+    except (OSError, ValueError):
         return violations
 
     for match in _ASSERT_STATUS_IN_LIST.finditer(source):

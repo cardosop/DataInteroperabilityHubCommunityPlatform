@@ -3330,6 +3330,10 @@ This document specifies the authentication UI components and flows for the Inter
 
 ### UI-AUTH-008: MFA Setup Screen
 
+> **NOT SHIPPED (W1.7)** — MFA is not implemented; the TOTP library was
+> dead code and has been removed (oss-release-remediation W1.7). This
+> screen spec is a future capability design, not a shipped surface.
+
 **Screen ID**: UI-AUTH-008  
 **Screen Name**: Enable Two-Factor Authentication  
 **Purpose**: Set up MFA for account
@@ -3364,6 +3368,8 @@ This document specifies the authentication UI components and flows for the Inter
 ```
 
 ### UI-AUTH-009: MFA Verification Screen
+
+> **NOT SHIPPED (W1.7)** — see UI-AUTH-008; MFA is not implemented.
 
 **Screen ID**: UI-AUTH-009  
 **Screen Name**: Two-Factor Authentication  

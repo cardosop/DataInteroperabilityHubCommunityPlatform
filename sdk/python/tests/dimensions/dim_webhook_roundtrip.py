@@ -14,7 +14,6 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Optional
 
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id, unique_port
@@ -36,8 +35,8 @@ class WebhookReceiver:
         self.port = port
         self._received: list[bytes] = []
         self._lock = threading.Lock()
-        self._server: Optional[HTTPServer] = None
-        self._thread: Optional[threading.Thread] = None
+        self._server: HTTPServer | None = None
+        self._thread: threading.Thread | None = None
 
     def __enter__(self):
         receiver = self  # capture for the handler closure

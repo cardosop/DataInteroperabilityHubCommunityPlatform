@@ -28,6 +28,8 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
+from envpolicy import api_available
+
 
 class TestODPSCompleteWorkflows:
     """
@@ -70,16 +72,6 @@ class TestODPSCompleteWorkflows:
     def runner(self):
         """CLI runner fixture"""
         return CliRunner()
-
-    def _check_api_available(self):
-        """Check if API service is available"""
-        try:
-            response = requests.get(
-                os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=5
-            )
-            return response.status_code in [200, 401, 403]  # Any response means API is up
-        except Exception:
-            return False
 
     def _create_test_api_key(self):
         """Create a test API key via Django shell in the API service container"""
@@ -137,8 +129,8 @@ print(api_key_value)
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) > 20:  # API keys are typically long
                         return line
         except Exception as e:
@@ -272,7 +264,7 @@ print(api_key_value)
     def test_complete_odps_workflow_product_first_flow(self, runner):
         """Test complete ODPS workflow: Product-First flow (create, export, download)"""
         # Check if API is available
-        if not self._check_api_available():
+        if not api_available():
             pytest.skip("API service not available. Start with: docker compose up -d api-service")
 
         # Step 1: Create ODPS product with embedded ODCS (Product-First flow)
@@ -296,7 +288,7 @@ print(api_key_value)
                         f"Workflow execution failed. This may indicate a workflow configuration issue. Error: {error_msg}"
                     )
                 # For other errors, fail the test
-                assert False, f"Failed to create ODPS: {error_msg}"
+                raise AssertionError(f"Failed to create ODPS: {error_msg}")
 
             assert result.exit_code == 0, f"Failed to create ODPS: {result.output}"
             assert (

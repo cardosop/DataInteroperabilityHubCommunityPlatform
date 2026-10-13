@@ -14,10 +14,12 @@ Usage:
 """
 
 import json
+import sys
 
 import structlog
 from django.core.management.base import BaseCommand
 
+from hub.apps.audit.utils import create_audit_event
 from hub.apps.tenants.models import Tenant
 
 logger = structlog.get_logger(__name__)
@@ -43,7 +45,7 @@ class Command(BaseCommand):
             help="Output as machine-readable JSON",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         enabled_only = options["enabled_only"]
         disabled_only = options["disabled_only"]
         json_output = options["json"]
@@ -68,6 +70,26 @@ class Command(BaseCommand):
         total = len(tenant_list)
         enabled_count = sum(1 for t in tenant_list if t["ux_v2_enabled"])
         disabled_count = total - enabled_count
+
+        # 277.B.019 — every admin-DB command must emit an audit event
+        # (cross-tenant read through the BYPASSRLS admin alias).
+        try:
+            create_audit_event(
+                resource_type="TENANT",
+                action="TENANT_UX_V2_ROLLOUT_LISTED",
+                actor_user=None,
+                infer_tenant_from_actor=False,
+                result="SUCCESS",
+                details={
+                    "actor": "PLATFORM_ADMIN",
+                    "justification": "cross-tenant admin-DB UX v2 rollout listing",
+                    "total_tenants": total,
+                    "ux_v2_enabled": enabled_count,
+                    "ux_v2_disabled": disabled_count,
+                },
+            )
+        except Exception as audit_err:
+            self.stderr.write(f"Audit event emission failed (non-fatal): {audit_err}")
 
         if json_output:
             output = {
@@ -123,4 +145,4 @@ class Command(BaseCommand):
             # human operator is watching. JSON mode always exits 0 so CI
             # pipelines can parse the output without failing.
             if not json_output:
-                exit(1)
+                sys.exit(1)

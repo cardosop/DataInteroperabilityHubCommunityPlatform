@@ -22,34 +22,33 @@ class Phase9DocumentationTest(TestCase):
 
     def test_internal_views_import_successfully(self):
         """Test that internal view classes import successfully."""
-        self.assertIsNotNone(InternalRunViewSet)
-        self.assertIsNotNone(InternalProcessFileView)
-        self.assertIsNotNone(InternalConfigView)
+        assert InternalRunViewSet is not None
+        assert InternalProcessFileView is not None
+        assert InternalConfigView is not None
 
     def test_internal_run_viewset_has_openapi_schema(self):
         """InternalRunViewSet methods have OpenAPI schema decorators."""
         # Verify the view methods exist and have schema metadata
         create = getattr(InternalRunViewSet, "create", None)
         update = getattr(InternalRunViewSet, "partial_update", None)
-        self.assertIsNotNone(create, "create method missing")
-        self.assertIsNotNone(update, "partial_update method missing")
+        assert create is not None, "create method missing"
+        assert update is not None, "partial_update method missing"
         # extend_schema sets kwargs on the method
-        self.assertTrue(
-            hasattr(create, "kwargs") or hasattr(create, "cls") or hasattr(create, "initkwargs"),
-            "create should be a DRF action or have schema metadata",
-        )
+        assert (
+            hasattr(create, "kwargs") or hasattr(create, "cls") or hasattr(create, "initkwargs")
+        ), "create should be a DRF action or have schema metadata"
 
     def test_internal_process_file_view_has_post(self):
         """InternalProcessFileView has a post method."""
         post = getattr(InternalProcessFileView, "post", None)
-        self.assertIsNotNone(post, "post method missing")
-        self.assertTrue(callable(post))
+        assert post is not None, "post method missing"
+        assert callable(post)
 
     def test_internal_config_view_has_get(self):
         """InternalConfigView has a get method."""
         get = getattr(InternalConfigView, "get", None)
-        self.assertIsNotNone(get, "get method missing")
-        self.assertTrue(callable(get))
+        assert get is not None, "get method missing"
+        assert callable(get)
 
     def test_checkpoints_dont_break_code(self):
         """Test that checkpoint comments don't break code execution."""
@@ -62,9 +61,9 @@ class Phase9DocumentationTest(TestCase):
             ScheduledIngestionViewSet,
         )
 
-        self.assertIsNotNone(ScheduledIngestionViewSet)
-        self.assertIsNotNone(ScheduledIngestionRunViewSet)
-        self.assertIsNotNone(ScheduledIngestionBusinessRules)
+        assert ScheduledIngestionViewSet is not None
+        assert ScheduledIngestionRunViewSet is not None
+        assert ScheduledIngestionBusinessRules is not None
 
     def test_openapi_schema_includes_internal_endpoints(self):
         """OpenAPI schema generation succeeds and contains paths."""
@@ -73,8 +72,8 @@ class Phase9DocumentationTest(TestCase):
         generator = SchemaGenerator()
         schema = generator.get_schema(request=None, public=True)
 
-        self.assertIsNotNone(schema)
-        self.assertIn("paths", schema)
+        assert schema is not None
+        assert "paths" in schema
         paths = schema["paths"]
-        self.assertIsInstance(paths, dict)
-        self.assertGreater(len(paths), 0, "Schema has no paths")
+        assert isinstance(paths, dict)
+        assert len(paths) > 0, "Schema has no paths"

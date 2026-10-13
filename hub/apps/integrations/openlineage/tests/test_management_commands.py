@@ -69,7 +69,18 @@ def _create_ingest_key(tenant, *, label: str = "init", expires_at=None):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.django_db(transaction=True)
+# bcrypt is a declared dependency (requirements.txt) but some local
+# venvs run without it — key-hashing tests skip in that environment.
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None  # type: ignore[assignment]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(bcrypt is None, reason="bcrypt not installed"),
+]
+
+
 class TestRotateOpenLineageKeysCommand(TransactionTestCase):
     """Pins REQ-LIN-F4-003 — 7-day grace window on rotation."""
 
@@ -131,7 +142,7 @@ class TestRotateOpenLineageKeysCommand(TransactionTestCase):
         # The plaintext must NOT appear twice (paranoia: a duplicate
         # print would let a subsequent stdout flush leak it).
         # We accept the JSON envelope's prefix + the plaintext line (= 1 occurrence each).
-        plaintext_lines = [l for l in text.splitlines() if l.startswith("msh_ol_")]
+        plaintext_lines = [text for text in text.splitlines() if text.startswith("msh_ol_")]
         assert len(plaintext_lines) == 1, f"expected one plaintext line; got {len(plaintext_lines)}"
 
     def test_rotate_dry_run_does_not_mutate(self):
@@ -260,16 +271,13 @@ class TestRotateOpenLineageKeysCommand(TransactionTestCase):
         )
         today = timezone.now().strftime("%Y-%m-%d")
         new_key = (
-            OpenLineageIngestApiKey.objects.filter(
-                tenant=tenant, revoked_at__isnull=True
-            )
+            OpenLineageIngestApiKey.objects.filter(tenant=tenant, revoked_at__isnull=True)
             .order_by("-created_at")
             .first()
         )
         assert new_key is not None
         assert today in new_key.label, (
-            f"default label should include today's date {today!r}; "
-            f"got {new_key.label!r}"
+            f"default label should include today's date {today!r}; got {new_key.label!r}"
         )
 
 

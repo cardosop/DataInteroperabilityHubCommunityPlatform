@@ -109,6 +109,7 @@ def test_job_has_status():
     assert has_status, f"Job missing status/state field. Keys: {list(job.keys())}"
 
     status_value = job.get("status", job.get("state", job.get("job_status")))
-    assert isinstance(status_value, str) and len(status_value) > 0, (
+    assert isinstance(status_value, str), (
         f"Job status should be a non-empty string, got: {status_value}"
     )
+    assert len(status_value) > 0, f"Job status should be a non-empty string, got: {status_value}"

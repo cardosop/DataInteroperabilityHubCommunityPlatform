@@ -18,11 +18,8 @@ pytestmark = pytest.mark.slow
 
 # Try to import SDK
 try:
-    from datahub_interoperability import DataHubClient, DataHubClientConfig
-    from datahub_interoperability.errors import (
-        NotFoundError,
-        ValidationError,
-    )
+    import datahub_interoperability.errors
+    from datahub_interoperability import DataHubClient
 
     SDK_AVAILABLE = True
 except ImportError:

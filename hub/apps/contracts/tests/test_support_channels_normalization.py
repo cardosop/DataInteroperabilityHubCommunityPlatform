@@ -45,9 +45,9 @@ class TestSupportChannelNormalization(TestCase):
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
 
@@ -192,9 +192,9 @@ class TestSupportChannelNormalization(TestCase):
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         # support should not be present if not in source
@@ -217,9 +217,9 @@ class TestSupportChannelNormalization(TestCase):
         )
 
         # Should still normalize but skip invalid support
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert hub_contract is not None
         # support should not be present if invalid

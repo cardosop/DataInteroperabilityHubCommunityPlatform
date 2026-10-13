@@ -26,6 +26,14 @@ class GetCurrentUsageTests(TestCase):
 
     def setUp(self):
         super().setUp()
+        # Usage data is billing-derived (plans, limits, counters) — core-only
+        # deployments serve a minimal payload by design.
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest(
+                "tenant usage is paid-layer (billing limit_registry) — minimal in core-only mode"
+            )
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Usage {uid}",

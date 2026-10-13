@@ -45,7 +45,7 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider tenant"""
         super().setUp()
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Create provider tenant with verified KYC and active subscription
         self.provider_tenant = Tenant.objects.create(
@@ -274,7 +274,7 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer tenants"""
         super().setUp()
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Provider tenant (seller) - needs subscription for listing/order operations
         self.provider_tenant = Tenant.objects.create(
@@ -501,7 +501,7 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer tenants"""
         super().setUp()
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Provider tenant (seller) - needs subscription for order approval
         self.provider_tenant = Tenant.objects.create(

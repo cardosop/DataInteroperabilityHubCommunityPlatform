@@ -1,6 +1,7 @@
 """Tests for DataMovementConfig model."""
 
 import pytest
+from django.db import IntegrityError
 
 from hub.data_movement.models import DataMovementConfig
 
@@ -26,7 +27,7 @@ class TestDataMovementConfig:
     def test_one_config_per_tenant(self, tenant):
         """Only one config per tenant (OneToOneField)."""
         DataMovementConfig.objects.create(tenant=tenant)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):  # OneToOneField(tenant) unique violation
             DataMovementConfig.objects.create(tenant=tenant)
 
     def test_dev_mode_default_false(self, tenant):

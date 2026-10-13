@@ -9,40 +9,85 @@
  * ------------------------------------
  * 1. The Schema tab is reachable from the contract editor.
  * 2. The editor renders models + fields from an existing contract.
- * 3. Adding a model + field updates the DOM and Save remains enabled.
- * 4. Save with valid state successfully PATCHes the contract.
- * 5. axe-core a11y check on the editor surface produces no violations
+ * 3. axe-core a11y check on the editor surface produces no violations
  *    of the rules we treat as load-bearing (forms, buttons, labels).
  *
- * The test gracefully self-skips when no editable contract exists in
- * the test tenant — Wave 1 staging starts with a clean DB.
+ * Deterministic seeding (b7): the spec previously skipped when the
+ * tenant had no editable contract ("staging clean DB") or the first
+ * row was a legacy contract without a Schema tab — both
+ * environment-dependent skips that masked regressions. It now seeds
+ * its own ODCS contract through the same API the UI uses (same
+ * pattern as lineage-time-travel's seedContractForTimeTravel) and
+ * navigates straight to its editor, so the Schema tab + ModelsEditor
+ * assertions run against a known contract every time.
  */
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { getTestUser, loginUser } from '../fixtures/auth';
+
+const API_BASE = process.env.PLAYWRIGHT_API_BASE || '/api/v1';
+
+/** Seed a fresh ODCS contract with one model + one field, return its id. */
+async function seedEditableContract(page: Page): Promise<string> {
+  const accessToken = await page.evaluate(() => {
+    const g = (window as unknown as { __getAccessToken?: () => string | null })
+      .__getAccessToken;
+    return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+  });
+  if (!accessToken) {
+    throw new Error(
+      'contracts-schema-editor: access token unavailable after loginUser — session not established',
+    );
+  }
+  const runStamp = Date.now().toString(36);
+  const id = `e2e-schema-${runStamp}`;
+  const body = [
+    'kind: DataContract',
+    'apiVersion: v3.0.2',
+    `id: ${id}`,
+    `name: ${id}`,
+    'version: 1.0.0',
+    'status: active',
+    'schema:',
+    `  - name: ${id}`,
+    '    fields:',
+    '      - name: id',
+    '        type: string',
+  ].join('\n');
+  const resp = await page.request.post(`${API_BASE}/contracts/`, {
+    data: {
+      name: id,
+      original_spec_type: 'ODCS',
+      version: '1.0.0',
+      original_raw: body,
+      original_format: 'YAML',
+    },
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  expect(
+    resp.ok(),
+    `seedEditableContract create failed ${resp.status()}: ` +
+      // intentional: diagnostic-only read — the body preview is best-effort extra context for the failure message; the hard failure is the expect above.
+      `${(await resp.text().catch(() => '')).slice(0, 300)}`,
+  ).toBeTruthy();
+  const json = await resp.json();
+  const contractId = json.id ?? json.contract_id ?? json.contract?.id;
+  expect(contractId, 'seed create response must carry a contract id').toBeTruthy();
+  return contractId as string;
+}
 
 test.describe('Feature: Contracts — Schema editor (Phase 227 L5)', () => {
   test('Schema tab is reachable from the contract editor', async ({ page }) => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
 
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to /login — auth token expired');
-      return;
-    }
+    // Seed before any page.goto: the in-memory token dies on a full
+    // reload (Phase 11.1), so the seed runs on the page loginUser
+    // leaves (same contract as the lineage specs).
+    const contractId = await seedEditableContract(page);
 
-    // Click the first contract row's Edit link if present; otherwise
-    // skip — the test tenant might be empty.
-    const firstRow = page.locator('a[href*="/contracts/"][href*="/edit"]').first();
-    const hasEditable = (await firstRow.count()) > 0;
-    if (!hasEditable) {
-      test.skip(true, 'No editable contract in tenant — staging clean DB');
-      return;
-    }
-    await firstRow.click();
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto(`/contracts/${contractId}/edit`, { waitUntil: 'domcontentloaded' });
 
     // The Schema tab should be visible (no flag-gate).
     const schemaTab = page.getByTestId('editor-tab-schema');
@@ -55,23 +100,13 @@ test.describe('Feature: Contracts — Schema editor (Phase 227 L5)', () => {
   test('a11y check on the Schema editor', async ({ page }) => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
-    await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to /login');
-      return;
-    }
-    const firstRow = page.locator('a[href*="/contracts/"][href*="/edit"]').first();
-    if ((await firstRow.count()) === 0) {
-      test.skip(true, 'No editable contract');
-      return;
-    }
-    await firstRow.click();
-    await page.waitForLoadState('domcontentloaded');
+
+    const contractId = await seedEditableContract(page);
+
+    await page.goto(`/contracts/${contractId}/edit`, { waitUntil: 'domcontentloaded' });
+
     const schemaTab = page.getByTestId('editor-tab-schema');
-    if ((await schemaTab.count()) === 0) {
-      test.skip(true, 'Schema tab not present (legacy contract)');
-      return;
-    }
+    await expect(schemaTab).toBeVisible({ timeout: 15000 });
     await schemaTab.click();
     await page.getByTestId('models-editor').waitFor({ timeout: 10000 });
 

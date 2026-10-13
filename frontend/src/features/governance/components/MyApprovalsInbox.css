@@ -26,7 +26,10 @@
 }
 
 .my-approvals-inbox__count {
-  background: var(--color-error);
+  /* error-700 (#D32F2F) with white text passes WCAG AA (4.98:1);
+   * --color-error (error-500, #F44336) is 3.68:1 — the axe
+   * color-contrast failure on the populated inbox (2.4). */
+  background: var(--color-error-700);
   color: var(--color-background-primary);
   font-size: 0.75rem;
   font-weight: 700;
@@ -173,11 +176,17 @@
 }
 
 .my-approvals-inbox__item-priority--high {
-  color: var(--color-error);
+  /* --color-error (error-500, #F44336) on white is 3.68:1 — below the
+   * WCAG AA 4.5:1 minimum for the 0.7rem text. error-700 passes (~5.0:1).
+   * Exposed by close-test-coverage-gaps 2.4 (axe color-contrast on the
+   * populated inbox). */
+  color: var(--color-error-700);
 }
 
 .my-approvals-inbox__item-priority--medium {
-  color: var(--color-warning-dark);
+  /* --color-warning-dark (warning-700, #F57C00) on white is 2.7:1 —
+   * warning-800 (#7D4200) passes at 7.9:1. Same 2.4 axe exposure. */
+  color: var(--color-warning-800);
 }
 
 .my-approvals-inbox__item-priority--low {

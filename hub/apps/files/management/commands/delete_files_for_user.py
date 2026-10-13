@@ -16,7 +16,9 @@ import logging
 import sys
 import uuid
 
+from botocore.exceptions import BotoCoreError
 from django.core.management.base import BaseCommand, CommandError
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ class Command(BaseCommand):
             help="Report counts only; do not delete or scrub.",
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         user_id_raw = opts["user_id"]
         dry_run = bool(opts.get("dry_run"))
 
@@ -60,7 +62,7 @@ class Command(BaseCommand):
 
         try:
             redis_client = get_redis_client()
-        except Exception as exc:
+        except RedisError as exc:
             self.stderr.write(self.style.ERROR(f"Redis unavailable: {exc}"))
             sys.exit(2)
 
@@ -117,7 +119,7 @@ class Command(BaseCommand):
         storage = None
         try:
             storage = S3StorageClient()
-        except Exception as exc:
+        except (RuntimeError, BotoCoreError) as exc:
             logger.warning("gdpr_delete_files_storage_client_failed error=%s", exc)
 
         purged = 0

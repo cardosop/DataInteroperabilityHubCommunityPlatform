@@ -6,13 +6,13 @@ Implements various data masking strategies for sensitive data.
 
 import hashlib
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from .models import ClassificationCategory
 
 
-class MaskingStrategy(str, Enum):
+class MaskingStrategy(StrEnum):
     """Data masking strategies"""
 
     REDACT = "REDACT"  # Replace with fixed string
@@ -64,7 +64,7 @@ class DataMasker:
             return value
 
     @staticmethod
-    def _redact(value: Any, config: dict[str, Any] | None = None) -> str:
+    def _redact(_value: Any, config: dict[str, Any] | None = None) -> str:
         """Redact value (replace with fixed string)"""
         redact_string = (
             config.get("redact_string", "***REDACTED***") if config else "***REDACTED***"

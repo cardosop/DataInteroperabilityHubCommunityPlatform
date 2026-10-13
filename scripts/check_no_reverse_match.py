@@ -44,10 +44,6 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
 
 
 class NoReverseMatchVisitor(ast.NodeVisitor):
-    def __init__(self, file_path: str) -> None:
-        self.file_path = file_path
-        self.violations: list[int] = []
-
     def __init__(self, file_path: str, source_lines: list[str]) -> None:
         self.file_path = file_path
         self.source_lines = source_lines
@@ -57,9 +53,11 @@ class NoReverseMatchVisitor(ast.NodeVisitor):
         """Check if the current or previous line has a noqa annotation."""
         for offset in (0, 1):
             idx = lineno - 1 - offset
-            if 0 <= idx < len(self.source_lines):
-                if "# noqa: no-reverse-match" in self.source_lines[idx]:
-                    return True
+            if (
+                0 <= idx < len(self.source_lines)
+                and "# noqa: no-reverse-match" in self.source_lines[idx]
+            ):
+                return True
         return False
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:

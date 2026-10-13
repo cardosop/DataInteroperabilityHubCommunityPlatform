@@ -18,8 +18,8 @@ from hub.apps.core.services.base import BaseService
 
 # Optional imports for email backends
 try:
-    import sendgrid
-    from sendgrid.helpers.mail import Content, Email, Mail, To
+    import sendgrid  # type: ignore[import-untyped]
+    from sendgrid.helpers.mail import Content, Email, Mail, To  # type: ignore[import-untyped]
 
     SENDGRID_AVAILABLE = True
 except ImportError:
@@ -37,6 +37,16 @@ except ImportError:
     ClientError = Exception  # Fallback for type hints
 
 logger = structlog.get_logger(__name__)
+
+
+def _require_sender_email(sender_email: str | None) -> None:
+    if not sender_email:
+        raise EmailServiceError("from_email not configured and not provided")
+
+
+def _require_sendgrid_available() -> None:
+    if not SENDGRID_AVAILABLE:
+        raise EmailServiceError("sendgrid package not installed")
 
 
 class EmailService(ABC):
@@ -125,8 +135,7 @@ class SendGridEmailService(BaseService, EmailService):
         try:
             # Use configured from_email or provided one
             sender_email = from_email or self.from_email
-            if not sender_email:
-                raise EmailServiceError("from_email not configured and not provided")
+            _require_sender_email(sender_email)
 
             sender_name = from_name or self.from_name
             from_addr = Email(sender_email, sender_name)
@@ -155,8 +164,7 @@ class SendGridEmailService(BaseService, EmailService):
 
             # Add attachments if provided
             if attachments:
-                if not SENDGRID_AVAILABLE:
-                    raise EmailServiceError("sendgrid package not installed")
+                _require_sendgrid_available()
                 from sendgrid.helpers.mail import Attachment
 
                 for attachment in attachments:
@@ -185,8 +193,6 @@ class SendGridEmailService(BaseService, EmailService):
                 message_id=message_id,
             )
 
-            return {"success": True, "message_id": message_id, "status_code": response.status_code}
-
         except Exception as e:
             logger.error(
                 "email_send_failed_sendgrid",
@@ -196,6 +202,8 @@ class SendGridEmailService(BaseService, EmailService):
                 exc_info=True,
             )
             raise EmailServiceError(f"SendGrid email sending failed: {e!s}") from e
+        else:
+            return {"success": True, "message_id": message_id, "status_code": response.status_code}
 
 
 class SESEmailService(BaseService, EmailService):
@@ -245,15 +253,11 @@ class SESEmailService(BaseService, EmailService):
         try:
             # Use configured from_email or provided one
             sender_email = from_email or self.from_email
-            if not sender_email:
-                raise EmailServiceError("from_email not configured and not provided")
+            _require_sender_email(sender_email)
 
             # Format from address with name if provided
             sender_name = from_name or self.from_name
-            if sender_name:
-                from_addr = f"{sender_name} <{sender_email}>"
-            else:
-                from_addr = sender_email
+            from_addr = f"{sender_name} <{sender_email}>" if sender_name else sender_email
 
             # Build message body
             message_body = {"Html": {"Data": html_content, "Charset": "UTF-8"}}
@@ -291,8 +295,6 @@ class SESEmailService(BaseService, EmailService):
 
             logger.info("email_sent_ses", to_email=to_email, subject=subject, message_id=message_id)
 
-            return {"success": True, "message_id": message_id}
-
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
@@ -316,6 +318,8 @@ class SESEmailService(BaseService, EmailService):
                 exc_info=True,
             )
             raise EmailServiceError(f"AWS SES email sending failed: {e!s}") from e
+        else:
+            return {"success": True, "message_id": message_id}
 
 
 class SMTPEmailService(BaseService, EmailService):
@@ -385,15 +389,11 @@ class SMTPEmailService(BaseService, EmailService):
         try:
             # Use configured from_email or provided one
             sender_email = from_email or self.from_email
-            if not sender_email:
-                raise EmailServiceError("from_email not configured and not provided")
+            _require_sender_email(sender_email)
 
             # Format from address with name if provided
             sender_name = from_name or self.from_name
-            if sender_name:
-                from_addr = f"{sender_name} <{sender_email}>"
-            else:
-                from_addr = sender_email
+            from_addr = f"{sender_name} <{sender_email}>" if sender_name else sender_email
 
             # Create email message with HTML and text alternatives
             email = EmailMultiAlternatives(
@@ -434,11 +434,6 @@ class SMTPEmailService(BaseService, EmailService):
                 result=result,
             )
 
-            return {
-                "success": success,
-                "message_id": None,  # SMTP doesn't provide message IDs
-            }
-
         except Exception as e:
             logger.error(
                 "email_send_failed_smtp",
@@ -448,6 +443,11 @@ class SMTPEmailService(BaseService, EmailService):
                 exc_info=True,
             )
             raise EmailServiceError(f"SMTP email sending failed: {e!s}") from e
+        else:
+            return {
+                "success": success,
+                "message_id": None,  # SMTP doesn't provide message IDs
+            }
 
 
 def get_email_service() -> EmailService:

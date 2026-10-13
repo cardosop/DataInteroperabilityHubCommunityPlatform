@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from hub.apps.assets.models import Asset
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hub.apps.assets.models import Asset
 
 # Normalised substring hints — not a legal determination; drives workflow flags only.
 _SUBJECT_CATEGORY_MARKERS = (

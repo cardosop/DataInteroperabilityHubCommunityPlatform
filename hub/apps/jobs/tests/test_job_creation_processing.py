@@ -11,9 +11,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.jobs.utils import create_job, get_job_timeout, get_queue_for_job_type
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -390,7 +390,6 @@ class JobCreationProcessingTest(TestCase):
         """Test error handling with missing required fields"""
         # Missing job_type - should raise TypeError for missing required argument
         # or ValidationError if type field is None
-        from django.core.exceptions import ValidationError
 
         try:
             create_job(
@@ -402,7 +401,7 @@ class JobCreationProcessingTest(TestCase):
             # If no exception, check that type is required at DB level
             # This test verifies that missing type is caught somewhere in the flow
             self.fail("Expected TypeError or ValidationError for missing job_type")
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             # Expected - missing required field should raise an error
             err = str(e).lower()
             self.assertTrue(

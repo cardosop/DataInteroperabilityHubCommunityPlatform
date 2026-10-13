@@ -4,16 +4,19 @@ Job Utilities
 Utilities for creating and managing jobs.
 """
 
+import contextlib
 import time
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 import structlog
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 from django_rq import get_queue
+from redis.exceptions import RedisError
 from rest_framework.exceptions import ValidationError
 
 from .models import Job, JobPriority, JobStatus, JobType
@@ -42,6 +45,8 @@ JOB_TIMEOUTS = {
     JobType.DPIA_REVIEW_DUE: 600,  # Periodic DPIA reopen sweep (multi-tenant)
     JobType.PROCESSOR_AGREEMENT_EXPIRY_CHECK: 600,  # Processor agreement 60/30/7-day sweep
     JobType.RETENTION_ENFORCEMENT_SWEEP: 3600,  # Retention tombstone/hard-delete multi-tenant sweep
+    JobType.DATABRICKS_UC_METADATA_SYNC: 3600,  # UC estate delta-diff (multi-workspace REST fetch)
+    JobType.DATABRICKS_UC_CHANGE_REAPER: 1800,  # Stuck-EXECUTING reaper (per-request rollbacks)
 }
 
 # Maximum retry attempts per job type (from settings, fallback to defaults)
@@ -67,6 +72,8 @@ JOB_MAX_RETRIES = getattr(
         JobType.DPIA_REVIEW_DUE: 1,
         JobType.PROCESSOR_AGREEMENT_EXPIRY_CHECK: 1,
         JobType.RETENTION_ENFORCEMENT_SWEEP: 1,
+        JobType.DATABRICKS_UC_METADATA_SYNC: 1,  # Idempotent delta-diff — one retry suffices
+        JobType.DATABRICKS_UC_CHANGE_REAPER: 1,  # Re-entrant (lease re-check) — one retry suffices
     },
 )
 
@@ -200,7 +207,9 @@ def is_transient_failure(exception: Exception) -> bool:
     return any(keyword in error_str for keyword in transient_keywords)
 
 
-def calculate_retry_delay(retry_count: int, job_type: str = None, base_delay: int = None) -> int:
+def calculate_retry_delay(
+    retry_count: int, job_type: str | None = None, base_delay: int | None = None
+) -> int:
     """
     Calculate retry delay using exponential backoff with configurable factors.
 
@@ -341,6 +350,64 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
     return True
 
 
+def reconcile_tenant_job_counters(tenant_id: str) -> dict[str, int]:
+    """
+    W2.8 (B-10) — rebuild the tenant's Redis job counters from the Job
+    table, the source of truth.
+
+    The Redis counters drift (failed writes, TTL expiry, restarts); the
+    enforcement gate must never trust a drifted counter. This writes the
+    DB counts back into Redis and returns them — callers use the return
+    value even when the Redis write itself fails (fail-closed: the DB
+    truth still drives the decision).
+
+    Args:
+        tenant_id: Tenant UUID as string
+
+    Returns:
+        {"running": int, "queued": int} — the authoritative DB counts.
+    """
+    running = Job.objects.filter(tenant_id=tenant_id, status=JobStatus.RUNNING).count()
+    queued = Job.objects.filter(tenant_id=tenant_id, status=JobStatus.PENDING).count()
+    running_key = f"job:tenant:{tenant_id}:running"
+    queued_key = f"job:tenant:{tenant_id}:queued"
+    try:
+        cache.set(running_key, running, timeout=86400)
+        cache.set(queued_key, queued, timeout=86400)
+    except RedisError:
+        # Best-effort write-back: the caller still gets the DB counts.
+        logger.warning(
+            "tenant_job_counter_reconcile_write_failed",
+            tenant_id=tenant_id,
+            message="Counter rebuild fell back to DB-only enforcement",
+        )
+    return {"running": running, "queued": queued}
+
+
+def _tenant_job_counts(tenant_id: str) -> tuple[int | None, int | None]:
+    """
+    Read the tenant's running/queued counters, reconciling from the DB.
+
+    Returns (running, queued):
+    - Redis values when both keys are present.
+    - Rebuilt DB counts when a key is missing (drift) or Redis is
+      unreachable (fail-closed: the DB truth drives the gate).
+    """
+    running_key = f"job:tenant:{tenant_id}:running"
+    queued_key = f"job:tenant:{tenant_id}:queued"
+    try:
+        running_count = cache.get(running_key)
+        queued_count = cache.get(queued_key)
+    except RedisError:
+        running_count = None
+        queued_count = None
+    if running_count is None or queued_count is None:
+        reconciled = reconcile_tenant_job_counters(tenant_id)
+        running_count = reconciled["running"]
+        queued_count = reconciled["queued"]
+    return running_count, queued_count
+
+
 def check_tenant_job_limits(tenant_id: str) -> tuple[bool, str | None]:
     """
     Check if tenant has capacity for a new job (concurrency and queue depth).
@@ -349,7 +416,10 @@ def check_tenant_job_limits(tenant_id: str) -> tuple[bool, str | None]:
     1. Running jobs < max_job_concurrency
     2. Queued jobs < max_queued_jobs
 
-    Uses Redis counters for atomic operations.
+    W2.8 (B-10) — the Redis counters are an acceleration, NOT the truth:
+    missing/drifted keys reconcile from the Job table, a Redis outage
+    falls back to the DB counts, and a failed check BLOCKS job creation
+    (fail-closed) instead of the pre-fix allow-on-error.
 
     Args:
         tenant_id: Tenant UUID as string
@@ -364,14 +434,8 @@ def check_tenant_job_limits(tenant_id: str) -> tuple[bool, str | None]:
         max_concurrency = limits["max_job_concurrency"]
         max_queued = limits["max_queued_jobs"]
 
-        # Get current counts from Redis (atomic operations)
-        # Key format: job:tenant:{tenant_id}:running, job:tenant:{tenant_id}:queued
-        running_key = f"job:tenant:{tenant_id}:running"
-        queued_key = f"job:tenant:{tenant_id}:queued"
-
-        # Get current counts (default to 0 if keys don't exist)
-        running_count = cache.get(running_key, 0)
-        queued_count = cache.get(queued_key, 0)
+        # Current counts: Redis when trustworthy, DB-reconciled otherwise.
+        running_count, queued_count = _tenant_job_counts(tenant_id)
 
         # Check concurrency limit
         if running_count >= max_concurrency:
@@ -386,23 +450,38 @@ def check_tenant_job_limits(tenant_id: str) -> tuple[bool, str | None]:
                 f"Tenant has reached maximum queued job limit ({max_queued}). "
                 f"Current queued jobs: {queued_count}. Please wait for queue to process."
             )
-
-        return True, None
-    except Exception as e:
-        logger.warning(
+    except (RedisError, KeyError, DatabaseError):
+        logger.exception(
             "tenant_job_limit_check_failed",
             tenant_id=tenant_id,
-            error=str(e),
-            message="Failed to check tenant job limits, allowing job creation",
+            message="Failed to check tenant job limits, blocking job creation",
         )
-        # On error, allow job creation (graceful degradation)
+        # W2.8 (B-10) — fail CLOSED: an unverifiable state must not let a
+        # tenant mint jobs beyond their limits.
+        return False, "Job limit check is currently unavailable — please retry shortly."
+    else:
         return True, None
 
 
 def get_tenant_job_counter(tenant_id: str, counter_type: str) -> int:
-    """Get current value of tenant job counter."""
+    """
+    Get current value of tenant job counter.
+
+    W2.8 (B-10) — a missing key (drift/expiry) reconciles from the Job
+    table instead of reading as 0, and a Redis outage returns the DB
+    count (fail-closed) rather than zero.
+    """
     key = f"job:tenant:{tenant_id}:{counter_type}"
-    return cache.get(key, 0)
+    try:
+        value = cache.get(key)
+    except RedisError:
+        value = None
+    if value is None:
+        db_status = JobStatus.RUNNING if counter_type == "running" else JobStatus.PENDING
+        value = Job.objects.filter(tenant_id=tenant_id, status=db_status).count()
+        with contextlib.suppress(RedisError):
+            cache.set(key, value, timeout=86400)
+    return value
 
 
 def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -> None:
@@ -427,10 +506,9 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
         new_count = cache.incr(key)
         # Refresh TTL so active counters never expire mid-day.
         # expire() is a django-redis extension not present on BaseCache.
-        try:
-            cache.expire(key, 86400)  # type: ignore[attr-defined]  # django-redis extension; LocMemCache fallback below
-        except AttributeError:
-            pass  # LocMemCache doesn't expose expire – safe to skip in tests
+        # LocMemCache doesn't expose expire - safe to skip in tests
+        with contextlib.suppress(AttributeError):
+            cache.expire(key, 86400)  # type: ignore[attr-defined]  # django-redis extension
 
         # Update Prometheus metrics using the value already returned by incr()
         try:
@@ -442,7 +520,7 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
                 tenant_queued_jobs.labels(tenant_id=tenant_id).set(new_count)
         except Exception:
             pass  # Metrics may not be available
-    except Exception as e:
+    except (RedisError, ValueError) as e:
         logger.warning(
             "tenant_job_counter_increment_failed",
             tenant_id=tenant_id,
@@ -450,6 +528,11 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
             error=str(e),
             message="Failed to increment tenant job counter",
         )
+        # W2.8 (B-10) — a failed write leaves a drifted counter. Invalidate
+        # the key so the next enforcement read reconciles from the Job table
+        # instead of trusting the stale value.
+        with contextlib.suppress(RedisError):
+            cache.delete(key)
 
 
 def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") -> None:
@@ -468,10 +551,9 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
         current = cache.get(key, 0)
         new_count = cache.decr(key) if current > 0 else 0
         # Refresh TTL
-        try:
-            cache.expire(key, 86400)  # type: ignore[attr-defined]  # django-redis extension; LocMemCache fallback below
-        except AttributeError:
-            pass  # LocMemCache doesn't expose expire – safe to skip in tests
+        # LocMemCache doesn't expose expire - safe to skip in tests
+        with contextlib.suppress(AttributeError):
+            cache.expire(key, 86400)  # type: ignore[attr-defined]  # django-redis extension
 
         # Update Prometheus metrics using the value already returned by decr()
         try:
@@ -483,7 +565,7 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
                 tenant_queued_jobs.labels(tenant_id=tenant_id).set(new_count)
         except Exception:
             pass  # Metrics may not be available
-    except Exception as e:
+    except (RedisError, ValueError) as e:
         logger.warning(
             "tenant_job_counter_decrement_failed",
             tenant_id=tenant_id,
@@ -491,6 +573,11 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
             error=str(e),
             message="Failed to decrement tenant job counter",
         )
+        # W2.8 (B-10) — a failed write leaves a drifted counter. Invalidate
+        # the key so the next enforcement read reconciles from the Job table
+        # instead of trusting the stale value.
+        with contextlib.suppress(RedisError):
+            cache.delete(key)
 
 
 def get_job_priority(job_type: str, priority: str | None = None) -> str:
@@ -547,9 +634,9 @@ def get_queue_for_priority(priority: str) -> str:
 def create_job(
     tenant=None,
     user=None,
-    job_type: str = None,
-    resource_type: str = None,
-    resource_id: str = None,
+    job_type: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
     details_json: dict[str, Any] | None = None,
     timeout_seconds: int | None = None,
     queue_name: str = "default",
@@ -693,7 +780,7 @@ def create_job(
             ).inc()
         except Exception:
             pass  # Metrics may not be available
-    except Exception as e:
+    except RedisError as e:
         # The Job DB record exists in PENDING state but is NOT in the RQ queue.
         # The recover_stuck_jobs CronJob (Phase 25.8.2) runs every 15 minutes and
         # will detect this orphaned PENDING job, attempt to re-enqueue it, and mark
@@ -858,8 +945,8 @@ def _try_acquire_slot(key: str, limit: int) -> bool:
     conditions present in tests.
 
     Returns:
-        True  – slot acquired (counter was below limit and was incremented)
-        False – limit already reached (counter unchanged)
+        True  - slot acquired (counter was below limit and was incremented)
+        False - limit already reached (counter unchanged)
     """
     try:
         from hub.apps.core.redis_pools import get_redis_cache_client
@@ -867,9 +954,9 @@ def _try_acquire_slot(key: str, limit: int) -> bool:
         r = get_redis_cache_client()
         result = r.eval(_LUA_TRY_ACQUIRE_SLOT, 1, key, limit)
         return int(result) != -1
-    except Exception:
+    except RedisError:
         # Non-Redis backend or Redis unreachable: optimistic increment with rollback.
-        cache.add(key, 0, timeout=86400)  # SETNX – initialise if absent
+        cache.add(key, 0, timeout=86400)  # SETNX - initialise if absent
         new_count = cache.incr(key)
         if new_count > limit:
             cache.decr(key)
@@ -927,11 +1014,9 @@ def increment_reserved_slots_usage() -> int:
     cache.get_or_set(key, 0, timeout=86400)
     new_count = cache.incr(key)
     # Set expiration if cache backend supports it (Redis does, LocMemCache doesn't)
-    try:
+    # LocMemCache doesn't support expire, but that's fine for tests
+    with contextlib.suppress(AttributeError):
         cache.expire(key, 86400)
-    except AttributeError:
-        # LocMemCache doesn't support expire, but that's fine for tests
-        pass
     return new_count
 
 
@@ -974,11 +1059,9 @@ def increment_shared_slots_usage() -> int:
     cache.get_or_set(key, 0, timeout=86400)
     new_count = cache.incr(key)
     # Set expiration if cache backend supports it (Redis does, LocMemCache doesn't)
-    try:
+    # LocMemCache doesn't support expire, but that's fine for tests
+    with contextlib.suppress(AttributeError):
         cache.expire(key, 86400)
-    except AttributeError:
-        # LocMemCache doesn't support expire, but that's fine for tests
-        pass
     return new_count
 
 
@@ -1019,6 +1102,21 @@ def can_use_shared_slot() -> bool:
     return shared_usage < WORKER_SHARED_SLOTS
 
 
+def _pick_slot(
+    reserved_check: Callable[[], bool],
+    shared_check: Callable[[], bool],
+    reserved_label: str,
+    shared_label: str,
+    none_label: str,
+) -> tuple[bool, str | None]:
+    """Pick the first available slot class, preserving lazy evaluation order."""
+    if reserved_check():
+        return True, reserved_label
+    if shared_check():
+        return True, shared_label
+    return False, none_label
+
+
 def can_process_job(queue_name: str, job_id: str | None = None) -> tuple[bool, str | None]:
     """
     Check if a job can be processed based on reserved slots and starvation prevention.
@@ -1032,28 +1130,29 @@ def can_process_job(queue_name: str, job_id: str | None = None) -> tuple[bool, s
     """
     # HIGH priority jobs (job_critical) can use reserved slots or shared slots
     if queue_name == "job_critical":
-        if can_use_reserved_slot():
-            return True, "reserved_slot"
-        elif can_use_shared_slot():
-            return True, "shared_slot"
-        else:
-            return False, "no_slots_available"
+        return _pick_slot(
+            can_use_reserved_slot,
+            can_use_shared_slot,
+            "reserved_slot",
+            "shared_slot",
+            "no_slots_available",
+        )
 
     # Check starvation prevention for NORMAL priority jobs
     if queue_name == "job_default" and job_id and should_elevate_job(job_id, queue_name):
         # Elevated job can use reserved slots or shared slots
-        if can_use_reserved_slot():
-            return True, "elevated_reserved_slot"
-        elif can_use_shared_slot():
-            return True, "elevated_shared_slot"
-        else:
-            return False, "no_slots_available"
+        return _pick_slot(
+            can_use_reserved_slot,
+            can_use_shared_slot,
+            "elevated_reserved_slot",
+            "elevated_shared_slot",
+            "no_slots_available",
+        )
 
     # NORMAL and LOW priority jobs can only use shared slots
     if queue_name in ["job_default", "job_low"]:
         if can_use_shared_slot():
             return True, "shared_slot"
-        else:
-            return False, "no_shared_slots_available"
+        return False, "no_shared_slots_available"
 
     return False, "unknown_queue"

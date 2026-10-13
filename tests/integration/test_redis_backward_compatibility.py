@@ -6,7 +6,6 @@ instance-specific Redis URL is not configured.
 """
 
 import pytest
-from django.conf import settings
 from django.test import override_settings
 
 from hub.apps.core.redis_pools import _get_redis_url_with_fallback
@@ -55,13 +54,13 @@ class TestRedisURLFallback:
             REDIS_URL="redis://main:6379/0",
         ):
             for setting_name in (
-                "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-                "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
+                "REDIS_CACHE_URL",
+                "REDIS_QUEUE_URL",
+                "REDIS_EVENTS_URL",
+                "REDIS_CHANNELS_URL",
             ):
                 url = _get_redis_url_with_fallback(setting_name, 6379)
-                assert url == "redis://main:6379/0", (
-                    f"{setting_name} should fall back to REDIS_URL"
-                )
+                assert url == "redis://main:6379/0", f"{setting_name} should fall back to REDIS_URL"
 
 
 class TestIdempotencyRedisFallback:

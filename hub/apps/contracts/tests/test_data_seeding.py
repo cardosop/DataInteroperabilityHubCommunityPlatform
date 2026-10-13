@@ -496,6 +496,7 @@ class TestDataSeedingForAllContractTypesTest(TestCase):
 
         # Second call — should be idempotent (reuse-db may have stale data)
         from django.db import IntegrityError
+
         try:
             seed_test_data(tenant_count=2)
         except IntegrityError:

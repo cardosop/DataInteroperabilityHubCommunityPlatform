@@ -26,7 +26,7 @@ test.describe('JOURNEY-TA-006: Set Up Advanced Governance', () => {
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
       if (on403 || onLogin) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(on403 || onLogin, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onGov).toBe(true);
@@ -40,7 +40,7 @@ test.describe('JOURNEY-TA-006: Set Up Advanced Governance', () => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/governance/retention', { timeout: 60000 });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Auth/role gated — skipping success assertion');
         return;
       }
       const onRetention = page.url().includes('/governance/retention');

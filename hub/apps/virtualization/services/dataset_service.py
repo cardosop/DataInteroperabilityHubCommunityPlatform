@@ -192,19 +192,19 @@ class DatasetServiceMixin:
         try:
             tenant = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
         User = get_user_model()
         try:
             user = User.objects.get(id=effective_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"User with id {effective_user_id} not found")
+            raise NotFoundError(f"User with id {effective_user_id} not found") from None
 
         # Set defaults
         if version is None:
             version = "1.0.0"
         if status is None:
-            status = VirtualDatasetStatus.DRAFT  # type: ignore[assignment]  # enum member assigned to str-typed var
+            status = VirtualDatasetStatus.DRAFT  # enum member assigned to str-typed var
 
         # Validate via VirtualizationBusinessRules before any mutation
         payload_dataset = VirtualDataset(
@@ -563,13 +563,13 @@ class DatasetServiceMixin:
         try:
             tenant = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
         User = get_user_model()
         try:
             user = User.objects.get(id=effective_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"User with id {effective_user_id} not found")
+            raise NotFoundError(f"User with id {effective_user_id} not found") from None
 
         # Get virtual dataset
         try:
@@ -577,7 +577,7 @@ class DatasetServiceMixin:
                 id=virtual_dataset_id, tenant_id=effective_tenant_id
             )
         except VirtualDataset.DoesNotExist:
-            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found")
+            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found") from None
 
         # Store original values for audit log
         original_values = {
@@ -799,13 +799,13 @@ class DatasetServiceMixin:
         try:
             tenant = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
         User = get_user_model()
         try:
             user = User.objects.get(id=effective_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"User with id {effective_user_id} not found")
+            raise NotFoundError(f"User with id {effective_user_id} not found") from None
 
         # Get virtual dataset
         try:
@@ -813,7 +813,7 @@ class DatasetServiceMixin:
                 id=virtual_dataset_id, tenant_id=effective_tenant_id
             )
         except VirtualDataset.DoesNotExist:
-            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found")
+            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found") from None
 
         # Store dataset info for audit log before deletion
         dataset_info = {

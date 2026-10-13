@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { getComplianceOfficerUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
@@ -21,12 +22,25 @@ test.describe('UC-COMP-001: Run Compliance Scan @critical', () => {
       const user = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, user, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
         return;
       }
+      // Gate-off terminal state: the compliance surfaces are gated on
+      // strict runtime capabilities; a /unavailable bounce under churn is
+      // a transient snapshot-fetch failure, not a disabled feature.
+      // W16-guarded: raises in CI, skips locally.
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'compliance gate bounced to /unavailable — capabilities snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'compliance gate bounced to /unavailable — transient snapshot failure'
+      );
       expect(page.url()).toContain('/compliance');
       await waitForLoadingComplete(page, { timeout: 15000 });
       // error-display is NOT acceptable — compliance service must be reachable
@@ -62,12 +76,25 @@ test.describe('UC-COMP-001: Run Compliance Scan @critical', () => {
       const user = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, user, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
         return;
       }
+      // Gate-off terminal state: the compliance surfaces are gated on
+      // strict runtime capabilities; a /unavailable bounce under churn is
+      // a transient snapshot-fetch failure, not a disabled feature.
+      // W16-guarded: raises in CI, skips locally.
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'compliance gate bounced to /unavailable — capabilities snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'compliance gate bounced to /unavailable — transient snapshot failure'
+      );
       expect(page.url()).toContain('/compliance');
       await waitForLoadingComplete(page, { timeout: 15000 });
       // error-display is NOT acceptable — compliance service must be reachable

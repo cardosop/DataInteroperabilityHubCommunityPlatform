@@ -616,13 +616,13 @@ class IntegrationRequirementsDocumenter:
                     )
                 return True
 
-            return False
-
-        except Exception as e:
+        except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e:
             print(f"Error processing {spec_path}: {e}")
             import traceback
 
             traceback.print_exc()
+            return False
+        else:
             return False
 
     def _format_integration_requirements(self, requirements: IntegrationRequirements) -> str:

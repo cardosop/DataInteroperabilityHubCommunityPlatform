@@ -44,7 +44,7 @@ def _make_obj(db: str) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def router():
     """Fresh PrimaryReplicaRouter instance for each test."""
     from hub.db_router import PrimaryReplicaRouter
@@ -52,7 +52,7 @@ def router():
     return PrimaryReplicaRouter()
 
 
-@pytest.fixture()
+@pytest.fixture
 def with_replica(settings):
     """Extend settings.DATABASES to include a 'replica' alias."""
     import warnings
@@ -63,10 +63,9 @@ def with_replica(settings):
             settings.DATABASES,
             replica={"ENGINE": "django.db.backends.postgresql"},
         )
-    yield
 
 
-@pytest.fixture()
+@pytest.fixture
 def without_replica(settings):
     """Ensure 'replica' is absent from settings.DATABASES."""
     import warnings
@@ -75,7 +74,6 @@ def without_replica(settings):
         warnings.simplefilter("ignore", UserWarning)
         dbs = {k: v for k, v in settings.DATABASES.items() if k != "replica"}
         settings.DATABASES = dbs
-    yield
 
 
 # ---------------------------------------------------------------------------
@@ -117,15 +115,28 @@ class TestReadRouterReturnsReplica:
 
 
 class TestWriteRouterReturnsPrimary:
-    """db_for_write must always return 'default' for read-replica app models."""
+    """db_for_write must return 'default' for read-replica app models ONLY
+    when a replica is configured — otherwise a transparent no-op (R2-D8)."""
 
     @pytest.mark.parametrize("app_label", ["assets", "contracts", "marketplace", "search"])
-    def test_write_router_returns_primary(self, router, app_label):
+    def test_write_router_returns_primary(self, router, with_replica, app_label):
         model = _make_model(app_label)
         result = router.db_for_write(model)
         assert result == "default", (
             f"Expected 'default' for app_label={app_label!r}, got {result!r}"
         )
+
+    @pytest.mark.parametrize("app_label", ["assets", "contracts", "marketplace", "search"])
+    def test_write_returns_none_when_replica_not_configured(
+        self, router, without_replica, app_label
+    ):
+        """R2-D8 — with no replica the router MUST be a transparent no-op:
+        returning 'default' here would OVERRIDE the ``using("admin")`` alias
+        of management-command instances (save() consults db_for_write
+        regardless of ``_state.db``), self-deadlocking admin-DB sweeps
+        against their own FOR UPDATE row locks."""
+        model = _make_model(app_label)
+        assert router.db_for_write(model) is None
 
     def test_non_replica_app_write_returns_none(self, router):
         """Non-replica apps return None (defer to next router / default)."""
@@ -172,6 +183,19 @@ class TestAllowRelation:
         """Relation between default and replica objects must be permitted."""
         obj1 = _make_obj("default")
         obj2 = _make_obj("replica")
+        assert router.allow_relation(obj1, obj2) is True
+
+    def test_default_and_admin(self, router):
+        """Relation between default and admin objects must be permitted.
+
+        The admin alias (B-RLS-0.5) is the SAME physical database as
+        default — a role swap, not a different database — so FK
+        assignments across the pair (e.g. DatabricksAccount signoff →
+        users.User, account-plane task 8.2) must not fall through to
+        Django's db-equality fallback and raise "the current database
+        router prevents this relation"."""
+        obj1 = _make_obj("default")
+        obj2 = _make_obj("admin")
         assert router.allow_relation(obj1, obj2) is True
 
     def test_unrelated_db_returns_none(self, router):

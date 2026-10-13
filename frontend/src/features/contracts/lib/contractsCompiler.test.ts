@@ -20,7 +20,7 @@ import type {
 } from '../../../shared/types/contracts';
 import {
   compileToSource,
-  parseFromSource,
+  
   roundTrip,
   makeUiKey,
 } from './contractsCompiler';

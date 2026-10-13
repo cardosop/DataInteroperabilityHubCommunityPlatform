@@ -15,8 +15,21 @@ All tests use real implementations - no mocks/stubs.
 import os
 from unittest.mock import patch
 
+import pytest
 from django.conf import settings
 from django.test import TestCase, override_settings
+
+try:
+    import opentelemetry.sdk.trace.sampling
+
+    _OTEL_SDK_AVAILABLE = True
+except ImportError:
+    _OTEL_SDK_AVAILABLE = False
+
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(not _OTEL_SDK_AVAILABLE, reason="OpenTelemetry SDK not installed"),
+]
 
 
 class OpenTelemetryConfigTest(TestCase):

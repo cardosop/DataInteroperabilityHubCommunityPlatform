@@ -124,26 +124,28 @@ class ManagementCommandAdminRouter:
         except Exception:
             pass  # audit DB may not be available yet
 
-    def db_for_read(self, model, **hints):
+    def db_for_read(self, model, **hints):  # Django keyword-dispatches db-router arguments
         alias = self._resolved_alias()
         if alias:
             self._maybe_emit_audit()
         return alias
 
-    def db_for_write(self, model, **hints):
+    def db_for_write(self, model, **hints):  # Django keyword-dispatches db-router arguments
         alias = self._resolved_alias()
         if alias:
             self._maybe_emit_audit()
         return alias
 
-    def allow_migrate(self, db, app_label, model_name=None, **hints):
+    def allow_migrate(
+        self, db, app_label, model_name=None, **hints
+    ):  # Django keyword-dispatches db-router arguments
         return None
 
 
 class ReadReplicaRouter:
     """Route reads to replica when configured, writes to primary."""
 
-    def db_for_read(self, model, **hints):
+    def db_for_read(self, model, **hints):  # Django keyword-dispatches db-router arguments
         """Return 'replica' for read-heavy apps when configured."""
         if not _replica_configured():
             return None
@@ -151,21 +153,47 @@ class ReadReplicaRouter:
             return "replica"
         return None
 
-    def db_for_write(self, model, **hints):
-        """Always write to the primary database."""
+    def db_for_write(self, model, **hints):  # Django keyword-dispatches db-router arguments
+        """Always write to the primary database.
+
+        R2-D8 — the no-replica case MUST be a transparent no-op like
+        ``db_for_read`` (the class docstring's "no-op when
+        DATABASE_REPLICA_URL is not set" contract).  Pre-fix this method
+        lacked the ``_replica_configured()`` guard: every write for a
+        read-replica app was routed to ``"default"`` even without a
+        replica, OVERRIDING the ``using("admin")`` alias of
+        management-command instances (``save()`` consults
+        ``router.db_for_write`` regardless of ``_state.db``) — the
+        ``expire_entitlements`` sweep then took its FOR UPDATE lock on
+        the admin connection and saved on default, self-deadlocking on
+        its own row lock.
+        """
+        if not _replica_configured():
+            return None
         if model._meta.app_label in _READ_REPLICA_APPS:
             return "default"
         return None
 
-    def allow_relation(self, obj1, obj2, **hints):
+    def allow_relation(self, obj1, obj2, **hints):  # Django keyword-dispatches db-router arguments
         """
-        Allow relations between objects from any combination of databases.
+        Allow relations between objects from any combination of databases
+        that share one physical Postgres instance.
 
         Cross-app FKs (e.g. Asset.tenant) may span replica ↔ default; Django
-        checks this when constructing SELECT JOINs.  Returning True prevents
-        spurious "Cross-database relations are not permitted" errors.
+        checks this when assigning related objects and when constructing
+        SELECT JOINs.  Returning True prevents spurious "Cross-database
+        relations are not permitted" errors.
+
+        The admin alias (B-RLS-0.5) is the SAME physical database as
+        default — a role swap (``meshant_admin``, BYPASSRLS), not a
+        different database — so FK assignments between admin-loaded and
+        default-loaded instances (e.g. ``DatabricksAccount.provisioning_signoff_by``
+        → ``users.User``, account-plane task 8.2) are legitimate there too.
+        Without this, every such assignment falls through to Django's
+        no-opinion fallback (``obj1._state.db == obj2._state.db``) and
+        raises "the current database router prevents this relation".
         """
-        allowed_dbs = {"default", "replica"}
+        allowed_dbs = {"default", "replica", "admin"}
         db_set = {
             obj1._state.db or "default",
             obj2._state.db or "default",
@@ -174,7 +202,9 @@ class ReadReplicaRouter:
             return True
         return None
 
-    def allow_migrate(self, db, app_label, model_name=None, **hints):
+    def allow_migrate(
+        self, db, app_label, model_name=None, **hints
+    ):  # Django keyword-dispatches db-router arguments
         """
         Only migrate on the primary.  Replicas are kept in sync via
         PostgreSQL streaming replication — never via Django migrations.

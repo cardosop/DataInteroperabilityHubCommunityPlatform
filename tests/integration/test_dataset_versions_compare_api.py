@@ -17,7 +17,6 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserRole, UserStatus
 from tests.fixtures.test_data_factories import TenantFactory
 
@@ -43,6 +42,7 @@ class TestDatasetVersionsCompareApi(TestCase):
         )
         # Grant DATA_PROVIDER role for dataset operations
         from hub.apps.users.models import Role
+
         role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="DATA_PROVIDER",
@@ -85,7 +85,9 @@ class TestDatasetVersionsCompareApi(TestCase):
             format="CSV",
             version=2,
             parent_version=self.parent_dataset,
-            schema_json={"fields": [{"name": "col_a", "type": "string"}, {"name": "col_b", "type": "int"}]},
+            schema_json={
+                "fields": [{"name": "col_a", "type": "string"}, {"name": "col_b", "type": "int"}]
+            },
         )
 
     def test_compare_with_explicit_version_ids(self):

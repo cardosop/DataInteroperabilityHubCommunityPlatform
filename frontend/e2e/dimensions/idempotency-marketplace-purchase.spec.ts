@@ -77,6 +77,7 @@ async function attemptPurchase(
 
   // Duplicate detection: 409 with `order_id` referencing the original.
   if (status === 409) {
+    // intentional: diagnostic body parse — a failed parse yields {} for the error message; the throw/assert below is the failure path
     const body = (await res.json().catch(() => ({}))) as { order_id?: string };
     if (!body.order_id) {
       throw new Error(
@@ -86,6 +87,7 @@ async function attemptPurchase(
     return { status, orderId: body.order_id, duplicate: true };
   }
 
+  // intentional: diagnostic extraction — a failed read yields '' for the error message; the throw/assert below is the failure path
   const text = await res.text().catch(() => '');
   throw new Error(`attemptPurchase: unexpected status ${status}. Body: ${text.slice(0, 400)}`);
 }

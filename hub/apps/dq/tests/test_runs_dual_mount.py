@@ -172,14 +172,14 @@ class DQRunsDualMountReachabilityTest(DQRunsDualMountBase):
         # Both mounts must return 400 for empty POST (validation failure).
         # A 500 would be a latent bug masked by the old status-code-parity check.
         self.assertEqual(
-            canonical.status_code, status.HTTP_400_BAD_REQUEST,
-            f"Canonical POST with empty data should return 400, "
-            f"got {canonical.status_code}",
+            canonical.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            f"Canonical POST with empty data should return 400, got {canonical.status_code}",
         )
         self.assertEqual(
-            deprecated.status_code, status.HTTP_400_BAD_REQUEST,
-            f"Deprecated POST with empty data should return 400, "
-            f"got {deprecated.status_code}",
+            deprecated.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            f"Deprecated POST with empty data should return 400, got {deprecated.status_code}",
         )
 
 

@@ -53,7 +53,7 @@ class TestDeveloperGuidesAccuracy:
         )
 
         if result.returncode != 0:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 f"Documentation verification found issues (exit {result.returncode}):\n"
                 f"{result.stdout[-500:]}\n"
                 f"Fix documentation patterns, then this test will assert exit 0."
@@ -77,7 +77,7 @@ class TestDeveloperGuidesAccuracy:
         )
 
         if result.returncode != 0:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 f"Documentation verification found issues (exit {result.returncode}):\n"
                 f"{result.stdout[-500:] if hasattr(result, 'stdout') else ''}"
             )
@@ -356,9 +356,7 @@ class TestDocumentationScriptsIntegration:
 
     def test_scripts_are_executable(self):
         """Test that scripts are executable"""
-        assert os.access(self.verify_script, os.X_OK), (
-            "Verification script should be executable"
-        )
+        assert os.access(self.verify_script, os.X_OK), "Verification script should be executable"
         assert os.access(self.test_script, os.X_OK), "Test script should be executable"
         assert os.access(self.update_script, os.X_OK), "Update script should be executable"
 
@@ -397,7 +395,7 @@ class TestDocumentationScriptsIntegration:
         )
 
         if result.returncode != 0:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 f"Documentation verification found issues (exit {result.returncode}):\n"
                 f"{result.stdout[-500:] if hasattr(result, 'stdout') else ''}"
             )

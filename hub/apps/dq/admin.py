@@ -19,6 +19,8 @@ errant click in the admin UI can't clobber the audit trail.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from django.contrib import admin
 
 from .models import DQAlertingRule, DQAnomaly, DQRun, DQTrend
@@ -28,7 +30,7 @@ from .models import DQAlertingRule, DQAnomaly, DQRun, DQTrend
 # ---------------------------------------------------------------------------
 
 
-def _restore_soft_deleted(model_cls, queryset):
+def _restore_soft_deleted(_model_cls, queryset):
     """Helper that flips ``is_deleted=False`` and clears ``deleted_at``
     on every row in ``queryset``. Returns the number of rows updated.
 
@@ -94,10 +96,12 @@ class DQRunAdmin(admin.ModelAdmin):
         "details_json",
     )
     date_hierarchy = "created_at"
-    ordering = ("-created_at",)
-    actions = ["restore"]
+    ordering = [
+        "-created_at",
+    ]
+    actions: ClassVar[list[str]] = ["restore"]
 
-    def get_queryset(self, request):
+    def get_queryset(self, _request):
         """Return ALL rows including soft-deleted.
 
         Ops needs visibility into deleted rows for incident
@@ -171,10 +175,12 @@ class DQAnomalyAdmin(admin.ModelAdmin):
         "metadata",
     )
     date_hierarchy = "detected_at"
-    ordering = ("-detected_at",)
-    actions = ["restore"]
+    ordering = [
+        "-detected_at",
+    ]
+    actions: ClassVar[list[str]] = ["restore"]
 
-    def get_queryset(self, request):
+    def get_queryset(self, _request):
         return DQAnomaly.all_objects.get_queryset().select_related(
             "tenant",
             "asset",
@@ -230,10 +236,12 @@ class DQTrendAdmin(admin.ModelAdmin):
         "metadata",
     )
     date_hierarchy = "created_at"
-    ordering = ("-created_at",)
-    actions = ["restore"]
+    ordering = [
+        "-created_at",
+    ]
+    actions: ClassVar[list[str]] = ["restore"]
 
-    def get_queryset(self, request):
+    def get_queryset(self, _request):
         return DQTrend.all_objects.get_queryset().select_related(
             "tenant",
             "asset",
@@ -289,4 +297,6 @@ class DQAlertingRuleAdmin(admin.ModelAdmin):
         "channel_config",
     )
     date_hierarchy = "created_at"
-    ordering = ("-created_at",)
+    ordering = [
+        "-created_at",
+    ]

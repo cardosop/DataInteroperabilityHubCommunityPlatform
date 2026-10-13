@@ -44,12 +44,17 @@ export const scheduledExportService = {
 
   /**
    * Create scheduled export
+   *
+   * The backend returns 207 ``{resource, deployment_sync}`` when the
+   * Prefect deployment sync fails (the resource itself was created) —
+   * unwrap that envelope so callers always get the ScheduledExport and
+   * the create page never navigates to ``/scheduled-exports/undefined``.
    */
   async create(data: ScheduledExportCreateRequest): Promise<ScheduledExport> {
-    const response = await apiClient
-      .getClient()
-      .post<ScheduledExport>(`${SCHEDULED_EXPORTS_PATH}/`, data);
-    return response.data;
+    const response = await apiClient.getClient().post<
+      ScheduledExport & { resource?: ScheduledExport }
+    >(`${SCHEDULED_EXPORTS_PATH}/`, data);
+    return response.data.resource ?? response.data;
   },
 
   /**
@@ -71,7 +76,12 @@ export const scheduledExportService = {
 
   /**
    * Trigger scheduled export manually
-   * Note: Increased timeout to 60s to handle slow Prefect integration service responses
+   *
+   * The dlt dispatch branch executes the whole export SYNCHRONOUSLY
+   * inside this request (tenant.data_movement_enabled → services.py
+   * execute_export) — a cold dlt run in the API container can exceed
+   * the client's default 30s and abort the UI request while the run
+   * completes server-side. 120s covers the cold path.
    */
   async trigger(
     id: string,
@@ -80,7 +90,7 @@ export const scheduledExportService = {
     const response = await apiClient.getClient().post<ScheduledExportTriggerResponse>(
       `${SCHEDULED_EXPORTS_PATH}/${id}/trigger/`,
       data || {},
-      { timeout: 60000 } // 60s timeout to handle slow Prefect integration service
+      { timeout: 120000 }
     );
     return response.data;
   },

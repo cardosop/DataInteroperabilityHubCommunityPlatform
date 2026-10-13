@@ -14,6 +14,7 @@ Does NOT mock — reads and validates the real docker-compose.production.yml.
 
 import os
 import re
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -215,7 +216,7 @@ class TestProductionStartupOrder:
         for name, svc in sorted(services.items()):
             for dep in svc.get("depends_on", {}):
                 # depends_on can be a dict (with condition) or a list
-                dep_name = dep if isinstance(dep, str) else dep
+                dep_name = dep
                 if dep_name not in all_names:
                     bad.append(f"{name} depends on unknown service: {dep_name}")
         assert not bad, f"Invalid depends_on references: {bad}"
@@ -229,7 +230,7 @@ class TestProductionStartupOrder:
         for name, svc in services.items():
             deps = svc.get("depends_on", {})
             # depends_on in compose v3.8 can be dict or list
-            if isinstance(deps, dict) or isinstance(deps, list):
+            if isinstance(deps, (dict, list)):
                 for dep_name in deps:
                     if dep_name in services:
                         adj[name].add(dep_name)
@@ -246,7 +247,7 @@ class TestProductionStartupOrder:
                 if color[neighbor] == WHITE:
                     cycle = dfs(neighbor)
                     if cycle:
-                        return [node] + cycle
+                        return [node, *cycle]
             color[node] = BLACK
             return None
 
@@ -303,7 +304,7 @@ class TestProductionResourceLimits:
     """Validate resource limits are appropriate for production."""
 
     # Services that MUST have deploy.resources defined
-    SERVICES_REQUIRING_LIMITS = {
+    SERVICES_REQUIRING_LIMITS: ClassVar[set[str]] = {
         "postgres",
         "api-service",
         "worker-heavy",
@@ -391,9 +392,8 @@ class TestProductionResourceLimits:
             if limit_mem and resv_mem:
                 limit_bytes = _parse_memory(limit_mem)
                 resv_bytes = _parse_memory(resv_mem)
-                if limit_bytes is not None and resv_bytes is not None:
-                    if resv_bytes > limit_bytes:
-                        bad.append(f"{name}: reservation {resv_mem} > limit {limit_mem}")
+                if limit_bytes is not None and resv_bytes is not None and resv_bytes > limit_bytes:
+                    bad.append(f"{name}: reservation {resv_mem} > limit {limit_mem}")
         assert not bad, f"Memory reservation exceeds limit: {bad}"
 
 
@@ -406,7 +406,7 @@ class TestProductionPortSecurity:
     """Validate port exposures follow the principle of least privilege."""
 
     # Services allowed to expose ports to the host
-    ALLOWED_HOST_PORTS = {
+    ALLOWED_HOST_PORTS: ClassVar[set[str]] = {
         "traefik",  # 80/443 — reverse proxy entrypoint
         "otel-collector",  # 4317/4318 — OTLP ingestion
         "tempo",  # 3200 — tracing query API

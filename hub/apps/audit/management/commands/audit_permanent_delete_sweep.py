@@ -87,7 +87,7 @@ class Command(BaseCommand):
             help="Do not persist a Job observability row (smoke tests).",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = bool(options.get("dry_run", False))
         age_days = int(options.get("age_days", DEFAULT_AGE_THRESHOLD_DAYS))
         tenant_arg = options.get("tenant_id")

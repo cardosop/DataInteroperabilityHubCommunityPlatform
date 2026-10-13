@@ -10,6 +10,7 @@ import { normalizeError } from '../../../shared/utils/errorUtils';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import { useCapabilities } from '../../../shared/hooks/useCapabilities';
+import { ContinueWithDatabricksButton } from './ContinueWithDatabricksButton';
 import { APP_NAME } from '../../../shared/constants/brand';
 import './AuthPage.css';
 
@@ -157,9 +158,12 @@ export function LoginPage() {
             </div>
           )}
 
+          <ContinueWithDatabricksButton />
+
           <button
             type="submit"
             className="auth-button"
+            data-testid="login-submit"
             disabled={isLoading}
             aria-busy={isLoading}
           >

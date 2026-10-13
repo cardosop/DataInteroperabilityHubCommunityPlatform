@@ -19,7 +19,10 @@ All validation methods follow engineering best practices:
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError, InterfaceError
 
 from hub.apps.assets.models import Asset
 from hub.apps.core.business_rules.base import (
@@ -28,7 +31,11 @@ from hub.apps.core.business_rules.base import (
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import register_rule
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
+
+if TYPE_CHECKING:
+    from hub.apps.governance.models import AccessPolicy
 from hub.apps.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -111,7 +118,7 @@ class DataMeshBusinessRules(BusinessRules):
         return "DataMeshBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -179,13 +186,16 @@ class DataMeshBusinessRules(BusinessRules):
                 warnings.extend(structure_result.warnings)
                 details.update(structure_result.details)
 
-        if validation_type in ("boundaries", "all"):
-            if hasattr(domain, "boundaries") and domain.boundaries is not None:
-                boundaries_result = self.validate_boundaries(domain.boundaries)
-                if not boundaries_result.is_valid:
-                    errors.extend(boundaries_result.errors)
-                    warnings.extend(boundaries_result.warnings)
-                    details.update(boundaries_result.details)
+        if (
+            validation_type in ("boundaries", "all")
+            and hasattr(domain, "boundaries")
+            and domain.boundaries is not None
+        ):
+            boundaries_result = self.validate_boundaries(domain.boundaries)
+            if not boundaries_result.is_valid:
+                errors.extend(boundaries_result.errors)
+                warnings.extend(boundaries_result.warnings)
+                details.update(boundaries_result.details)
 
         if validation_type in ("ownership", "all"):
             # Check if this is an ownership transfer validation (new_owner_id provided)
@@ -226,12 +236,11 @@ class DataMeshBusinessRules(BusinessRules):
                     details.update(asset_transfer_result.details)
 
         # Validate tenant context consistency
-        if self.tenant_id and domain.tenant:
-            if str(domain.tenant.id) != str(self.tenant_id):
-                errors.append(
-                    f"Tenant mismatch: domain tenant ({domain.tenant.id}) "
-                    f"does not match context tenant ({self.tenant_id})"
-                )
+        if self.tenant_id and domain.tenant and str(domain.tenant.id) != str(self.tenant_id):
+            errors.append(
+                f"Tenant mismatch: domain tenant ({domain.tenant.id}) "
+                f"does not match context tenant ({self.tenant_id})"
+            )
 
         is_valid = len(errors) == 0
         return ValidationResult(
@@ -293,30 +302,42 @@ class DataMeshBusinessRules(BusinessRules):
                     warnings.extend(boundaries_result.warnings)
 
         # Validate capabilities structure
-        if hasattr(domain, "capabilities") and domain.capabilities is not None:
-            if not isinstance(domain.capabilities, dict):
-                errors.append("Domain capabilities must be a dictionary/JSON object")
+        if (
+            hasattr(domain, "capabilities")
+            and domain.capabilities is not None
+            and not isinstance(domain.capabilities, dict)
+        ):
+            errors.append("Domain capabilities must be a dictionary/JSON object")
 
         # Validate resource_quota structure
-        if hasattr(domain, "resource_quota") and domain.resource_quota is not None:
-            if not isinstance(domain.resource_quota, dict):
-                errors.append("Domain resource_quota must be a dictionary/JSON object")
+        if (
+            hasattr(domain, "resource_quota")
+            and domain.resource_quota is not None
+            and not isinstance(domain.resource_quota, dict)
+        ):
+            errors.append("Domain resource_quota must be a dictionary/JSON object")
 
         # Validate resource_usage structure
-        if hasattr(domain, "resource_usage") and domain.resource_usage is not None:
-            if not isinstance(domain.resource_usage, dict):
-                errors.append("Domain resource_usage must be a dictionary/JSON object")
+        if (
+            hasattr(domain, "resource_usage")
+            and domain.resource_usage is not None
+            and not isinstance(domain.resource_usage, dict)
+        ):
+            errors.append("Domain resource_usage must be a dictionary/JSON object")
 
         # Validate owner belongs to same tenant (owner_id set but user may not exist)
         if hasattr(domain, "owner_id") and domain.owner_id is not None:
             try:
                 owner = domain.owner
-                if hasattr(domain, "tenant") and domain.tenant is not None:
-                    if owner.tenant != domain.tenant:
-                        errors.append(
-                            f"Domain owner must belong to the same tenant as the domain. "
-                            f"Owner tenant: {owner.tenant.id}, Domain tenant: {domain.tenant.id}"
-                        )
+                if (
+                    hasattr(domain, "tenant")
+                    and domain.tenant is not None
+                    and owner.tenant != domain.tenant
+                ):
+                    errors.append(
+                        f"Domain owner must belong to the same tenant as the domain. "
+                        f"Owner tenant: {owner.tenant.id}, Domain tenant: {domain.tenant.id}"
+                    )
             except User.DoesNotExist:
                 errors.append("Domain owner not found or does not belong to tenant")
 
@@ -398,7 +419,7 @@ class DataMeshBusinessRules(BusinessRules):
             if raise_on_error:
                 from hub.apps.core.services.base import ValidationError
 
-                raise ValidationError("; ".join(errors))
+                raise ValidationError("; ".join(errors)) from None
             return result
 
         # Validate new owner exists
@@ -412,7 +433,7 @@ class DataMeshBusinessRules(BusinessRules):
             if raise_on_error:
                 from hub.apps.core.services.base import ValidationError
 
-                raise ValidationError("; ".join(errors))
+                raise ValidationError("; ".join(errors)) from None
             return result
 
         details["new_owner_email"] = new_owner.email
@@ -591,25 +612,27 @@ class DataMeshBusinessRules(BusinessRules):
                 ):
                     domain_data_products = set(domain.boundaries["data_products"])
                     for other_domain in other_domains:
-                        if other_domain.boundaries and isinstance(other_domain.boundaries, dict):
-                            if "data_products" in other_domain.boundaries and isinstance(
-                                other_domain.boundaries["data_products"], list
-                            ):
-                                other_data_products = set(other_domain.boundaries["data_products"])
-                                overlap = domain_data_products & other_data_products
-                                if overlap:
-                                    errors.append(
-                                        f"Domain boundary overlap detected: data_products {list(overlap)} "
-                                        f"are also defined in domain '{other_domain.name}'"
-                                    )
-                                    details["overlaps"].append(
-                                        {
-                                            "type": "data_products",
-                                            "overlapping_items": list(overlap),
-                                            "conflicting_domain_id": str(other_domain.id),
-                                            "conflicting_domain_name": other_domain.name,
-                                        }
-                                    )
+                        if (
+                            other_domain.boundaries
+                            and isinstance(other_domain.boundaries, dict)
+                            and "data_products" in other_domain.boundaries
+                            and isinstance(other_domain.boundaries["data_products"], list)
+                        ):
+                            other_data_products = set(other_domain.boundaries["data_products"])
+                            overlap = domain_data_products & other_data_products
+                            if overlap:
+                                errors.append(
+                                    f"Domain boundary overlap detected: data_products {list(overlap)} "
+                                    f"are also defined in domain '{other_domain.name}'"
+                                )
+                                details["overlaps"].append(
+                                    {
+                                        "type": "data_products",
+                                        "overlapping_items": list(overlap),
+                                        "conflicting_domain_id": str(other_domain.id),
+                                        "conflicting_domain_name": other_domain.name,
+                                    }
+                                )
 
                 # Check for overlaps in schemas
                 if "schemas" in domain.boundaries and isinstance(
@@ -617,25 +640,27 @@ class DataMeshBusinessRules(BusinessRules):
                 ):
                     domain_schemas = set(domain.boundaries["schemas"])
                     for other_domain in other_domains:
-                        if other_domain.boundaries and isinstance(other_domain.boundaries, dict):
-                            if "schemas" in other_domain.boundaries and isinstance(
-                                other_domain.boundaries["schemas"], list
-                            ):
-                                other_schemas = set(other_domain.boundaries["schemas"])
-                                overlap = domain_schemas & other_schemas
-                                if overlap:
-                                    errors.append(
-                                        f"Domain boundary overlap detected: schemas {list(overlap)} "
-                                        f"are also defined in domain '{other_domain.name}'"
-                                    )
-                                    details["overlaps"].append(
-                                        {
-                                            "type": "schemas",
-                                            "overlapping_items": list(overlap),
-                                            "conflicting_domain_id": str(other_domain.id),
-                                            "conflicting_domain_name": other_domain.name,
-                                        }
-                                    )
+                        if (
+                            other_domain.boundaries
+                            and isinstance(other_domain.boundaries, dict)
+                            and "schemas" in other_domain.boundaries
+                            and isinstance(other_domain.boundaries["schemas"], list)
+                        ):
+                            other_schemas = set(other_domain.boundaries["schemas"])
+                            overlap = domain_schemas & other_schemas
+                            if overlap:
+                                errors.append(
+                                    f"Domain boundary overlap detected: schemas {list(overlap)} "
+                                    f"are also defined in domain '{other_domain.name}'"
+                                )
+                                details["overlaps"].append(
+                                    {
+                                        "type": "schemas",
+                                        "overlapping_items": list(overlap),
+                                        "conflicting_domain_id": str(other_domain.id),
+                                        "conflicting_domain_name": other_domain.name,
+                                    }
+                                )
 
                 # Check for overlaps in access_patterns
                 if "access_patterns" in domain.boundaries and isinstance(
@@ -643,28 +668,28 @@ class DataMeshBusinessRules(BusinessRules):
                 ):
                     domain_access_patterns = set(domain.boundaries["access_patterns"])
                     for other_domain in other_domains:
-                        if other_domain.boundaries and isinstance(other_domain.boundaries, dict):
-                            if "access_patterns" in other_domain.boundaries and isinstance(
-                                other_domain.boundaries["access_patterns"], list
-                            ):
-                                other_access_patterns = set(
-                                    other_domain.boundaries["access_patterns"]
+                        if (
+                            other_domain.boundaries
+                            and isinstance(other_domain.boundaries, dict)
+                            and "access_patterns" in other_domain.boundaries
+                            and isinstance(other_domain.boundaries["access_patterns"], list)
+                        ):
+                            other_access_patterns = set(other_domain.boundaries["access_patterns"])
+                            overlap = domain_access_patterns & other_access_patterns
+                            if overlap:
+                                warnings.append(
+                                    f"Domain boundary overlap detected: access_patterns {list(overlap)} "
+                                    f"are also defined in domain '{other_domain.name}'. "
+                                    f"This may be intentional for shared access patterns."
                                 )
-                                overlap = domain_access_patterns & other_access_patterns
-                                if overlap:
-                                    warnings.append(
-                                        f"Domain boundary overlap detected: access_patterns {list(overlap)} "
-                                        f"are also defined in domain '{other_domain.name}'. "
-                                        f"This may be intentional for shared access patterns."
-                                    )
-                                    details["overlaps"].append(
-                                        {
-                                            "type": "access_patterns",
-                                            "overlapping_items": list(overlap),
-                                            "conflicting_domain_id": str(other_domain.id),
-                                            "conflicting_domain_name": other_domain.name,
-                                        }
-                                    )
+                                details["overlaps"].append(
+                                    {
+                                        "type": "access_patterns",
+                                        "overlapping_items": list(overlap),
+                                        "conflicting_domain_id": str(other_domain.id),
+                                        "conflicting_domain_name": other_domain.name,
+                                    }
+                                )
 
         is_valid = len(errors) == 0
         result = ValidationResult(
@@ -739,25 +764,27 @@ class DataMeshBusinessRules(BusinessRules):
             details["domain_match"] = None
 
         # If domain has boundaries.data_products, check if asset is listed
-        if domain.boundaries and isinstance(domain.boundaries, dict):
-            if "data_products" in domain.boundaries and isinstance(
-                domain.boundaries["data_products"], list
-            ):
-                data_products = domain.boundaries["data_products"]
-                # Check if asset key or name is in data_products list
-                asset_in_boundary = (
-                    asset.key in data_products
-                    or asset.name in data_products
-                    or str(asset.id) in data_products
+        if (
+            domain.boundaries
+            and isinstance(domain.boundaries, dict)
+            and "data_products" in domain.boundaries
+            and isinstance(domain.boundaries["data_products"], list)
+        ):
+            data_products = domain.boundaries["data_products"]
+            # Check if asset key or name is in data_products list
+            asset_in_boundary = (
+                asset.key in data_products
+                or asset.name in data_products
+                or str(asset.id) in data_products
+            )
+            if not asset_in_boundary:
+                warnings.append(
+                    f"Asset '{asset.key}' is not listed in domain boundaries.data_products. "
+                    f"Consider adding it to maintain boundary consistency."
                 )
-                if not asset_in_boundary:
-                    warnings.append(
-                        f"Asset '{asset.key}' is not listed in domain boundaries.data_products. "
-                        f"Consider adding it to maintain boundary consistency."
-                    )
-                    details["in_boundary_data_products"] = False
-                else:
-                    details["in_boundary_data_products"] = True
+                details["in_boundary_data_products"] = False
+            else:
+                details["in_boundary_data_products"] = True
 
         # Validate tenant context if provided
         if self.tenant_id:
@@ -904,7 +931,7 @@ class DataMeshBusinessRules(BusinessRules):
                         f"Access allowed but data masking is required per policy: "
                         f"{policy_result.policy.name if policy_result.policy else 'Unknown'}"
                     )
-            except Exception as e:
+            except (DatabaseError, InterfaceError) as e:
                 warnings.append(
                     f"Failed to evaluate ABAC policies: {e!s}. Proceeding with basic validation."
                 )
@@ -1100,7 +1127,7 @@ class DataMeshBusinessRules(BusinessRules):
                     ):
                         details["quota_exceeded"].append("compute_hours")
 
-            except Exception as e:
+            except (ImportError, NotFoundError, DatabaseError, InterfaceError) as e:
                 logger.warning(
                     f"Failed to validate domain resource quota via GovernanceService for domain {domain.id}: {e}",
                     exc_info=True,
@@ -1113,11 +1140,10 @@ class DataMeshBusinessRules(BusinessRules):
                 details["governance_validation_passed"] = None
 
         # Validate tenant context if provided
-        if self.tenant_id:
-            if domain.tenant and str(domain.tenant.id) != self.tenant_id:
-                errors.append(
-                    f"Domain tenant ({domain.tenant.id}) does not match validation context tenant ({self.tenant_id})"
-                )
+        if self.tenant_id and domain.tenant and str(domain.tenant.id) != self.tenant_id:
+            errors.append(
+                f"Domain tenant ({domain.tenant.id}) does not match validation context tenant ({self.tenant_id})"
+            )
 
         is_valid = len(errors) == 0
         result = ValidationResult(
@@ -1188,7 +1214,7 @@ class DataMeshBusinessRules(BusinessRules):
             if raise_on_error:
                 from hub.apps.core.services.base import PermissionError
 
-                raise PermissionError(f"User with id '{self.user_id}' not found")
+                raise PermissionError(f"User with id '{self.user_id}' not found") from None
             return result
 
         details["ownership_checks"]["user_exists"] = True
@@ -1347,7 +1373,7 @@ class DataMeshBusinessRules(BusinessRules):
                     f"Transferring to domain '{domain.name}' may affect dependency relationships."
                 )
 
-        except Exception as e:
+        except (AttributeError, ValidationError, DatabaseError, InterfaceError) as e:
             logger.warning(
                 f"Failed to check asset dependencies for asset {asset.id}: {e}", exc_info=True
             )
@@ -1388,9 +1414,9 @@ class DataMeshBusinessRules(BusinessRules):
         )
 
         if raise_on_error and not is_valid:
-            from hub.apps.core.services.base import ValidationError
+            from hub.apps.core.services.base import ValidationError as ServiceValidationError
 
-            raise ValidationError("; ".join(errors))
+            raise ServiceValidationError("; ".join(errors))
 
         return result
 
@@ -1454,7 +1480,7 @@ class DataMeshBusinessRules(BusinessRules):
         # Also exclude the new policy being validated (don't check against itself)
         tenant_wide_policies = []
         if domain.tenant:
-            exclude_ids = list(domain_applied_policy_ids) + [new_policy.id]
+            exclude_ids = [*list(domain_applied_policy_ids), new_policy.id]
             tenant_wide_policies = (
                 AccessPolicy.objects.filter(
                     tenant_id=domain.tenant.id,
@@ -1825,7 +1851,7 @@ class PolicyBusinessRules(BusinessRules):
         return "PolicyBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -1886,12 +1912,11 @@ class PolicyBusinessRules(BusinessRules):
             warnings.append(f"Domain '{domain.name}' is not ACTIVE")
 
         # Validate tenant context consistency
-        if self.tenant_id and domain.tenant:
-            if str(domain.tenant.id) != str(self.tenant_id):
-                errors.append(
-                    f"Tenant mismatch: domain tenant ({domain.tenant.id}) "
-                    f"does not match context tenant ({self.tenant_id})"
-                )
+        if self.tenant_id and domain.tenant and str(domain.tenant.id) != str(self.tenant_id):
+            errors.append(
+                f"Tenant mismatch: domain tenant ({domain.tenant.id}) "
+                f"does not match context tenant ({self.tenant_id})"
+            )
 
         is_valid = len(errors) == 0
         return ValidationResult(
@@ -1971,7 +1996,7 @@ class PolicyBusinessRules(BusinessRules):
         else:
             # Validate override keys are valid
             valid_override_keys = ["conditions", "effect", "priority", "expires_at"]
-            for key in overrides_dict.keys():
+            for key in overrides_dict:
                 if key not in valid_override_keys:
                     warnings.append(
                         f"Unknown override key '{key}' (allowed: {', '.join(valid_override_keys)})"
@@ -2360,7 +2385,7 @@ class TopologyBusinessRules(BusinessRules):
         return "TopologyBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -2401,12 +2426,11 @@ class TopologyBusinessRules(BusinessRules):
             details["domain_name"] = domain.name if hasattr(domain, "name") else None
 
             # Validate tenant context consistency
-            if self.tenant_id and domain.tenant:
-                if str(domain.tenant.id) != str(self.tenant_id):
-                    errors.append(
-                        f"Tenant mismatch: domain tenant ({domain.tenant.id}) "
-                        f"does not match context tenant ({self.tenant_id})"
-                    )
+            if self.tenant_id and domain.tenant and str(domain.tenant.id) != str(self.tenant_id):
+                errors.append(
+                    f"Tenant mismatch: domain tenant ({domain.tenant.id}) "
+                    f"does not match context tenant ({self.tenant_id})"
+                )
 
         # Validate domains list if provided
         elif domains:
@@ -2414,12 +2438,11 @@ class TopologyBusinessRules(BusinessRules):
             for idx, dom in enumerate(domains):
                 if not isinstance(dom, DataMeshDomain):
                     errors.append(f"Domain at index {idx} is not a DataMeshDomain instance")
-                elif self.tenant_id and dom.tenant:
-                    if str(dom.tenant.id) != str(self.tenant_id):
-                        errors.append(
-                            f"Tenant mismatch: domain '{dom.name}' tenant ({dom.tenant.id}) "
-                            f"does not match context tenant ({self.tenant_id})"
-                        )
+                elif self.tenant_id and dom.tenant and str(dom.tenant.id) != str(self.tenant_id):
+                    errors.append(
+                        f"Tenant mismatch: domain '{dom.name}' tenant ({dom.tenant.id}) "
+                        f"does not match context tenant ({self.tenant_id})"
+                    )
 
         else:
             errors.append("Domain or domains list is required for topology validation")

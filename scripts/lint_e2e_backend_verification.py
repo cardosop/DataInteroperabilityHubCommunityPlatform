@@ -62,9 +62,7 @@ def _git_modified_files(repo_root: Path, since_days: int | None) -> list[str]:
         capture_output=True,
     )
     return sorted(
-        set(
-            line.strip() for line in result.stdout.splitlines() if line.strip().endswith(".spec.ts")
-        )
+        {line.strip() for line in result.stdout.splitlines() if line.strip().endswith(".spec.ts")}
     )
 
 
@@ -80,7 +78,7 @@ def _has_verification(filepath: Path) -> bool:
     """Check if a spec file contains at least one verification call."""
     try:
         content = filepath.read_text(encoding="utf-8", errors="ignore")
-    except Exception:
+    except OSError:
         return False
     return any(pat.search(content) for pat in REQUIRED_PATTERNS)
 

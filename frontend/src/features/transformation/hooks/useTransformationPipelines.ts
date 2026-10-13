@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { transformationService } from '../services/transformationService';
 import type {
   TransformationListFilters,
@@ -12,12 +13,10 @@ import type {
   PipelineExecuteRequest,
 } from '../../../shared/types/transformation';
 
-export function useTransformationPipelines(
-  filters: TransformationListFilters = {},
-) {
+export function useTransformationPipelines(filters: TransformationListFilters = {}) {
   return useQuery({
     queryKey: ['transformation', 'pipelines', filters],
-    queryFn: () => transformationService.list(filters),
+    queryFn: async () => normalizePaginated(await transformationService.list(filters)),
   });
 }
 
@@ -32,8 +31,7 @@ export function useTransformationPipeline(id: string | null) {
 export function useCreateTransformationPipeline() {
   const qc = useQueryClient();
   return useMutationWithNotification({
-    mutationFn: (data: TransformationPipelineCreateRequest) =>
-      transformationService.create(data),
+    mutationFn: (data: TransformationPipelineCreateRequest) => transformationService.create(data),
     successMessage: 'Pipeline created',
     errorMessage: 'Failed to create pipeline',
     onSuccess: () => {
@@ -83,9 +81,7 @@ export function useExecuteTransformationPipeline() {
   });
 }
 
-export function useTransformationExecutions(
-  filters: TransformationListFilters = {},
-) {
+export function useTransformationExecutions(filters: TransformationListFilters = {}) {
   return useQuery({
     queryKey: ['transformation', 'executions', filters],
     queryFn: () => transformationService.listExecutions(filters),

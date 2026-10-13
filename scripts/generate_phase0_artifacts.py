@@ -287,11 +287,10 @@ def generate_journey_coverage_matrix(openapi: dict[str, Any]) -> str:
         if any(
             "ai" in step.lower() or "classification" in step.lower() or "anomaly" in step.lower()
             for step in journey.get("steps", [])
-        ):
+        ) and ("classification" in title.lower() or "anomaly" in title.lower()):
             # Check if endpoints exist
-            if "classification" in title.lower() or "anomaly" in title.lower():
-                status = "Yellow"
-                gating_rule = "AI endpoint not confirmed in OpenAPI"
+            status = "Yellow"
+            gating_rule = "AI endpoint not confirmed in OpenAPI"
 
         # Map to routes (simplified)
         screens = map_journey_to_routes(journey)
@@ -330,7 +329,7 @@ def map_journey_to_routes(journey: dict[str, Any]) -> str:
     return "/"
 
 
-def infer_endpoints_from_journey(journey: dict[str, Any], endpoint_paths: dict[str, Any]) -> str:
+def infer_endpoints_from_journey(journey: dict[str, Any], _endpoint_paths: dict[str, Any]) -> str:
     """Infer required endpoints from journey"""
     title = journey.get("title", "").lower()
     steps = " ".join(journey.get("steps", [])).lower()

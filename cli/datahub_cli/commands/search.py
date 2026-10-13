@@ -104,7 +104,7 @@ def search_resources(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to search: {e}")
+        raise click.ClickException(f"Failed to search: {e}") from e
 
 
 @search.command("suggestions")
@@ -148,7 +148,7 @@ def get_suggestions(query: str, limit: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get suggestions: {e}")
+        raise click.ClickException(f"Failed to get suggestions: {e}") from e
 
 
 @search.command("analytics")
@@ -185,4 +185,4 @@ def get_analytics(start_date: str | None, end_date: str | None, output_format: s
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get analytics: {e}")
+        raise click.ClickException(f"Failed to get analytics: {e}") from e

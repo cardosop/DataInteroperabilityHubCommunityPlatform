@@ -76,7 +76,7 @@ def create(
             click.echo(f"Statutory deadline: {data.get('notification_deadline', 'N/A')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @breach.command("list")
@@ -128,7 +128,7 @@ def list_incidents(
                 )
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @breach.command("get")
@@ -156,7 +156,7 @@ def get(incident_id: str, output_format: str):
             click.echo(f"Description: {data.get('description', '')[:200]}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @breach.command("update-status")
@@ -190,7 +190,7 @@ def update_status(incident_id: str, status: str, resolution_note: str, output_fo
             click.echo(f"Status updated: {data.get('status')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @breach.command("sla")
@@ -215,4 +215,4 @@ def sla(incident_id: str, output_format: str):
             click.echo(f"Deadline:       {data.get('notification_deadline', 'N/A')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e

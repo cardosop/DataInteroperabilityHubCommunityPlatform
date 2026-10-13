@@ -142,7 +142,10 @@ class TestForgedGatewayHeadersDoNotOverrideAuth(TestCase):
         must be ignored (no code path reads it).
         """
         factory = RequestFactory()
-        get_response = lambda r: None
+
+        def get_response(_r):
+            return None
+
         middleware = TenantScopingMiddleware(get_response)
         request = factory.get(
             "/api/v1/assets/",
@@ -178,8 +181,9 @@ class TestForgedGatewayHeadersDoNotOverrideAuth(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            "Expected 200 with valid API key; got %s: %s"
-            % (response.status_code, getattr(response, "data", response.content)),
+            "Expected 200 with valid API key; got {}: {}".format(
+                response.status_code, getattr(response, "data", response.content)
+            ),
         )
         data = response.json()
         results = data.get("results", data) if isinstance(data, dict) else data

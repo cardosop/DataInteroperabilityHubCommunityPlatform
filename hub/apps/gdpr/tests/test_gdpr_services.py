@@ -155,7 +155,6 @@ class DataPortabilityServiceTest(TestCase):
         self.assertIsNotNone(job)
         self.assertEqual(job.status, DataExportStatus.COMPLETED)
 
-
     def test_create_export_job_with_nonexistent_user(self):
         """Test that creating export job with nonexistent user raises NotFoundError"""
         fake_user_id = str(uuid.uuid4())
@@ -477,7 +476,6 @@ class ErasureServiceTest(TestCase):
         """Test successful erasure request creation"""
         request = self.service.create_request(user_id=str(self.user.id))
 
-
         self.assertEqual(request.user, self.user)
         self.assertEqual(request.tenant, self.tenant)
         self.assertEqual(request.status, ErasureRequestStatus.PENDING)
@@ -503,7 +501,7 @@ class ErasureServiceTest(TestCase):
             .first()
         )
         self.assertIsNotNone(event)
-        self.assertEqual(event.actor_user_id,self.user.id)
+        self.assertEqual(event.actor_user_id, self.user.id)
         self.assertNotIn("source", event.details_json)
         self.assertNotIn("initiated_by", event.details_json)
 
@@ -529,7 +527,7 @@ class ErasureServiceTest(TestCase):
         )
 
         self.assertIsNotNone(event)
-        self.assertEqual(event.actor_user_id,platform_admin.id)
+        self.assertEqual(event.actor_user_id, platform_admin.id)
         self.assertEqual(event.details_json.get("source"), "platform_admin")
         self.assertEqual(event.details_json.get("initiated_by"), str(platform_admin.id))
 
@@ -576,7 +574,6 @@ class ErasureServiceTest(TestCase):
         request = self.service.create_request(user_id=str(self.user.id))
         self.assertIsNotNone(request)
         self.assertEqual(request.status, ErasureRequestStatus.PENDING)
-
 
     def test_create_request_with_nonexistent_user(self):
         """Test that creating request with nonexistent user raises NotFoundError"""
@@ -668,7 +665,7 @@ class ErasureServiceTest(TestCase):
         audit_event = AuditEvent.objects.filter(resource_id=test_resource_id).first()
         self.assertIsNotNone(
             audit_event,
-            "Test audit event should still exist after erasure; resource_id=%s" % test_resource_id,
+            f"Test audit event should still exist after erasure; resource_id={test_resource_id}",
         )
         self.assertIsInstance(audit_event.details_json, dict)
         self.assertEqual(audit_event.details_json["user_email"], "deleted@deleted.local")

@@ -131,7 +131,7 @@ class ServiceIntegrationAuditor:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
                 tree = ast.parse(content, filename=str(file_path))
-        except Exception as e:
+        except (OSError, SyntaxError, ValueError) as e:
             print(f"Error parsing {file_path}: {e}")
             return
 
@@ -197,13 +197,12 @@ class ServiceIntegrationAuditor:
 
         # Find all service client instantiations
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 # Check if it's instantiating a service client
-                if isinstance(node.func, ast.Name):
-                    func_name = node.func.id
-                    if func_name in self.service_clients:
-                        # Check if circuit breaker is used
-                        self._check_client_methods(node, func_name, file_path, lines)
+                func_name = node.func.id
+                if func_name in self.service_clients:
+                    # Check if circuit breaker is used
+                    self._check_client_methods(node, func_name, file_path, lines)
 
     def _check_client_methods(
         self, node: ast.Call, client_name: str, file_path: str, lines: list[str]
@@ -212,7 +211,7 @@ class ServiceIntegrationAuditor:
         # This is a simplified check - in practice, we'd need to track variable assignments
         # and method calls more carefully
 
-    def _check_base_service_usage(self, tree: ast.AST, content: str, file_path: str):
+    def _check_base_service_usage(self, tree: ast.AST, _content: str, file_path: str):
         """Check if services extend BaseService."""
         # Only check service files
         if "services.py" not in file_path:
@@ -228,14 +227,11 @@ class ServiceIntegrationAuditor:
                     # Check if it extends BaseService
                     has_base_service = False
                     for base in node.bases:
-                        if isinstance(base, ast.Name):
-                            if base.id == "BaseService":
-                                has_base_service = True
-                                break
-                        elif isinstance(base, ast.Attribute):
-                            if base.attr == "BaseService":
-                                has_base_service = True
-                                break
+                        if (isinstance(base, ast.Name) and base.id == "BaseService") or (
+                            isinstance(base, ast.Attribute) and base.attr == "BaseService"
+                        ):
+                            has_base_service = True
+                            break
 
                     if not has_base_service:
                         issue = IntegrationIssue(
@@ -260,32 +256,33 @@ class ServiceIntegrationAuditor:
             if isinstance(node, ast.FunctionDef):
                 # Check for @event_subscriber decorator
                 for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Call):
-                        if isinstance(decorator.func, ast.Name):
-                            if decorator.func.id == "event_subscriber":
-                                # Check function body for synchronous calls
-                                self._check_event_handler_body(node, file_path, lines)
+                    if (
+                        isinstance(decorator, ast.Call)
+                        and isinstance(decorator.func, ast.Name)
+                        and decorator.func.id == "event_subscriber"
+                    ):
+                        # Check function body for synchronous calls
+                        self._check_event_handler_body(node, file_path, lines)
 
     def _check_event_handler_body(self, node: ast.FunctionDef, file_path: str, lines: list[str]):
         """Check event handler body for anti-patterns."""
         # Look for direct service calls in event handlers
         for child in ast.walk(node):
-            if isinstance(child, ast.Call):
-                if isinstance(child.func, ast.Attribute):
-                    # Check if it's calling a service client method directly
-                    attr_name = child.func.attr
-                    if attr_name in ["scan_file", "run_dq", "map_contract", "validate"]:
-                        issue = IntegrationIssue(
-                            file_path=file_path,
-                            line_number=child.lineno,
-                            issue_type="synchronous_call_in_event_handler",
-                            severity="critical",
-                            description=f"Synchronous service call '{attr_name}' in event handler. This blocks event processing.",
-                            code_snippet=lines[child.lineno - 1].strip()[:200],
-                            recommendation="Publish an event instead of making synchronous calls in event handlers.",
-                            pattern_violated="Pattern 2: Event-Driven Coordination (Anti-Pattern 1)",
-                        )
-                        self.issues.append(issue)
+            if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute):
+                # Check if it's calling a service client method directly
+                attr_name = child.func.attr
+                if attr_name in ["scan_file", "run_dq", "map_contract", "validate"]:
+                    issue = IntegrationIssue(
+                        file_path=file_path,
+                        line_number=child.lineno,
+                        issue_type="synchronous_call_in_event_handler",
+                        severity="critical",
+                        description=f"Synchronous service call '{attr_name}' in event handler. This blocks event processing.",
+                        code_snippet=lines[child.lineno - 1].strip()[:200],
+                        recommendation="Publish an event instead of making synchronous calls in event handlers.",
+                        pattern_violated="Pattern 2: Event-Driven Coordination (Anti-Pattern 1)",
+                    )
+                    self.issues.append(issue)
 
     def _check_workflow_patterns(self, tree: ast.AST, content: str, file_path: str):
         """Check workflow orchestration pattern usage."""
@@ -338,7 +335,7 @@ class ServiceIntegrationAuditor:
 
         return report
 
-    def generate_remediation_plan(self, report: dict) -> dict:
+    def generate_remediation_plan(self, _report: dict) -> dict:
         """Generate remediation plan based on audit findings."""
         plan = {
             "overview": "Remediation plan for service integration pattern compliance",

@@ -52,9 +52,7 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
             return False
         if spec_version == "3.1.0":
             return True
-        if _V3_1_PATTERN.match(spec_version):
-            return True
-        return False
+        return bool(_V3_1_PATTERN.match(spec_version))
 
     # _parse_team_v31 is inherited from ODCSNormalizerBase — no override
     # needed.  The base class _normalize_roles_team_pricing already

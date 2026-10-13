@@ -13,12 +13,29 @@ when converting to JSON, as JSON does not support comments.
 """
 
 import json
+from typing import Any
 
 import structlog
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 
 logger = structlog.get_logger(__name__)
+
+
+def _raise_odps_export_error(
+    message: str,
+    error_code: str,
+    context: dict[str, Any] | None = None,
+    cause: Exception | None = None,
+) -> None:
+    """
+    Raise an ODPSExportError with the given details.
+
+    Helper indirection so call sites inside try blocks do not couple
+    the raise to the block's own handlers.
+    """
+    raise ODPSExportError(message=message, error_code=error_code, context=context, cause=cause)
+
 
 # Try to import yaml, but make it optional
 try:
@@ -102,7 +119,7 @@ def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool 
 
         # Validate that parsed data is a dictionary (ODPS documents are objects)
         if not isinstance(yaml_data, dict):
-            raise ODPSExportError(
+            _raise_odps_export_error(
                 message=f"YAML content must represent a dictionary/object, got {type(yaml_data).__name__}",
                 error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
                 context={
@@ -121,9 +138,6 @@ def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool 
             content_length=len(yaml_content),
             json_length=len(json_result),
         )
-
-        return json_result
-
     except yaml.YAMLError as e:
         # Handle YAML parsing errors
         raise ODPSExportError(
@@ -169,6 +183,8 @@ def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool 
             },
             cause=e,
         ) from e
+    else:
+        return json_result
 
 
 def convert_json_to_yaml(
@@ -249,7 +265,7 @@ def convert_json_to_yaml(
 
         # Validate that parsed data is a dictionary (ODPS documents are objects)
         if not isinstance(json_data, dict):
-            raise ODPSExportError(
+            _raise_odps_export_error(
                 message=f"JSON content must represent a dictionary/object, got {type(json_data).__name__}",
                 error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
                 context={
@@ -273,9 +289,6 @@ def convert_json_to_yaml(
             content_length=len(json_content),
             yaml_length=len(yaml_result),
         )
-
-        return yaml_result
-
     except json.JSONDecodeError as e:
         # Handle JSON parsing errors
         raise ODPSExportError(
@@ -323,3 +336,5 @@ def convert_json_to_yaml(
             },
             cause=e,
         ) from e
+    else:
+        return yaml_result

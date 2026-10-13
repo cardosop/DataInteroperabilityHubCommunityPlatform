@@ -10,12 +10,12 @@ from hub.apps.health.services import HealthService
 logger = logging.getLogger(__name__)
 
 
-def liveness(request):
+def liveness(_request):
     """Liveness: process is up (no DB/Redis). Use for Docker/K8s liveness probe."""
     return JsonResponse({"status": "ok"}, status=200)
 
 
-def health_check(request):
+def health_check(_request):
     """Health check endpoint for Docker and load balancers"""
     service = HealthService()
     status = service.get_overall_health_status()
@@ -27,9 +27,25 @@ def health_check(request):
     return JsonResponse(response_data, status=http_status)
 
 
+def business_rules_health(_request):
+    """GET /api/v1/health/business-rules — business-rules subsystem health.
+
+    Phase P.8 D4 — the handler existed in
+    ``hub.apps.core.business_rules.health`` since Phase 274.16.12 but no
+    URL configuration exposed it. Payload contract (documented in
+    docs/BUSINESS_RULES_FRAMEWORK_GUIDE.md): ``{status, degraded_rules,
+    degraded_count}``; an SRE alert reads ``degraded_count > 0``. Plain
+    Django view (like ``/health/`` and ``/health/live/``) so the probe
+    needs no credentials and the DRF schema is unaffected.
+    """
+    from hub.apps.core.business_rules.health import health_check
+
+    return JsonResponse(health_check(), status=200)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def circuit_breaker_status(request):
+def circuit_breaker_status(_request):
     """
     Circuit breaker aggregate status endpoint for monitoring.
 

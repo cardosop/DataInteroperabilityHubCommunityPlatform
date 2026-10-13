@@ -11,6 +11,7 @@ Tests verify:
 All tests use real implementations (no mocks/stubs).
 """
 
+import contextlib
 import unittest
 import uuid
 
@@ -188,7 +189,8 @@ class MarketplaceMetricsTest(TestCase):
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
-        try:
+        with contextlib.suppress(Exception):
+            # Connection creation might fail due to validation, that's okay for this test
             service.create_connection(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -196,9 +198,6 @@ class MarketplaceMetricsTest(TestCase):
                 name="Test Connection",
                 config={"base_url": "https://example.com", "api_key": "test-key"},
             )
-        except Exception:
-            # Connection creation might fail due to validation, that's okay for this test
-            pass
 
         # Get metrics
         response = self.client.get("/metrics/")
@@ -228,7 +227,8 @@ class MarketplaceMetricsTest(TestCase):
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
-        try:
+        with contextlib.suppress(Exception):
+            # Connection creation might fail, that's okay for this test
             service.create_connection(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -236,9 +236,6 @@ class MarketplaceMetricsTest(TestCase):
                 name="Test Connection",
                 config={"base_url": "https://example.com", "api_key": "test-key"},
             )
-        except Exception:
-            # Connection creation might fail, that's okay for this test
-            pass
 
         # Get metrics
         response = self.client.get("/metrics/")
@@ -297,7 +294,9 @@ class MarketplaceMetricsTest(TestCase):
             )
         except Exception:
             # Connection creation might fail, skip this test
-            raise unittest.SkipTest("Connection creation failed, cannot test metric increment")
+            raise unittest.SkipTest(
+                "Connection creation failed, cannot test metric increment"
+            ) from None
 
         # Get metrics after operation
         response = self.client.get("/metrics/")

@@ -101,13 +101,43 @@ def test_gdpr_export_returns_request_status():
 def test_gdpr_erasure_request():
     """POST /users/me/erasure-requests/request-erasure/ by an
     authenticated user should return 201 or 202.
+
+    Uses a DISPOSABLE account: erasure is destructive — the fulfilled
+    request scrubs the account's email to ``deleted-<id>@deleted.local``
+    — so it must NEVER target a shared seeded persona.  Erasing
+    e2e_admin mid-batch breaks every downstream persona login and makes
+    the ensure-e2e-* helpers 404 (the scrubbed email fails the
+    E2E_EMAILS allowlist while the row still authenticates).
     """
-    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
+    import uuid
+
     base = api_base_url()
+    disposable_email = f"dsar-{uuid.uuid4().hex[:8]}@meshant-internal.example.com"
+    register_resp = requests.post(
+        f"{base}/auth/register/",
+        json={
+            "email": disposable_email,
+            "name": "Disposable DSAR",
+            "password": "Disposable@1!",
+        },
+        timeout=15,
+    )
+    assert register_resp.status_code in (200, 201), (
+        f"Disposable registration failed: {register_resp.status_code}: {register_resp.text[:300]}"
+    )
+    login_resp = requests.post(
+        f"{base}/auth/login/",
+        json={"email": disposable_email, "password": "Disposable@1!"},
+        timeout=15,
+    )
+    assert login_resp.status_code == 200, (
+        f"Disposable login failed: {login_resp.status_code}: {login_resp.text[:300]}"
+    )
+    token = login_resp.json()["access_token"]
 
     resp = requests.post(
         f"{base}/users/me/erasure-requests/request-erasure/",
-        headers=_auth_headers(creds.api_key),
+        headers=_auth_headers(token),
         json={},
         timeout=30,
     )

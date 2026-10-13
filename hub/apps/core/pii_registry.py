@@ -25,6 +25,17 @@ class PIIModelEntry:
     notes: str
 
 
+def installed_entries() -> tuple[PIIModelEntry, ...]:
+    """Registry entries whose app is installed in THIS process.
+
+    Core-only mode (HUB_CORE_ONLY=1) does not install paid apps (billing,
+    baas, …) — iterating the raw catalogue with ``apps.get_model`` there
+    raises LookupError. Consumers must use this accessor (Phase 313)."""
+    from django.apps import apps as django_apps
+
+    return tuple(e for e in PII_HOLDING_REGISTRY if django_apps.is_installed(e.app_label))
+
+
 # Keep sorted by (app_label, model_name) to reduce noisy diffs during reviews.
 PII_HOLDING_REGISTRY: Final[tuple[PIIModelEntry, ...]] = (
     PIIModelEntry(

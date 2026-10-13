@@ -52,9 +52,12 @@ from __future__ import annotations
 import logging
 import os
 import warnings
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # Loggers whose ERRORs we care about. Third-party libraries (celery.*,
 # urllib3.*, botocore.*, etc.) often log at ERROR level for expected

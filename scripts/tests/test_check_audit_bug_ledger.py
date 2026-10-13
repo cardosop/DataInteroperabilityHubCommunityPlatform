@@ -549,7 +549,7 @@ class TestLoadLedger:
     def test_malformed_json_raises_with_path(self, tmp_path: Path):
         path = tmp_path / "audit-bugs.json"
         path.write_text("not-json")
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match="Malformed ledger") as exc:
             load_ledger(path)
         assert str(path) in str(exc.value)
 
@@ -700,9 +700,9 @@ class TestAuditBugSkipHelper:
     def test_helper_rejects_empty_bug_id(self):
         from tests.e2e._guards._skip_counter import audit_bug_skip_reason
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="bug_id must be a non-empty string"):
             audit_bug_skip_reason("")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="bug_id must be a non-empty string"):
             audit_bug_skip_reason("   ")
 
     def test_helper_rejects_id_without_audit_bug_prefix(self):
@@ -711,9 +711,9 @@ class TestAuditBugSkipHelper:
         # can't link back to a ledger entry.
         from tests.e2e._guards._skip_counter import audit_bug_skip_reason
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="bug_id must start with"):
             audit_bug_skip_reason("42")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="bug_id must start with"):
             audit_bug_skip_reason("Issue#42")
 
     def test_prefix_matches_canonical_source_of_truth(self):

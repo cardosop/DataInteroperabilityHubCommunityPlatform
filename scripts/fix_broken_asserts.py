@@ -91,7 +91,9 @@ def main():
             continue
         changed = fix_file(path)
         try:
-            compile(content := open(path).read(), path, "exec")
+            with open(path) as fh:
+                _content = fh.read()
+            compile(_content, path, "exec")
             print(f"  ✓ {path}" if changed else f"  (ok) {path}")
         except SyntaxError as e:
             print(f"  ✗ STILL BROKEN: {path} — {e}")

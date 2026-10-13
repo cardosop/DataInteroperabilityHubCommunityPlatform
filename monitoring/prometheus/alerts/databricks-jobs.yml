@@ -1,0 +1,77 @@
+# Phase 4 (openspec add-databricks-jobs task 4.5) — Databricks job-fleet
+# alerts.
+#
+# Metrics emitted by hub/apps/databricks_admin/metrics.py (the 4.2
+# mirror refresh stamps the success anchor + per-state counts + the
+# running-since anchors; the 4.4 poller records terminal outcomes):
+#   databricks_jobs_mirror_last_success_timestamp{tenant_id, workspace_id}
+#   databricks_job_run_state_count{lifecycle_state, tenant_id, workspace_id}
+#   databricks_job_run_started_since_timestamp{run_id, tenant_id, workspace_id}
+#   databricks_job_runs_total{outcome, tenant_id, workspace_id}
+#
+# Alert definitions:
+#   DatabricksJobRunFailed     — a run reached a terminal FAILED state
+#                                in the last 15m
+#   DatabricksJobRunningTooLong — a run is still non-terminal 30
+#                                minutes after it first appeared
+#   DatabricksJobRunRateAnomaly — a 30m window whose failure share
+#                                exceeds 25% (the uc-sync ratio
+#                                precedent)
+
+groups:
+  - name: databricks_jobs
+    rules:
+      # ------------------------------------------------------------------
+      # DatabricksJobRunFailed
+      # A run that terminated FAILED (the jobs API's reported result
+      # state). The 4.4 poller records the outcome at the terminal
+      # transition — any failure in the window pages the operator.
+      # ------------------------------------------------------------------
+      - alert: DatabricksJobRunFailed
+        expr: |
+          increase(databricks_job_runs_total{outcome="FAILED"}[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks job run failed"
+          description: "Workspace {{ $labels.workspace_id }} (tenant {{ $labels.tenant_id }}) had {{ $value | humanize }} failed job runs in the last 15m. Check the run's error state in the jobs mirror."
+
+      # ------------------------------------------------------------------
+      # DatabricksJobRunningTooLong
+      # A run still non-terminal 30 minutes after it first appeared.
+      # The anchor is set by the 4.2 mirror refresh at the FIRST
+      # non-terminal sighting and reset to 0 at the terminal transition
+      # (the 3.8 STARTING-anchor pattern).
+      # Operand order matters: `and` returns the LEFT leg as the alert
+      # value — the age leg first makes `$value` the actual elapsed
+      # seconds (a boolean-first expr renders "1s" regardless of age).
+      # ------------------------------------------------------------------
+      - alert: DatabricksJobRunningTooLong
+        expr: |
+          time() - databricks_job_run_started_since_timestamp > 1800
+          and databricks_job_run_started_since_timestamp > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks job run is taking too long"
+          description: "Run {{ $labels.run_id }} (tenant {{ $labels.tenant_id }}, workspace {{ $labels.workspace_id }}) has been running for {{ $value | humanize }}s (threshold: 30m). Check the run's state via runs/get."
+
+      # ------------------------------------------------------------------
+      # DatabricksJobRunRateAnomaly
+      # A 30-minute window whose terminal runs are more than a quarter
+      # FAILED — a fleet-level health regression, not a single run.
+      # ------------------------------------------------------------------
+      - alert: DatabricksJobRunRateAnomaly
+        expr: |
+          sum(rate(databricks_job_runs_total{outcome="FAILED"}[30m]))
+          /
+          sum(rate(databricks_job_runs_total[30m]))
+          > 0.25
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks job run failure rate anomaly"
+          description: "Workspace {{ $labels.workspace_id }} (tenant {{ $labels.tenant_id }}) failed {{ $value | humanizePercentage }} of its runs in the last 30m (threshold: 25%). Check the workspace's compute health and the jobs mirror."

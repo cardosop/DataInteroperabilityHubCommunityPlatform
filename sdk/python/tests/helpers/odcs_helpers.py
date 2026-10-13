@@ -4,10 +4,9 @@ import json
 import time as _time
 import uuid
 import warnings
-from typing import Optional
 
 
-def create_odcs_contract_via_api(api_base_url: str, api_key: str) -> Optional[str]:
+def create_odcs_contract_via_api(api_base_url: str, api_key: str) -> str | None:
     """
     Create an ODCS contract via the API for testing.
 
@@ -72,13 +71,14 @@ def create_odcs_contract_via_api(api_base_url: str, api_key: str) -> Optional[st
                 print(
                     f"Contract creation failed with status {response.status_code}: {response.text}"
                 )
-            return None
 
         except (ConnectionError, TimeoutError, OSError, ValueError) as exc:
             last_exc = exc
             if attempt < 1:  # retry once after 5s backoff
                 _time.sleep(5)
                 continue
+        else:
+            return None
         break  # exhausted retries — fall through to warning
 
     warnings.warn(f"Exception creating contract after retries: {last_exc!r}")

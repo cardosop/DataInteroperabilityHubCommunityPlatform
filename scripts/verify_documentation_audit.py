@@ -24,7 +24,7 @@ def verify_audit_report(report_path: str) -> bool:
     try:
         with open(report_file, encoding="utf-8") as f:
             report = json.load(f)
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"❌ Error reading report: {e}")
         return False
 

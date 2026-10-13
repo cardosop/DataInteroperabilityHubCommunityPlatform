@@ -14,6 +14,7 @@ Does NOT mock — validates real configuration and code.
 
 import os
 import subprocess
+from datetime import UTC, datetime
 
 import pytest
 import yaml
@@ -72,6 +73,7 @@ class TestSyntheticProbeModule:
             ProbeResult(probe_name="d", success=True, latency_ms=40),
         ]
         summary = ProbeRunSummary(
+            timestamp=datetime.now(UTC),
             total_probes=4,
             passed=3,
             failed=1,
@@ -99,10 +101,10 @@ class TestSyntheticProbeModule:
         assert h.expected_status == 200
 
         # Login probe
-        l = probes["login"]
-        assert l.method == "POST"
-        assert l.url_path == "/api/v1/auth/login/"
-        assert l.expected_status == 200
+        login_probe = probes["login"]
+        assert login_probe.method == "POST"
+        assert login_probe.url_path == "/api/v1/auth/login/"
+        assert login_probe.expected_status == 200
 
         # Asset list probe
         a = probes["asset_list"]

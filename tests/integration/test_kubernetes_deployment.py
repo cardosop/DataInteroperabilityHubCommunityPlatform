@@ -86,13 +86,13 @@ def kustomize_available_check():
 class TestKubernetesDeploymentManifests:
     """Validate Deployment and StatefulSet structure from k8s bases."""
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_kustomize_build_succeeds(self, service_name, base_path, kustomize_available_check):
         """Every k8s base builds successfully with kustomize."""
         manifests = load_manifests_from_kustomize(base_path)
         assert len(manifests) >= 1, f"{service_name}: kustomize build produced no resources"
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_deployments_have_required_spec(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -116,7 +116,7 @@ class TestKubernetesDeploymentManifests:
                     f"{service_name} container should have name and preferably ports"
                 )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_statefulsets_have_required_spec(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -138,7 +138,7 @@ class TestKubernetesDeploymentManifests:
                     f"{service_name} StatefulSet container {c.get('name')} missing image"
                 )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_deployments_rolling_update_strategy(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -154,7 +154,7 @@ class TestKubernetesDeploymentManifests:
                     f"{service_name} Deployment RollingUpdate should define maxSurge or maxUnavailable"
                 )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_application_services_have_health_probes(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -169,7 +169,10 @@ class TestKubernetesDeploymentManifests:
             + by_kind.get("DaemonSet", [])
         ):
             for c in (
-                (resource.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+                (resource.get("spec") or {})
+                .get("template", {})
+                .get("spec", {})
+                .get("containers", [])
             ):
                 assert c.get("livenessProbe"), (
                     f"{service_name} container {c.get('name')} missing livenessProbe"
@@ -189,9 +192,7 @@ class TestKubernetesDeploymentManifests:
             manifests = load_manifests_from_kustomize(base_path)
             by_kind = get_resources_by_kind(manifests)
             has_workload = (
-                by_kind.get("Deployment")
-                or by_kind.get("StatefulSet")
-                or by_kind.get("DaemonSet")
+                by_kind.get("Deployment") or by_kind.get("StatefulSet") or by_kind.get("DaemonSet")
             )
             if has_workload:
                 missing.append(service_name)
@@ -201,7 +202,7 @@ class TestKubernetesDeploymentManifests:
                 f"{', '.join(missing)}. Add them to the set in test_kubernetes_deployment.py."
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_deployment_containers_no_placeholder_images(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -219,7 +220,7 @@ class TestKubernetesDeploymentManifests:
                 )
 
     @pytest.mark.parametrize(
-        "service_name,overlay_name,overlay_path", _K8S_OVERLAYS, ids=_K8S_OVERLAY_IDS
+        ("service_name", "overlay_name", "overlay_path"), _K8S_OVERLAYS, ids=_K8S_OVERLAY_IDS
     )
     def test_kustomize_overlay_build_succeeds(
         self, service_name, overlay_name, overlay_path, kustomize_available_check
@@ -247,7 +248,7 @@ class TestKubernetesDeploymentManifests:
                 "These manifests have structural issues that need fixing."
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_application_services_probes_have_valid_structure(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -262,7 +263,10 @@ class TestKubernetesDeploymentManifests:
             + by_kind.get("DaemonSet", [])
         ):
             for c in (
-                (resource.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+                (resource.get("spec") or {})
+                .get("template", {})
+                .get("spec", {})
+                .get("containers", [])
             ):
                 for probe_name in ("livenessProbe", "readinessProbe"):
                     probe = c.get(probe_name)
@@ -285,6 +289,9 @@ class TestKubernetesDeploymentManifests:
                             f"{service_name} {probe_name} tcpSocket must have port"
                         )
                     if has_exec:
-                        assert "command" in probe["exec"] and probe["exec"]["command"], (
+                        assert "command" in probe["exec"], (
+                            f"{service_name} {probe_name} exec must have non-empty command"
+                        )
+                        assert probe["exec"]["command"], (
                             f"{service_name} {probe_name} exec must have non-empty command"
                         )

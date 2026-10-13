@@ -54,7 +54,11 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         expect(page.url()).toContain('/login');
         return;
       }
-      const filterSelect = page.locator('.filter-select').first();
+      // The DOMAIN filter (first .filter-select) only offers options when
+      // the loaded page has domain-bearing listings — the marketplace API
+      // has no domains endpoint. The CATEGORY filter always carries its
+      // option list, so it is the deterministic interaction contract here.
+      const filterSelect = page.locator('[aria-label="Filter by category"]').first();
       // intentional: filter UI is presence-conditional — filters render only when the list has enough items to need filtering.
       if ((await filterSelect.count()) > 0) {
         await filterSelect.selectOption({ index: 1 });

@@ -2,7 +2,7 @@
 Semantic operations for DataHub SDK.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -15,7 +15,7 @@ class SemanticAPI:
         self,
         query: str,
         accept: str = "application/sparql-results+json",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return await self.client.post(
             "semantic/sparql/query/",
             data={"query": query},
@@ -26,7 +26,7 @@ class SemanticAPI:
         self,
         query: str,
         accept: str = "application/ld+json",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return await self.client.post(
             "semantic/sparql/construct/",
             data={"query": query},
@@ -37,16 +37,16 @@ class SemanticAPI:
         self,
         data: str,
         content_type: str = "text/turtle",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return await self.client.post(
             "semantic/rdf/ingest/",
             data={"data": data, "content_type": content_type},
         )
 
-    async def get_ontology(self) -> Dict[str, Any]:
+    async def get_ontology(self) -> dict[str, Any]:
         return await self.client.get("semantic/ontology/")
 
-    async def get_jsonld_context(self) -> Dict[str, Any]:
+    async def get_jsonld_context(self) -> dict[str, Any]:
         """Return the JSON-LD ``@context`` document.
 
         Phase 230.6 (REQ-SEM-CONTEXT-ALIAS-001) — calls the
@@ -59,27 +59,27 @@ class SemanticAPI:
         """
         return await self.client.get("semantic/context")
 
-    async def get_void(self) -> Dict[str, Any]:
+    async def get_void(self) -> dict[str, Any]:
         return await self.client.get("semantic/void/")
 
     async def shacl_validate(
         self,
         data: str,
-        shapes: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {"data": data}
+        shapes: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"data": data}
         if shapes:
             payload["shapes"] = shapes
         return await self.client.post("semantic/shacl/validate/", data=payload)
 
-    async def resource_resolve(self, uri: str) -> Dict[str, Any]:
+    async def resource_resolve(self, uri: str) -> dict[str, Any]:
         return await self.client.get("semantic/resource/resolve/", params={"uri": uri})
 
     async def execute_graphql_ld(
         self,
         query: str,
-        variables: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        variables: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Execute a GraphQL-LD query against the semantic graph.
 
         Args:
@@ -94,7 +94,7 @@ class SemanticAPI:
         """
         if not query or not query.strip():
             raise ValueError("GraphQL-LD query must be non-empty")
-        body: Dict[str, Any] = {"query": query}
+        body: dict[str, Any] = {"query": query}
         if variables is not None:
             body["variables"] = variables
         return await self.client.post("semantic/graphql", data=body)

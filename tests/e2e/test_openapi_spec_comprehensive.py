@@ -139,12 +139,13 @@ class OpenAPISpecAccuracyTest(E2ETestBase):
                 continue
 
             for method, operation in path_item.items():
-                if method.lower() in ["get", "post", "put", "patch", "delete"]:
-                    if isinstance(operation, dict):
-                        if operation.get("responses"):
-                            operations_with_responses += 1
-                        else:
-                            operations_without_responses.append(f"{method.upper()} {path}")
+                if method.lower() in ["get", "post", "put", "patch", "delete"] and isinstance(
+                    operation, dict
+                ):
+                    if operation.get("responses"):
+                        operations_with_responses += 1
+                    else:
+                        operations_without_responses.append(f"{method.upper()} {path}")
 
         # At least 80% of operations should have responses
         total_operations = operations_with_responses + len(operations_without_responses)
@@ -168,12 +169,13 @@ class OpenAPISpecAccuracyTest(E2ETestBase):
                 continue
 
             for method, operation in path_item.items():
-                if method.lower() in ["get", "post", "put", "patch", "delete"]:
-                    if isinstance(operation, dict):
-                        if operation.get("tags"):
-                            operations_with_tags += 1
-                        else:
-                            operations_without_tags.append(f"{method.upper()} {path}")
+                if method.lower() in ["get", "post", "put", "patch", "delete"] and isinstance(
+                    operation, dict
+                ):
+                    if operation.get("tags"):
+                        operations_with_tags += 1
+                    else:
+                        operations_without_tags.append(f"{method.upper()} {path}")
 
         # At least 80% of operations should have tags
         total_operations = operations_with_tags + len(operations_without_tags)
@@ -198,12 +200,11 @@ class OpenAPISpecAccuracyTest(E2ETestBase):
                 continue
 
             for method, operation in path_item.items():
-                if method.lower() in state_changing_methods:
-                    if isinstance(operation, dict):
-                        if operation.get("requestBody"):
-                            operations_with_request_bodies += 1
-                        else:
-                            operations_missing_request_bodies.append(f"{method.upper()} {path}")
+                if method.lower() in state_changing_methods and isinstance(operation, dict):
+                    if operation.get("requestBody"):
+                        operations_with_request_bodies += 1
+                    else:
+                        operations_missing_request_bodies.append(f"{method.upper()} {path}")
 
         # At least 70% of state-changing operations should have request bodies
         total_operations = operations_with_request_bodies + len(operations_missing_request_bodies)
@@ -227,11 +228,12 @@ class OpenAPISpecAccuracyTest(E2ETestBase):
                 continue
 
             for method, operation in path_item.items():
-                if method.lower() in ["get", "post", "put", "patch", "delete"]:
-                    if isinstance(operation, dict):
-                        responses = operation.get("responses", {})
-                        if any(code in responses for code in error_codes):
-                            operations_with_errors += 1
+                if method.lower() in ["get", "post", "put", "patch", "delete"] and isinstance(
+                    operation, dict
+                ):
+                    responses = operation.get("responses", {})
+                    if any(code in responses for code in error_codes):
+                        operations_with_errors += 1
 
         # At least some operations should have error responses
         self.assertGreater(operations_with_errors, 0, "No error responses documented")

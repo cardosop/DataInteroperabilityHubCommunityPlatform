@@ -22,6 +22,67 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Transformation pipeline Prometheus metrics. Defined at module level so every
+# emission site shares one registry object; stub-degraded when prometheus_client
+# is absent (mirrors hub/apps/breach/metrics.py).
+class _MetricStub:
+    """No-op metric stand-in for environments without prometheus_client."""
+
+    def labels(self, **_: object) -> "_MetricStub":
+        return self
+
+    def inc(self, _amount: float = 1) -> None:
+        return None
+
+    def observe(self, _amount: float) -> None:
+        return None
+
+    def set(self, _amount: float) -> None:
+        return None
+
+
+try:
+    from prometheus_client import Counter, Gauge, Histogram
+
+    transformation_pipeline_created_total = Counter(
+        "transformation_pipeline_created_total",
+        "Transformation pipelines created.",
+        ["tenant_id"],
+    )
+    transformation_pipeline_execution_duration_seconds = Histogram(
+        "transformation_pipeline_execution_duration_seconds",
+        "Transformation pipeline execution duration.",
+        ["status", "tenant_id"],
+    )
+    transformation_pipeline_execution_success_rate = Gauge(
+        "transformation_pipeline_execution_success_rate",
+        "Transformation pipeline execution success rate (1.0 success, 0.0 failure).",
+        ["tenant_id"],
+    )
+    transformation_pipeline_execution_queue_depth = Gauge(
+        "transformation_pipeline_execution_queue_depth",
+        "Transformation pipeline execution queue depth by status.",
+        ["status", "tenant_id"],
+    )
+    transformation_preview_generation_duration_seconds = Histogram(
+        "transformation_preview_generation_duration_seconds",
+        "Transformation preview generation duration.",
+        ["tenant_id"],
+    )
+    transformation_wrangling_operations_total = Counter(
+        "transformation_wrangling_operations_total",
+        "Transformation wrangling operations.",
+        ["operation_type", "status", "tenant_id"],
+    )
+except (ImportError, ValueError):  # pragma: no cover
+    transformation_pipeline_created_total = _MetricStub()
+    transformation_pipeline_execution_duration_seconds = _MetricStub()
+    transformation_pipeline_execution_success_rate = _MetricStub()
+    transformation_pipeline_execution_queue_depth = _MetricStub()
+    transformation_preview_generation_duration_seconds = _MetricStub()
+    transformation_wrangling_operations_total = _MetricStub()
+
+
 def _get_tracer():
     """Get OpenTelemetry tracer for transformation pipelines."""
     return get_tracer("transformation.pipeline")

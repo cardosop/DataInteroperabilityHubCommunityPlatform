@@ -740,7 +740,7 @@ class CircuitBreakerTransitionTests(TestCase):
             assert breaker.get_state() == CircuitBreakerState.OPEN
 
             # Wait past the timeout so the next call probes HALF_OPEN.
-            time.sleep(1.5)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1.5)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             # Re-prime responses with a healthy 200 and then run the
             # success_threshold count of calls so the breaker closes.
@@ -963,3 +963,70 @@ class EmailBreakerTransientTests(TestCase):
         )
         assert breaker.get_state() == CircuitBreakerState.OPEN
         reset_circuit_breaker_by_name("dq_alert_email")
+
+
+class TestSsrFUrlValidation(TestCase):
+    """W1.13 — alert-delivery URLs are SSRF-checked at deliver time.
+
+    The check blocks PROVEN-private targets (internal IP literals) and
+    tolerates DNS-resolution failure — a hostname that cannot resolve
+    cannot be rebound to a private IP (ssrf_guard.resolve_private_or_none).
+    """
+
+    def test_webhook_internal_url_blocked(self):
+        from hub.apps.dq.clients.base import AlertDeliveryError
+        from hub.apps.dq.clients.webhook_client import WebhookAlertClient
+
+        rule = _make_rule(
+            channels=["WEBHOOK"],
+            channel_config={"url": "http://169.254.169.254/latest/meta-data/"},
+        )
+        with pytest.raises(AlertDeliveryError):
+            WebhookAlertClient()._deliver(rule, {"event": "test"})
+        # W1.19 — convention 8: the block emits its audit event.
+        from hub.apps.audit.models import AuditEvent
+
+        assert AuditEvent.objects.filter(
+            action="DQ_ALERT_DELIVERY_SSRF_BLOCKED",
+        ).exists()
+
+    def test_slack_internal_url_blocked(self):
+        from hub.apps.dq.clients.base import AlertDeliveryError
+        from hub.apps.dq.clients.slack_client import SlackAlertClient
+
+        rule = _make_rule(
+            channels=["SLACK"],
+            channel_config={"webhook_url": "http://127.0.0.1:9/services/x"},
+        )
+        with pytest.raises(AlertDeliveryError):
+            SlackAlertClient()._deliver(rule, {"event": "test"})
+
+    def test_localhost_allowed_when_ssrf_flag_off(self):
+        # Control: the deliver-time gate honors the kill switch — the
+        # existing scripted-receiver tests rely on localhost targets.
+        from django.test import override_settings
+
+        from hub.apps.dq.clients.webhook_client import WebhookAlertClient
+
+        with override_settings(DQ_ALERT_SSRF_ENABLED=False):
+            rule = _make_rule(
+                channels=["WEBHOOK"],
+                channel_config={"url": "http://127.0.0.1:9/x"},
+            )
+            result = WebhookAlertClient()._deliver(rule, {"event": "test"})
+        assert result.success is False  # network-error path, NOT the SSRF block
+
+    def test_serializer_rejects_internal_url(self):
+        from hub.apps.dq.serializers import DQAlertingRuleCreateSerializer
+
+        ser = DQAlertingRuleCreateSerializer(
+            data={
+                "threshold": 0.8,
+                "alert_channels": ["WEBHOOK"],
+                "channel_config": {
+                    "url": "http://169.254.169.254/latest/meta-data/",
+                },
+            }
+        )
+        assert ser.is_valid() is False
+        assert "channel_config" in ser.errors

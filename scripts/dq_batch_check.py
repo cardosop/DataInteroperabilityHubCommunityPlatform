@@ -16,9 +16,10 @@ def ok(url, timeout=5):
             urllib.request.Request(url, method="GET"),
             timeout=timeout,
         )
-        return True
-    except Exception:
+    except (OSError, ValueError):
         return False
+    else:
+        return True
 
 
 def main():

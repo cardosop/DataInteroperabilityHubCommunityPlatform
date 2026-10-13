@@ -20,7 +20,7 @@ class Command(BaseCommand):
         "integration service. Runs every 5 minutes via CronJob (25.7)."
     )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         from django.conf import settings
 
         if getattr(settings, "MVP_MODE", False):

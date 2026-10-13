@@ -183,7 +183,7 @@ def get_status_class(status_code: int) -> str:
         return "other"
 
 
-def metrics_view(request):
+def metrics_view(_request):
     """
     Prometheus metrics endpoint.
 

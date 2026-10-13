@@ -87,7 +87,7 @@ class E2ESkipDisciplineTest(TestCase):
                 for i, line in enumerate(f, 1):
                     stripped = line.strip()
                     # Skip comments (// ...) — not actual code
-                    if stripped.startswith("//") or stripped.startswith("/*"):
+                    if stripped.startswith(("//", "/*")):
                         continue
                     # Match test.skip() with no args
                     if re.search(
@@ -147,6 +147,12 @@ class BackendSkipDisciplineTest(TestCase):
             with open(filepath) as f:
                 for i, line in enumerate(f, 1):
                     stripped = line.strip()
+                    # Skip comment lines and docstring mentions — the
+                    # discipline applies to real skip CALLS, not prose.
+                    if stripped.startswith("#"):
+                        continue
+                    if (chr(34) * 3) in stripped or (chr(39) * 3) in stripped:
+                        continue
                     # Match self.skipTest() or pytest.skip()
                     # with no string argument
                     if re.search(
@@ -175,22 +181,21 @@ class BackendSkipDisciplineTest(TestCase):
         for filepath in _find_files("hub", ".py"):
             with open(filepath) as f:
                 for i, line in enumerate(f, 1):
-                    if "@pytest.mark.xfail" in line:
-                        # Check if reason mentions infra
-                        if re.search(
-                            r"redis|postgres|docker|"
-                            r"service.*unavailable|"
-                            r"container|minio",
-                            line,
-                            re.IGNORECASE,
-                        ):
-                            rel = os.path.relpath(
-                                filepath,
-                                _REPO_ROOT,
-                            )
-                            infra_xfails.append(
-                                f"{rel}:{i}",
-                            )
+                    # Check if reason mentions infra
+                    if "@pytest.mark.xfail" in line and re.search(
+                        r"redis|postgres|docker|"
+                        r"service.*unavailable|"
+                        r"container|minio",
+                        line,
+                        re.IGNORECASE,
+                    ):
+                        rel = os.path.relpath(
+                            filepath,
+                            _REPO_ROOT,
+                        )
+                        infra_xfails.append(
+                            f"{rel}:{i}",
+                        )
 
         self.assertEqual(
             infra_xfails,

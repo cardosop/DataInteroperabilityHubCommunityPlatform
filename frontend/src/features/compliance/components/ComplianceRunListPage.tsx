@@ -13,6 +13,12 @@ import type { ComplianceRunStatus } from '../../../shared/types/compliance';
 import { ComplianceCreateModal } from './ComplianceCreateModal';
 import './ComplianceRunListPage.css';
 import { Button } from '../../../shared/components/Button';
+import { HelpTip } from '../../../shared/components/HelpTip';
+
+// Phase 278.J — inline glossary help for the compliance jargon used on this
+// page. Always rendered in the header (not gated by API response state) so
+// the axe-phase278-pages HelpTip E2E audit has a stable surface.
+const COMPLIANCE_GLOSSARY_TERMS = ['ROPA', 'DPIA', 'DSAR', 'RLS', 'ABAC'] as const;
 
 export function ComplianceRunListPage() {
   const navigate = useNavigate();
@@ -177,6 +183,14 @@ export function ComplianceRunListPage() {
     <div className="compliance-run-list-page" data-testid="compliance-run-list-page">
       <div className="compliance-run-list-header">
         <h1>Compliance Runs</h1>
+        <div className="compliance-glossary-terms" aria-label="Compliance glossary">
+          {COMPLIANCE_GLOSSARY_TERMS.map((term) => (
+            <span key={term} className="compliance-glossary-term">
+              {term}
+              <HelpTip term={term} position="bottom" />
+            </span>
+          ))}
+        </div>
         <div className="compliance-run-list-header-actions">
           <Button
             variant="primary"
@@ -193,6 +207,7 @@ export function ComplianceRunListPage() {
                 setStatusFilter(e.target.value as ComplianceRunStatus | '');
                 setPage(1);
               }}
+              aria-label="Filter by status"
             >
               <option value="">All Statuses</option>
               <option value="PENDING">Pending</option>

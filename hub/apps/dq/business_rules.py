@@ -18,6 +18,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from django.db.utils import DatabaseError
+
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
@@ -90,7 +92,7 @@ class DQBusinessRules(BusinessRules):
         return "DQBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -191,7 +193,7 @@ class DQBusinessRules(BusinessRules):
         return result
 
     def _validate_dq_run(
-        self, dq_run: DQRun, tenant: Any | None = None, user: User | None = None
+        self, dq_run: DQRun, tenant: Any | None = None, _user: User | None = None
     ) -> ValidationResult:
         """
         Validate DQ run.
@@ -601,7 +603,9 @@ class DQBusinessRules(BusinessRules):
 
                 if target_level:
                     valid_levels = ["COLUMN", "DATASET", "TABLE", "column", "dataset", "table"]
-                    if target_level.upper() not in [l.upper() for l in valid_levels]:
+                    if target_level.upper() not in [
+                        valid_level.upper() for valid_level in valid_levels
+                    ]:
                         errors.append(
                             f"DQ check target 'level' must be one of: COLUMN, DATASET, TABLE. "
                             f"Got: {target_level}"
@@ -721,7 +725,7 @@ class DQBusinessRules(BusinessRules):
         details["target_pattern"] = target_pattern
 
         # If target is DATASET level, no column validation needed
-        if target_level == "DATASET" or target_level == "TABLE":
+        if target_level in {"DATASET", "TABLE"}:
             details["schema_compatible"] = True
             details["column_validation_skipped"] = "Dataset-level check"
             return ValidationResult(
@@ -781,7 +785,7 @@ class DQBusinessRules(BusinessRules):
 
     def _validate_check_resource(
         self,
-        check: dict[str, Any],
+        _check: dict[str, Any],
         dq_run: DQRun | None,
         dataset: Any | None,
         tenant: Any | None,
@@ -1056,8 +1060,8 @@ class DQBusinessRules(BusinessRules):
         self,
         aggregation_config: dict[str, Any] | None,
         scorecard_data: dict[str, Any] | None,
-        tenant: Any | None,
-        asset: Any | None,
+        _tenant: Any | None,
+        _asset: Any | None,
     ) -> ValidationResult:
         """
         Validate scorecard calculation aggregation rules.
@@ -1245,7 +1249,7 @@ class DQBusinessRules(BusinessRules):
         )
 
     def _validate_scorecard_thresholds(
-        self, scorecard_data: dict[str, Any] | None, tenant: Any | None, asset: Any | None
+        self, scorecard_data: dict[str, Any] | None, _tenant: Any | None, _asset: Any | None
     ) -> ValidationResult:
         """
         Validate scorecard thresholds (PASS/WARN/FAIL thresholds).
@@ -1466,7 +1470,7 @@ class DQBusinessRules(BusinessRules):
                     details["has_dq_runs"] = False
                 else:
                     details["has_dq_runs"] = True
-            except Exception as e:
+            except DatabaseError as e:
                 warnings.append(f"Could not validate tenant DQ runs: {e!s}")
                 details["dq_runs_validation_error"] = str(e)
         else:
@@ -1514,7 +1518,7 @@ class DQBusinessRules(BusinessRules):
                         details["has_recent_dq_runs"] = False
                     else:
                         details["has_recent_dq_runs"] = True
-            except Exception as e:
+            except DatabaseError as e:
                 warnings.append(f"Could not validate asset DQ runs: {e!s}")
                 details["asset_dq_runs_validation_error"] = str(e)
         else:
@@ -1529,7 +1533,9 @@ class DQBusinessRules(BusinessRules):
 
         # Check if scorecard service is available
         try:
-            from .scorecards import DQScorecardService
+            from .scorecards import (
+                DQScorecardService,
+            )
 
             details["scorecard_service_available"] = True
         except ImportError:

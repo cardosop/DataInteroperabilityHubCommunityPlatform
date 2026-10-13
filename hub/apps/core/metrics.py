@@ -33,5 +33,5 @@ try:
         ["app", "view", "scope", "tenant_id"],
     )
 
-except Exception:  # pragma: no cover
+except (ImportError, ValueError):  # pragma: no cover
     throttle_hit_total = _MetricStub()

@@ -9,12 +9,11 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework.test import APIClient
 
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.services import FileService
-from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan, TenantStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -23,45 +22,14 @@ User = get_user_model()
 def _ensure_tenant_has_active_subscription(tenant):
     """
     Ensure the tenant has an active subscription so write operations
-    (POST/PUT/PATCH/DELETE) are allowed by TenantSuspensionMiddleware
-    (hub.apps.tenants.middleware; Phase 25.2.4 subscription check).
-    Used by API test bases that hit the full request stack. No mocks.
+    (POST/PUT/PATCH/DELETE) are allowed by TenantSuspensionMiddleware.
+    Delegates to the core facade (hub.apps.testing.billing_support) —
+    the paid billing app registers the real factory; core-only mode has
+    no factory and the helper is a no-op (the middleware fails open there).
     """
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
-    plan, _ = TenantPlan.objects.get_or_create(
-        slug="files-test-plan",
-        defaults={
-            "name": "Files Test Plan",
-            "tier": PlanTier.PRO,
-            "limits_json": {"max_assets": 100, "max_storage_gb": 1000},
-            "is_active": True,
-        },
-    )
-    # Ensure the plan has max_storage_gb (handles pre-existing rows
-    # created before this limit was added to the test plan).
-    if "max_storage_gb" not in (plan.limits_json or {}):
-        plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000}
-        plan.save(update_fields=["limits_json"])
-
-    # Assign the plan directly on the tenant FK so that
-    # PlanLimitService.check_limit() finds it via tenant.plan
-    if tenant.plan_id != plan.id:
-        tenant.plan = plan
-        tenant.save(update_fields=["plan"])
-
-    subscription = Subscription.objects.filter(tenant_id=tenant.id).order_by("-created_at").first()
-    if not subscription or subscription.status not in (
-        SubscriptionStatus.ACTIVE,
-        SubscriptionStatus.TRIAL,
-    ):
-        Subscription.objects.create(
-            tenant=tenant,
-            plan=plan,
-            status=SubscriptionStatus.ACTIVE,
-            current_period_start=timezone.now(),
-            current_period_end=timezone.now(),
-        )
+    return ensure_tenant_has_active_subscription(tenant)
 
 
 class FilesTestBase(TestCase):
@@ -177,7 +145,7 @@ class FilesAPITransactionTestBase(FilesTransactionTestBase):
 # Memoized per-session so multiple ``setUp`` / test-method calls share
 # one connection probe.
 
-import logging as _logging  # noqa: E402
+import logging as _logging
 
 _redis_log = _logging.getLogger(__name__)
 _redis_available: bool | None = None
@@ -194,16 +162,16 @@ def redis_or_skip() -> None:
     Only connection-level failures trigger a skip — unexpected
     errors (e.g. import errors, misconfiguration) are NOT silenced.
     """
-    global _redis_available
+    global _redis_available  # probe-result cache: module global is deliberately mutated once per session
 
     if _redis_available is not None:
         if not _redis_available:
-            import unittest  # noqa: E402
+            import unittest
 
             raise unittest.SkipTest("Redis unavailable (cached from earlier probe)")
         return
 
-    import redis as _redis  # noqa: E402
+    import redis as _redis
 
     try:
         from hub.apps.api.middleware.idempotency_utils import get_redis_client
@@ -213,7 +181,7 @@ def redis_or_skip() -> None:
     except (_redis.ConnectionError, _redis.TimeoutError, OSError) as exc:
         _redis_available = False
         _redis_log.info("redis_or_skip: Redis unavailable — tests will skip. %s", exc)
-        import unittest  # noqa: E402
+        import unittest
 
         raise unittest.SkipTest(f"Redis required: {exc}") from exc
     # Any other exception (ImportError, SyntaxError, …) is a real bug

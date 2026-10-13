@@ -79,7 +79,8 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
 
         # Query by event_type (should use index)
         external_refs = SecurityAuditLog.objects.filter(
-            event_type=SecurityEventType.EXTERNAL_REF_FETCH.value
+            event_type=SecurityEventType.EXTERNAL_REF_FETCH.value,
+            tenant=self.tenant1,
         )
         self.assertEqual(external_refs.count(), 1)
 
@@ -117,8 +118,10 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
             timestamp=now,
         )
 
-        # Query should return newest first (default ordering)
-        logs = SecurityAuditLog.objects.all()
+        # Query should return newest first (default ordering).  Scoped to
+        # tenant1: the shared test DB accumulates committed rows from the
+        # live API stack, so unscoped queries see other tenants' logs.
+        logs = SecurityAuditLog.objects.filter(tenant=self.tenant1)
         self.assertEqual(logs[0].id, log3.id)
         self.assertEqual(logs[1].id, log2.id)
         self.assertEqual(logs[2].id, log1.id)
@@ -127,8 +130,10 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
         """Test filtering security audit logs by time range."""
         now = timezone.now()
 
-        # Clear any existing logs from setUp
-        SecurityAuditLog.objects.all().delete()
+        # Clear any existing logs for this tenant from setUp.  Scoped to
+        # tenant1: an unscoped delete would also remove (and lock) rows
+        # committed to the shared test DB by the live API stack.
+        SecurityAuditLog.objects.filter(tenant=self.tenant1).delete()
 
         # Create logs at different times
         # Note: timestamp has auto_now_add=True and save() prevents updates, so we use update() directly
@@ -158,14 +163,16 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
 
         # Filter by start_date
         start_date = now - timedelta(hours=2)
-        recent_logs = SecurityAuditLog.objects.filter(timestamp__gte=start_date)
+        recent_logs = SecurityAuditLog.objects.filter(
+            tenant=self.tenant1, timestamp__gte=start_date
+        )
         self.assertEqual(recent_logs.count(), 2)
         self.assertIn(log2, recent_logs)
         self.assertIn(log3, recent_logs)
 
         # Filter by end_date
         end_date = now - timedelta(hours=2)
-        old_logs = SecurityAuditLog.objects.filter(timestamp__lte=end_date)
+        old_logs = SecurityAuditLog.objects.filter(tenant=self.tenant1, timestamp__lte=end_date)
         self.assertEqual(old_logs.count(), 1)
         self.assertIn(log1, old_logs)
 
@@ -191,11 +198,16 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
             tenant=self.tenant1,
         )
 
-        # Filter by ref_type
-        external_logs = SecurityAuditLog.objects.filter(ref_type="external")
+        # Filter by ref_type (tenant-scoped: the shared test DB contains
+        # committed ref-resolution rows from the live API stack)
+        external_logs = SecurityAuditLog.objects.filter(
+            ref_type="external", tenant=self.tenant1
+        )
         self.assertEqual(external_logs.count(), 1)
 
-        internal_logs = SecurityAuditLog.objects.filter(ref_type="internal")
+        internal_logs = SecurityAuditLog.objects.filter(
+            ref_type="internal", tenant=self.tenant1
+        )
         self.assertEqual(internal_logs.count(), 1)
 
     def test_security_audit_log_filtering_by_cache_operation(self):
@@ -221,14 +233,22 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
             tenant=self.tenant1,
         )
 
-        # Filter by cache_operation
-        hits = SecurityAuditLog.objects.filter(cache_operation="hit")
+        # Filter by cache_operation (tenant-scoped: the live API stack writes
+        # cache-miss audit rows into the shared test DB, so unscoped counts
+        # see them — measured 936 misses during batch 10-2e)
+        hits = SecurityAuditLog.objects.filter(
+            cache_operation="hit", tenant=self.tenant1
+        )
         self.assertEqual(hits.count(), 1)
 
-        misses = SecurityAuditLog.objects.filter(cache_operation="miss")
+        misses = SecurityAuditLog.objects.filter(
+            cache_operation="miss", tenant=self.tenant1
+        )
         self.assertEqual(misses.count(), 1)
 
-        evictions = SecurityAuditLog.objects.filter(cache_operation="eviction")
+        evictions = SecurityAuditLog.objects.filter(
+            cache_operation="eviction", tenant=self.tenant1
+        )
         self.assertEqual(evictions.count(), 1)
         self.assertEqual(evictions.first().eviction_reason, "size_limit")
 

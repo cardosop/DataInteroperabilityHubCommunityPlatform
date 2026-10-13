@@ -19,7 +19,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,

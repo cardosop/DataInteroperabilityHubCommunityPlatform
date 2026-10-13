@@ -79,7 +79,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -87,7 +87,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         dashboard_data = APIAnalyticsService.get_analytics_dashboard(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date
@@ -145,7 +145,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -153,7 +153,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         popularity = APIAnalyticsService.get_endpoint_popularity(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date, limit=limit
@@ -211,7 +211,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -219,7 +219,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         trends = APIAnalyticsService.get_usage_trends(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date, granularity=granularity
@@ -269,7 +269,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -277,7 +277,7 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         metrics = APIAnalyticsService.get_performance_metrics(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date
@@ -329,14 +329,14 @@ class CostsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
         if "end_date" in request.query_params:
             try:
                 end_date = timezone.datetime.fromisoformat(
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
         return start_date, end_date
 
     @extend_schema(

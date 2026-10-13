@@ -254,18 +254,17 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
             format="json",
         )
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
+        if response.status_code == status.HTTP_400_BAD_REQUEST and "error" in response.data:
             # Should have error structure
-            if "error" in response.data:
-                error = response.data["error"]
-                self.assertEqual(error["code"], "VALIDATION_ERROR")
+            error = response.data["error"]
+            self.assertEqual(error["code"], "VALIDATION_ERROR")
 
-                # May have details with field_errors
-                if "details" in error:
-                    details = error["details"]
-                    if "field_errors" in details:
-                        field_errors = details["field_errors"]
-                        self.assertGreater(len(field_errors), 0)
+            # May have details with field_errors
+            if "details" in error:
+                details = error["details"]
+                if "field_errors" in details:
+                    field_errors = details["field_errors"]
+                    self.assertGreater(len(field_errors), 0)
 
     def test_authentication_error_format(self):
         """Test authentication error format"""
@@ -323,11 +322,10 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Test unauthenticated for 401
         self.client.force_authenticate(user=None)
         response = self.client.get("/api/v1/assets/")
-        if response.status_code == status.HTTP_401_UNAUTHORIZED:
-            if "error" in response.data:
-                error = response.data["error"]
-                self.assertEqual(error["http_status"], status.HTTP_401_UNAUTHORIZED)
-                self.assertIn("AUTH", error["code"].upper())
+        if response.status_code == status.HTTP_401_UNAUTHORIZED and "error" in response.data:
+            error = response.data["error"]
+            self.assertEqual(error["http_status"], status.HTTP_401_UNAUTHORIZED)
+            self.assertIn("AUTH", error["code"].upper())
 
         # Test not found for 404
         self.client.force_authenticate(user=self.user)

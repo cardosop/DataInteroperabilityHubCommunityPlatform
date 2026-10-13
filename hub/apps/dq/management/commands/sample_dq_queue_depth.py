@@ -41,7 +41,7 @@ class Command(BaseCommand):
             help=("Queue names to sample.  Defaults to ['job_default', 'job_low']."),
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         queues = opts.get("queues") or DEFAULT_DQ_QUEUES
 
         try:

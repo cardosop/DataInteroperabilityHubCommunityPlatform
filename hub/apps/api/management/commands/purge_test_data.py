@@ -18,6 +18,7 @@ import logging
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError, InterfaceError
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ class Command(BaseCommand):
                 "assets",
                 dry_run,
             )
-        except Exception as e:
+        except (ImportError, LookupError, RuntimeError, DatabaseError, InterfaceError) as e:
             self.stderr.write(f"Asset purge skipped: {e}")
 
         try:
@@ -94,7 +95,7 @@ class Command(BaseCommand):
                 "contracts",
                 dry_run,
             )
-        except Exception as e:
+        except (ImportError, LookupError, RuntimeError, DatabaseError, InterfaceError) as e:
             self.stderr.write(f"Contract purge skipped: {e}")
 
         try:
@@ -108,7 +109,7 @@ class Command(BaseCommand):
                 "files",
                 dry_run,
             )
-        except Exception as e:
+        except (ImportError, LookupError, RuntimeError, DatabaseError, InterfaceError) as e:
             self.stderr.write(f"File purge skipped: {e}")
 
         try:
@@ -122,7 +123,7 @@ class Command(BaseCommand):
                 "datasets",
                 dry_run,
             )
-        except Exception as e:
+        except (ImportError, LookupError, RuntimeError, DatabaseError, InterfaceError) as e:
             self.stderr.write(f"Dataset purge skipped: {e}")
 
         try:
@@ -156,7 +157,7 @@ class Command(BaseCommand):
             )
             purged += self._purge_queryset(invited_qs, "users (expired invited)", dry_run)
 
-        except Exception as e:
+        except (ImportError, LookupError, RuntimeError, DatabaseError, InterfaceError) as e:
             self.stderr.write(f"User purge skipped: {e}")
 
         self.stdout.write(

@@ -72,7 +72,7 @@ def _ensure_test_bucket_exists():
     try:
         import boto3
         from botocore.config import Config
-        from botocore.exceptions import ClientError
+        from botocore.exceptions import ClientError, EndpointConnectionError
 
         config = Config(connect_timeout=5, read_timeout=10)
         s3 = boto3.client(
@@ -96,7 +96,7 @@ def _ensure_test_bucket_exists():
                         != "BucketAlreadyOwnedByYou"
                     ):
                         raise
-    except Exception:
+    except (ClientError, EndpointConnectionError):
         pass  # Don't fail setUp if MinIO not reachable
 
 

@@ -159,7 +159,63 @@ curl -sf https://meshant-internal.example.com/health
 - If migration is irreversible: deploy the previous code version that's compatible with the new schema
 - **NEVER** manually edit the production database during rollback
 
-## 5. Emergency Contacts
+### 4.4 — Compose-path rollback (internal beta window, Phase U.6)
+
+Until the EKS migration (ticket 210.29, owner `admin`, expiry 2026-09-30),
+the beta stack runs on `docker compose -f docker-compose.staging.yml
+--env-file .env.staging` — Compose has no release history, so rollback is
+**revert-the-revision + re-apply**:
+
+```bash
+# 1. Record the known-good pin before any change
+git rev-parse HEAD > .staging-known-good-sha
+docker compose -f docker-compose.staging.yml --env-file .env.staging \
+  config > .staging-known-good-config.yml
+
+# 2. To roll back: restore the known-good revision and re-apply
+git checkout "$(cat .staging-known-good-sha)" -- .
+make staging-up
+make staging-post-deploy   # migrations + seed + health + MinIO + email + MVP gate
+```
+
+The data volumes are named (`pgdata-staging`, `minio-data-staging`, the four
+`redis-*-data-staging`) and survive `staging-down` — rollback never destroys
+beta data; `staging-down-volumes` is the destructive variant and requires the
+backup check from §5.2 first.
+
+## 5. Backup & Restore (drilled)
+
+### 5.1 — Production path (EKS / RDS)
+
+- RDS automated snapshots (daily, retained 7 days) + `scripts/backup-postgres.sh`
+  (pg_dump → S3 + SHA-256 manifest + retention sweep) — policy and restore
+  drills in `docs/operations/disaster-recovery-policy.md`
+  (`scripts/dr/restore_verify_rds.sh`, quarterly cadence).
+
+### 5.2 — Compose-path staging (beta window)
+
+`make staging-backup` / `make staging-restore-drill`
+(`infrastructure/scripts/staging-compose-backup-restore.sh`):
+
+- `backup` — pg_dump (custom format) of the staging postgres + SHA-256
+  manifest + MinIO bucket mirror into `backups/staging/`, retention sweep
+  (default 14 days, `RETENTION_DAYS=` override).
+- `restore-drill` — restores the latest dump into a scratch database
+  (`hub_staging_restore_drill`), verifies the manifest, checks row-count
+  parity (tenants/users/audit/billing tables) against the live database, then
+  drops the scratch DB. Exit non-zero on ANY mismatch — a backup that cannot
+  be restored is not a backup.
+- The live database is only ever READ; the drill never touches it.
+
+### 5.3 — Drill evidence
+
+| Date | Drill | Result |
+|---|---|---|
+| 2026-09-02 | compose staging backup (`make staging-backup`) | PASS — `hub_staging_2026-09-02T183107Z.dump` (custom format) + SHA-256 manifest + MinIO mirror into `backups/staging/` |
+| 2026-09-02 | compose staging restore drill (`make staging-restore-drill`) | PASS — manifest verified; scratch DB restored; row-count parity 5/5 (tenants 4=4, users 27=27, audit_events 27=27, tenant_plans 8=8, api_keys 0=0); scratch dropped |
+| 2026-09-02 | compose staging rollback rehearsal | Procedure exercised: known-good pin recorded (`.staging-known-good-sha` + `.staging-known-good-config.yml`, gitignored); the re-apply + verify leg ran repeatedly during the bring-up (every `make staging-up` + `make staging-post-deploy` cycle, final 22/22 checks green). A full prior-revision revert will be rehearsed at U.8 with the first real rollback candidate. |
+
+## 6. Emergency Contacts
 
 ### 5.1 — Escalation Path
 
@@ -186,14 +242,14 @@ curl -sf https://meshant-internal.example.com/health
 | `#meshant-eng` | Engineering team coordination |
 | `#meshant-deploy` | Automated deploy notifications (CI bot) |
 
-## 6. Deploy Freeze Policy
+## 7. Deploy Freeze Policy
 
 - **Standard freeze:** No deploys Friday 17:00 UTC – Monday 08:00 UTC
 - **Holiday freeze:** No deploys during company-wide holidays (calendar published in `#meshant-eng`)
 - **Exception process:** Engineering Lead + CTO approval required; documented in incident channel
 - **Emergency hotfix:** On-call engineer may deploy without freeze waiver for SEV1 fixes; post-deploy review required within 24h
 
-## 7. Runbook Maintenance
+## 8. Runbook Maintenance
 
 - **Owner:** Platform Engineering
 - **Review cadence:** Quarterly (next: 2026-08-15)

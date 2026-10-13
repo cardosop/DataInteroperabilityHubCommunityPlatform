@@ -24,7 +24,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -37,7 +37,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
         page.url().includes('/ai/schema-matching') &&
         (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -49,7 +49,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -63,7 +63,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -76,7 +76,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
         page.url().includes('/ai/schema-matching') &&
         (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -94,7 +94,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
 
       expect(capabilityDisabled).toBe(true);
       await expect(
-        page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
+        page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()
       ).toBeVisible({ timeout: 5000 });
     });
   });
@@ -105,7 +105,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -117,10 +117,10 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @criti
       const capabilityDisabled =
         page.url().includes('/unavailable') ||
         page.url().includes('/403') ||
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
 
       if (capabilityDisabled) {
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 

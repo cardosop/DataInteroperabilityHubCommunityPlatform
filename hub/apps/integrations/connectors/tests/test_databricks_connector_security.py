@@ -10,6 +10,7 @@ Requirements:
 - Network access to Databricks workspace
 """
 
+import contextlib
 import os
 import unittest
 
@@ -67,11 +68,11 @@ class TestDatabricksConnectorSecurity(TestCase):
 
         # Valid token should allow connection
         result = connector.test_connection()
-        self.assertTrue(result, "Valid token should allow connection")
+        assert result, "Valid token should allow connection"
 
         # Authentication should succeed
         auth_result = connector.authenticate({"host": self.host, "token": self.token})
-        self.assertTrue(auth_result, "Valid token should authenticate successfully")
+        assert auth_result, "Valid token should authenticate successfully"
 
     def test_host_validation(self):
         """Test host URL validation"""
@@ -85,7 +86,7 @@ class TestDatabricksConnectorSecurity(TestCase):
 
         # Test valid host (trailing slash should be removed)
         connector = DatabricksConnector(host=f"{self.host}/", token=self.token)
-        self.assertEqual(connector.host, self.host, "Trailing slash should be removed from host")
+        assert connector.host == self.host, "Trailing slash should be removed from host"
 
         # Note: The connector doesn't validate URL format strictly
         # It accepts any string as host and lets the HTTP client handle validation
@@ -119,12 +120,10 @@ class TestDatabricksConnectorSecurity(TestCase):
         error_response.text = (
             '{"error_code": "PERMISSION_DENIED", "message": "Access denied to resource"}'
         )
-        http_error = httpx.HTTPStatusError(
-            "Forbidden", request=Mock(), response=error_response
-        )
+        http_error = httpx.HTTPStatusError("Forbidden", request=Mock(), response=error_response)
         mapped = connector._map_databricks_error(http_error, context="test: ")
-        self.assertIsInstance(mapped, PermissionError)
-        self.assertIn("Access denied to resource", str(mapped))
+        assert isinstance(mapped, PermissionError)
+        assert "Access denied to resource" in str(mapped)
 
     def test_credential_encryption_in_storage(self):
         """Test that credentials stored in database are encrypted"""
@@ -157,7 +156,7 @@ class TestDatabricksConnectorSecurity(TestCase):
         )
 
         # Verify config is stored and encrypted
-        self.assertIsNotNone(connection.config)
+        assert connection.config is not None
 
         # Config should be encrypted (check for _encrypted field)
         if "_encrypted" in connection.config:
@@ -166,21 +165,21 @@ class TestDatabricksConnectorSecurity(TestCase):
                 # Extract encrypted string from dict
                 encrypted_str = connection.config["_encrypted"]
                 decrypted_config = decrypt_json_field(encrypted_str)
-                self.assertIn("host", decrypted_config)
-                self.assertIn("token", decrypted_config)
-                self.assertEqual(decrypted_config["host"], self.credentials["host"])
-                self.assertEqual(decrypted_config["token"], self.credentials["token"])
+                assert "host" in decrypted_config
+                assert "token" in decrypted_config
+                assert decrypted_config["host"] == self.credentials["host"]
+                assert decrypted_config["token"] == self.credentials["token"]
             except Exception as e:
                 # If decryption fails, that's also a security issue
                 self.fail(f"Failed to decrypt stored credentials: {e}")
         else:
             # Config stored without _encrypted wrapper — verify plaintext
             # credentials are present in the JSONField.
-            self.assertIsInstance(connection.config, dict)
-            self.assertIn("host", connection.config)
-            self.assertIn("token", connection.config)
-            self.assertEqual(connection.config["host"], self.credentials["host"])
-            self.assertEqual(connection.config["token"], self.credentials["token"])
+            assert isinstance(connection.config, dict)
+            assert "host" in connection.config
+            assert "token" in connection.config
+            assert connection.config["host"] == self.credentials["host"]
+            assert connection.config["token"] == self.credentials["token"]
 
         # Cleanup
         connection.delete()
@@ -199,7 +198,7 @@ class TestDatabricksConnectorSecurity(TestCase):
 
         # Test valid host
         connector = DatabricksConnector(host=self.host, token=self.token)
-        self.assertEqual(connector.host, self.host)
+        assert connector.host == self.host
 
         # Note: The connector doesn't validate URL format strictly
         # It accepts any string as host and lets the HTTP client handle validation
@@ -217,7 +216,7 @@ class TestDatabricksConnectorSecurity(TestCase):
 
         # Test valid token
         connector = DatabricksConnector(host=self.host, token=self.token)
-        self.assertEqual(connector.token, self.token)
+        assert connector.token == self.token
 
     def test_authentication_credential_rotation(self):
         """Test that credential rotation works correctly"""
@@ -225,22 +224,22 @@ class TestDatabricksConnectorSecurity(TestCase):
 
         # Authenticate with original credentials
         auth1 = connector.authenticate({"host": self.host, "token": self.token})
-        self.assertTrue(auth1)
+        assert auth1
 
         # Update credentials (simulate rotation)
         new_token = self.token  # In real scenario, this would be a new token
         auth2 = connector.authenticate({"host": self.host, "token": new_token})
-        self.assertTrue(auth2)
+        assert auth2
 
         # Verify connector uses new credentials
-        self.assertEqual(connector.token, new_token)
+        assert connector.token == new_token
 
     def test_least_privilege_access(self):
         """Test that connector follows least privilege principles"""
         connector = DatabricksConnector(host=self.host, token=self.token)
 
         # Verify connector only performs read operations (harvest-only)
-        self.assertEqual(connector.supported_sync_directions, ["PULL"])
+        assert connector.supported_sync_directions == ["PULL"]
 
         # Verify push operations raise NotImplementedError
         with self.assertRaises(NotImplementedError):
@@ -268,8 +267,8 @@ class TestDatabricksConnectorSecurity(TestCase):
         connector = DatabricksConnector(
             host="http://dbc-6710eb95-8fe1.cloud.databricks.com", token=self.token
         )
-        self.assertTrue(connector.host.startswith("http://"))
-        self.assertEqual(connector.host, "http://dbc-6710eb95-8fe1.cloud.databricks.com")
+        assert connector.host.startswith("http://")
+        assert connector.host == "http://dbc-6710eb95-8fe1.cloud.databricks.com"
 
     def test_token_not_logged(self):
         """Test that tokens are not logged in plain text"""
@@ -289,14 +288,13 @@ class TestDatabricksConnectorSecurity(TestCase):
         # Perform operation that might log
         connector = DatabricksConnector(host=self.host, token=self.token)
 
-        try:
+        with contextlib.suppress(ConnectionError, OSError):
+            # Network/auth failures expected; we're checking logs only
             connector.test_connection()
-        except (ConnectionError, OSError):
-            pass  # Network/auth failures expected; we're checking logs only
 
         # Check logs don't contain token
         log_contents = log_capture.getvalue()
-        self.assertNotIn(self.token, log_contents, "Token should not appear in logs")
+        assert self.token not in log_contents, "Token should not appear in logs"
 
         # Cleanup
         logger.removeHandler(handler)
@@ -322,11 +320,11 @@ class TestDatabricksConnectorSecurity(TestCase):
 
         # Test valid credentials
         result = connector.authenticate({"host": self.host, "token": self.token})
-        self.assertTrue(result)
+        assert result
 
     def test_permission_error_handling(self):
         """Test that 403 errors propagate as PermissionError through _request_with_retry."""
-        from unittest.mock import Mock, patch
+        from unittest.mock import Mock
 
         import httpx
 
@@ -344,12 +342,8 @@ class TestDatabricksConnectorSecurity(TestCase):
             "error_code": "PERMISSION_DENIED",
             "message": "Access denied",
         }
-        error_response.text = (
-            '{"error_code": "PERMISSION_DENIED", "message": "Access denied"}'
-        )
-        http_error = httpx.HTTPStatusError(
-            "Forbidden", request=Mock(), response=error_response
-        )
+        error_response.text = '{"error_code": "PERMISSION_DENIED", "message": "Access denied"}'
+        http_error = httpx.HTTPStatusError("Forbidden", request=Mock(), response=error_response)
         error_response.raise_for_status.side_effect = http_error
         connector.client.request = Mock(return_value=error_response)
 

@@ -130,6 +130,55 @@ function ensureE2ETestSecretForExternalTarget(apiBaseUrl: string): void {
   );
 }
 
+/**
+ * Stale-dev-server guard.
+ *
+ * Playwright's webServer `reuseExistingServer` accepts ANY process listening
+ * on the resolved port without verifying it runs the current tree. A `vite`
+ * started hours earlier (a dev terminal left running) keeps serving the
+ * vite.config.ts it loaded at startup — the 2026-09-22 21:56 run reused a
+ * 13:38 vite that predated the securityHeadersPlugin Referrer-Policy
+ * addition and failed 3 header specs against headers the current config no
+ * longer serves. The plugin now stamps every response with
+ * X-Vite-Security-Headers-Rev; a local dev server missing the current
+ * revision is stale — fail fast with the actionable fix instead of running
+ * the suite against outdated config.
+ */
+async function checkFrontendServerFreshness(): Promise<void> {
+  const { resolvePlaywrightFrontend, DEV_SECURITY_HEADERS_REV } = await import(
+    '../src/lib/playwright-frontend-resolve'
+  );
+  let origin: string;
+  try {
+    const { baseURL } = resolvePlaywrightFrontend();
+    const host = new URL(baseURL).hostname;
+    if (host !== 'localhost' && host !== '127.0.0.1') return; // deployed target — managed elsewhere
+    origin = new URL(baseURL).origin;
+  } catch {
+    return; // unresolvable baseURL — Playwright's own webServer check owns that failure
+  }
+  try {
+    const res = await fetch(`${origin}/`, { signal: AbortSignal.timeout(10_000) });
+    if (!res) return;
+    const server = res.headers.get('server') ?? '';
+    if (/^nginx/i.test(server)) return; // nginx-served build — docker-config staleness is out of scope
+    const rev = res.headers.get('x-vite-security-headers-rev');
+    if (rev === DEV_SECURITY_HEADERS_REV) return;
+    throw new Error(
+      `Stale Vite dev server detected on ${origin}: it does not serve ` +
+        `X-Vite-Security-Headers-Rev: ${DEV_SECURITY_HEADERS_REV} ` +
+        `(served: ${rev ?? '(none)'}). The reused server was started before the ` +
+        `current vite.config.ts (dev security-header set changed) — security-header ` +
+        `specs would assert outdated config. Kill the process on that port and re-run, ` +
+        `or set E2E_FORCE_NEW_SERVER=1 so Playwright starts a fresh server.`
+    );
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Stale Vite dev server')) throw err;
+    // Connection refused / timeout: the webServer may not be up yet or the
+    // port is idle — Playwright's own webServer URL check owns that failure.
+  }
+}
+
 async function globalSetup(config: FullConfig) {
   // Ensure test-results exists to reduce ENOENT artifact race (Playwright trace/video writes)
   const outputDir = config.outputDir ?? path.join(process.cwd(), 'test-results');
@@ -146,6 +195,8 @@ async function globalSetup(config: FullConfig) {
     console.log('ℹ️  E2E_SKIP_GLOBAL_SETUP=1 — skipping API health check + seeding (pure-unit run)');
     return;
   }
+
+  await checkFrontendServerFreshness();
 
   let API_BASE_URL = getDefaultApiBase();
 

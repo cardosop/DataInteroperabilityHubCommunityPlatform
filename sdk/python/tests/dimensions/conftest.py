@@ -27,7 +27,7 @@ def _get_default_api_url() -> str:
     return f"http://localhost:{port}/api/v1"
 
 
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
+def pytest_collection_modifyitems(config, items):
     if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
         return
     api_url = os.environ.get("MESHANT_API_URL") or _get_default_api_url()

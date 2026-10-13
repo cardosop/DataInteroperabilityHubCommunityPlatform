@@ -447,7 +447,7 @@ class ConnectionValidationRulesTest(TestCase):
         self.assertTrue(
             result.is_valid,
             msg=f"Expected valid when connection active and config valid, "
-                f"got errors: {result.errors}",
+            f"got errors: {result.errors}",
         )
         self.assertEqual(len(result.errors), 0)
         self.assertIn("test_results_provided", result.details)

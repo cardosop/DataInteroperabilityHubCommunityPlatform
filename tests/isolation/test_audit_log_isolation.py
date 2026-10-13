@@ -18,6 +18,15 @@ class TestAuditLogIsolation:
     """Audit events must be strictly tenant-scoped."""
 
     @pytest.fixture(autouse=True)
+    def _grant_audit_read_roles(self, user_a, user_b):
+        """Raw audit endpoints are role-gated to TENANT_ADMIN/AUDITOR
+        (Phase 224.3.1) — grant TENANT_ADMIN to both fixture users."""
+        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+
+        ensure_user_has_tenant_admin_role(user_a)
+        ensure_user_has_tenant_admin_role(user_b)
+
+    @pytest.fixture(autouse=True)
     def _create_audit_events(self, tenant_a, user_a, tenant_b, user_b):
         uid = uuid.uuid4().hex[:8]
 

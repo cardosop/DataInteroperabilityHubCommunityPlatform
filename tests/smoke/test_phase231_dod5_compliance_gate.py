@@ -200,7 +200,7 @@ class TestPhase231DoD5AutoEnqueueOnAssetCreate:
                 ]
                 if seen_runs:
                     break
-                time.sleep(AUTO_ENQUEUE_INTERVAL)  # noqa: sleep-needed — retry loop
+                time.sleep(AUTO_ENQUEUE_INTERVAL)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             assert seen_runs, (
                 f"Phase 231.DoD.5: no ComplianceRun auto-enqueued for "

@@ -60,7 +60,7 @@ class DependencyAwareExecutor:
         pipeline_type: str,
         pipeline_id: str,
         enqueue_fn,
-        resolve_upstream_statuses: dict = None,
+        resolve_upstream_statuses: dict | None = None,
     ) -> dict[str, Any]:
         """Gate pipeline execution on dependency satisfaction.
 
@@ -259,7 +259,7 @@ class DependencyAwareExecutor:
                     status=status,
                 )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "dependency_set_run_status_failed",
                 pipeline_type=pipeline_type,
                 pipeline_id=pipeline_id,
@@ -291,7 +291,7 @@ class DependencyAwareExecutor:
                 upstream_status="SUCCEEDED",
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "dependency_downstream_trigger_failed",
                 dep_id=str(dep.id),
                 error=str(exc),
@@ -325,7 +325,7 @@ class DependencyAwareExecutor:
                     },
                 )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "dependency_batch_propagation_enqueue_failed",
                 upstream_type=upstream_type,
                 upstream_id=upstream_id,

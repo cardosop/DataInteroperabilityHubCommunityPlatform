@@ -18,8 +18,28 @@ import { createListingViaApi, publishListingViaApi } from './api-marketplace';
 const API_BASE = process.env.E2E_API_BASE_URL || 'http://localhost:8001/api/v1';
 const SEED_RETRIES = 3;
 
+/**
+ * Bounded fetch for seeding: node's fetch has NO default timeout, so a
+ * connection that stalls mid-recreate (half-open TCP — the batch
+ * wrapper / fix recreations bounce hub-test-api) hangs the seed loop
+ * until the hook budget expires (b8 comparison-side-by-side beforeAll
+ * timed out at 120s exactly this way). A 30s abort converts hangs into
+ * fast failures the SEED_RETRIES loop can absorb.
+ */
+function seedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
+}
+
+/** True when the failure is a connection/abort — the API is down or
+ * mid-recreate; settle-wait longer before retrying. */
+function isConnectionFailure(err: unknown): boolean {
+  return /fetch failed|ECONNREFUSED|aborted|AbortError|TimeoutError|terminated/i.test(
+    err instanceof Error ? err.message : String(err)
+  );
+}
+
 async function countPublishedListings(token: string): Promise<number> {
-  const res = await fetch(`${API_BASE}/marketplace/listings/?status=PUBLISHED&page_size=1`, {
+  const res = await seedFetch(`${API_BASE}/marketplace/listings/?status=PUBLISHED&page_size=1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return 0;
@@ -28,7 +48,9 @@ async function countPublishedListings(token: string): Promise<number> {
 }
 
 async function grantConsentForUser(token: string, label: string): Promise<boolean> {
-  const purposesResp = await fetch(`${API_BASE}/governance/consent-purposes/`, {
+  // Consent endpoints live under /consent/ (hub/apps/api/urls.py mounts
+  // hub.apps.consent.urls at consent/) — the old /governance/ prefix 404s.
+  const purposesResp = await seedFetch(`${API_BASE}/consent/consent-purposes/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!purposesResp.ok) {
@@ -43,7 +65,7 @@ async function grantConsentForUser(token: string, label: string): Promise<boolea
     console.log(`[seed-marketplace] ${label}: marketplace.access purpose not found`);
     return false;
   }
-  const grantResp = await fetch(`${API_BASE}/governance/consent-records/`, {
+  const grantResp = await seedFetch(`${API_BASE}/consent/consent-records/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ purpose_id: purpose.id, payload: { source: 'e2e-seed' } }),
@@ -77,7 +99,7 @@ export async function seedMarketplaceListings(
       Authorization: `Bearer ${consumerAuth.access_token}`,
     };
     if (e2eToken) subHeaders['X-E2E-Token'] = e2eToken;
-    const subResp = await fetch(`${API_BASE}/test/ensure-e2e-subscription/`, {
+    const subResp = await seedFetch(`${API_BASE}/test/ensure-e2e-subscription/`, {
       method: 'POST',
       headers: subHeaders,
     });
@@ -107,7 +129,7 @@ export async function seedMarketplaceListings(
             const datasetId = await createDatasetViaApi(u, { assetId, forceNew: true });
             // PATCH the dataset to include sample_data_json so the backend
             // serializer's get_sample_available returns true.
-            await fetch(`${API_BASE}/datasets/${datasetId}/`, {
+            await seedFetch(`${API_BASE}/datasets/${datasetId}/`, {
               method: 'PATCH',
               headers: {
                 'Content-Type': 'application/json',
@@ -130,7 +152,12 @@ export async function seedMarketplaceListings(
         break;
       } catch (err) {
         lastErr = err;
-        if (attempt < SEED_RETRIES - 1) await new Promise((r) => setTimeout(r, 2000));
+        if (attempt < SEED_RETRIES - 1) {
+          // Connection-type failures mean the API is down/mid-recreate —
+          // give it a settle window; fast failures (validation, 4xx)
+          // keep the short backoff.
+          await new Promise((r) => setTimeout(r, isConnectionFailure(err) ? 10_000 : 2_000));
+        }
       }
     }
     if (lastErr && created <= i) {

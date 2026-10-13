@@ -105,7 +105,7 @@ class APIClientUsageSearcher:
                     matches = re.finditer(pattern, content, re.MULTILINE)
                     for match in matches:
                         client_classes.add(match.group(1))
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error reading {py_file}: {e}")
 
         return client_classes
@@ -186,11 +186,12 @@ class APIClientUsageSearcher:
                         method = client_method_match.group(2).upper()
 
                         # Check if this looks like an API client call
-                        if (
-                            client_var in ["client", "api_client", "http_client", "sdk_client"]
-                            or client_var.endswith("Client")
-                            or client_var.endswith("API")
-                        ):
+                        if client_var in [
+                            "client",
+                            "api_client",
+                            "http_client",
+                            "sdk_client",
+                        ] or client_var.endswith(("Client", "API")):
                             endpoint = self.extract_endpoint_from_line(line, lines[i : i + 5])
                             if endpoint:
                                 self.api_calls.append(
@@ -226,7 +227,7 @@ class APIClientUsageSearcher:
                                 )
                             )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def search_typescript_api_calls(self):
@@ -306,7 +307,7 @@ class APIClientUsageSearcher:
                                 )
                             )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {ts_file}: {e}")
 
     def analyze_sdk_modules(self):
@@ -318,7 +319,7 @@ class APIClientUsageSearcher:
             return
 
         for api_file in sdk_python_dir.glob("*.py"):
-            if api_file.name == "__init__.py" or api_file.name == "client.py":
+            if api_file.name in {"__init__.py", "client.py"}:
                 continue
 
             try:
@@ -327,7 +328,7 @@ class APIClientUsageSearcher:
 
                 # Find class definition
                 class_name = None
-                for i, line in enumerate(lines):
+                for _i, line in enumerate(lines):
                     class_match = re.search(r"class\s+(\w+API)", line)
                     if class_match:
                         class_name = class_match.group(1)
@@ -403,7 +404,7 @@ class APIClientUsageSearcher:
                             )
                         )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error analyzing {api_file}: {e}")
 
     def _extract_endpoint_from_method(self, method_body: str) -> str | None:
@@ -505,8 +506,8 @@ class APIClientUsageSearcher:
             report["endpoint_mappings"][endpoint] = {
                 "endpoint": endpoint,
                 "call_count": len(calls),
-                "methods": list(set(call.method for call in calls)),
-                "client_types": list(set(call.client_type for call in calls)),
+                "methods": list({call.method for call in calls}),
+                "client_types": list({call.client_type for call in calls}),
                 "calls": [asdict(call) for call in calls[:10]],  # Limit to first 10
             }
 

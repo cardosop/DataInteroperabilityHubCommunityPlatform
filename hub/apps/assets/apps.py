@@ -6,4 +6,4 @@ class AssetsConfig(AppConfig):
     name = "hub.apps.assets"
 
     def ready(self):
-        import hub.apps.assets.signals  # noqa: F401 — registers @receiver
+        import hub.apps.assets.signals

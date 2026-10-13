@@ -69,8 +69,7 @@ class CircuitBreakerAuthGateTest(TestCase):
         )
         if response.status_code == 500:
             data = response.json()
-            self.assertIn("error", data,
-                          "500 response must include generic error message")
+            self.assertIn("error", data, "500 response must include generic error message")
 
     # ---- Public health probes remain unauthenticated ----
 
@@ -86,8 +85,7 @@ class CircuitBreakerAuthGateTest(TestCase):
         self.assertIn(response.status_code, (200, 503))
         if response.status_code == 503:
             data = response.json()
-            self.assertIn("status", data,
-                          "503 response must include health status")
+            self.assertIn("status", data, "503 response must include health status")
 
 
 class CircuitBreakerResponseSanitizationTest(TestCase):
@@ -115,8 +113,9 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
         unavailable (500).  Other status codes are hard failures."""
         if response.status_code == 500:
             self.skipTest(f"Circuit breaker service unavailable ({test_label})")
-        self.assertEqual(response.status_code, 200,
-                         f"Expected 200 for {test_label}, got {response.status_code}")
+        self.assertEqual(
+            response.status_code, 200, f"Expected 200 for {test_label}, got {response.status_code}"
+        )
 
     # ---- service_name query param must be ignored ----
 

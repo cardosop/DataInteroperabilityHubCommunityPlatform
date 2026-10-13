@@ -66,7 +66,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="passwordhistory",
             constraint=models.UniqueConstraint(
-                fields=("user", "password_hash"),
+                fields=["user", "password_hash"],
                 name="unique_user_password_hash",
             ),
         ),

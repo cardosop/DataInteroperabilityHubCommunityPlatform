@@ -9,7 +9,6 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     APIKeysViewSet,
-    APIUsageViewSet,
     DocumentationViewSet,
     PluginViewSet,
     PortalViewSet,
@@ -22,7 +21,10 @@ router.register(r"sdk", SDKDocumentationViewSet, basename="sdk-documentation")
 router.register(r"documentation", DocumentationViewSet, basename="documentation")
 router.register(r"portal", PortalViewSet, basename="portal")
 router.register(r"api-keys", APIKeysViewSet, basename="api-keys")
-router.register(r"api-usage", APIUsageViewSet, basename="api-usage")
+# NOTE: ``api-usage`` is intentionally NOT registered here (Phase 313 D2).
+# The real APIUsageViewSet lives in the paid BaaS app; registering the
+# placeholder under the same basename shadowed it and made
+# ``reverse("api-usage-list")`` resolve to a stub.
 
 urlpatterns = [
     path("", include(router.urls)),

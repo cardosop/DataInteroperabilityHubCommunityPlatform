@@ -21,7 +21,7 @@ from rest_framework import status
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig
 from hub.apps.tenants.validators import get_platform_defaults
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 from .conftest import E2ETestBase, get_response_data
 

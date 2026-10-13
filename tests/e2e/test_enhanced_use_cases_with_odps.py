@@ -22,6 +22,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.marketplace.models import (
     EntitlementStatus,
@@ -251,7 +252,7 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
         )
 
         # Step 2: Attempt to link non-existent ODPS contract (should fail)
-        with self.assertRaises(Exception):  # NotFoundError or ValidationError
+        with self.assertRaises(NotFoundError):  # ODPS contract with nil UUID does not exist
             self.odps_service.link_odps_to_odcs(
                 odcs_contract_id=str(contract_id),
                 odps_contract_id="00000000-0000-0000-0000-000000000000",
@@ -310,7 +311,7 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
         }
 
         # Should fail validation
-        with self.assertRaises(Exception):  # ValidationError or ODPSValidationError
+        with self.assertRaises(ValidationError):  # ODPS missing required "product" field
             self.odps_service.create_odps(
                 odps_raw=json.dumps(invalid_odps, indent=2),
                 odps_format="json",
@@ -504,7 +505,7 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
         )
 
         # Attempt to link non-existent ODPS contract (should fail)
-        with self.assertRaises(Exception):  # NotFoundError or ValidationError
+        with self.assertRaises(NotFoundError):  # ODPS contract with nil UUID does not exist
             self.odps_service.link_odps_to_odcs(
                 odcs_contract_id=str(contract_id),
                 odps_contract_id="00000000-0000-0000-0000-000000000000",
@@ -795,7 +796,7 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
             # Missing required "product" field
         }
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):  # ODPS missing required "product" field
             self.odps_service.create_odps(
                 odps_raw=json.dumps(invalid_odps, indent=2),
                 odps_format="json",
@@ -1066,7 +1067,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
         listings = (get_response_data(search_response) or {}).get("results", [])
-        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
+        our_listing = next(
+            (listing for listing in listings if listing["id"] == str(listing_id)), None
+        )
         self.assertIsNotNone(our_listing, "Should find our listing")
 
         # Step 4: Consumer views ODPS details
@@ -1467,7 +1470,9 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
         listings = (get_response_data(search_response) or {}).get("results", [])
-        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
+        our_listing = next(
+            (listing for listing in listings if listing["id"] == str(listing_id)), None
+        )
         self.assertIsNotNone(our_listing, "Should find listing without ODPS")
 
     def test_edge_case_multilingual_product_details_in_search_results(self):
@@ -1572,5 +1577,7 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
         listings = (get_response_data(search_response) or {}).get("results", [])
-        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
+        our_listing = next(
+            (listing for listing in listings if listing["id"] == str(listing_id)), None
+        )
         self.assertIsNotNone(our_listing, "Should find multilingual listing")

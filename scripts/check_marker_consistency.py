@@ -196,8 +196,8 @@ def parse_registered_markers(pytest_ini_path: Path) -> set:
     registered = set()
     if "pytest" not in cfg or "markers" not in cfg["pytest"]:
         return registered
-    for line in cfg["pytest"]["markers"].strip().split("\n"):
-        line = line.strip()
+    for raw_line in cfg["pytest"]["markers"].strip().split("\n"):
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         # Format: "name: description" or "name"
@@ -237,7 +237,7 @@ def extract_markers_from_file(filepath: Path) -> list:
     markers = []
     try:
         content = filepath.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, ValueError):
         return markers
     lines = content.split("\n")
     current_function = None
@@ -257,7 +257,7 @@ def extract_markers_from_file(filepath: Path) -> list:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def validate(test_paths: list = None, verbose: bool = False) -> int:
+def validate(test_paths: list | None = None, verbose: bool = False) -> int:
     """Run all marker consistency checks.  Returns exit code (0 = clean)."""
     errors = 0
     root = REPO_ROOT
@@ -298,7 +298,7 @@ def validate(test_paths: list = None, verbose: bool = False) -> int:
         if len(tier1_in_file) > 1:
             # Multiple Tier 1 markers on same function — check if truly on same function
             func_tier1 = defaultdict(list)
-            for name, lineno, func in tier1_in_file:
+            for name, _lineno, func in tier1_in_file:
                 if func:
                     func_tier1[func].append(name)
             for fn, markers in func_tier1.items():

@@ -78,8 +78,8 @@ class _WebSocketTestHelpers:
             with_dedup_redis: If True, mock ``_get_deduplication_redis_client``
                 to return a ``MagicMock`` (prevents real Redis connections).
         """
-        from unittest.mock import AsyncMock, MagicMock
         from datetime import UTC, datetime
+        from unittest.mock import AsyncMock, MagicMock
 
         from hub.apps.websocket.consumers.event_consumer import EventConsumer
 

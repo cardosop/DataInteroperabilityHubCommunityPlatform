@@ -7,15 +7,13 @@ REST API views for webhook management.
 import logging
 import secrets
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
-
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-
-from django.contrib.auth import get_user_model
 
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import create_audit_event
@@ -118,9 +116,9 @@ class WebhookViewSet(viewsets.ModelViewSet):
                 retry_intervals=serializer.validated_data.get("retry_intervals"),
             )
         except ServiceValidationError as e:
-            raise ValidationError(str(e))
+            raise ValidationError(str(e)) from e
         except NotFoundError as e:
-            raise ValidationError(str(e))
+            raise ValidationError(str(e)) from e
 
         # Update serializer instance for response
         serializer.instance = webhook
@@ -158,15 +156,15 @@ class WebhookViewSet(viewsets.ModelViewSet):
                 **update_data,
             )
         except ServiceValidationError as e:
-            raise ValidationError(str(e))
+            raise ValidationError(str(e)) from e
         except NotFoundError as e:
-            raise ValidationError(str(e))
+            raise ValidationError(str(e)) from e
 
         # Update serializer instance for response
         serializer.instance = updated_webhook
 
     @action(detail=True, methods=["post"], url_path="test")
-    def test_webhook(self, request, id=None):
+    def test_webhook(self, _request, id=None):  # noqa: PT019 — DRF @action method, not a pytest test
         """
         Test webhook delivery (Phase 233.4).
 
@@ -360,7 +358,7 @@ class WebhookDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
         return _resolve_tenant_id(self.request)
 
     @action(detail=True, methods=["post"], url_path="retry")
-    def retry_delivery(self, request, id=None):
+    def retry_delivery(self, _request, id=None):
         """
         Retry a failed webhook delivery.
 

@@ -184,7 +184,7 @@ class Dataset(models.Model):
                 fields=["tenant", "asset", "version"],
                 condition=models.Q(asset__isnull=False),
                 name="unique_dataset_version_per_asset",
-            )
+            ),
         ]
 
     def __str__(self):

@@ -11,8 +11,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 # Use default transaction=False so the test client and middleware share the same DB

@@ -1,0 +1,232 @@
+{
+  "title": "Phase 235 \u2014 PLATFORM_ADMIN operations (tenants, impersonation, feature flags, dashboard health)",
+  "uid": "admin-ops-235",
+  "tags": [
+    "admin",
+    "phase-235",
+    "tenants",
+    "impersonation",
+    "feature-flags"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(audit_events_total, tenant_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Tenant lifecycle events (rate, 5m) \u2014 created / soft-deleted / hard-deleted",
+      "description": "Phase 235.2 + 235.3 \u2014 sourced from the generic audit_events_total counter (action label captures the event constant). Spikes in HARD_DELETED warrant review against the daily sweep summary in docs/runbooks/admin-tenant-deactivation.md.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(audit_events_total{action=~\"TENANT_CREATED|TENANT_SOFT_DELETED|TENANT_HARD_DELETED\"}[5m]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "events/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Impersonation lifecycle events (rate, 5m) \u2014 started / ended / rejected",
+      "description": "Phase 235.4 \u2014 non-zero IMPERSONATION_REJECTED is a security signal: groups by ``code`` discriminator (IMPERSONATION_NOT_ENABLED / TARGET_IS_PLATFORM_ADMIN / TARGET_INACTIVE) via the audit-events table for forensics; the metric itself rolls all rejection codes into one series.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(audit_events_total{action=~\"IMPERSONATION_STARTED|IMPERSONATION_ENDED|IMPERSONATION_REJECTED\"}[5m]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "events/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Feature-flag flip events (rate, 5m) \u2014 applied / requested / approved",
+      "description": "Phase 235.1 \u2014 TENANT_FEATURE_FLAG_CHANGED tracks the actual flip (non-sensitive direct OR sensitive post-approval); FEATURE_FLAG_FLIP_APPROVAL_REQUESTED tracks the open of a two-person-rule request; FEATURE_FLAG_FLIP_APPROVED tracks the second-admin approval. A gap between REQUESTED and APPROVED >24h is a candidate for a pending-approvals alert (drives the ops queue).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(audit_events_total{action=~\"TENANT_FEATURE_FLAG_CHANGED|FEATURE_FLAG_FLIP_APPROVAL_REQUESTED|FEATURE_FLAG_FLIP_APPROVED\"}[5m]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "events/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Cumulative tenant lifecycle counts (per action) \u2014 last 24h",
+      "description": "Operator-readable absolute counts for the tenant lifecycle over the most recent 24-hour window. Pairs with the rate panel above for incident triage (rate tells you 'is it happening NOW', counts tell you 'how much has accumulated').",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (action) (increase(audit_events_total{action=~\"TENANT_CREATED|TENANT_SOFT_DELETED|TENANT_HARD_DELETED|IMPERSONATION_STARTED|IMPERSONATION_REJECTED|FEATURE_FLAG_FLIP_APPROVED\"}[24h]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Admin dashboard cache hit-ratio (5m) \u2014 SLO \u2265 0.8",
+      "description": "Phase 235.5 + 235.6 \u2014 ratio of hit-outcome requests over total. Sustained drop below 0.8 means either Redis is evicting the key (memory pressure) or operators are abusing ?refresh=true. Alert: ratio < 0.8 sustained for 30+ minutes.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(admin_dashboard_summary_cache_total{outcome=\"hit\"}[5m])) / sum(rate(admin_dashboard_summary_cache_total[5m]))",
+          "legendFormat": "hit ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "ratio",
+          "max": 1.0,
+          "min": 0
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Admin dashboard aggregator latency \u2014 P50 / P95 / P99 (5m)",
+      "description": "Phase 235.5 + 235.6 \u2014 the 12-COUNT aggregator should complete in ~50-500ms. Alert: P95 > 2s sustained for 15+ minutes (likely a missing index or a runaway tenant table scan).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(admin_dashboard_summary_aggregate_duration_seconds_bucket[5m])))",
+          "legendFormat": "P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(admin_dashboard_summary_aggregate_duration_seconds_bucket[5m])))",
+          "legendFormat": "P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(admin_dashboard_summary_aggregate_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "seconds"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Admin audit-failure rate (5m) \u2014 by action",
+      "description": "Phase 235.6 \u2014 counts admin-surface audit rows with result=FAILURE. The IMPERSONATION_REJECTED action emits FAILURE on every rejection (the audit row exists for forensic completeness; the request itself returned 4xx). A spike on a specific action is the signal an admin endpoint is being repeatedly attempted by an unauthorised operator.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(audit_events_total{action=~\"IMPERSONATION_REJECTED|TENANT_FEATURE_FLAG_CHANGED|FEATURE_FLAG_FLIP_APPROVED\",result=\"FAILURE\"}[5m]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ]
+}

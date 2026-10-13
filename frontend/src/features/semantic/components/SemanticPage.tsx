@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import ReactCodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { sparql } from '@codemirror/legacy-modes/mode/sparql';
+import { EditorView } from '@codemirror/view';
 import { Banner } from '../../../shared/components/Banner';
 import { Button } from '../../../shared/components/Button';
 import { CodeBlock } from '../../../shared/components/CodeBlock';
@@ -202,13 +203,26 @@ export function SemanticPage() {
             <h2>SPARQL Query</h2>
             <form onSubmit={handleSPARQLSubmit} className="sparql-form">
               <div className="form-group">
-                <label htmlFor="sparql-query">
+                {/* The editor is a CodeMirror 6 contenteditable, not a
+                    labelable form control — the visible <label> can't
+                    associate via htmlFor. The accessible name rides the
+                    content element via aria-labelledby (contentAttributes),
+                    which also carries the E2E-pinned testid (the legacy
+                    #sparql-query textarea id died with the editor
+                    migration). */}
+                <label id="sparql-query-label">
                   SPARQL Query <span className="required">*</span>
                 </label>
                 <ReactCodeMirror
                   value={sparqlQuery}
                   onChange={(value) => setSparqlQuery(value)}
-                  extensions={[sparqlLang]}
+                  extensions={[
+                    sparqlLang,
+                    EditorView.contentAttributes.of({
+                      'aria-labelledby': 'sparql-query-label',
+                      'data-testid': 'sparql-query-editor',
+                    }),
+                  ]}
                   basicSetup={{ lineNumbers: true, foldGutter: false }}
                   minHeight="150px"
                   maxHeight="400px"

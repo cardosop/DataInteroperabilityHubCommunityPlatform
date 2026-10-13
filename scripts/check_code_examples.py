@@ -128,7 +128,7 @@ class CodeExampleChecker:
                         elif isinstance(methods, str):
                             self.known_endpoints[normalized].add(methods.upper())
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"Warning: Error loading endpoint inventory: {e}", file=sys.stderr)
 
     def normalize_endpoint(self, endpoint: str) -> str:
@@ -220,7 +220,7 @@ class CodeExampleChecker:
                 )
                 examples.append(example)
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"Error processing {md_file}: {e}", file=sys.stderr)
 
         return examples
@@ -247,7 +247,7 @@ class CodeExampleChecker:
             )
             examples.append(example)
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"Error processing {py_file}: {e}", file=sys.stderr)
 
         return examples
@@ -310,14 +310,14 @@ class CodeExampleChecker:
                     ast.parse(dedented)
                     # If dedenting fixes it, just warn instead of error
                     result.warnings.append("Code snippet has indentation (fixed by dedenting)")
-                except:
+                except (SyntaxError, ValueError):
                     # If dedenting doesn't help, it's a real syntax error
                     result.is_valid = False
                     result.errors.append(f"Syntax error: {e.msg} at line {e.lineno}")
             else:
                 result.is_valid = False
                 result.errors.append(f"Syntax error: {e.msg} at line {e.lineno}")
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             result.is_valid = False
             result.errors.append(f"Parse error: {e!s}")
 

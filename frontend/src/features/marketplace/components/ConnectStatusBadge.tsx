@@ -16,8 +16,7 @@
  */
 
 import './ConnectStatusBadge.css';
-
-export type ConnectStatus = 'verified' | 'pending' | 'restricted' | 'disabled' | 'not_onboarded';
+import { deriveConnectStatus, type ConnectStatus } from './connectStatusDerivation';
 
 export interface ConnectStatusBadgeProps {
   chargesEnabled?: boolean | null;
@@ -32,26 +31,6 @@ const STATUS_CONFIG: Record<ConnectStatus, { label: string; cssClass: string }> 
   disabled:       { label: 'Disabled',       cssClass: 'connect-status-badge--disabled' },
   not_onboarded:  { label: 'Not onboarded',  cssClass: 'connect-status-badge--not-onboarded' },
 };
-
-export function deriveConnectStatus(
-  chargesEnabled?: boolean | null,
-  payoutsEnabled?: boolean | null,
-  detailsSubmitted?: boolean | null,
-): ConnectStatus {
-  if (chargesEnabled === null || chargesEnabled === undefined) {
-    return 'not_onboarded';
-  }
-  if (chargesEnabled && payoutsEnabled) {
-    return 'verified';
-  }
-  if (chargesEnabled && !payoutsEnabled) {
-    return 'restricted';
-  }
-  if (detailsSubmitted && !chargesEnabled) {
-    return 'pending';
-  }
-  return 'disabled';
-}
 
 export function ConnectStatusBadge({
   chargesEnabled,

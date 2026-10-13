@@ -118,8 +118,11 @@ class DataMeshDomainModelTest(TestCase):
         """Test that domain names must be unique per tenant"""
         DataMeshDomain.objects.create(tenant=self.tenant, name="Unique Domain")
 
-        # Same name, same tenant should fail
-        with self.assertRaises(Exception):  # IntegrityError or ValidationError
+        # Same name, same tenant should fail. The model's save() runs
+        # full_clean(), so the Meta UniqueConstraint fires as a
+        # ValidationError (validate_unique) before the DB sees the row;
+        # the DB-level constraint remains the last-resort backstop.
+        with self.assertRaises(ValidationError):  # UniqueConstraint(tenant, name)
             DataMeshDomain.objects.create(tenant=self.tenant, name="Unique Domain")
 
         # Same name, different tenant should succeed

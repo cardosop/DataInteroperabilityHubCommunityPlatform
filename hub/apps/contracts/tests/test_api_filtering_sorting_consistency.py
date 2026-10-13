@@ -394,7 +394,10 @@ class APIFilteringSortingConsistencyTest(ContractsAPITestBase):
         """Test multiple filters with same field (should use last one or combine)"""
         response = self.client.get(
             "/api/v1/contracts/",
-            {"status": "ACTIVE", "status": "DRAFT"},  # Duplicate filter
+            # Multi-value param → status=ACTIVE&status=DRAFT on the wire,
+            # a real duplicate filter instead of a dict-literal that
+            # silently keeps only the last key.
+            {"status": ["ACTIVE", "DRAFT"]},
         )
 
         # Should handle duplicate filters (may use last one or combine)

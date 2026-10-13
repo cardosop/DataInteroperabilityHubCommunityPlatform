@@ -25,7 +25,9 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
-from hub.apps.scheduled_ingestion.internal_auth import SCOPE_SCHEDULED_INGESTION_INTERNAL
+from hub.apps.scheduled_ingestion.internal_auth import (
+    SCOPE_SCHEDULED_INGESTION_INTERNAL,
+)
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
     ScheduledIngestionRun,
@@ -115,12 +117,12 @@ class TestAPIHandlersUnitTests(TestCase):
             {"scheduled_ingestion_id": str(self.scheduled_ingestion.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        assert response.status_code == status.HTTP_201_CREATED
         run_id = response.data["id"]
         run = ScheduledIngestionRun.objects.get(id=run_id)
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.RUNNING)
-        self.assertEqual(run.scheduled_ingestion, self.scheduled_ingestion)
-        self.assertIsNotNone(run.started_at)
+        assert run.status == ScheduledIngestionRunStatus.RUNNING
+        assert run.scheduled_ingestion == self.scheduled_ingestion
+        assert run.started_at is not None
 
     def test_patch_run_api_handler_real_db(self):
         """Test PATCH /internal/runs/{id}/ updates run in real DB."""
@@ -140,11 +142,11 @@ class TestAPIHandlersUnitTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         run.refresh_from_db()
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.COMPLETED)
-        self.assertEqual(run.files_found, 5)
-        self.assertEqual(run.files_processed, 5)
+        assert run.status == ScheduledIngestionRunStatus.COMPLETED
+        assert run.files_found == 5
+        assert run.files_processed == 5
 
     def test_process_file_api_handler_real_services(self):
         """Test POST /internal/process-file/ uses real Files, Datasets, DQ, Search services."""
@@ -163,19 +165,19 @@ class TestAPIHandlersUnitTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        assert response.status_code == status.HTTP_201_CREATED
         file_id = response.data["file_id"]
         dataset_id = response.data["dataset_id"]
 
         # Verify real File was created
         file_obj = File.objects.get(id=file_id)
-        self.assertEqual(file_obj.tenant, self.tenant)
-        self.assertIsNotNone(file_obj.storage_path)
+        assert file_obj.tenant == self.tenant
+        assert file_obj.storage_path is not None
 
         # Verify real Dataset was created
         dataset = Dataset.objects.get(id=dataset_id)
-        self.assertEqual(dataset.tenant, self.tenant)
-        self.assertEqual(str(dataset.file_id), str(file_id))
+        assert dataset.tenant == self.tenant
+        assert str(dataset.file_id) == str(file_id)
 
         # Verify audit event was created
         audit = AuditEvent.objects.filter(
@@ -183,21 +185,21 @@ class TestAPIHandlersUnitTests(TestCase):
             action="PROCESSED",
             resource_id=file_id,
         ).first()
-        self.assertIsNotNone(audit)
+        assert audit is not None
 
     def test_get_config_api_handler_real_db(self):
         """Test GET /internal/config/{id}/ returns config from real DB with masked credentials."""
         response = self.client.get(
             f"/api/v1/scheduled-ingestions/internal/config/{self.scheduled_ingestion.id}/",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         config = response.data
-        self.assertEqual(config["source_type"], "S3")
+        assert config["source_type"] == "S3"
         # Verify credentials are masked
         source_config = config.get("source_config", {})
         if "secret_access_key" in source_config:
-            self.assertNotEqual(source_config["secret_access_key"], "very-secret-key-value")
-            self.assertIn("***", source_config["secret_access_key"] or "")
+            assert source_config["secret_access_key"] != "very-secret-key-value"
+            assert "***" in (source_config["secret_access_key"] or "")
 
 
 class TestNoMocksVerification(TestCase):
@@ -239,6 +241,61 @@ class TestNoMocksVerification(TestCase):
             started_at=timezone.now(),
         )
 
+    def test_list_filters_by_asset_id(self):
+        """The dataset → schedule lookup surface (the
+        DatasetScheduleEditModal's load-bearing filter): ``?asset_id=``
+        must scope the listing to that asset's schedules — a
+        dataset-scoped modal listing every tenant schedule is a
+        cross-dataset leak. Real rows, real queryset, no mocks."""
+        from hub.apps.assets.models import Asset
+
+        asset_a = Asset.objects.create(
+            tenant=self.tenant,
+            name=f"Asset A {uuid4().hex[:8]}",
+            key=f"asset-a-{uuid4().hex[:8]}",
+        )
+        asset_b = Asset.objects.create(
+            tenant=self.tenant,
+            name=f"Asset B {uuid4().hex[:8]}",
+            key=f"asset-b-{uuid4().hex[:8]}",
+        )
+        for_a = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="For Asset A",
+            asset=asset_a,
+            source_type=SourceType.S3,
+            source_config={"bucket": "b", "send_notifications": False},
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "00:00"},
+            file_pattern=".*\\.csv",
+            created_by=self.user,
+        )
+        for_b = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="For Asset B",
+            asset=asset_b,
+            source_type=SourceType.S3,
+            source_config={"bucket": "b", "send_notifications": False},
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "00:00"},
+            file_pattern=".*\\.csv",
+            created_by=self.user,
+        )
+        # Other tenants' schedules must never leak into this listing
+        # (the RLS path is the same queryset). Self-contained auth: this
+        # class has no API client in setUp — provision a worker key and
+        # use a real APIClient with the tenant header.
+        plaintext_key = _create_worker_api_key(self.tenant, self.user)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"ApiKey {plaintext_key}")
+        client.defaults["HTTP_X_TENANT_ID"] = str(self.tenant.id)
+        response = client.get("/api/v1/scheduled-ingestions/", {"asset_id": str(asset_a.id)})
+        assert response.status_code == status.HTTP_200_OK, response.content
+        ids = {row["id"] for row in response.data.get("results", [])}
+        assert str(for_a.id) in ids
+        assert str(for_b.id) not in ids
+        assert str(self.scheduled_ingestion.id) not in ids  # asset-less rows excluded too
+
     def test_process_file_for_run_uses_real_services(self):
         """Verify process_file_for_run uses real services, not mocks."""
         csv_content = b"id,name\n1,alpha\n2,beta\n"
@@ -254,16 +311,16 @@ class TestNoMocksVerification(TestCase):
         # Verify real File was created
         file_id = result["file_id"]
         file_obj = File.objects.get(id=file_id)
-        self.assertIsNotNone(file_obj)
+        assert file_obj is not None
 
         # Verify real Dataset was created
         dataset_id = result["dataset_id"]
         dataset = Dataset.objects.get(id=dataset_id)
-        self.assertIsNotNone(dataset)
+        assert dataset is not None
 
         # Verify no mocks were used - real database records exist
-        self.assertTrue(File.objects.filter(id=file_id).exists())
-        self.assertTrue(Dataset.objects.filter(id=dataset_id).exists())
+        assert File.objects.filter(id=file_id).exists()
+        assert Dataset.objects.filter(id=dataset_id).exists()
 
 
 class TestFullPathIntegration(TestCase):
@@ -314,7 +371,7 @@ class TestFullPathIntegration(TestCase):
             format="json",
         )
         # 201 = created; 207 = created but Prefect sync failed (expected in test env)
-        self.assertIn(create_response.status_code, (status.HTTP_201_CREATED, 207))
+        assert create_response.status_code in (status.HTTP_201_CREATED, 207)
         resp_data = create_response.data
         if create_response.status_code == 207:
             resp_data = create_response.data.get("resource", create_response.data)
@@ -326,7 +383,7 @@ class TestFullPathIntegration(TestCase):
             {"scheduled_ingestion_id": ingestion_id},
             format="json",
         )
-        self.assertEqual(run_response.status_code, status.HTTP_201_CREATED)
+        assert run_response.status_code == status.HTTP_201_CREATED
         run_id = run_response.data["id"]
 
         # Step 3: Process file (simulating Prefect flow calling process-file)
@@ -340,13 +397,13 @@ class TestFullPathIntegration(TestCase):
             },
             format="json",
         )
-        self.assertEqual(process_response.status_code, status.HTTP_201_CREATED)
+        assert process_response.status_code == status.HTTP_201_CREATED
         file_id = process_response.data["file_id"]
         dataset_id = process_response.data["dataset_id"]
 
         # Step 4: Verify real records exist
-        self.assertTrue(File.objects.filter(id=file_id).exists())
-        self.assertTrue(Dataset.objects.filter(id=dataset_id).exists())
+        assert File.objects.filter(id=file_id).exists()
+        assert Dataset.objects.filter(id=dataset_id).exists()
 
         # Step 5: Complete run
         complete_response = self.client.patch(
@@ -360,12 +417,12 @@ class TestFullPathIntegration(TestCase):
             },
             format="json",
         )
-        self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
+        assert complete_response.status_code == status.HTTP_200_OK
 
         # Step 6: Verify final state
         run = ScheduledIngestionRun.objects.get(id=run_id)
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.COMPLETED)
-        self.assertEqual(run.files_processed, 1)
+        assert run.status == ScheduledIngestionRunStatus.COMPLETED
+        assert run.files_processed == 1
 
     def test_idempotency_create_run(self):
         """Test idempotency: creating run with same prefect_flow_run_id returns existing run."""
@@ -390,7 +447,7 @@ class TestFullPathIntegration(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+        assert response1.status_code == status.HTTP_201_CREATED
         run_id_1 = response1.data["id"]
 
         # Second creation with same prefect_flow_run_id (should return existing)
@@ -402,11 +459,11 @@ class TestFullPathIntegration(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        assert response2.status_code == status.HTTP_200_OK
         run_id_2 = response2.data["id"]
 
         # Should be the same run
-        self.assertEqual(run_id_1, run_id_2)
+        assert run_id_1 == run_id_2
 
     def test_explicit_waits_for_run_completion(self):
         """Test explicit waits for run completion to avoid flakiness."""
@@ -451,8 +508,6 @@ class TestFullPathIntegration(TestCase):
         datasets_created = Dataset.objects.filter(
             tenant=ingestion.tenant,
         ).count()
-        self.assertGreater(
-            files_created + datasets_created,
-            0,
-            "process-file should create at least one File or Dataset",
+        assert files_created + datasets_created > 0, (
+            "process-file should create at least one File or Dataset"
         )

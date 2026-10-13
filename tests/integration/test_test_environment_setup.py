@@ -12,9 +12,9 @@ Tests validate:
 """
 
 import os
-import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import requests
@@ -29,12 +29,14 @@ class TestTestEnvironmentDockerCompose:
     """Tests for test Docker Compose configuration."""
 
     @pytest.fixture(scope="class")
-    def docker_compose_file(self):
+    @classmethod
+    def docker_compose_file(cls):
         """Get path to docker-compose.test.yml."""
         return project_root / "docker-compose.test.yml"
 
     @pytest.fixture(scope="class")
-    def docker_compose_config(self, docker_compose_file):
+    @classmethod
+    def docker_compose_config(cls, docker_compose_file):
         """Load docker-compose.test.yml configuration."""
         with open(docker_compose_file) as f:
             return yaml.safe_load(f)
@@ -123,8 +125,8 @@ class TestTestEnvironmentDockerCompose:
         services = docker_compose_config.get("services", {})
         port_mappings = {
             "postgres-test": "5434",
-            "redis-cache-test": "6379",
-            "redis-queue-test": "6380",
+            "redis-cache-test": "6479",
+            "redis-queue-test": "6480",
             "minio-test": "9010",
             "fuseki-test": "3031",
             "api-service-test": "8001",
@@ -182,12 +184,11 @@ class TestTestEnvironmentDockerCompose:
         services = docker_compose_config.get("services", {})
         for service_name, service_config in services.items():
             env = service_config.get("environment", {})
-            if isinstance(env, dict):
-                # Check if ENVIRONMENT is set to test
-                if "ENVIRONMENT" in env:
-                    assert env["ENVIRONMENT"] == "test" or "${ENVIRONMENT:-test}" in str(
-                        env["ENVIRONMENT"]
-                    ), f"Service {service_name} should have ENVIRONMENT=test"
+            # Check if ENVIRONMENT is set to test
+            if isinstance(env, dict) and "ENVIRONMENT" in env:
+                assert env["ENVIRONMENT"] == "test" or "${ENVIRONMENT:-test}" in str(
+                    env["ENVIRONMENT"]
+                ), f"Service {service_name} should have ENVIRONMENT=test"
 
 
 class TestTestEnvironmentServices:
@@ -200,15 +201,15 @@ class TestTestEnvironmentServices:
 
     # (host_port, docker_host, docker_port) — internal ports from
     # docker-compose.test.yml.
-    _SERVICE_PORTS: dict[str, tuple[int, str, int]] = {
-        "postgres":    (5434, "postgres-test", 5432),
-        "redis":       (6379, "redis-cache-test", 6379),
-        "minio":       (9010, "minio-test", 9000),
-        "api":         (8001, "api-service-test", 8000),
+    _SERVICE_PORTS: ClassVar[dict[str, tuple[int, str, int]]] = {
+        "postgres": (5434, "postgres-test", 5432),
+        "redis": (6379, "redis-cache-test", 6379),
+        "minio": (9010, "minio-test", 9000),
+        "api": (8001, "api-service-test", 8000),
         "datacontract": (8093, "datacontract-service-test", 8080),
-        "dq":          (8084, "dq-service-test", 8083),
-        "compliance":  (8085, "compliance-service-test", 8082),
-        "semantic":    (8086, "semantic-service-test", 8081),
+        "dq": (8084, "dq-service-test", 8083),
+        "compliance": (8085, "compliance-service-test", 8082),
+        "semantic": (8086, "semantic-service-test", 8081),
     }
 
     @staticmethod
@@ -244,7 +245,7 @@ class TestTestEnvironmentServices:
                 connect_timeout=5,
             )
             conn.close()
-        except Exception as e:
+        except _psycopg2.Error as e:
             pytest.fail(f"PostgreSQL test service not accessible at {host}:{port}: {e}")
 
     # -- Redis ----------------------------------------------------------------
@@ -269,7 +270,7 @@ class TestTestEnvironmentServices:
         try:
             response = requests.get(url, timeout=5)
             assert response.status_code == 200
-        except Exception as e:
+        except (requests.RequestException, AssertionError) as e:
             pytest.fail(f"MinIO test service not accessible at {url}: {e}")
 
     # -- API ------------------------------------------------------------------
@@ -280,12 +281,10 @@ class TestTestEnvironmentServices:
         url = f"http://{host}:{port}/health"
         try:
             response = requests.get(url, timeout=10)
-            assert response.status_code == 200, (
-                f"API health returned {response.status_code}"
-            )
+            assert response.status_code == 200, f"API health returned {response.status_code}"
             data = response.json()
             assert "status" in data, f"Missing 'status' in API health response: {data}"
-        except Exception as e:
+        except (requests.RequestException, AssertionError) as e:
             pytest.fail(f"API test service not accessible at {url}: {e}")
 
     # -- DataContract ---------------------------------------------------------
@@ -297,7 +296,7 @@ class TestTestEnvironmentServices:
         try:
             response = requests.get(url, timeout=5)
             assert response.status_code == 200
-        except Exception as e:
+        except (requests.RequestException, AssertionError) as e:
             pytest.fail(f"DataContract test service not accessible at {url}: {e}")
 
     # -- DQ -------------------------------------------------------------------
@@ -309,7 +308,7 @@ class TestTestEnvironmentServices:
         try:
             response = requests.get(url, timeout=5)
             assert response.status_code == 200
-        except Exception as e:
+        except (requests.RequestException, AssertionError) as e:
             pytest.fail(f"DQ test service not accessible at {url}: {e}")
 
     # -- Compliance -----------------------------------------------------------
@@ -321,7 +320,7 @@ class TestTestEnvironmentServices:
         try:
             response = requests.get(url, timeout=5)
             assert response.status_code == 200
-        except Exception as e:
+        except (requests.RequestException, AssertionError) as e:
             pytest.fail(f"Compliance test service not accessible at {url}: {e}")
 
     # -- Semantic -------------------------------------------------------------
@@ -331,9 +330,12 @@ class TestTestEnvironmentServices:
         host, port = self._endpoint("semantic")
         url = f"http://{host}:{port}/health"
         try:
-            response = requests.get(url, timeout=5)
+            # The semantic service's /health synchronously pings Fuseki;
+            # a cold ping takes ~8s on a loaded host, so 5s races it
+            # (same root cause as the 10-1a health-check skips).
+            response = requests.get(url, timeout=20)
             assert response.status_code == 200
-        except Exception as e:
+        except (requests.RequestException, AssertionError) as e:
             pytest.fail(f"Semantic test service not accessible at {url}: {e}")
 
 

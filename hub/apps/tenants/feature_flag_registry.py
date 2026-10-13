@@ -17,8 +17,11 @@ Adding a new flag
 2. Add the ``Tenant`` model boolean field via additive migration.
 3. Append a ``FeatureFlag`` entry to ``REGISTRY`` below with full metadata.
 4. Wire the flag check into the relevant view / service.
-5. Emit ``TENANT_FEATURE_FLAG_FLIPPED`` audit on every change (registry
-   helper provides this in future iterations).
+5. Flips emit the canonical ``TENANT_FEATURE_FLAG_CHANGED`` audit row
+   (``admin_feature_flag_views._emit_changed_event`` — the evolved
+   name of the historical ``TENANT_FEATURE_FLAG_FLIPPED``: old/new
+   value, reason, the two-person-rule requested_by/approver pair, and
+   the approval linkage for sensitive flips).
 
 Conventions
 -----------
@@ -106,9 +109,145 @@ class FeatureFlag:
 
 _PHASE_240_INTRODUCED = datetime(2026, 3, 1, tzinfo=UTC)
 _PHASE_250_INTRODUCED = datetime(2026, 5, 3, tzinfo=UTC)
+_PHASE_260_INTRODUCED = datetime(2026, 9, 12, tzinfo=UTC)
 
 
 REGISTRY: tuple[FeatureFlag, ...] = (
+    # ─── openspec add-databricks-control-plane P0 ─────────────────────────
+    FeatureFlag(
+        name="databricks_control_plane_enabled",
+        description="Enables the Databricks control plane (workspace registry, credentials, "
+        "compute) for the tenant. Opt-in; default-off for new AND existing tenants.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_240_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 3, 1, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-control-plane P0",
+        related_design_doc="openspec/changes/add-databricks-control-plane/design.md",
+    ),
+    FeatureFlag(
+        name="databricks_sso_enabled",
+        description="Enables Sign-in with Databricks (U2M OAuth SSO with PKCE) for the tenant. "
+        "Opt-in; default-off for new AND existing tenants.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_240_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 3, 1, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-control-plane P0b",
+        related_design_doc="D12",
+    ),
+    FeatureFlag(
+        name="databricks_obo_enabled",
+        description="Enables On-Behalf-Of execution (per-request user identity) for interactive "
+        "Databricks paths. Opt-in; default-off for new AND existing tenants.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_240_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 3, 1, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-control-plane P0b",
+        related_design_doc="openspec/changes/add-databricks-control-plane/design.md",
+    ),
+    FeatureFlag(
+        name="databricks_uc_destructive_ddl_enabled",
+        description="Allows the destructive DDL family (DROP of any UC securable) through the "
+        "UC change guards (D3 denylist). Opt-in; default-off for new AND existing tenants.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_250_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2026, 12, 1, tzinfo=UTC),  # first quarterly review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-uc-write P2",
+        related_design_doc="openspec/changes/add-databricks-uc-write/design.md",
+    ),
+    FeatureFlag(
+        name="databricks_jobs_python_tasks_enabled",
+        description="Allows Python tasks (spark_python / python_wheel) through the jobs "
+        "client's task allowlist (D3). Opt-in; default-off for new AND existing tenants "
+        "— the allowlist refuses Python tasks with ZERO jobs API calls while off.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_260_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 3, 1, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-jobs P4",
+        related_design_doc="openspec/changes/add-databricks-jobs/design.md",
+    ),
+    FeatureFlag(
+        name="databricks_s3_external_location_enabled",
+        description="Allows dlt staging through the S3 external-location path (design D2). "
+        "Opt-in; default-off for new AND existing tenants — while off, an S3 staging "
+        "request fails closed and the managed volume is the only staging surface.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=datetime(2026, 9, 12, tzinfo=UTC),
+        stage="DRAFT",
+        retire_by=datetime(2027, 9, 12, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="wire-databricks-dlt-movement P6",
+        related_design_doc="openspec/changes/wire-databricks-dlt-movement/design.md",
+    ),
+    # ─── openspec add-databricks-account-plane P8 ────────────────────────
+    FeatureFlag(
+        name="databricks_workspace_provisioning_enabled",
+        description="Allows platform admins to provision Databricks workspaces for the tenant "
+        "through the account plane (design D3 — provisioning requires BOTH this flag "
+        "AND a recorded DPO/Legal signoff on the account row). Opt-in; default-off "
+        "for new AND existing tenants — registration-first stays the default.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_260_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 9, 12, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-account-plane P8",
+        related_design_doc="openspec/changes/add-databricks-account-plane/design.md",
+    ),
+    FeatureFlag(
+        name="databricks_dlt_pipelines_enabled",
+        description="The DLT pipeline management surface (the U5 page + the `dlt` CLI) — "
+        "design D7's gate. Opt-in; default-off for new AND existing tenants — the "
+        "surface is inert (403 DATABRICKS_DLT_PIPELINES_DISABLED) while off.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_260_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 9, 12, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-dlt-pipelines P10",
+        related_design_doc="openspec/changes/add-databricks-dlt-pipelines/design.md",
+    ),
+    FeatureFlag(
+        name="databricks_ml_assets_enabled",
+        description="The ML-assets surface (registered models/versions/aliases, feature "
+        "tables, and the serving/vector endpoints) — design D5's gate. Opt-in; "
+        "default-off for new AND existing tenants — the surface is inert "
+        "(403 DATABRICKS_ML_ASSETS_DISABLED) while off.",
+        owner_team="warehouse-eng",
+        owner_email="warehouse-eng@meshant.com",
+        created_at=_PHASE_260_INTRODUCED,
+        stage="DRAFT",
+        retire_by=datetime(2027, 9, 12, tzinfo=UTC),  # annual review
+        default_existing_tenants=False,
+        default_new_tenants=False,
+        related_phase="add-databricks-ml-assets P12",
+        related_design_doc="openspec/changes/add-databricks-ml-assets/design.md",
+    ),
     # ─── Phase 240 — DQ feature (Phase 240.4.B per D240.18) ────────────────
     FeatureFlag(
         name="data_quality_enabled",

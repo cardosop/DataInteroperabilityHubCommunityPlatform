@@ -18,7 +18,7 @@ from rest_framework import status
 
 from hub.apps.rate_limiting.service import check_rate_limit
 from hub.apps.tenants.models import Tenant, TenantConfig
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]

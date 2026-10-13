@@ -1,5 +1,5 @@
 """
-281.B.7.6–281.B.7.8 — Customer Health Score Model.
+281.B.7.6-281.B.7.8 — Customer Health Score Model.
 
 Composite 0-100 health score from:
   - login_frequency:   How often tenant users log in (30d window)

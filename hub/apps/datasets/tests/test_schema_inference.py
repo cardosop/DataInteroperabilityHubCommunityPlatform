@@ -526,7 +526,7 @@ Jane;25;LA"""
         try:
             import io
 
-            import pandas as pd
+            import pandas as pd  # type: ignore[import-untyped]
         except ImportError:
             self.skipTest("pandas not available for Parquet schema inference")
 
@@ -605,9 +605,10 @@ Jane;25;LA"""
         try:
             import io
 
+            import openpyxl  # type: ignore[import-untyped]
             import pandas as pd
         except ImportError:
-            self.skipTest("pandas not available for Excel schema inference")
+            self.skipTest("pandas/openpyxl not available for Excel schema inference")
 
         df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
         buf = io.BytesIO()

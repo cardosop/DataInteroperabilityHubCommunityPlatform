@@ -10,9 +10,11 @@ tables:
 
   # Phase 278.J — Marketplace data contract SFTP sync, dead-letter and
   # inbound event tables.  RLS migration tracked as 278.RLS.2.
+  # (marketplace_saved_search retired Phase P.9: RLS shipped in
+  # marketplace/migrations/0019_phase_278_h4_saved_search_rls.py and
+  # re-covered by 0030_enable_rls_missing_tables.py — no exemption needed.)
   - openlineage_dead_letter
   - openlineage_inbound_event
-  - marketplace_saved_search
 
   # Phase 271.2 — Connect webhook capability and Stripe onboarding.
   # RLS migration tracked as 271.RLS.1.

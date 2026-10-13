@@ -35,9 +35,10 @@ def check_semantic_service_available():
     try:
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check(use_cache=False)
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 class NormalizationRDFFlowTest(TestCase):
@@ -370,7 +371,7 @@ class NormalizationRDFFlowTest(TestCase):
             if triples_count > 0:
                 break
             reset_circuit_breaker_by_name("semantic-service")
-            time.sleep(  # noqa: sleep-needed — polling loop
+            time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 1.5 * (attempt + 1)
             )  # INTENTIONAL: e2e/integration test polling real services
 

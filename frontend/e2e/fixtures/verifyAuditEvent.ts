@@ -210,14 +210,18 @@ export async function pollForAuditEvent(
   fetcher: AuditEventFetcher,
   expected: AuditEventExpectation & PollOptions,
 ): Promise<AuditEventRow> {
-  const retryBudgetMs = expected.retryBudgetMs ?? 3_000;
+  // Audit writes are asynchronous (event-bus → audit writer), and under
+  // batch-run load (API restart at batch start, parallel specs) the writer
+  // lag regularly exceeds the old 3s default — contract-creation-flow and
+  // JOURNEY-DPO-003 both exhausted it with 0 rows and passed seconds later
+  // on re-run. 15s matches the fixture's own backoff schedule.
+  const retryBudgetMs = expected.retryBudgetMs ?? 15_000;
   const pollIntervalMs = expected.pollIntervalMs ?? 500;
   const deadline = Date.now() + retryBudgetMs;
 
   let lastMismatch = 'no attempts made (0 ms budget?)';
 
   // Always take at least one shot, even if budget is near-zero.
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const rows = await fetcher();
     const result = findMatchingAuditEvent(rows, expected);
@@ -249,11 +253,16 @@ async function extractBearerHeaders(
   override?: Record<string, string>,
 ): Promise<Record<string, string>> {
   if (override !== undefined) return override;
-  const token = await page.evaluate<string | null>(
-    () =>
-      (globalThis as unknown as { localStorage?: { getItem: (k: string) => string | null } })
-        .localStorage?.getItem('access_token') ?? null,
-  );
+  const token = await page.evaluate<string | null>(() => {
+    const w = globalThis as unknown as {
+      localStorage?: { getItem: (k: string) => string | null };
+      __getAccessToken?: () => string | null;
+    };
+    if (typeof w.__getAccessToken === 'function') {
+      return w.__getAccessToken();
+    }
+    return w.localStorage?.getItem('access_token') ?? null;
+  });
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
 }
@@ -364,6 +373,7 @@ async function loadAuditorToken(page: Page): Promise<string | null> {
     // where `access_token` lives in a `Set-Cookie` header rather than the
     // body — both paths are honored so the helper works regardless of the
     // target environment's cookie-mode flag.
+    // intentional: cookie-mode fallback read — absence of a JSON body is a legitimate (non-fatal) outcome here.
     const body = (await res!.json().catch(() => ({}))) as { access_token?: string };
     const setCookieHeaders = res!
       .headersArray()
@@ -490,9 +500,90 @@ export async function verifyAuditEvent(
     return body.results ?? [];
   };
 
+  // options-level overrides fall back to the expectation's own values —
+  // spreading an undefined options.retryBudgetMs AFTER the expectation
+  // silently killed spec-provided budgets (contract-creation passed
+  // retryBudgetMs: 45_000 and still polled the 15s default).
   return pollForAuditEvent(fetcher, {
     ...expected,
-    retryBudgetMs: options.retryBudgetMs,
-    pollIntervalMs: options.pollIntervalMs,
+    retryBudgetMs: options.retryBudgetMs ?? expected.retryBudgetMs,
+    pollIntervalMs: options.pollIntervalMs ?? expected.pollIntervalMs,
   });
+}
+
+export interface FetchAuditEventsForResourceActionOptions {
+  /** Page size for the audit list request. Default 25. */
+  pageSize?: number;
+  /** Override the audit list endpoint. Default `/api/v1/audit/audit-events/`. */
+  auditEndpoint?: string;
+  /** Override the auth extraction (same semantics as verifyAuditEvent). */
+  authHeaderOverride?: Record<string, string>;
+  /** Opt out of the auditor side channel (same semantics as verifyAuditEvent). */
+  disableAuditorSideChannel?: boolean;
+}
+
+/**
+ * Fetch ALL audit rows for one resource+action without the poll-retry
+ * matcher — specs that assert row COUNTS (e.g. "each UI download emits
+ * FILE_DOWNLOADED") call this directly. Same identity resolution as
+ * verifyAuditEvent (auditor side channel → primary token fallback);
+ * real backend only.
+ */
+export async function fetchAuditEventsForResourceAction(
+  page: Page,
+  resourceId: string,
+  action: string,
+  options: FetchAuditEventsForResourceActionOptions = {},
+): Promise<AuditEventRow[]> {
+  let headers: Record<string, string>;
+  let identityUsed: 'override' | 'auditor' | 'primary';
+  if (options.authHeaderOverride !== undefined) {
+    headers = options.authHeaderOverride;
+    identityUsed = 'override';
+  } else if (options.disableAuditorSideChannel) {
+    headers = await extractBearerHeaders(page);
+    identityUsed = 'primary';
+  } else {
+    const auditorToken = await ensureAuditorToken(page);
+    if (auditorToken !== null) {
+      headers = { Authorization: `Bearer ${auditorToken}` };
+      identityUsed = 'auditor';
+    } else {
+      headers = await extractBearerHeaders(page);
+      identityUsed = 'primary';
+    }
+  }
+
+  const endpoint = options.auditEndpoint ?? '/api/v1/audit/audit-events/';
+  const params = new URLSearchParams({
+    resource_id: resourceId,
+    action,
+    page_size: String(options.pageSize ?? 25),
+  });
+  const url = `${endpoint}?${params.toString()}`;
+
+  const res = await page.request.get(url, { headers });
+  if (!res.ok()) {
+    let preview = '';
+    try {
+      preview = (await res.text()).slice(0, 400);
+    } catch {
+      // intentional: the status + identity diagnostic below is the actionable part.
+      /* ignore */
+    }
+    const identityHint =
+      identityUsed === 'primary'
+        ? ` [identity=primary; ${
+            auditorFailureReason
+              ? `auditor side channel unavailable: ${auditorFailureReason}`
+              : 'auditor side channel disabled'
+          }]`
+        : ` [identity=${identityUsed}]`;
+    throw new Error(
+      `fetchAuditEventsForResourceAction: GET ${url} returned ${res.status()}.${identityHint} Body preview: ${preview}`,
+    );
+  }
+  const body = (await res.json()) as { results?: AuditEventRow[] } | AuditEventRow[];
+  if (Array.isArray(body)) return body;
+  return body.results ?? [];
 }

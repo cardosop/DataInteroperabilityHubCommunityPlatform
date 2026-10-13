@@ -236,7 +236,7 @@ class DataMeshWorkflow:
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise ValueError(f"Tenant {tenant_id} not found")
+            raise ValueError(f"Tenant {tenant_id} not found") from None
 
         # Check for duplicate domain name
         if DataMeshDomain.objects.filter(tenant_id=tenant_id, name=name.strip()).exists():
@@ -249,7 +249,9 @@ class DataMeshWorkflow:
             try:
                 User.objects.get(id=owner_id, tenant_id=tenant_id)
             except User.DoesNotExist:
-                raise ValueError(f"Owner user {owner_id} not found or does not belong to tenant")
+                raise ValueError(
+                    f"Owner user {owner_id} not found or does not belong to tenant"
+                ) from None
 
         # Validate boundaries structure if provided
         if boundaries:
@@ -274,7 +276,7 @@ class DataMeshWorkflow:
                 raise ValueError("Resource quota must be a dictionary")
             for key, value in resource_quota.items():
                 if not isinstance(value, (int, float)):
-                    raise ValueError(f"Resource quota '{key}' must be a number")
+                    raise TypeError(f"Resource quota '{key}' must be a number")
                 if value < 0:
                     raise ValueError(f"Resource quota '{key}' cannot be negative")
 
@@ -403,17 +405,17 @@ class DataMeshWorkflow:
                     tenant_id=tenant_id, requested_quota=resource_quota
                 )
             except ValidationError as e:
-                logger.error(
+                logger.exception(
                     "Resource quota allocation validation failed",
                     workflow_instance_id=str(instance.id),
                     tenant_id=tenant_id,
                     error=str(e),
                 )
-                raise ValueError(f"Resource quota allocation failed: {e!s}")
+                raise ValueError(f"Resource quota allocation failed: {e!s}") from e
 
         # Initialize resource usage tracking
         resource_usage = {}
-        for key in allocated_quota.keys():
+        for key in allocated_quota:
             resource_usage[f"{key}_used"] = 0
 
         # Store allocated resources in state_data
@@ -1132,7 +1134,7 @@ class DataMeshWorkflow:
         try:
             Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise ValueError(f"Tenant matching query does not exist: {tenant_id}")
+            raise ValueError(f"Tenant matching query does not exist: {tenant_id}") from None
 
         # Prepare workflow input
         workflow_input = {

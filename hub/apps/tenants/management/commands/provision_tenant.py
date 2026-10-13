@@ -33,7 +33,7 @@ class Command(BaseCommand):
             help="Validate inputs without creating the tenant.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from django.contrib.auth import get_user_model
 
         from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus

@@ -5,12 +5,14 @@ Models for managing scheduled/recurring data exports to external destinations.
 """
 
 import uuid
+from typing import ClassVar
 
-from croniter import croniter
+from croniter import croniter  # type: ignore[import-untyped]
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from hub.apps.core.state_machine import GuardedStateMachine
 from hub.apps.integrations.encryption import (
     EncryptionError,
     decrypt_json_field,
@@ -55,6 +57,32 @@ class ScheduledExportRunStatus(models.TextChoices):
     COMPLETED = "COMPLETED", "Completed"
     FAILED = "FAILED", "Failed"
     CANCELLED = "CANCELLED", "Cancelled"
+
+
+class ExportRunStateMachine(GuardedStateMachine):
+    """
+    W3.1 (R2-P1) — the scheduled-export run lifecycle matrix.
+
+    RUNNING → COMPLETED | FAILED | CANCELLED
+    COMPLETED / FAILED / CANCELLED are terminal.
+
+    Runs are created RUNNING (the export has no PENDING creation state);
+    every status write on an existing row is validated against this
+    matrix in ``ScheduledExportRun.clean()``.
+    """
+
+    TRANSITIONS: ClassVar[dict] = {
+        ScheduledExportRunStatus.RUNNING: frozenset(
+            {
+                ScheduledExportRunStatus.COMPLETED,
+                ScheduledExportRunStatus.FAILED,
+                ScheduledExportRunStatus.CANCELLED,
+            }
+        ),
+        ScheduledExportRunStatus.COMPLETED: frozenset(),
+        ScheduledExportRunStatus.FAILED: frozenset(),
+        ScheduledExportRunStatus.CANCELLED: frozenset(),
+    }
 
 
 class ScheduledExport(models.Model):
@@ -152,7 +180,7 @@ class ScheduledExport(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "name"], name="unique_scheduled_export_name_per_tenant"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -168,7 +196,7 @@ class ScheduledExport(models.Model):
         try:
             croniter(cron_expr)
         except Exception as e:
-            raise ValidationError(f"Invalid cron expression: {e!s}")
+            raise ValidationError(f"Invalid cron expression: {e!s}") from e
 
         # Validate source_scope structure
         if not isinstance(self.source_scope, dict):
@@ -243,7 +271,7 @@ class ScheduledExport(models.Model):
             )
 
         try:
-            from pytz import timezone as pytz_timezone
+            from pytz import timezone as pytz_timezone  # type: ignore[import-untyped]
 
             tz = pytz_timezone(timezone_str)
             cron = croniter(cron_expr, now.astimezone(tz))
@@ -252,7 +280,6 @@ class ScheduledExport(models.Model):
             # ensure it's aware (UTC) for storage.
             if timezone.is_naive(next_run):
                 next_run = timezone.make_aware(next_run, tz)
-            return next_run
         except (ImportError, KeyError, ValueError, AttributeError, TypeError) as e:
             # Graceful fallback when cron expression / timezone parsing
             # fails.  Log at warning so SRE can detect configuration drift.
@@ -260,8 +287,7 @@ class ScheduledExport(models.Model):
 
             logger = logging.getLogger(__name__)
             logger.warning(
-                "CUSTOM_CRON next_run calculation failed for %s: %s — "
-                "falling back to tomorrow.",
+                "CUSTOM_CRON next_run calculation failed for %s: %s — falling back to tomorrow.",
                 self.name if hasattr(self, "name") else str(self.pk),
                 e,
             )
@@ -273,6 +299,8 @@ class ScheduledExport(models.Model):
                 second=0,
                 microsecond=0,
             )
+        else:
+            return next_run
 
 
 class ScheduledExportRun(models.Model):
@@ -311,6 +339,15 @@ class ScheduledExportRun(models.Model):
         help_text="Run result data (items exported, errors, etc.)",
     )
     started_at = models.DateTimeField(null=True, blank=True, help_text="When run started")
+    heartbeat_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "W3.5 (R2-P4) — the worker's last liveness claim. The stuck-run "
+            "detector only recovers runs whose lease expired: a fresh "
+            "heartbeat means the worker is alive and the run is left alone."
+        ),
+    )
     completed_at = models.DateTimeField(
         null=True, blank=True, help_text="When run completed (success or failure)"
     )
@@ -331,9 +368,39 @@ class ScheduledExportRun(models.Model):
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["prefect_flow_run_id"]),
         ]
+        constraints = [
+            # W3.1 (R2-P1) — DB-level domain guard for the run status
+            # (defense in depth under the app-level transition matrix;
+            # out-of-band SQL writes cannot land a garbage status).
+            models.CheckConstraint(
+                condition=models.Q(status__in=ScheduledExportRunStatus.values),
+                name="scheduled_export_runs_status_valid",
+            ),
+        ]
 
     def __str__(self):
         return f"Run {self.id} for {self.scheduled_export.name}"
+
+    def clean(self):
+        """W3.1 (R2-P1) — every status write on an existing row is validated
+        against the shared guarded-transition matrix. Creation sets the
+        initial status; same-status saves (metadata-only writes) are
+        no-ops by design — the matrix is strict, identity is not a
+        transition."""
+        if self.pk:
+            old_status = (
+                type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            )
+            if old_status is not None and old_status != self.status:
+                ExportRunStateMachine.validate_transition(old_status, self.status)
+
+    def save(self, *args, **kwargs):
+        # W3.1 — the guard runs the transition matrix ONLY, deliberately
+        # not full_clean(): field validators are serializer/service
+        # concerns and this model never ran them on save before. The DB
+        # CHECK constraint is the status-domain backstop.
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class ExportRunCost(models.Model):

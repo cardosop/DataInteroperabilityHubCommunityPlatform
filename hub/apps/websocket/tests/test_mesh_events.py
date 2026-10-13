@@ -10,8 +10,8 @@ import pytest
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from hub.apps.core.events.models import Event
 from hub.apps.core.events.event_types import get_event_schema
+from hub.apps.core.events.models import Event
 from hub.apps.core.events.publisher import publish_event
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User
@@ -34,7 +34,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_domain_created_event_published(self):
         """Test that mesh.domain.created event can be published and persisted"""
-# Use sync persistence for tests to ensure immediate persistence
+        # Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.domain.created",
@@ -59,7 +59,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_domain_updated_event_published(self):
         """Test that mesh.domain.updated event can be published and persisted"""
-# Use sync persistence for tests to ensure immediate persistence
+        # Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.domain.updated",
@@ -83,7 +83,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_policy_applied_event_published(self):
         """Test that mesh.policy.applied event can be published and persisted"""
-# Use sync persistence for tests to ensure immediate persistence
+        # Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.policy.applied",
@@ -109,7 +109,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_compliance_checked_event_published(self):
         """Test that mesh.compliance.checked event can be published and persisted"""
-# Use sync persistence for tests to ensure immediate persistence
+        # Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.compliance.checked",
@@ -133,7 +133,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_topology_updated_event_published(self):
         """Test that mesh.topology.updated event can be published and persisted"""
-# Use sync persistence for tests to ensure immediate persistence
+        # Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.topology.updated",
@@ -157,7 +157,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_health_status_changed_event_published(self):
         """Test that mesh.health.status_changed event can be published and persisted"""
-# Use sync persistence for tests to ensure immediate persistence
+        # Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.health.status_changed",

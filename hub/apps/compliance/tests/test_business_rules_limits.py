@@ -26,7 +26,15 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class BusinessRulesLimitsTest(TestCase):
-    """Tests for ComplianceBusinessRules concurrent/quota/resource limits."""
+    """Tests for ComplianceBusinessRules concurrent/quota/resource limits.
+
+    Quota/concurrent validation performs a live health check against the
+    compliance service (docker-compose service name), so the class is
+    marked requires_services; outside the compose test network the check
+    fails and validations return invalid results.
+    """
+
+    pytestmark = pytest.mark.requires_services
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
@@ -64,12 +72,12 @@ class BusinessRulesLimitsTest(TestCase):
         )
 
     def _create_run(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            asset=self.asset,
-            job=self._create_job(),
-            status=ComplianceRunStatus.PENDING,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "asset": self.asset,
+            "job": self._create_job(),
+            "status": ComplianceRunStatus.PENDING,
+        }
         defaults.update(overrides)
         return ComplianceRun.objects.create(**defaults)
 

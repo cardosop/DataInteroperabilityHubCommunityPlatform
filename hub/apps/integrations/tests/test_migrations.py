@@ -5,10 +5,22 @@ Tests that migrations correctly create all tables, indexes, and constraints.
 """
 
 import pytest
+from django.conf import settings as _settings
 from django.db import connection
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+# The suite asserts marketplace table existence and structure — the
+# paid layer is absent in core-only mode, so the module is skipped there.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="marketplace (paid layer) tables do not exist in core-only mode",
+    ),
+]
 
 
 class MarketplaceMigrationsTest(TestCase):
@@ -61,18 +73,17 @@ class MarketplaceMigrationsTest(TestCase):
             )
             index_defs = {row[0]: row[1] for row in cursor.fetchall()}
 
-        found = any(
-            all(col in defn for col in columns) for defn in index_defs.values()
-        )
+        found = any(all(col in defn for col in columns) for defn in index_defs.values())
         self.assertTrue(
-            found,
-            f"Missing index on {table_name} covering columns {columns} ({label})"
+            found, f"Missing index on {table_name} covering columns {columns} ({label})"
         )
 
     def test_marketplace_connections_indexes(self):
         """Test that required indexes exist for marketplace_connections."""
         with connection.cursor() as cursor:
-            cursor.execute("SELECT indexname FROM pg_indexes WHERE tablename = 'marketplace_connections'")
+            cursor.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'marketplace_connections'"
+            )
             indexes = [row[0] for row in cursor.fetchall()]
 
         # Stable constraint names (pkey, unique) — not hash-based.
@@ -81,54 +92,63 @@ class MarketplaceMigrationsTest(TestCase):
 
         # Composite indexes — check column coverage, not hash-based names.
         self._assert_index_covers_columns(
-            "marketplace_connections", ["tenant_id", "marketplace_type"],
-            "(tenant, marketplace_type)")
+            "marketplace_connections",
+            ["tenant_id", "marketplace_type"],
+            "(tenant, marketplace_type)",
+        )
         self._assert_index_covers_columns(
-            "marketplace_connections", ["tenant_id", "is_active"],
-            "(tenant, is_active)")
+            "marketplace_connections", ["tenant_id", "is_active"], "(tenant, is_active)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_connections", ["marketplace_type", "is_active"],
-            "(marketplace_type, is_active)")
+            "marketplace_connections",
+            ["marketplace_type", "is_active"],
+            "(marketplace_type, is_active)",
+        )
 
     def test_marketplace_sync_jobs_indexes(self):
         """Test that required indexes exist for marketplace_sync_jobs."""
         with connection.cursor() as cursor:
-            cursor.execute("SELECT indexname FROM pg_indexes WHERE tablename = 'marketplace_sync_jobs'")
+            cursor.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'marketplace_sync_jobs'"
+            )
             indexes = [row[0] for row in cursor.fetchall()]
 
         self.assertIn("marketplace_sync_jobs_pkey", indexes, "Missing primary key")
         self._assert_index_covers_columns(
-            "marketplace_sync_jobs", ["tenant_id", "connection_id"],
-            "(tenant, connection)")
+            "marketplace_sync_jobs", ["tenant_id", "connection_id"], "(tenant, connection)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_sync_jobs", ["tenant_id", "status"],
-            "(tenant, status)")
+            "marketplace_sync_jobs", ["tenant_id", "status"], "(tenant, status)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_sync_jobs", ["connection_id", "status"],
-            "(connection, status)")
+            "marketplace_sync_jobs", ["connection_id", "status"], "(connection, status)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_sync_jobs", ["status", "created_at"],
-            "(status, created_at)")
+            "marketplace_sync_jobs", ["status", "created_at"], "(status, created_at)"
+        )
 
     def test_marketplace_mappings_indexes(self):
         """Test that required indexes exist for marketplace_mappings."""
         with connection.cursor() as cursor:
-            cursor.execute("SELECT indexname FROM pg_indexes WHERE tablename = 'marketplace_mappings'")
+            cursor.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'marketplace_mappings'"
+            )
             indexes = [row[0] for row in cursor.fetchall()]
 
         self.assertIn("marketplace_mappings_pkey", indexes, "Missing primary key")
         self.assertIn("unique_connection_asset_mapping", indexes, "Missing unique constraint")
         self._assert_index_covers_columns(
-            "marketplace_mappings", ["tenant_id", "connection_id"],
-            "(tenant, connection)")
+            "marketplace_mappings", ["tenant_id", "connection_id"], "(tenant, connection)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_mappings", ["connection_id", "hub_asset_id"],
-            "(connection, hub_asset)")
+            "marketplace_mappings", ["connection_id", "hub_asset_id"], "(connection, hub_asset)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_mappings", ["tenant_id", "hub_asset_id"],
-            "(tenant, hub_asset)")
+            "marketplace_mappings", ["tenant_id", "hub_asset_id"], "(tenant, hub_asset)"
+        )
         self._assert_index_covers_columns(
-            "marketplace_mappings", ["external_listing_id"], "(external_listing_id)")
+            "marketplace_mappings", ["external_listing_id"], "(external_listing_id)"
+        )
 
     def test_unique_constraints_exist(self):
         """Test that all unique constraints exist"""
@@ -213,8 +233,7 @@ class MarketplaceMigrationsTest(TestCase):
         # assertGreaterEqual instead of assertEqual so adding a new
         # marketplace_* table (a valid migration) doesn't break this test.
         self.assertGreaterEqual(
-            table_count, 6,
-            f"Expected at least 6 marketplace tables, found {table_count}"
+            table_count, 6, f"Expected at least 6 marketplace tables, found {table_count}"
         )
 
     def test_table_structures(self):

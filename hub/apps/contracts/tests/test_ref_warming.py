@@ -345,7 +345,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         self.assertGreater(
             result.get("skipped", 0),
             0,
-            "Pre-cached URL must be counted as skipped; got %s" % result,
+            f"Pre-cached URL must be counted as skipped; got {result}",
         )
 
     def test_warm_ref_cache_partial_failure(self):
@@ -859,7 +859,7 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     # Edge cases and error handling tests
     def test_get_frequently_accessed_refs_with_none_limit(self):
         """get_frequently_accessed_refs with None limit returns empty list."""
-        refs = get_frequently_accessed_refs(limit=None)  # type: ignore[misc]  # test: edge-case type exercise
+        refs = get_frequently_accessed_refs(limit=None)  # test: edge-case type exercise
         self.assertIsInstance(
             refs, list, "get_frequently_accessed_refs must return a list for None limit"
         )
@@ -894,7 +894,7 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_warm_ref_cache_with_none_refs(self):
         """warm_ref_cache with None refs raises TypeError or ValueError."""
         with self.assertRaises((TypeError, ValueError)):
-            warm_ref_cache(None)  # type: ignore[misc]  # test: edge-case type exercise
+            warm_ref_cache(None)  # test: edge-case type exercise
 
     def test_warm_ref_cache_with_invalid_urls(self):
         """Test warm_ref_cache with invalid URLs."""
@@ -930,7 +930,9 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_warm_ref_cache_with_none_tenant_id(self):
         """Test warm_ref_cache with None tenant_id."""
         try:
-            result = warm_ref_cache(["https://example.com/schema.json"], tenant_id=None)  # type: ignore[misc]  # test: edge-case type exercise
+            result = warm_ref_cache(
+                ["https://example.com/schema.json"], tenant_id=None
+            )  # test: edge-case type exercise
             # May raise exception or handle None gracefully
             self.assertIsInstance(result, dict)
         except (TypeError, ValueError):

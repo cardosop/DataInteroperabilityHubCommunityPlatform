@@ -281,7 +281,7 @@ class TestOpenAPISpecChecker:
             assert "openapi" in spec_data
             assert "paths" in spec_data
             assert "info" in spec_data
-        except Exception as e:
+        except (OSError, ValueError) as e:
             pytest.skip(f"Could not fetch OpenAPI spec: {e}")
 
     @pytest.mark.skipif(

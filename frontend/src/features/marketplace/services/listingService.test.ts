@@ -46,8 +46,6 @@ describe('listingService', () => {
     await expect(listingService.list()).rejects.toThrow('Network Error');
   });
 
-});
-
   // Phase 277.3.1 — compliance threshold error-state tests.
   describe('compliance error handling', () => {
     it('handles 422 COMPLIANCE_THRESHOLD_EXCEEDED', async () => {
@@ -63,8 +61,11 @@ describe('listingService', () => {
         status: 422,
         data: errorBody,
       });
+      // The compliance gate lives in the backend; the service is a thin
+      // client — create() must propagate the 422 so callers map it via
+      // errorUtils (``publish`` never existed on this service).
       await expect(
-        listingService.publish('listing-1'),
+        listingService.create({ name: 'blocked' } as never),
       ).rejects.toMatchObject({ status: 422 });
     });
 
@@ -81,8 +82,12 @@ describe('listingService', () => {
         status: 422,
         data: errorBody,
       });
+      // The compliance gate lives in the backend; the service is a thin
+      // client — create() must propagate the 422 so callers map it via
+      // errorUtils (``publish`` never existed on this service).
       await expect(
-        listingService.publish('listing-1'),
+        listingService.create({ name: 'blocked' } as never),
       ).rejects.toMatchObject({ status: 422 });
     });
   });
+});

@@ -1,13 +1,25 @@
 """
 Phase 260.2.B — declarative content-type ↔ magic-byte validation (server-side).
 
-Pure validation helpers (no I/O). Used by ``magic_byte_check_post_upload`` after
-``S3StorageClient.download_range`` returns the object head.
+Pure validation helpers (no I/O) plus the post-upload gate
+``magic_byte_check_post_upload`` that reads the object head from storage and
+delegates to ``validate_magic_bytes_for_content_type``. Wired into
+``FileViewSet.complete_upload`` (260.DoD.7).
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import structlog
+
 from hub.apps.core.services.base import ValidationError
+
+if TYPE_CHECKING:  # pragma: no cover
+    from hub.apps.files.models import File
+    from hub.apps.files.storage import S3StorageClient
+
+logger = structlog.get_logger(__name__)
 
 # Maximum bytes read from object storage for sniffing (spec: first 8 KiB).
 MAGIC_BYTE_HEAD_BYTES: int = 8192
@@ -162,3 +174,45 @@ def validate_magic_bytes_for_content_type(*, content_type: str, head: bytes) -> 
         return
 
     # Types without a strict map: no server-side magic enforcement.
+
+
+def magic_byte_check_post_upload(
+    *,
+    file_obj: File,
+    storage_client: S3StorageClient,
+) -> None:
+    """
+    Phase 260.2.B / 260.DoD.7 — post-upload magic-byte gate.
+
+    Reads the object head from storage and rejects a declared-content-type
+    vs actual-magic-bytes mismatch (e.g. a PE payload labelled ``text/csv``)
+    with ``ValidationError(code="FILE_FORMAT_MISMATCH")``.
+
+    Gated on ``settings.MAGIC_BYTE_VALIDATION_ENABLED``; a no-op when the
+    file declares no content type. Storage read failures fail OPEN with a
+    warning — the hash verification earlier in the request already covered
+    integrity, and a storage blip must not wedge upload completion.
+    """
+    from django.conf import settings
+
+    if not settings.MAGIC_BYTE_VALIDATION_ENABLED:
+        return None
+    declared = (file_obj.content_type or "").strip()
+    if not declared:
+        return None
+
+    try:
+        head = storage_client.get_file_content(
+            file_obj.storage_path, max_bytes=MAGIC_BYTE_HEAD_BYTES
+        )
+    except Exception as exc:
+        # pragma: no cover — storage fault path
+        logger.warning(
+            "magic_byte_head_read_failed",
+            file_id=str(getattr(file_obj, "id", None)),
+            error=str(exc),
+        )
+        return None
+
+    validate_magic_bytes_for_content_type(content_type=declared, head=head)
+    return None

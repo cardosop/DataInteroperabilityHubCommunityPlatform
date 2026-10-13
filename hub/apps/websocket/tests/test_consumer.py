@@ -9,8 +9,11 @@ import pytest
 
 # Optional channels imports
 try:
-    from channels.layers import InMemoryChannelLayer, get_channel_layer
-    from channels.testing import WebsocketCommunicator
+    from channels.layers import (  # type: ignore[import-untyped]
+        InMemoryChannelLayer,
+        get_channel_layer,
+    )
+    from channels.testing import WebsocketCommunicator  # type: ignore[import-untyped]
 
     CHANNELS_AVAILABLE = True
 except ImportError:
@@ -24,7 +27,6 @@ from django.contrib.auth import get_user_model
 # Skip tests if channels not available
 pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 
-import contextlib
 
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
@@ -147,15 +149,11 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
 
             # The consumer first sends a JSON error via websocket.send,
             # then closes with code 4003.
-            error_response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            error_response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(error_response["type"], "error")
             self.assertIn("tenant", error_response.get("error", "").lower())
 
-            close_frame = await asyncio.wait_for(
-                communicator.receive_output(), timeout=2.0
-            )
+            close_frame = await asyncio.wait_for(communicator.receive_output(), timeout=2.0)
             self.assertEqual(close_frame["type"], "websocket.close")
             self.assertEqual(close_frame.get("code"), 4003)
         finally:

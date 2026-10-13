@@ -35,12 +35,11 @@ def _raise_statement_timeout():
     """
     with connection.cursor() as cur:
         cur.execute("SET statement_timeout = '120s'")
-    yield
     # Reset is implicit — the connection is returned to pool/closed
     # after each TransactionTestCase.
 
 
-@pytest.fixture()
+@pytest.fixture
 def tenant_a(db):
     """Create Tenant A with active subscription."""
     t = Tenant.objects.create(
@@ -52,7 +51,7 @@ def tenant_a(db):
     return t
 
 
-@pytest.fixture()
+@pytest.fixture
 def tenant_b(db):
     """Create Tenant B with active subscription."""
     t = Tenant.objects.create(
@@ -64,7 +63,7 @@ def tenant_b(db):
     return t
 
 
-@pytest.fixture()
+@pytest.fixture
 def user_a(tenant_a):
     """Create User A in Tenant A with DATA_PROVIDER role."""
     u = User.objects.create_user(
@@ -77,7 +76,7 @@ def user_a(tenant_a):
     return u
 
 
-@pytest.fixture()
+@pytest.fixture
 def user_b(tenant_b):
     """Create User B in Tenant B with DATA_PROVIDER role."""
     u = User.objects.create_user(
@@ -90,7 +89,7 @@ def user_b(tenant_b):
     return u
 
 
-@pytest.fixture()
+@pytest.fixture
 def client_a(user_a):
     """Authenticated APIClient for Tenant A (real JWT)."""
     token = JWTTokenGenerator.generate_access_token(user_a)
@@ -99,7 +98,7 @@ def client_a(user_a):
     return c
 
 
-@pytest.fixture()
+@pytest.fixture
 def client_b(user_b):
     """Authenticated APIClient for Tenant B (real JWT)."""
     token = JWTTokenGenerator.generate_access_token(user_b)

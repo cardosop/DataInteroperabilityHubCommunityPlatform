@@ -137,7 +137,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
       // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
       const resetOrUnavailable = page
         .getByRole('heading', { name: /Reset password/i })
-        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
+        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1, .disabled-capability-page, [data-testid="disabled-capability-page"]'));
       await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 35_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
@@ -168,7 +168,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
       // without masking a crashed-page regression — a fully-broken render
       // would still fail in the same shape (locator never visible).
       await expect(
-        page.getByRole('heading', { name: /Set a new password/i }).or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'))
+        page.getByRole('heading', { name: /Set a new password/i }).or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1, .disabled-capability-page, [data-testid="disabled-capability-page"]'))
       ).toBeVisible({ timeout: 60_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
@@ -199,7 +199,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
       // its comment for the mid-suite capabilities-API latency rationale.
       const resetOrUnavailable = page
         .getByRole('heading', { name: /Reset password/i })
-        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
+        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1, .disabled-capability-page, [data-testid="disabled-capability-page"]'));
       await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 60_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
@@ -226,7 +226,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
       }
       const heading = page
         .getByRole('heading', { name: /Reset password/i })
-        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
+        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1, .disabled-capability-page, [data-testid="disabled-capability-page"]'));
       await expect(heading.first()).toBeVisible({ timeout: 35_000 });
       if (page.url().includes('/unavailable')) {
         return;

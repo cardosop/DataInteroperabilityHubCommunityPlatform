@@ -85,13 +85,18 @@ class TestLogin:
         api_session: requests.Session,
         timeout: int,
     ) -> None:
-        """Wrong password must return 401 — not 500 (not an unhandled error)."""
+        """Wrong password must return 400/401 — not 500 (not an unhandled error).
+
+        The API surfaces bad credentials as a 400 ValidationError envelope
+        (AUTH_INVALID_CREDENTIALS); 401 is accepted for deployments that
+        map it to the HTTP-semantic status.
+        """
         response = api_session.post(
             f"{base_url}/api/v1/auth/login/",
             json={"email": "nonexistent@example.com", "password": "wrong-password-smoke"},
             timeout=timeout,
         )
-        assert response.status_code == 401, (
+        assert response.status_code in (400, 401), (
             f"Expected 401 for bad credentials, got {response.status_code}"
         )
 

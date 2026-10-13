@@ -40,24 +40,25 @@ class ScheduledIngestionModelTest(TestCase):
         )
 
     def _create_ingestion(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            name=f"Ing {uuid.uuid4().hex[:6]}",
-            source_type=SourceType.S3,
-            source_config={"bucket": "b", "region": "us-east-1"},
-            schedule_type=ScheduleType.DAILY,
-            schedule_config={"time": "03:00", "timezone": "UTC"},
-            status=ScheduledIngestionStatus.ACTIVE,
-            created_by=self.user,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "name": f"Ing {uuid.uuid4().hex[:6]}",
+            "source_type": SourceType.S3,
+            "source_config": {"bucket": "b", "region": "us-east-1"},
+            "schedule_type": ScheduleType.DAILY,
+            "schedule_config": {"time": "03:00", "timezone": "UTC"},
+            "status": ScheduledIngestionStatus.ACTIVE,
+            "created_by": self.user,
+        }
         defaults.update(overrides)
         return ScheduledIngestion.objects.create(**defaults)
 
     def test_create_with_valid_cron_expression(self):
-        ing = self._create_ingestion(
+        _ing = self._create_ingestion(
             schedule_type=ScheduleType.CUSTOM_CRON,
             schedule_config={"cron": "0 2 * * *", "timezone": "UTC"},
         )
+
     def test_invalid_file_pattern_raises_validation_error(self):
         """Invalid regex in file_pattern raises ValidationError on clean."""
         ing = self._create_ingestion()
@@ -68,7 +69,7 @@ class ScheduledIngestionModelTest(TestCase):
     def test_next_run_at_calculated_on_save(self):
         """next_run_at is auto-calculated when saving an ACTIVE ingestion."""
         ing = self._create_ingestion()
-        self.assertIsNotNone(ing.next_run_at)
+        assert ing.next_run_at is not None
 
     def test_failure_tracking_fields(self):
         """consecutive_failure_count and last_error_at track failures."""
@@ -85,9 +86,9 @@ class ScheduledIngestionModelTest(TestCase):
             ]
         )
         ing.refresh_from_db()
-        self.assertEqual(ing.consecutive_failure_count, 3)
-        self.assertIsNotNone(ing.last_error_at)
-        self.assertEqual(ing.error_message, "Connection refused")
+        assert ing.consecutive_failure_count == 3
+        assert ing.last_error_at is not None
+        assert ing.error_message == "Connection refused"
 
     def test_unique_name_per_tenant(self):
         """Duplicate name within same tenant raises ValidationError (model calls full_clean on save)."""
@@ -102,7 +103,7 @@ class ScheduledIngestionModelTest(TestCase):
         """All SourceType enum values are accepted."""
         for st in [SourceType.S3, SourceType.GCS, SourceType.HTTP, SourceType.HTTPS]:
             ing = self._create_ingestion(source_type=st)
-            self.assertEqual(ing.source_type, st)
+            assert ing.source_type == st
 
 
 class ScheduledIngestionRunModelTest(TestCase):
@@ -133,17 +134,17 @@ class ScheduledIngestionRunModelTest(TestCase):
         run = ScheduledIngestionRun.objects.create(
             scheduled_ingestion=self.ingestion, status=ScheduledIngestionRunStatus.PENDING
         )
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.PENDING)
+        assert run.status == ScheduledIngestionRunStatus.PENDING
         run.status = ScheduledIngestionRunStatus.RUNNING
         run.started_at = timezone.now()
         run.save()
         run.refresh_from_db()
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.RUNNING)
+        assert run.status == ScheduledIngestionRunStatus.RUNNING
         run.status = ScheduledIngestionRunStatus.COMPLETED
         run.completed_at = timezone.now()
         run.save()
         run.refresh_from_db()
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.COMPLETED)
+        assert run.status == ScheduledIngestionRunStatus.COMPLETED
 
     def test_run_file_tracking(self):
         """Run tracks files_found, files_processed, files_failed."""
@@ -155,10 +156,10 @@ class ScheduledIngestionRunModelTest(TestCase):
             files_failed=2,
             datasets_created=3,
         )
-        self.assertEqual(run.files_found, 10)
-        self.assertEqual(run.files_processed, 8)
-        self.assertEqual(run.files_failed, 2)
-        self.assertEqual(run.datasets_created, 3)
+        assert run.files_found == 10
+        assert run.files_processed == 8
+        assert run.files_failed == 2
+        assert run.datasets_created == 3
 
     def test_run_duration_tracking(self):
         """Run tracks started_at and completed_at for duration calculation."""
@@ -170,7 +171,7 @@ class ScheduledIngestionRunModelTest(TestCase):
             completed_at=start + timezone.timedelta(minutes=5),
         )
         duration = (run.completed_at - run.started_at).total_seconds()
-        self.assertEqual(duration, 300)
+        assert duration == 300
 
     def test_run_dlq_sync_status(self):
         """DLQ sync status tracked on run."""
@@ -179,7 +180,7 @@ class ScheduledIngestionRunModelTest(TestCase):
             status=ScheduledIngestionRunStatus.COMPLETED,
             dlq_sync_status="SYNCED",
         )
-        self.assertEqual(run.dlq_sync_status, "SYNCED")
+        assert run.dlq_sync_status == "SYNCED"
 
 
 class IngestionCostModelTest(TestCase):

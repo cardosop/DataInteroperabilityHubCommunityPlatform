@@ -5,7 +5,7 @@ Full-text search engine with relevance-based ranking and filtering.
 """
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
@@ -26,7 +26,7 @@ class SearchEngine:
     """
 
     # Default ranking weights
-    DEFAULT_WEIGHTS = {
+    DEFAULT_WEIGHTS: ClassVar[dict[str, float]] = {
         "name": 2.5,
         "description": 1.0,
         "quality": 0.5,

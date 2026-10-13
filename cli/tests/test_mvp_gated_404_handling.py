@@ -33,7 +33,7 @@ def _build_404(url: str) -> requests.Response:
     """Construct a real ``requests.Response`` representing a 404 from ``url``."""
     response = requests.Response()
     response.status_code = 404
-    response.url = url  # type: ignore[assignment]
+    response.url = url
     response._content = b'{"detail":"Not Found."}'
     response.headers["Content-Type"] = "application/json"
     return response

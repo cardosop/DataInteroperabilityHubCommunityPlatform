@@ -38,14 +38,15 @@ def get_redis_client() -> redis.Redis | None:
 
         client = get_redis_cache_client()
         client.ping()
-        return client
-    except Exception as e:
+    except (ImportError, ValueError, redis.RedisError) as e:
         logger.warning(
             "cache_redis_unavailable",
             error=str(e),
             message="Cache will use Django cache backend only (no pattern support)",
         )
         return None
+    else:
+        return client
 
 
 class CacheKeyGenerator:
@@ -242,7 +243,6 @@ class CacheInvalidator:
         try:
             # Use Django cache delete
             django_cache.delete(key)
-            return True
         except Exception as e:
             logger.warning(
                 "cache_invalidation_error",
@@ -251,6 +251,8 @@ class CacheInvalidator:
                 message="Failed to invalidate cache key",
             )
             return False
+        else:
+            return True
 
     def invalidate_keys(self, keys: list[str]) -> int:
         """
@@ -325,7 +327,6 @@ class CacheInvalidator:
                     # Also delete from Django cache (using original keys)
                     django_cache.delete_many(django_keys)
                     return len(all_keys)
-                return 0
             except Exception as e:
                 logger.warning(
                     "cache_pattern_invalidation_error",
@@ -335,6 +336,8 @@ class CacheInvalidator:
                 )
                 # Fallback: try Django cache (limited pattern support)
                 return self._invalidate_pattern_django(pattern)
+            else:
+                return 0
         else:
             # Fallback to Django cache (no pattern support)
             return self._invalidate_pattern_django(pattern)
@@ -455,12 +458,13 @@ class CacheWarmer:
             data = fetch_func(key)
             cache_ttl = ttl or self._ttl_config.get_ttl(key)
             django_cache.set(key, data, timeout=cache_ttl)
-            return True
         except Exception as e:
             logger.warning(
                 "cache_warming_error", key=key, error=str(e), message="Failed to warm cache for key"
             )
             return False
+        else:
+            return True
 
 
 # Global instances

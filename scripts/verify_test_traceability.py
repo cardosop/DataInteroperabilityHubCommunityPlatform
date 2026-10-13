@@ -6,7 +6,7 @@ Checks that:
 - Every feature (FEATURES.md) has test coverage documented in TEST_TRACEABILITY.md
 - Every use case (USE_CASES.md) has test coverage documented
 - Every user journey (USER_JOURNEYS.md) has test coverage documented
-- Every persona (USER_PERSONAS.md) has test coverage documented
+- Every persona (docs/mvpdocs/_meta/persona-mapping.yaml, formerly USER_PERSONAS.md) has test coverage documented
 - Test names/IDs or docstrings reference doc IDs (UC-*, JOURNEY-*) where applicable
 
 Usage:
@@ -54,7 +54,7 @@ EXPECTED_FEATURES = [
     "Health",
 ]
 
-# 13 personas from USER_PERSONAS.md
+# 13 personas from docs/mvpdocs/_meta/persona-mapping.yaml (formerly USER_PERSONAS.md)
 EXPECTED_PERSONAS = [
     "Visitor / Prospect",
     "Data Product Owner",
@@ -93,7 +93,7 @@ def extract_features_from_traceability(content: str) -> set[str]:
     # Section "Feature → Test Mapping" ends before "Use Case → Test Mapping"
     feature_section = content
     if "## Use Case → Test Mapping" in content:
-        feature_section = content.split("## Use Case → Test Mapping")[0]
+        feature_section = content.split("## Use Case → Test Mapping", maxsplit=1)[0]
     ids: set[str] = set()
     for m in re.finditer(r"^### ([A-Za-z][^\n#]+?)\s*$", feature_section, re.MULTILINE):
         name = m.group(1).strip()
@@ -162,7 +162,7 @@ def scan_tests_for_doc_id_refs(
                     continue
                 try:
                     text = path.read_text(encoding="utf-8", errors="ignore")
-                except Exception:
+                except OSError:
                     text = ""
                 # Path can reference doc ID (e.g. JOURNEY-AUTH-001.spec.ts)
                 if pattern.search(text) or pattern.search(path.name):
@@ -186,8 +186,16 @@ def main() -> int:
     (docs / "FEATURES.md").read_text(encoding="utf-8")
     use_cases_md = (docs / "USE_CASES.md").read_text(encoding="utf-8")
     user_journeys_md = (docs / "USER_JOURNEYS.md").read_text(encoding="utf-8")
-    (docs / "USER_PERSONAS.md").read_text(encoding="utf-8")
-    traceability_md = (docs / "TEST_TRACEABILITY.md").read_text(encoding="utf-8")
+    # The persona registry moved to docs/mvpdocs/ (docs consolidation 4e78af0b0);
+    # persona-mapping.yaml is the canonical 13-persona map.
+    (docs / "mvpdocs" / "_meta" / "persona-mapping.yaml").read_text(encoding="utf-8")
+    # TEST_TRACEABILITY.md was archived by the docs consolidation
+    # (4e78af0b0) into docs/deprecated-doc/test-reports/ — the archived
+    # matrix (v1.6.0) remains the last full feature/UC/persona coverage
+    # mapping; the live registries are the single source of truth today.
+    traceability_md = (
+        docs / "deprecated-doc" / "test-reports" / "TEST_TRACEABILITY.md"
+    ).read_text(encoding="utf-8")
 
     use_case_ids = extract_use_case_ids(use_cases_md)
     journey_ids = extract_journey_ids(user_journeys_md)

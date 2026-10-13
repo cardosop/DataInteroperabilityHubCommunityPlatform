@@ -10,7 +10,7 @@ class UserNotificationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserNotification
-        fields = [
+        fields = (
             "id",
             "tenant",
             "user",
@@ -24,5 +24,5 @@ class UserNotificationSerializer(serializers.ModelSerializer):
             "read",
             "read_at",
             "created_at",
-        ]
+        )
         read_only_fields = fields

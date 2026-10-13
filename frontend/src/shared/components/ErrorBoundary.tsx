@@ -78,7 +78,16 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     // not already attempted a reload in this session, hard-reload once. The
     // reload re-fetches index.html and pulls fresh hashed chunk filenames,
     // resolving the mismatch without any user intervention.
-    if (isChunkLoadError(error) && typeof window !== 'undefined') {
+    //
+    // Offline guard: while the browser is offline, a failed dynamic import
+    // is a connectivity error, not a stale-chunk race — the same
+    // "Failed to fetch dynamically imported module" message covers both.
+    // A hard reload in that state lands on the browser's network-error page
+    // and hides the SPA's own error UI, so fall through and surface the
+    // ErrorDisplay instead.
+    const isOffline =
+      typeof window !== 'undefined' && window.navigator.onLine === false;
+    if (isChunkLoadError(error) && !isOffline) {
       try {
         const lastAttempt = Number(window.sessionStorage.getItem(CHUNK_RELOAD_FLAG)) || 0;
         const sinceLastAttempt = Date.now() - lastAttempt;
@@ -123,10 +132,26 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <ErrorDisplay
           error={this.state.error || new Error('An unexpected error occurred')}
           title="Something went wrong"
+          onRetry={handleRetry}
         />
       );
     }
 
     return this.props.children;
+  }
+}
+
+/**
+ * Recovery for the boundary's fallback UI.
+ *
+ * Re-rendering alone cannot retry a failed dynamic import — React.lazy
+ * caches the rejection and re-throws it — so a full reload is the only
+ * reliable recovery. But only when the network is back: while offline a
+ * reload would replace this error UI with the browser's network-error
+ * page, so stay put instead of making the state worse.
+ */
+function handleRetry(): void {
+  if (typeof window !== 'undefined' && window.navigator.onLine) {
+    window.location.reload();
   }
 }

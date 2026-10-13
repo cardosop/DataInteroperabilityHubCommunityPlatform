@@ -74,7 +74,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain @critical', () => {
         throw new Error('Unexpected redirect to login on mesh/create page');
       }
       if ((await page.locator('.mesh-domain-create-page').count()) === 0) {
-        test.skip(true, 'Mesh domain create page did not render; skipping creation test.');
+        test.skip((await page.locator('.mesh-domain-create-page').count()) === 0, 'Mesh domain create page did not render; skipping creation test.');
         return;
       }
 

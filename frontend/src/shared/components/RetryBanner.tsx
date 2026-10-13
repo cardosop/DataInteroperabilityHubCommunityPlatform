@@ -31,8 +31,13 @@ export function RetryBanner({
   const [countdown, setCountdown] = useState(intervalSeconds);
   const [attempt, setAttempt] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The ref write lives in an effect (react-hooks/refs forbids
+  // render-time ref writes); the read only happens from doRetry's
+  // callback below.
   const onRetryRef = useRef(onRetry);
-  onRetryRef.current = onRetry;
+  useEffect(() => {
+    onRetryRef.current = onRetry;
+  }, [onRetry]);
 
   const doRetry = useCallback(() => {
     if (attempt >= maxRetries) {
@@ -43,7 +48,7 @@ export function RetryBanner({
     setAttempt((a) => a + 1);
     setCountdown(intervalSeconds);
     onRetryRef.current();
-  }, [attempt, maxRetries, intervalSeconds, onGiveUp]);
+  }, [attempt, maxRetries, intervalSeconds, onGiveUp, onRetryRef]);
 
   useEffect(() => {
     timerRef.current = setInterval(() => {

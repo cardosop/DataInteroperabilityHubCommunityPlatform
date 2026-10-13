@@ -4,13 +4,14 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { marketplaceMappingService } from '../services/marketplaceMappingService';
 import type { MarketplaceMappingListFilters } from '../../../shared/types/integrations';
 
 export function useMarketplaceMappings(filters: MarketplaceMappingListFilters = {}) {
   return useQuery({
     queryKey: ['integrations', 'marketplace', 'mappings', 'list', filters],
-    queryFn: () => marketplaceMappingService.list(filters),
+    queryFn: async () => normalizePaginated(await marketplaceMappingService.list(filters)),
   });
 }
 

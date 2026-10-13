@@ -4,7 +4,7 @@
  * Route: /settings/profile
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -30,6 +30,15 @@ export function ProfilePage() {
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState('');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  // Dirty refs: a STRAGGLING loadUser fetch (StrictMode double-mount, slow
+  // /auth/me/ under load) resolves AFTER the user started typing and used
+  // to reset the controlled inputs to the fetched values — the typed name
+  // vanished mid-edit and the next save silently re-submitted the OLD
+  // name (JOURNEY-AUTH-PROFILE intermittent failure: PATCH payload carried
+  // the pre-fill name, 2026-10-03). Refs survive the double-mount, unlike
+  // state captured in the effect closure.
+  const displayNameEditedRef = useRef(false);
+  const avatarEditedRef = useRef(false);
 
   const loadUser = async () => {
     setLoading(true);
@@ -37,8 +46,8 @@ export function ProfilePage() {
     try {
       const data = await authService.fetchUser();
       setUser(data);
-      setDisplayName(data.name ?? '');
-      setAvatar(data.avatar ?? '');
+      if (!displayNameEditedRef.current) setDisplayName(data.name ?? '');
+      if (!avatarEditedRef.current) setAvatar(data.avatar ?? '');
     } catch (err) {
       setError(normalizeError(err));
     } finally {
@@ -142,7 +151,10 @@ export function ProfilePage() {
             type="text"
             required
             value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            onChange={(e) => {
+              displayNameEditedRef.current = true;
+              setDisplayName(e.target.value);
+            }}
             placeholder="Your display name"
             maxLength={DISPLAY_NAME_MAX_LENGTH}
             aria-invalid={!!validationErrors.display_name}
@@ -162,7 +174,10 @@ export function ProfilePage() {
             name="avatar"
             type="url"
             value={avatar}
-            onChange={(e) => setAvatar(e.target.value)}
+            onChange={(e) => {
+              avatarEditedRef.current = true;
+              setAvatar(e.target.value);
+            }}
             placeholder="https://example.com/avatar.png"
             maxLength={AVATAR_URL_MAX_LENGTH}
             aria-invalid={!!validationErrors.avatar}

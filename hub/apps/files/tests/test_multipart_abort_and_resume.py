@@ -68,7 +68,7 @@ import pytest
 from rest_framework import status
 
 from hub.apps.files.models import File, FileStatus
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.files.storage import S3StorageClient, StorageError
 from hub.apps.files.tests.test_base import FilesAPITestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -302,7 +302,7 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
                     key=storage_path,
                     upload_id=upload_id,
                 )
-            except Exception:
+            except StorageError:
                 # Already completed (or aborted) — fine.
                 pass
 

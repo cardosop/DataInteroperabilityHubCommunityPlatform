@@ -219,7 +219,7 @@ def retry_with_policy(func: Callable, event_type: str, *args, **kwargs) -> Any:
             retry_count += 1
 
             if not policy.should_retry(retry_count, e):
-                logger.error(
+                logger.exception(
                     "retry_exhausted",
                     event_type=event_type,
                     retry_count=retry_count,

@@ -40,7 +40,7 @@ def get_contract_lineage(contract_id: str, output_format: str):
             else:
                 click.echo("No upstream contracts found.")
     except Exception as e:
-        raise click.ClickException(f"Failed to get contract lineage: {e}")
+        raise click.ClickException(f"Failed to get contract lineage: {e}") from e
 
 
 @lineage.command("model")
@@ -73,7 +73,7 @@ def get_model_lineage(contract_id: str, model_name: str, output_format: str):
             else:
                 click.echo("No upstream models found.")
     except Exception as e:
-        raise click.ClickException(f"Failed to get model lineage: {e}")
+        raise click.ClickException(f"Failed to get model lineage: {e}") from e
 
 
 @lineage.command("field")
@@ -110,7 +110,7 @@ def get_field_lineage(contract_id: str, model_name: str, field_name: str, output
             else:
                 click.echo("No input fields found.")
     except Exception as e:
-        raise click.ClickException(f"Failed to get field lineage: {e}")
+        raise click.ClickException(f"Failed to get field lineage: {e}") from e
 
 
 @lineage.command("full")
@@ -156,7 +156,7 @@ def get_full_lineage(
                 click.echo("\nDownstream:")
                 click.echo(json.dumps(downstream, indent=2))
     except Exception as e:
-        raise click.ClickException(f"Failed to get full lineage: {e}")
+        raise click.ClickException(f"Failed to get full lineage: {e}") from e
 
 
 @lineage.command("visualize")
@@ -182,7 +182,7 @@ def visualize_lineage(contract_id: str, format: str):
                 json.dumps(response.json() if hasattr(response, "json") else response, indent=2)
             )
     except Exception as e:
-        raise click.ClickException(f"Failed to get lineage visualization: {e}")
+        raise click.ClickException(f"Failed to get lineage visualization: {e}") from e
 
 
 @lineage.command("impact")
@@ -219,4 +219,4 @@ def get_impact_analysis(contract_id: str, depth: int, include_fields: bool, outp
                 if len(affected_assets) > 10:
                     click.echo(f"  ... and {len(affected_assets) - 10} more")
     except Exception as e:
-        raise click.ClickException(f"Failed to get impact analysis: {e}")
+        raise click.ClickException(f"Failed to get impact analysis: {e}") from e

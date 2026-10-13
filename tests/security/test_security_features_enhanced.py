@@ -153,10 +153,11 @@ class EmailAPITest(TestCase):
         mail.outbox = []
 
         # Send email using Django's mail API
+        from_email = f"from-{uuid.uuid4().hex[:8]}@example.com"
         mail.send_mail(
             subject="Test Subject",
             message="Test message",
-            from_email=f"from-{uuid.uuid4().hex[:8]}@example.com",
+            from_email=from_email,
             recipient_list=["to@example.com"],
             fail_silently=False,
         )
@@ -165,7 +166,7 @@ class EmailAPITest(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].subject, "Test Subject")
         self.assertEqual(mail.outbox[0].body, "Test message")
-        self.assertEqual(mail.outbox[0].from_email, "from@example.com")
+        self.assertEqual(mail.outbox[0].from_email, from_email)
         self.assertEqual(mail.outbox[0].to, ["to@example.com"])
 
     def test_email_html_content(self):

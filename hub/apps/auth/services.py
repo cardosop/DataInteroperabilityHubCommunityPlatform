@@ -12,7 +12,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.services.base import BaseService, NotFoundError
+from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
 
 from .models import APIKey
 
@@ -42,6 +42,8 @@ class APIKeyService(BaseService):
         scopes: list | None = None,
         expires_in_days: int | None = None,
         rate_limit_per_hour: int | None = None,
+        expires_at=None,
+        tier_name: str | None = None,
     ) -> tuple[APIKey, str]:
         """
         Create an API key with validation and audit.
@@ -53,6 +55,10 @@ class APIKeyService(BaseService):
             scopes: Optional list of scopes
             expires_in_days: Optional expiration in days
             rate_limit_per_hour: Optional rate limit
+            expires_at: Optional explicit expiration datetime (takes
+                precedence over expires_in_days)
+            tier_name: Optional BaaS tier name (resolved through the
+                commercial hook; Phase 313 paid-ward FK)
 
         Returns:
             Tuple of (APIKey instance, plaintext_key)
@@ -70,7 +76,7 @@ class APIKeyService(BaseService):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant {tenant_id} not found")
+            raise NotFoundError(f"Tenant {tenant_id} not found") from None
 
         # Get user if provided
         user = None
@@ -78,18 +84,33 @@ class APIKeyService(BaseService):
             try:
                 user = User.objects.get(id=user_id, tenant_id=tenant_id)
             except User.DoesNotExist:
-                raise NotFoundError(f"User {user_id} not found")
+                raise NotFoundError(f"User {user_id} not found") from None
+
+        # Resolve the BaaS tier through the commercial hook (Phase 313
+        # paid-ward FK). The paid layer registers the resolver; unknown
+        # names raise LookupError and core-only deployments have no
+        # resolver at all — both surface as service validation errors.
+        tier = None
+        if tier_name:
+            from hub.apps.core.commercial_hooks import resolve_api_key_tier
+
+            try:
+                tier = resolve_api_key_tier(tier_name)
+            except LookupError as exc:
+                raise ValidationError(str(exc)) from exc
+            if tier is None:
+                raise ValidationError(f"API tier '{tier_name}' is not available in this deployment")
 
         # Generate API key
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
 
-        # Calculate expiration
-        expires_at = None
-        if expires_in_days:
+        # Calculate expiration (explicit expires_at wins over expires_in_days)
+        if expires_at is None and expires_in_days:
             expires_at = timezone.now() + timedelta(days=expires_in_days)
 
-        # Create API key
+        # Create API key (the tier property persists the paid-ward
+        # assignment post-insert; None is a no-op).
         api_key = APIKey.objects.create(
             tenant=tenant,
             user=user,
@@ -98,6 +119,7 @@ class APIKeyService(BaseService):
             scopes=scopes or [],
             expires_at=expires_at,
             rate_limit_per_hour=rate_limit_per_hour,
+            tier=tier,
         )
 
         # Store plaintext key temporarily for response (not saved to DB)
@@ -121,6 +143,7 @@ class APIKeyService(BaseService):
             details={
                 "name": name,
                 "scopes": scopes,
+                "tier": tier.name if tier is not None else None,
                 "expires_at": expires_at.isoformat() if expires_at else None,
             },
         )
@@ -135,7 +158,11 @@ class APIKeyService(BaseService):
         actor_user_id: str,
     ) -> None:
         """
-        Delete an API key with audit.
+        Delete (revoke) an API key with audit.
+
+        Single identity (D2) contract: DELETE revokes the key — the row is
+        kept (``revoked_at`` set) so usage records and audit history keep
+        their FK attribution; ``is_active()`` becomes False.
 
         Args:
             api_key_id: API key ID
@@ -152,7 +179,7 @@ class APIKeyService(BaseService):
             tenant_id=tenant_id,
         )
 
-        # Create audit event before deletion
+        # Create audit event before revocation
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
@@ -163,12 +190,12 @@ class APIKeyService(BaseService):
 
         create_audit_event(
             resource_type="API_KEY",
-            action="API_KEY_DELETED",
+            action="API_KEY_REVOKED",
             actor_user=actor_user,
             tenant=api_key.tenant,
             resource_id=str(api_key.id),
             details={"name": api_key.name},
         )
 
-        # Delete API key
-        api_key.delete()
+        # Revoke the key (soft delete)
+        api_key.revoke()

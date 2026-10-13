@@ -8,53 +8,28 @@ collected regardless of API reachability.
 
 Set ``MESHANT_FORCE_INTEGRATION=1`` to bypass the skip and force-run
 all tests.
+
+W16 (Phase T.4): the auto-skip is the shared ``tests._env_skip`` policy —
+in CI an unreachable API RAISES instead of skipping (the environment failure
+announces itself); local runs keep the graceful skip.
 """
 
-import os
-
-import pytest
-import requests
+from tests._env_skip import auto_skip_unreachable_api
 
 # Files that do not require the live API — never auto-skip these.
-_API_INDEPENDENT_FILES = {
-    "test_tls_verification.py",
-    "test_dependency_audit.py",
-}
+_API_INDEPENDENT_FILES = frozenset(
+    {
+        "test_tls_verification.py",
+        "test_dependency_audit.py",
+    }
+)
 
 
-def _api_is_reachable(url: str) -> bool:
-    try:
-        response = requests.get(url, timeout=5)
-    except requests.RequestException:
-        return False
-    return response.status_code < 500
-
-
-def _get_default_api_url() -> str:
-    """Return the default API URL, honoring API_TEST_PORT."""
-    port = os.environ.get("API_TEST_PORT", "8001")
-    return f"http://localhost:{port}/api/v1"
-
-
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
-    if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
-        return
-    api_url = os.environ.get("MESHANT_API_URL") or _get_default_api_url()
-    api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
-    if _api_is_reachable(api_root):
-        return
-    skip_marker = pytest.mark.skip(
-        reason=(
-            f"Meshant API not reachable at {api_root}. Security integration "
-            "tests require a live backend; start docker compose or set "
-            "MESHANT_FORCE_INTEGRATION=1 to override."
-        )
+def pytest_collection_modifyitems(config, items):
+    auto_skip_unreachable_api(
+        items,
+        suite_label="Security integration tests",
+        path_scopes=("/tests/security/",),
+        default_port=8001,
+        api_independent_files=_API_INDEPENDENT_FILES,
     )
-    for item in items:
-        fspath = str(item.fspath)
-        # Never skip tests that don't need the API
-        filename = os.path.basename(fspath)
-        if filename in _API_INDEPENDENT_FILES:
-            continue
-        if any(d in fspath for d in ("/tests/security/")):
-            item.add_marker(skip_marker)

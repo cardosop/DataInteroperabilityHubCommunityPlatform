@@ -37,7 +37,7 @@ def check_semantic_service_available():
         # Service is available only if health check returns healthy status
         # fuseki_status can be "connected", "disconnected", "timeout", "unreachable", or "unknown"
         # We only consider the service available if is_healthy is True
-        return is_healthy
+        _is_healthy = is_healthy
     except Exception as e:
         # Log the exception for debugging but don't fail
         import logging
@@ -45,6 +45,8 @@ def check_semantic_service_available():
         logger = logging.getLogger(__name__)
         logger.debug(f"Semantic service not available: {e}")
         return False
+    else:
+        return _is_healthy
 
 
 def _skip_if_circuit_breaker(result):
@@ -139,24 +141,21 @@ class SPARQLStandardVocabulariesTest(TestCase):
     def tearDown(self):
         """Clean up RDF data from Fuseki to prevent accumulation across tests."""
         if hasattr(self, "semantic_resource") and self.semantic_resource is not None:
-            try:
+            # The delete is best-effort — a timeout or circuit-breaker open means
+            # Fuseki is overloaded; the remaining tests should still be resilient
+            # via adequate query timeouts.
+            with contextlib.suppress(Exception):  # best-effort cleanup delete
                 self.client.delete_resource_triples(
                     tenant_id=str(self.tenant.id),
                     iri=self.semantic_resource.uri,
                 )
-            except Exception:
-                # Log the failure rather than silently ignoring it.
-                # The delete is best-effort — a timeout or circuit-breaker
-                # open means Fuseki is overloaded; the remaining tests
-                # should still be resilient via adequate query timeouts.
-                pass
 
     def test_sparql_query_dqv_quality_rules(self):
         """Test SPARQL query for quality rules using DQV vocabulary"""
         query = """
         PREFIX dqv: <https://www.w3.org/ns/dqv#>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?rule ?dimension ?expression
         WHERE {
             ?contract hub:hasQualityRule ?rule .
@@ -167,7 +166,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         # Should not have error
         self.assertNotIn("error", result)
@@ -179,7 +180,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         query = """
         PREFIX dpv: <https://www.w3.org/ns/dpv#>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?containsPersonalData ?category ?jurisdiction
         WHERE {
             ?contract hub:hasCompliancePolicy ?policy .
@@ -190,7 +191,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -200,7 +203,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         query = """
         PREFIX prov: <http://www.w3.org/ns/prov#>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?dataSource ?refreshCadence
         WHERE {
             ?contract hub:hasLifecyclePolicy ?policy .
@@ -211,7 +214,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -221,7 +226,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         query = """
         PREFIX odrl: <https://www.w3.org/ns/odrl/2/>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?licenseSummary ?intendedUse ?restrictedUse
         WHERE {
             ?contract hub:hasMarketplacePolicy ?policy .
@@ -232,7 +237,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -242,7 +249,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         query = """
         PREFIX shacl: <http://www.w3.org/ns/shacl#>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?field ?format ?pattern ?minLength ?maxLength
         WHERE {
             ?contract hub:hasField ?field .
@@ -254,7 +261,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -265,7 +274,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX schema: <https://schema.org/>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?field ?semanticType ?schemaType
         WHERE {
             ?contract hub:hasField ?field .
@@ -290,7 +299,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX foaf: <http://xmlns.com/foaf/0.1/>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?owner ?ownerName ?ownerEmail
         WHERE {
             ?contract hub:hasOwner ?owner .
@@ -301,7 +310,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -317,7 +328,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         PREFIX schema: <https://schema.org/>
         PREFIX foaf: <http://xmlns.com/foaf/0.1/>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?rule ?policy ?field ?owner
         WHERE {
             ?contract hub:hasQualityRule ?rule .
@@ -328,7 +339,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -338,7 +351,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         query = """
         PREFIX dqv: <https://www.w3.org/ns/dqv#>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?rule ?dimension ?expression ?severity
         WHERE {
             ?contract hub:hasQualityRule ?rule .
@@ -350,7 +363,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -360,7 +375,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         query = """
         PREFIX dpv: <https://www.w3.org/ns/dpv#>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?policy ?jurisdiction
         WHERE {
             ?contract hub:hasCompliancePolicy ?policy .
@@ -370,7 +385,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -381,7 +398,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX schema: <https://schema.org/>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?field ?semanticType ?schemaType
         WHERE {
             ?contract hub:hasField ?field .
@@ -392,7 +409,9 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -403,7 +422,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX hub: <https://hub.example.com/ontology#>
-        
+
         SELECT ?contract ?name
         WHERE {
             ?contract rdf:type hub:DataContract .
@@ -413,14 +432,20 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
 
         # Test JSON format
-        result_json = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
+        result_json = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result_json)
         self.assertNotIn("error", result_json)
         # Test CSV format
-        result_csv = self.client.query_sparql(query, output_format="csv", tenant_id=str(self.tenant.id), timeout=120)
+        result_csv = self.client.query_sparql(
+            query, output_format="csv", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result_csv)
         self.assertNotIn("error", result_csv)
         # Test Turtle format
-        result_turtle = self.client.query_sparql(query, output_format="turtle", tenant_id=str(self.tenant.id), timeout=120)
+        result_turtle = self.client.query_sparql(
+            query, output_format="turtle", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result_turtle)
         self.assertNotIn("error", result_turtle)

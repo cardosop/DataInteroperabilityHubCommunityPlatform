@@ -4,19 +4,17 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { entitlementService } from '../services/entitlementService';
-import type {
-  EntitlementListFilters,
-  CheckAccessRequest,
-} from '../../../shared/types/marketplace';
+import type { EntitlementListFilters, CheckAccessRequest } from '../../../shared/types/marketplace';
 
 export function useEntitlements(
   filters: EntitlementListFilters = {},
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean }
 ) {
   return useQuery({
     queryKey: ['marketplace', 'entitlements', 'list', filters],
-    queryFn: () => entitlementService.list(filters),
+    queryFn: async () => normalizePaginated(await entitlementService.list(filters)),
     enabled: options?.enabled !== false,
   });
 }

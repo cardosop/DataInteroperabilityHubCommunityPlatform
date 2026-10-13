@@ -21,7 +21,7 @@ class VirtualDatasetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = VirtualDataset
-        fields = [
+        fields = (
             "id",
             "tenant",
             "created_by",
@@ -35,8 +35,8 @@ class VirtualDatasetSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "tenant", "created_by", "version", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "tenant", "created_by", "version", "created_at", "updated_at")
 
     def to_representation(self, instance):
         """Decrypt and mask sensitive fields in sources."""
@@ -126,7 +126,9 @@ class VirtualDatasetCreateSerializer(serializers.Serializer):
             int(version_parts[1])  # minor
             int(version_parts[2])  # patch
         except ValueError:
-            raise serializers.ValidationError("Version parts must be numeric (e.g., '1.0.0')")
+            raise serializers.ValidationError(
+                "Version parts must be numeric (e.g., '1.0.0')"
+            ) from None
 
         return value
 
@@ -139,26 +141,24 @@ class VirtualDatasetCreateSerializer(serializers.Serializer):
             query_upper = query.upper().strip()
 
             # Basic query type validation
-            if query_type == QueryType.SQL:
-                if not any(
-                    keyword in query_upper
-                    for keyword in ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]
-                ):
-                    raise serializers.ValidationError(
-                        {
-                            "query": "SQL query should contain SQL keywords (SELECT, WITH, INSERT, UPDATE, DELETE)"
-                        }
-                    )
-            elif query_type == QueryType.SPARQL:
-                if not any(
-                    keyword in query_upper
-                    for keyword in ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
-                ):
-                    raise serializers.ValidationError(
-                        {
-                            "query": "SPARQL query should contain SPARQL keywords (SELECT, CONSTRUCT, ASK, DESCRIBE, PREFIX)"
-                        }
-                    )
+            if query_type == QueryType.SQL and not any(
+                keyword in query_upper
+                for keyword in ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "query": "SQL query should contain SQL keywords (SELECT, WITH, INSERT, UPDATE, DELETE)"
+                    }
+                )
+            elif query_type == QueryType.SPARQL and not any(
+                keyword in query_upper
+                for keyword in ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "query": "SPARQL query should contain SPARQL keywords (SELECT, CONSTRUCT, ASK, DESCRIBE, PREFIX)"
+                    }
+                )
 
         return attrs
 
@@ -235,7 +235,9 @@ class VirtualDatasetUpdateSerializer(serializers.Serializer):
                 int(version_parts[1])
                 int(version_parts[2])
             except ValueError:
-                raise serializers.ValidationError("Version parts must be numeric (e.g., '1.0.0')")
+                raise serializers.ValidationError(
+                    "Version parts must be numeric (e.g., '1.0.0')"
+                ) from None
         return value
 
     def validate(self, attrs):
@@ -246,26 +248,24 @@ class VirtualDatasetUpdateSerializer(serializers.Serializer):
         if query and query_type:
             query_upper = query.upper().strip()
 
-            if query_type == QueryType.SQL:
-                if not any(
-                    keyword in query_upper
-                    for keyword in ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]
-                ):
-                    raise serializers.ValidationError(
-                        {
-                            "query": "SQL query should contain SQL keywords (SELECT, WITH, INSERT, UPDATE, DELETE)"
-                        }
-                    )
-            elif query_type == QueryType.SPARQL:
-                if not any(
-                    keyword in query_upper
-                    for keyword in ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
-                ):
-                    raise serializers.ValidationError(
-                        {
-                            "query": "SPARQL query should contain SPARQL keywords (SELECT, CONSTRUCT, ASK, DESCRIBE, PREFIX)"
-                        }
-                    )
+            if query_type == QueryType.SQL and not any(
+                keyword in query_upper
+                for keyword in ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "query": "SQL query should contain SQL keywords (SELECT, WITH, INSERT, UPDATE, DELETE)"
+                    }
+                )
+            elif query_type == QueryType.SPARQL and not any(
+                keyword in query_upper
+                for keyword in ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "query": "SPARQL query should contain SPARQL keywords (SELECT, CONSTRUCT, ASK, DESCRIBE, PREFIX)"
+                    }
+                )
 
         return attrs
 
@@ -306,7 +306,7 @@ class QueryExecutionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = QueryExecution
-        fields = [
+        fields = (
             "id",
             "virtual_dataset",
             "virtual_dataset_name",
@@ -323,8 +323,8 @@ class QueryExecutionSerializer(serializers.ModelSerializer):
             "job",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "virtual_dataset",
             "virtual_dataset_name",
@@ -338,7 +338,7 @@ class QueryExecutionSerializer(serializers.ModelSerializer):
             "job",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class QueryExecutionCreateSerializer(serializers.Serializer):

@@ -109,8 +109,10 @@ class TenantAdminLookupTests(TestCase):
 
         admins_a = list(get_tenant_admin_users(t1))
         admins_b = list(get_tenant_admin_users(t2))
-        assert admin_a in admins_a and admin_b not in admins_a
-        assert admin_b in admins_b and admin_a not in admins_b
+        assert admin_a in admins_a
+        assert admin_b not in admins_a
+        assert admin_b in admins_b
+        assert admin_a not in admins_b
 
     def test_get_tenant_admin_users_dedupes_multiple_user_role_rows(self):
         """A user with two UserRole rows (e.g. legacy duplicate) should

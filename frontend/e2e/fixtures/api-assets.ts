@@ -6,7 +6,10 @@
 
 import type { TestUser } from '../setup/create-test-user';
 import { e2eTestHeaders } from './e2e-token';
+import { loginUser } from './auth';
 import type { CleanupRegistry } from './test-data-cleanup';
+import { execSync } from 'node:child_process';
+import * as http from 'node:http';
 
 // Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
 // Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
@@ -24,6 +27,122 @@ function isConnectionRefused(err: unknown): boolean {
     typeof cause === 'object' &&
     (cause as { code?: string }).code === 'ECONNREFUSED'
   );
+}
+
+/** Live container IP of the MinIO container (docker bridge), cached per process. */
+let cachedMinioIp: string | null | undefined;
+
+function liveMinioContainerIp(): string | null {
+  if (cachedMinioIp !== undefined) return cachedMinioIp;
+  try {
+    // Test stack first; the dev-compose container (hub-minio) is the fallback.
+    const out = execSync(
+      'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" hub-test-minio 2>/dev/null || ' +
+        'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" hub-minio',
+      { encoding: 'utf-8', timeout: 5000 }
+    ).trim();
+    cachedMinioIp = out || null;
+  } catch {
+    cachedMinioIp = null;
+  }
+  return cachedMinioIp;
+}
+
+/** Minimal Response-shaped object for the node:http PUT fallback. */
+interface MinimalResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text: () => Promise<string>;
+}
+
+/**
+ * PUT the body to the presigned URL through the container's LIVE IP while
+ * keeping the presigned Host header — S3 SigV4 binds the Host into the
+ * signature, so the request must present the host it was signed for even
+ * when the TCP connection goes to a different (but correct) address.
+ * This recovers from a stale /etc/hosts `minio-test` entry after stack
+ * recreates (browser fetch cannot override the Host header; node:http can).
+ */
+function putPresignedViaLiveIp(
+  url: URL,
+  connectHost: string,
+  connectPort: number,
+  body: string
+): Promise<MinimalResponse> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: connectHost,
+        port: connectPort,
+        path: `${url.pathname}${url.search}`,
+        method: 'PUT',
+        headers: {
+          Host: url.host, // presigned host:port — signature-critical
+          'Content-Type': 'text/csv',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf-8');
+          resolve({
+            ok: res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode ?? 0,
+            statusText: res.statusMessage ?? '',
+            text: () => Promise.resolve(text),
+          });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+/**
+ * Fallback PUT for presigned URLs whose as-signed host is unreachable
+ * from the host (connection refused / DNS failure on a docker-compose
+ * hostname). Real AWS endpoints and localhost presigns are never
+ * re-routed; the fallback only applies to internal hosts with a live
+ * container IP discoverable via docker CLI.
+ */
+async function tryPutViaLiveIp(
+  uploadUrl: string,
+  csvContent: string,
+  originalErr: unknown
+): Promise<Response | MinimalResponse> {
+  let parsed: URL;
+  try {
+    parsed = new URL(uploadUrl);
+  } catch {
+    throw new Error(`Upload network error to ${uploadUrl}: ${originalErr}`);
+  }
+  const isInternalHost =
+    parsed.hostname !== 'localhost' &&
+    parsed.hostname !== '127.0.0.1' &&
+    !parsed.hostname.endsWith('.amazonaws.com');
+  const liveIp = isInternalHost ? liveMinioContainerIp() : null;
+  if (!liveIp) {
+    const hint = isInternalHost
+      ? ` — ${parsed.hostname} is not resolvable from the host and no live container IP was found; the API should have re-signed this URL for localhost (for_browser=True presign path — a 260.7.J-class regression)`
+      : '';
+    throw new Error(`Upload network error to ${uploadUrl}: ${originalErr}${hint}`);
+  }
+  try {
+    return await putPresignedViaLiveIp(
+      parsed,
+      liveIp,
+      Number(parsed.port) || 9000,
+      csvContent
+    );
+  } catch (fallbackErr) {
+    throw new Error(
+      `Upload network error to ${uploadUrl}: ${originalErr} — live-IP fallback (${liveIp}:${parsed.port}) also failed: ${fallbackErr}`
+    );
+  }
 }
 
 /** True when error is a transient connection failure (retryable): other side closed, ECONNRESET, etc. */
@@ -481,6 +600,7 @@ export async function cleanupOldE2EAssets(
       },
     });
     if (!listRes.ok) break;
+    // intentional: pagination best-effort — a malformed page body just ends the walk.
     const data = (await listRes.json().catch(() => ({}))) as {
       results?: Array<{ id?: string; key?: string; created_at?: string }>;
       next?: string | null;
@@ -691,9 +811,17 @@ export async function createScheduledExportViaApi(
     const body = await response.text().catch(() => '');
     throw new Error(`Create scheduled export API failed: ${response.status} ${body}`);
   }
-  const data = (await response.json()) as { id?: string };
-  if (!data.id) throw new Error('Create scheduled export response missing id');
-  return data.id;
+  const data = (await response.json()) as {
+    id?: string;
+    resource?: { id?: string };
+  };
+  // Phase 25.5.1 — the backend returns 207 Multi-Status with
+  // {resource, deployment_sync} when Prefect deployment sync failed
+  // (Prefect was down during b7 churn); the export itself WAS created
+  // and its id lives under `resource`.
+  const id = data.id ?? data.resource?.id;
+  if (!id) throw new Error('Create scheduled export response missing id');
+  return id;
 }
 
 /**
@@ -839,10 +967,9 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
   // hid the staging-broken AWS_S3_ENDPOINT_URL bug for weeks and showed up
   // as flaky compliance/DQ runs.
   //
-  // For docker-compose dev where the API hands out a presigned URL signed
-  // for the in-network `minio:9000` host, we still rewrite to localhost so
-  // the host-side e2e runner can reach MinIO — but failures from that
-  // rewrite are now propagated, not swallowed.
+  // The URL is fetched EXACTLY as signed — no host rewriting (see the
+  // SigV4 note on the tryPut below); failures are propagated, not
+  // swallowed.
   const uploadUrl = initData.upload_url;
   if (!uploadUrl) {
     throw new Error('File init response missing upload_url — cannot upload');
@@ -855,31 +982,29 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
       headers: { 'Content-Type': 'text/csv' },
     });
 
-  let putRes = await tryPut(uploadUrl).catch((err) => {
-    throw new Error(`Upload network error to ${uploadUrl}: ${err}`);
-  });
+  // The upload URL comes from the API's browser presign path
+  // (for_browser=True re-signs for localhost:9010), so the as-is fetch
+  // works from the host. The URL must NEVER be host-rewritten: SigV4
+  // binds the Host header into the signature, so a localhost rewrite
+  // of an internal-host URL always fails with SignatureDoesNotMatch.
+  // If a flow ever returns an internal-host URL anyway (260.7.J-class
+  // regression), the fallback below reconnects through the container's
+  // LIVE IP while preserving the signed Host header — proven valid
+  // against minio/minio:RELEASE.2025-02-28 (node:http can set Host;
+  // browser fetch cannot).
+  let putRes: Response | MinimalResponse;
+  try {
+    putRes = await tryPut(uploadUrl);
+  } catch (err) {
+    putRes = await tryPutViaLiveIp(uploadUrl, csvContent, err);
+  }
 
   if (!putRes.ok) {
-    const parsed = new URL(uploadUrl);
-    const isInternalHost =
-      parsed.hostname !== 'localhost' &&
-      parsed.hostname !== '127.0.0.1' &&
-      // Only attempt the localhost rewrite for docker-compose-style hostnames;
-      // a real AWS S3 endpoint (`*.amazonaws.com`) failing must surface as-is.
-      !parsed.hostname.endsWith('.amazonaws.com');
-    if (isInternalHost) {
-      const localUrl = `http://localhost:${parsed.port || '9010'}${parsed.pathname}${parsed.search}`;
-      putRes = await tryPut(localUrl).catch((err) => {
-        throw new Error(`Upload network error to ${localUrl} (rewrite of ${uploadUrl}): ${err}`);
-      });
-    }
-    if (!putRes.ok) {
-      // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
-      const body = await putRes.text().catch(() => '');
-      throw new Error(
-        `File upload to object store failed: ${putRes.status} ${putRes.statusText} — ${body.slice(0, 300)}`
-      );
-    }
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
+    const body = await putRes.text().catch(() => '');
+    throw new Error(
+      `File upload to object store failed: ${putRes.status} ${putRes.statusText} — ${body.slice(0, 300)}`
+    );
   }
 
   const completeResponse = await fetch(`${API_BASE_URL}/files/${fileId}/complete/`, {
@@ -920,6 +1045,96 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
   // Phase 213.C — auto-track for per-test teardown. Datasets hard-delete (audit confirmed).
   options?.cleanup?.track({ type: 'dataset', id: datasetData.id, owner: user });
   return datasetData.id;
+}
+
+/** Shape of a dataset row returned by the versions endpoint (DatasetVersionSerializer). */
+export interface DatasetVersionRow {
+  id: string;
+  version?: number;
+  semantic_version?: string | null;
+  version_tags?: string[];
+  is_current?: boolean;
+  parent_version_id?: string | null;
+  schema_json?: Record<string, unknown> | null;
+  [key: string]: unknown;
+}
+
+/** GET /api/v1/datasets/{id}/ — full dataset detail (real backend). */
+export async function fetchDatasetViaApi(
+  user: TestUser,
+  datasetId: string,
+): Promise<Record<string, unknown>> {
+  const token = await loginViaApi(user);
+  const response = await fetch(`${API_BASE_URL}/datasets/${datasetId}/`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    // intentional: best-effort error-body read — the status code is the actionable part.
+    const body = await response.text().catch(() => '');
+    throw new Error(`Fetch dataset API failed: ${response.status} ${body}`);
+  }
+  return (await response.json()) as Record<string, unknown>;
+}
+
+/**
+ * POST /api/v1/datasets/{id}/versions/ — create a new dataset version
+ * (real backend; DatasetViewSet.versions action, views.py). Returns the
+ * created version row (DatasetVersionSerializer).
+ */
+export async function createDatasetVersionViaApi(
+  user: TestUser,
+  datasetId: string,
+  payload: {
+    semantic_version: string;
+    schema_json?: Record<string, unknown>;
+    version_tags?: string[];
+    description?: string;
+  },
+): Promise<DatasetVersionRow> {
+  const token = await loginViaApi(user);
+  const response = await fetch(`${API_BASE_URL}/datasets/${datasetId}/versions/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    // intentional: best-effort error-body read — the status code is the actionable part.
+    const body = await response.text().catch(() => '');
+    throw new Error(`Create dataset version API failed: ${response.status} ${body}`);
+  }
+  return (await response.json()) as DatasetVersionRow;
+}
+
+/**
+ * GET /api/v1/datasets/{id}/versions/ — list all versions for the same
+ * asset/file lineage (real backend; newest first).
+ */
+export async function fetchDatasetVersionsViaApi(
+  user: TestUser,
+  datasetId: string,
+): Promise<DatasetVersionRow[]> {
+  const token = await loginViaApi(user);
+  const response = await fetch(`${API_BASE_URL}/datasets/${datasetId}/versions/`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    // intentional: best-effort error-body read — the status code is the actionable part.
+    const body = await response.text().catch(() => '');
+    throw new Error(`Fetch dataset versions API failed: ${response.status} ${body}`);
+  }
+  const data = (await response.json()) as DatasetVersionRow[] | { results?: DatasetVersionRow[] };
+  return Array.isArray(data) ? data : (data.results ?? []);
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -1178,9 +1393,17 @@ export async function createODPSContractLinkedToAssetViaApi(user: TestUser): Pro
  * Tries to use an existing ODCS contract first. Creates one if none found.
  * Use before tests that need an ODCS contract (e.g. ODPS Link page).
  */
-export async function createODCSContractViaApi(user: TestUser): Promise<string> {
-  const existing = await getODCSContractIdViaApi(user);
-  if (existing) return existing;
+export async function createODCSContractViaApi(
+  user: TestUser,
+  opts?: { forceNew?: boolean },
+): Promise<string> {
+  // Reused legacy contracts may predate asset-linking (asset_id null) —
+  // callers that need a LINKED contract (onboarding plural-contracts test)
+  // pass forceNew to mint a fresh one with a live asset.
+  if (!opts?.forceNew) {
+    const existing = await getODCSContractIdViaApi(user);
+    if (existing) return existing;
+  }
 
   const token = await loginViaApi(user);
   const assetId = await createAssetViaApi(user);
@@ -1287,4 +1510,90 @@ export async function createScheduledIngestionViaApi(
   const data = (await response.json()) as { id?: string };
   if (!data.id) throw new Error('Create scheduled ingestion response missing id');
   return data.id;
+}
+
+/**
+ * Seed PENDING access requests via the API (close-test-coverage-gaps 2.4).
+ *
+ * The approval-inbox E2E specs (bulk-approve-reject, approval-inbox-unified)
+ * were skipping their item-dependent sections because the E2E tenant had no
+ * PENDING requests to render. This helper creates them for real — as the
+ * REQUESTER user (the approver's own requests are excluded from the inbox
+ * flows by the backend's approver-identity rules), so the approver persona
+ * sees pending work from another tenant user.
+ *
+ * Returns the number of requests actually created (0 = seeding failed —
+ * the caller skips conditionally with the reason).
+ */
+export async function createPendingAccessRequestsViaApi(
+  page: import('@playwright/test').Page,
+  requesterUser: TestUser,
+  count: number,
+): Promise<number> {
+  // The approver (tenant admin) cannot create assets or access requests
+  // (role-gated) — seeding must run as the REQUESTER persona. The
+  // requester logs in through the real UI in a SCRATCH context (the
+  // loginViaApi Bearer path 401s under shared-stack churn; the UI channel
+  // is the app's own), the token is read from that session, and the seed
+  // POSTs ride the requester's Bearer via page.request. The backend
+  // requires a resource target (asset_id) on access requests, so the
+  // helper reuses the tenant's first asset or creates one.
+  const scratchContext = await page
+    .context()
+    .browser()!
+    .newContext({ baseURL: new URL(page.url()).origin });
+  let token = '';
+  try {
+    const scratch = await scratchContext.newPage();
+    await loginUser(scratch, requesterUser);
+    token = await scratch.evaluate(() => localStorage.getItem('access_token') ?? '');
+  } finally {
+    await scratchContext.close();
+  }
+  if (!token) return 0;
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const assetsRes = await page.request.get('/api/v1/assets/?limit=5', {
+    headers,
+  });
+  let assetId: string | null = null;
+  if (assetsRes.ok()) {
+    const data = (await assetsRes.json()) as {
+      results?: Array<{ id?: string }>;
+    };
+    assetId = data.results?.[0]?.id ?? null;
+  }
+  if (!assetId) {
+    const createRes = await page.request.post('/api/v1/assets/', {
+      headers,
+      data: {
+        key: `e2e-inbox-seed-${Date.now()}`,
+        name: 'E2E Inbox Seed Asset',
+      },
+    });
+    if (createRes.ok()) {
+      const created = (await createRes.json()) as { id?: string };
+      assetId = created.id ?? null;
+    }
+  }
+  if (!assetId) return 0;
+
+  let seeded = 0;
+  for (let i = 0; i < count; i++) {
+    const response = await page.request.post(
+      '/api/v1/governance/access-requests/',
+      {
+        headers,
+        data: {
+          reason: `e2e inbox seed ${Date.now()}-${i}`,
+          requested_access_type: 'read',
+          asset_id: assetId,
+        },
+      },
+    );
+    if (response.status() === 201 || response.ok()) {
+      seeded += 1;
+    }
+  }
+  return seeded;
 }

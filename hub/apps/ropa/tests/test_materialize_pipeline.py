@@ -28,9 +28,10 @@ def _ropa_s3_ready() -> bool:
     try:
         client = ropa_storage_client()
         client._ensure_bucket_exists()
-        return True
     except Exception:
         return False
+    else:
+        return True
 
 
 class RopaMaterializeTests(TestCase):

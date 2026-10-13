@@ -10,7 +10,7 @@ assertions are explicit rather than coupled to shared fixture state.
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import Any, ClassVar
 
 
 class FakeDbtExecutor:
@@ -37,7 +37,7 @@ class FakeDbtExecutor:
 
     # Pre-configured run_results.json fragments for each action so
     # callers can see realistic-looking output without setup.
-    _DEFAULT_RESULTS: dict[str, list[dict[str, Any]]] = {
+    _DEFAULT_RESULTS: ClassVar[dict[str, list[dict[str, Any]]]] = {
         "run": [
             {
                 "unique_id": "model.sample.customers",

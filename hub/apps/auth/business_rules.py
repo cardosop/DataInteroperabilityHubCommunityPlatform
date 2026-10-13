@@ -21,7 +21,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class AuthBusinessRules(BusinessRules):
     """Business rules for authentication operations."""
 
-    def validate(self, context=None, *args, **kwargs):
+    def validate(self, _context=None, *_args, **_kwargs):
         return ValidationResult(is_valid=True)
 
     def get_rule_name(self) -> str:

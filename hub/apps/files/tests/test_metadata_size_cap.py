@@ -360,7 +360,7 @@ class FileMetadataDbConstraintTest(TestCase):
     def _oversize_metadata(self):
         # Constructed to exceed 64 KB even after Postgres' canonical
         # JSON serialisation (which strips whitespace and may differ
-        # slightly from Python's serialisation). 100-byte values ×
+        # slightly from Python's serialisation). 100-byte values x
         # 1000 keys produces ~120 KB regardless of the encoder's
         # whitespace policy.
         return {"k" + str(i): "v" * 100 for i in range(1000)}

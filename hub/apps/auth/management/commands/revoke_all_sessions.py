@@ -27,7 +27,7 @@ class Command(BaseCommand):
             help="Report sessions that would be revoked without revoking them.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         import uuid as _uuid
 
         from hub.apps.audit.utils import create_audit_event

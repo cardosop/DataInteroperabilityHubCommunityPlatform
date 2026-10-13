@@ -601,7 +601,6 @@ class ErrorHierarchyInheritanceTest(TestCase):
     def test_error_with_cause_exception_chain(self):
         """Test error with exception chain."""
         inner_error = ValueError("Inner error")
-        TypeError("Middle error")
         outer_error = ODPSError("Outer error", cause=inner_error)
 
         # Should preserve cause information
@@ -673,7 +672,7 @@ class ErrorHierarchyInheritanceTest(TestCase):
 
     def test_odps_errors_handle_none_values(self):
         """Test that ODPS errors handle None values correctly."""
-        error = ODPSError(None)  # type: ignore[misc]  # test: edge-case type exercise
+        error = ODPSError(None)  # test: edge-case type exercise
         error_dict = error.to_dict()
         self.assertIn("error", error_dict)
         self.assertIn("message", error_dict)

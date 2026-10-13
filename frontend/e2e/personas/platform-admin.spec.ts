@@ -5,17 +5,26 @@
  * Reference: E2E_FULL_COVERAGE_PLAN.md
  */
 
-import '../journeys/pa/JOURNEY-PA-001.spec';
-import '../journeys/pa/JOURNEY-MPA-001.spec';
-import '../journeys/pa/JOURNEY-MPA-002.spec';
-import '../journeys/pa/JOURNEY-MPA-003.spec';
-import '../journeys/pa/JOURNEY-MPA-004.spec';
-import '../journeys/pa/JOURNEY-MPA-005.spec';
-import '../journeys/pa/JOURNEY-MPA-006.spec';
-import '../journeys/pa/JOURNEY-MPA-007.spec';
-import '../journeys/pa/JOURNEY-MPA-008.spec';
-import '../journeys/pa/JOURNEY-MPA-009.spec';
-import '../journeys/pa/JOURNEY-PA-010.spec';
+// Core-only mode (E2E_CORE_ONLY=1): the imported journey specs are FULL-mode
+// journeys; the core subset runs the persona's own RBAC tests below instead.
+if (process.env.E2E_CORE_ONLY !== '1') {
+  await import('../journeys/pa/JOURNEY-PA-001.spec');
+  await import('../journeys/pa/JOURNEY-MPA-001.spec');
+  await import('../journeys/pa/JOURNEY-MPA-002.spec');
+  await import('../journeys/pa/JOURNEY-MPA-003.spec');
+  await import('../journeys/pa/JOURNEY-MPA-004.spec');
+  await import('../journeys/pa/JOURNEY-MPA-005.spec');
+  await import('../journeys/pa/JOURNEY-MPA-006.spec');
+  await import('../journeys/pa/JOURNEY-MPA-007.spec');
+  await import('../journeys/pa/JOURNEY-MPA-008.spec');
+  await import('../journeys/pa/JOURNEY-MPA-009.spec');
+  await import('../journeys/pa/JOURNEY-PA-010.spec');
+  await import('../journeys/mpa/JOURNEY-DB-002.spec');
+  await import('../journeys/mpa/JOURNEY-DB-008.spec');
+  await import('../journeys/mpa/JOURNEY-DB-009.spec');
+  await import('../journeys/mpa/JOURNEY-DB-015.spec');
+  await import('../journeys/mpa/JOURNEY-DB-016.spec');
+}
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getPlatformAdminUser, gotoWithRetry } from '../fixtures/auth';
@@ -37,7 +46,9 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
     const url = page.url();
     expect(url.includes('/admin') || url.includes('/settings')).toBe(true);
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
-    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
+    await expect(
+      page.locator('.error-display, [data-testid="error-display"]').first()
+    ).not.toBeVisible({ timeout: 2000 });
   });
 
   test('PA can access /assets', async ({ page }) => {
@@ -46,7 +57,9 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/assets');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
-    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
+    await expect(
+      page.locator('.error-display, [data-testid="error-display"]').first()
+    ).not.toBeVisible({ timeout: 2000 });
   });
 
   test('PA can access /audit', async ({ page }) => {
@@ -62,7 +75,9 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
     // PA should have full access — 403 means RBAC misconfiguration
     expect(page.url()).toContain('/audit');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
-    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
+    await expect(
+      page.locator('.error-display, [data-testid="error-display"]').first()
+    ).not.toBeVisible({ timeout: 2000 });
   });
 
   test('PA can access /settings/tenant (full-privilege role)', async ({ page }) => {
@@ -75,6 +90,8 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/settings');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
-    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
+    await expect(
+      page.locator('.error-display, [data-testid="error-display"]').first()
+    ).not.toBeVisible({ timeout: 2000 });
   });
 });

@@ -138,7 +138,7 @@ class DockerTestExecutor:
         except subprocess.TimeoutExpired:
             print("⚠️  Warning: Docker service check timed out")
             return False
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             print(f"⚠️  Warning: Docker service check failed: {e}")
             return False
 
@@ -221,7 +221,7 @@ class DockerTestExecutor:
                 # Filter out hub/apps itself, keep only actual app directories
                 apps = [app for app in apps if app != "hub/apps" and app.startswith("hub/apps/")]
                 return apps
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             print(f"⚠️  Warning: Could not get app directories: {e}")
         return []
 
@@ -285,10 +285,7 @@ class DockerTestExecutor:
         # Add marker filtering
         if config.get("markers"):
             markers = config["markers"]
-            if isinstance(markers, list):
-                marker_expr = " and ".join(markers)
-            else:
-                marker_expr = markers
+            marker_expr = " and ".join(markers) if isinstance(markers, list) else markers
             pytest_cmd_parts.extend(["-m", marker_expr])
 
         # Add coverage if requested
@@ -423,7 +420,7 @@ class DockerTestExecutor:
                     remaining_stdout, remaining_stderr = process.communicate(timeout=10)
                     stdout = remaining_stdout or ""
                     stderr = remaining_stderr or ""
-                except:
+                except (OSError, subprocess.SubprocessError):
                     stdout = ""
                     stderr = ""
                 raise
@@ -512,7 +509,7 @@ class DockerTestExecutor:
 
             sys.stdout.flush()
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             result.end_time = time.time()
             result.duration = result.end_time - result.start_time
             result.exit_code = 1
@@ -546,8 +543,8 @@ class DockerTestExecutor:
         app_dirs: list[str],
         base_pytest_cmd_parts: list[str],
         config: dict[str, Any],
-        with_coverage: bool,
-        verbose: bool,
+        _with_coverage: bool,
+        _verbose: bool,
     ) -> TestExecutionResult:
         """Run tests in batches by app directory."""
         overall_result = TestExecutionResult(test_type)
@@ -628,7 +625,7 @@ class DockerTestExecutor:
 
                 progress_stop = threading.Event()
 
-                def progress_indicator():
+                def progress_indicator(progress_stop=progress_stop):
                     """Print progress every 2 minutes while batch is running."""
                     elapsed = 0
                     while not progress_stop.is_set():
@@ -650,7 +647,7 @@ class DockerTestExecutor:
                         remaining_stdout, remaining_stderr = process.communicate(timeout=10)
                         stdout = remaining_stdout or ""
                         stderr = remaining_stderr or ""
-                    except:
+                    except (OSError, subprocess.SubprocessError):
                         stdout = ""
                         stderr = ""
                     raise
@@ -697,7 +694,7 @@ class DockerTestExecutor:
                 print(f"  ⏱️  {app_dir}: TIMEOUT after {batch_timeout // 60} minutes")
                 sys.stdout.flush()
 
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 batch_result.end_time = time.time()
                 batch_result.duration = batch_result.end_time - batch_result.start_time
                 batch_result.status = "ERROR"

@@ -23,7 +23,7 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--cooldown-hours", type=int, default=1)
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         cutoff = timezone.now() - timedelta(hours=options["cooldown_hours"])
 

@@ -346,8 +346,7 @@ class ODPSNormalizerGracefulDegradationTest(TestCase):
         )
         # Verify a warning was generated about the invalid SLA type
         sla_warnings = [w for w in result.warnings if "SLA" in w and "invalid type" in w]
-        self.assertGreater(len(sla_warnings), 0,
-            "Should warn about invalid SLA type")
+        self.assertGreater(len(sla_warnings), 0, "Should warn about invalid SLA type")
 
     def test_normalize_with_valid_optional_fields_succeeds(self):
         """Test that normalize() succeeds when optional fields are provided correctly"""
@@ -465,8 +464,9 @@ class ODPSNormalizerStatusDeterminationTest(TestCase):
 
         self.assertIsNotNone(result.hub_contract)
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS)
-        self.assertGreater(len(result.warnings), 0,
-            "Should have warnings when optional fields have invalid types")
+        self.assertGreater(
+            len(result.warnings), 0, "Should have warnings when optional fields have invalid types"
+        )
 
     def test_normalize_status_ok(self):
         """Test that normalize() returns NORMALIZED_OK for successful normalization"""

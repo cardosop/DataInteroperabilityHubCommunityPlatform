@@ -115,16 +115,67 @@ def _all_migrations(repo_root: Path) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+def _is_noise(line: str, in_docstring: bool, in_reverse: bool) -> bool:
+    """Lines that must not be pattern-matched.
+
+    Three sources of false positives made this linter unusable as a gate (it
+    reported 13 "errors" on a clean branch, none of them real):
+
+    * **prose** — a docstring or comment explaining ``DROP COLUMN`` was matched
+      as if it were a DROP COLUMN;
+    * **reverse_sql** — the reverse direction of a migration is *supposed* to
+      drop what the forward direction created;
+    * **bare comments** — same as prose, on ``#`` lines.
+    """
+    stripped = line.strip()
+    return in_docstring or in_reverse or stripped.startswith("#")
+
+
 def scan_file(filepath: str) -> list[Finding]:
     """Scan a single migration file for dangerous patterns."""
     findings: list[Finding] = []
     try:
         with open(filepath, encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
-    except Exception:
+    except OSError:
         return findings
 
+    in_docstring = False
+    docstring_delim = ""
+    in_reverse = False
+    reverse_depth = 0
+
     for i, line in enumerate(lines, 1):
+        was_docstring = in_docstring
+
+        # Track triple-quoted regions so prose is never pattern-matched.
+        if in_docstring:
+            if docstring_delim in line:
+                in_docstring = False
+        else:
+            for delim in ('"""', "'''"):
+                # An odd number of delimiters means the region stays open.
+                if line.count(delim) % 2 == 1:
+                    in_docstring = True
+                    docstring_delim = delim
+                    break
+
+        # Track `reverse_sql=(...)` regions by paren depth so multi-line
+        # reverse clauses are skipped in full.
+        if not in_reverse and "reverse_sql" in line:
+            in_reverse = True
+            reverse_depth = 0
+        if in_reverse:
+            reverse_depth += line.count("(") - line.count(")")
+            was_reverse = True
+            if reverse_depth <= 0:
+                in_reverse = False
+        else:
+            was_reverse = False
+
+        if _is_noise(line, was_docstring or in_docstring, was_reverse):
+            continue
+
         for pattern, severity, description in DANGEROUS_PATTERNS:
             if re.search(pattern, line):
                 findings.append(
@@ -202,7 +253,11 @@ def run_lint(
         print(f"\n{len(errors)} error(s), {len(warnings)} warning(s), {len(infos)} info(s).")
 
     if errors:
-        print("\nErrors must be fixed before merge (irreversible data loss).")
+        # Only in text mode — printing this after the JSON payload made --json
+        # unparseable ("Extra data" from json.loads), which is why no CI job
+        # could consume this linter's machine-readable output.
+        if not json_output:
+            print("\nErrors must be fixed before merge (irreversible data loss).")
         return 1
     return 0
 

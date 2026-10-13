@@ -77,7 +77,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='userrole',
-            constraint=models.UniqueConstraint(fields=('user', 'role'), name='unique_user_role'),
+            constraint=models.UniqueConstraint(fields=['user', 'role'], name='unique_user_role'),
         ),
         migrations.AddIndex(
             model_name='role',
@@ -85,7 +85,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='role',
-            constraint=models.UniqueConstraint(fields=('tenant', 'name'), name='unique_tenant_role_name'),
+            constraint=models.UniqueConstraint(fields=['tenant', 'name'], name='unique_tenant_role_name'),
         ),
         migrations.AddIndex(
             model_name='user',
@@ -105,6 +105,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='user',
-            constraint=models.UniqueConstraint(condition=models.Q(('tenant__isnull', False)), fields=('tenant', 'email'), name='unique_tenant_email'),
+            constraint=models.UniqueConstraint(condition=models.Q(('tenant__isnull', False)), fields=['tenant', 'email'], name='unique_tenant_email'),
         ),
     ]

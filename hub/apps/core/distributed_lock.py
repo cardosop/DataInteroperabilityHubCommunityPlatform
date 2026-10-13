@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import secrets
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import redis
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _LUA_COMPARE_DEL = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -66,7 +70,7 @@ def distributed_lock_release(redis_client: Any, key: str, *, token: str) -> bool
     try:
         res = redis_client.eval(_LUA_COMPARE_DEL, 1, key, token)
         return bool(int(res))
-    except Exception:
+    except (redis.RedisError, NotImplementedError):
         # EVAL not available — fall back to non-atomic GET + compare + DELETE.
         # Safe for test / single-worker scenarios.
         current = redis_client.get(key)

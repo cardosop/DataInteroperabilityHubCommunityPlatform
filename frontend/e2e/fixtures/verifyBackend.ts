@@ -156,7 +156,7 @@ export async function verifyAuditEvent(
         }
       }
     } catch {
-      // API might not be ready yet — retry
+      // intentional: the API may not be ready yet — the retry loop re-probes — API might not be ready yet — retry
     }
 
     await new Promise((r) => setTimeout(r, pollInterval));

@@ -55,7 +55,7 @@ class Command(BaseCommand):
             help="Number of records to delete per batch. Default: 500",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from hub.apps.transformation.models import PipelineExecution
 
         threshold = self._parse_duration(options["older_than"])

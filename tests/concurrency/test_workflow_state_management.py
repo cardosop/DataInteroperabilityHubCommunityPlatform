@@ -2,6 +2,7 @@
 Workflow state consistency tests under concurrency. Real engine and DB; no mocks.
 """
 
+import contextlib
 from concurrent.futures import ThreadPoolExecutor
 
 from django.db import connection
@@ -34,10 +35,10 @@ class WorkflowStateManagementTest(WorkflowConcurrencyTestBase):
                 inst = WorkflowInstance.objects.filter(id=instance.id).first()
                 return inst.status if inst else None
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             f1 = executor.submit(read_state)

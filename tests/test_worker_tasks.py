@@ -1,5 +1,5 @@
 """
-Phase K — Worker Task Tests (TR.K.1–K.8).
+Phase K — Worker Task Tests (TR.K.1-K.8).
 
 Covers worker task functions across scheduled_export, scheduled_ingestion,
 audit, files, billing, contracts, and data_movement.
@@ -8,6 +8,7 @@ Each task category covers: happy path, retry behaviour, idempotency,
 invalid input handling, external service timeout.
 """
 
+import contextlib
 import uuid
 from unittest.mock import MagicMock
 
@@ -108,10 +109,10 @@ class TestScheduledExportWorkerTasks(TestCase):
         )
 
         # Already COMPLETED → applying side effects again should be safe
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # duplicate-transition guard; any exception type is acceptable here
             apply_run_completion_side_effects(run, ScheduledExportStatus.COMPLETED)
-        except Exception:
-            pass  # May raise on duplicate transition, which is acceptable
 
 
 # ── TR.K.2 — Scheduled Ingestion worker tests ──────────────────────────
@@ -251,17 +252,18 @@ class TestFilesWorkerTasks(TestCase):
             scan_file_malware(str(uuid.uuid4()))
         except Exception as e:
             # File.DoesNotExist is acceptable
-            assert "DoesNotExist" in type(e).__name__ or "File" in str(e)
+            if not ("DoesNotExist" in type(e).__name__ or "File" in str(e)):
+                pytest.fail(f"scan_file_malware raised unexpected error: {type(e).__name__}: {e}")
 
     def test_scan_file_malware_idempotent_flag(self):
         """The idempotent check (only PENDING_SCAN) prevents re-scanning."""
         from hub.apps.files.tasks import scan_file_malware
 
         # Calling with non-existent file should not corrupt state
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # missing-file guard; any exception type is acceptable here
             scan_file_malware(str(uuid.uuid4()))
-        except Exception:
-            pass  # Expected — file doesn't exist
 
 
 # ── TR.K.5 — Billing worker tasks ──────────────────────────────────────
@@ -302,7 +304,10 @@ class TestBillingWorkerTasks(TestCase):
             cleanup_old_webhook_events(dry_run=True, tenant_id=str(uuid.uuid4()))
         except Exception as e:
             # Tenant.DoesNotExist is acceptable
-            assert "DoesNotExist" in type(e).__name__ or "Tenant" in str(e)
+            if not ("DoesNotExist" in type(e).__name__ or "Tenant" in str(e)):
+                pytest.fail(
+                    f"cleanup_old_webhook_events raised unexpected error: {type(e).__name__}: {e}"
+                )
 
 
 # ── TR.K.6 — Contracts worker tasks ────────────────────────────────────
@@ -429,10 +434,10 @@ class TestWorkerTaskCrossCutting(TestCase):
         """scan_file_malware with empty file_id is handled."""
         from hub.apps.files.tasks import scan_file_malware
 
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # invalid-input guard; any exception type is acceptable here
             scan_file_malware("")
-        except Exception:
-            pass  # Empty UUID is invalid — any exception is acceptable
 
     def test_start_run_with_empty_job_id(self):
         """start_run with empty job_id should complete."""

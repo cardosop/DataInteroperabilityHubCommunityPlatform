@@ -163,7 +163,9 @@ class TestRenderDiff:
     def test_output_contains_polarity_legend(self):
         out = render_diff(_base(), _base())
         assert "Polarity legend" in out
-        assert EMOJI_GOOD in out and EMOJI_BAD in out and EMOJI_NEUTRAL in out
+        assert EMOJI_GOOD in out
+        assert EMOJI_BAD in out
+        assert EMOJI_NEUTRAL in out
 
 
 # ------------------------------------------------------------------------- CLI

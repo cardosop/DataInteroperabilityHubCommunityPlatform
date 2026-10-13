@@ -8,6 +8,7 @@ Following TDD approach - tests are written first, then implementation.
 """
 
 import os
+from typing import ClassVar
 from urllib.parse import urlparse
 
 
@@ -29,7 +30,7 @@ class EnvironmentValidator:
     """
 
     # Required environment variables for test environment
-    REQUIRED_DATABASE_VARS = [
+    REQUIRED_DATABASE_VARS: ClassVar[list] = [
         "POSTGRES_HOST",
         "POSTGRES_PORT",
         "POSTGRES_USER",
@@ -37,24 +38,24 @@ class EnvironmentValidator:
         "POSTGRES_DB",
     ]
 
-    REQUIRED_REDIS_VARS = [
+    REQUIRED_REDIS_VARS: ClassVar[list] = [
         "REDIS_URL",
     ]
 
-    REQUIRED_SERVICE_VARS = [
+    REQUIRED_SERVICE_VARS: ClassVar[list] = [
         "DATACONTRACT_SERVICE_URL",
         "DQ_SERVICE_URL",
         "COMPLIANCE_SERVICE_URL",
         "SEMANTIC_SERVICE_URL",
     ]
 
-    REQUIRED_AUTH_VARS = [
+    REQUIRED_AUTH_VARS: ClassVar[list] = [
         "SECRET_KEY",
         "JWT_SECRET_KEY",
     ]
 
     # Docker service name mappings (for auto-detection)
-    DOCKER_SERVICE_MAPPINGS = {
+    DOCKER_SERVICE_MAPPINGS: ClassVar[dict] = {
         "DATACONTRACT_SERVICE_URL": {
             "service_name": "datacontract-service",
             "default_port": 8080,
@@ -78,7 +79,7 @@ class EnvironmentValidator:
     }
 
     # Optional feature flags (with defaults)
-    FEATURE_FLAGS = [
+    FEATURE_FLAGS: ClassVar[list] = [
         "OPENTELEMETRY_ENABLED",
         "EMAIL_JOB_NOTIFICATIONS_ENABLED",
         "USE_S3",
@@ -307,25 +308,16 @@ class EnvironmentValidator:
 
         try:
             parsed = urlparse(url)
-            # Must have scheme
-            if not parsed.scheme:
-                return False
-
-            # Redis URLs can be redis://host:port/db
-            if parsed.scheme == "redis":
-                return bool(parsed.netloc)
-
-            # HTTP/HTTPS URLs must have netloc
-            if parsed.scheme in ("http", "https"):
-                return bool(parsed.netloc)
-
-            # PostgreSQL URLs
-            if parsed.scheme in ("postgresql", "postgres"):
-                return bool(parsed.netloc)
-
+        except ValueError:
             return False
-        except Exception:
-            return False
+        else:
+            # Must have scheme. Supported schemes require a netloc:
+            # - redis://host:port/db
+            # - http://host:port/path, https://host:port/path
+            # - postgresql://user:pass@host:port/db
+            return parsed.scheme in ("redis", "http", "https", "postgresql", "postgres") and bool(
+                parsed.netloc
+            )
 
     def _validate_service_connectivity(self) -> None:
         """
@@ -389,9 +381,10 @@ class EnvironmentValidator:
                 connect_timeout=timeout,
             )
             conn.close()
-            return True, None
         except Exception as e:
             return False, str(e)
+        else:
+            return True, None
 
     def validate_redis_connectivity(self, timeout: int = 5) -> tuple[bool, str | None]:
         """
@@ -415,9 +408,10 @@ class EnvironmentValidator:
         try:
             r = redis.from_url(redis_url, socket_connect_timeout=timeout)
             r.ping()
-            return True, None
         except Exception as e:
             return False, str(e)
+        else:
+            return True, None
 
     def get_service_url(self, var_name: str) -> str | None:
         """
@@ -460,22 +454,24 @@ class EnvironmentValidator:
                     response = requests.get(
                         f"{service_url}/health", timeout=timeout, allow_redirects=False
                     )
+                except Exception as e:
+                    return False, str(e)
+                else:
                     # Accept 200, 301, 302, 503 (service exists even if unhealthy)
                     if response.status_code in [200, 301, 302, 503]:
                         return True, None
                     return False, f"Service returned status {response.status_code}"
-                except Exception as e:
-                    return False, str(e)
 
         # Use httpx
         try:
             response = httpx.get(f"{service_url}/health", timeout=timeout, follow_redirects=False)
+        except Exception as e:
+            return False, str(e)
+        else:
             # Accept 200, 301, 302, 503 (service exists even if unhealthy)
             if response.status_code in [200, 301, 302, 503]:
                 return True, None
             return False, f"Service returned status {response.status_code}"
-        except Exception as e:
-            return False, str(e)
 
     def _check_database_config(self) -> None:
         """Validate database configuration"""

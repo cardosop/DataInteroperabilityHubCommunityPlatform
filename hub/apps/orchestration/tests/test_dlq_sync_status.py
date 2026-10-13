@@ -70,8 +70,7 @@ class TestDLQSyncStatus(TestCase):
         )
         result = rules.validate_workflow_state(wf, tenant=self.tenant, user=self.user)
         self.assertIsNotNone(result, "validate_workflow_state must return a result")
-        self.assertIsInstance(result.is_valid, bool,
-            "result.is_valid must be a boolean")
+        self.assertIsInstance(result.is_valid, bool, "result.is_valid must be a boolean")
         # A FAILED workflow with DLQ state_data should produce validation
         # output reflecting the DLQ tracking information.
         self.assertIsNotNone(result.errors, "result.errors must not be None")
@@ -95,8 +94,7 @@ class TestDLQSyncStatus(TestCase):
         )
         result = rules.validate_workflow_state(wf, tenant=self.tenant, user=self.user)
         self.assertIsNotNone(result, "validate_workflow_state must return a result")
-        self.assertIsInstance(result.is_valid, bool,
-            "result.is_valid must be a boolean")
+        self.assertIsInstance(result.is_valid, bool, "result.is_valid must be a boolean")
         # A FAILED workflow without DLQ data should still validate — it
         # should not crash just because DLQ fields are absent.
         self.assertIsNotNone(result.errors, "result.errors must not be None")

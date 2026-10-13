@@ -14,7 +14,7 @@ import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, events, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -183,8 +183,8 @@ if LOCUST_AVAILABLE:
             self,
             method: str,
             path: str,
-            json: dict = None,
-            name: str = None,
+            json: dict | None = None,
+            name: str | None = None,
             allow_errors: bool = False,
         ):
             """Test an API endpoint and track availability metrics"""

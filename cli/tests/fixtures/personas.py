@@ -21,8 +21,11 @@ from __future__ import annotations
 
 import os
 import tempfile
-from collections.abc import Generator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import pytest
 from click.testing import CliRunner

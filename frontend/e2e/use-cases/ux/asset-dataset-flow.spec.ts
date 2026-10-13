@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import {
+  createAssetViaForm,
   loginAndNavigateToRoute,
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
@@ -29,23 +30,8 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
-    const createButton = page
-      .locator('button:has-text("Create Asset")')
-      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
-    await expect(createButton.first()).toBeVisible({ timeout: 15000 });
-    await createButton.first().click();
-
-    await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-    await waitForLoadingComplete(page);
-
     const assetKey = `e2e-ux-dq-${randomUUID()}`;
-    await page.fill('input[id="asset-key"]', assetKey);
-    await page.fill('input[id="asset-name"]', 'UX DQ Flow Asset');
-    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
-    await page.locator('button:has-text("Create Asset")').click();
-
-    await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
-    await waitForLoadingComplete(page, { timeout: 45000 });
+    await createAssetViaForm(page, assetKey, 'UX DQ Flow Asset');
     await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 60000 });
 
     if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
@@ -55,7 +41,13 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
 
     await expect(page.locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()).toBeVisible({ timeout: 10000 });
 
-    const uploadBtn = page.locator('button:has-text("Upload File")');
+    // DRAFT asset pages show two "Upload File" buttons: the onboarding
+    // checklist CTA (onboarding-action-upload-dataset) and the real upload
+    // section. Scope to the upload section to keep the locator unambiguous
+    // (a bare text locator trips Playwright's strict-mode violation).
+    const uploadBtn = page
+      .getByTestId('asset-upload-section')
+      .getByRole('button', { name: 'Upload File' });
     await expect(uploadBtn).toBeVisible({ timeout: 10000 });
     await uploadBtn.click();
 
@@ -114,27 +106,8 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
-    const createButton = page
-      .locator('button:has-text("Create Asset")')
-      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
-    await expect(createButton.first()).toBeVisible({ timeout: 15000 });
-    await createButton.first().click();
-
-    await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-    await waitForLoadingComplete(page);
-
     const assetKey = `e2e-ux-${randomUUID()}`;
-    await expect(page.locator('input[id="asset-key"]')).toBeVisible({ timeout: 10000 });
-    await page.fill('input[id="asset-key"]', assetKey);
-    await page.fill('input[id="asset-name"]', 'UX Flow Asset');
-    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
-
-    const submitButton = page.locator('button:has-text("Create Asset")');
-    await expect(submitButton).toBeVisible({ timeout: 10000 });
-    await submitButton.click();
-
-    await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
-    await waitForLoadingComplete(page, { timeout: 45000 });
+    await createAssetViaForm(page, assetKey, 'UX Flow Asset');
     await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 60000 });
 
     const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;

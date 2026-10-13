@@ -10,6 +10,15 @@ export const DatasetFormat = {
 } as const;
 export type DatasetFormat = (typeof DatasetFormat)[keyof typeof DatasetFormat];
 
+/** Mirrors hub/apps/datasets/models.py ``DatasetStatus`` (TextChoices). */
+export const DatasetStatus = {
+  ACTIVE: 'ACTIVE',
+  RETIRED: 'RETIRED',
+  DRAFT: 'DRAFT',
+  PROCESSING: 'PROCESSING',
+} as const;
+export type DatasetStatus = (typeof DatasetStatus)[keyof typeof DatasetStatus];
+
 export interface SchemaField {
   name: string;
   type: string;
@@ -45,6 +54,10 @@ export interface Dataset {
   // Phase 230 (REQ-SEM-DISCO-001 / 230.1.2) — canonical IRI emitted
   // by hub/apps/datasets/serializers.py:19.
   canonical_iri?: string;
+  // Phase 260.4.A — dataset lifecycle (ACTIVE / RETIRED / DRAFT / PROCESSING).
+  status?: DatasetStatus;
+  /** Set by the retire endpoint (POST /datasets/{id}/retire/) once. */
+  retired_at?: string | null;
 }
 
 export interface DatasetCreateRequest {
@@ -66,15 +79,31 @@ export interface DatasetListFilters {
   search?: string;
   asset_id?: string;
   format?: DatasetFormat;
+  /** Phase 260.4.A.3 — when true, RETIRED datasets are included (backend opt-in). */
+  include_retired?: boolean;
 }
 
 export interface DatasetVersion {
+  id: string;
   version: string;
   created_at: string;
   updated_at: string;
   schema?: DatasetSchema;
   row_count?: number;
   size_bytes: number;
+}
+
+/**
+ * GET /api/v1/datasets/{id}/versions/compare/ response — schema-evolution
+ * shape computed by hub/apps/datasets/views.py::compare_versions via
+ * SchemaEvolutionTracker (compatibility_level + summary + changes).
+ */
+export interface DatasetVersionCompareResult {
+  version1: DatasetVersion;
+  version2: DatasetVersion;
+  compatibility_level: string;
+  summary: Record<string, number>;
+  changes: DatasetSchemaEvolutionChange[];
 }
 
 export interface DatasetSchemaEvolutionChange {

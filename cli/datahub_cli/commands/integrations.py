@@ -44,7 +44,7 @@ def create_connection(source_type, config_json):
     try:
         config = json.loads(config_json)
     except json.JSONDecodeError as exc:
-        raise click.ClickException(f"Invalid JSON config: {exc}")
+        raise click.ClickException(f"Invalid JSON config: {exc}") from exc
     data = api_client.post(
         "integrations/connections/",
         json_data={

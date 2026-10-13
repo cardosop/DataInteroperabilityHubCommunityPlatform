@@ -25,6 +25,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+@pytest.mark.journey("JOURNEY-AUTH-REFRESH")
 class HttpOnlyCookieAuthTest(TestCase):
     """Test httpOnly cookie-based authentication flow."""
 

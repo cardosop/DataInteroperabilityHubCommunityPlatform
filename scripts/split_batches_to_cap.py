@@ -31,7 +31,8 @@ def run_pytest_collect(paths: list[str], repo_root: Path, compose_cmd: list[str]
     """Run pytest --collect-only -q for paths in container; return test count."""
     # Quote each path for safe shell passing (spaces/special chars)
     path_args = " ".join(shlex.quote(p) for p in paths)
-    cmd = compose_cmd + [
+    cmd = [
+        *compose_cmd,
         "exec",
         "-T",
         API_SVC,
@@ -138,9 +139,9 @@ def main() -> int:
         timeout=30,
     )
     lines = [
-        l.strip()
-        for l in (result.stdout or "").strip().splitlines()
-        if l.strip() and l.strip()[0].isdigit()
+        line.strip()
+        for line in (result.stdout or "").strip().splitlines()
+        if line.strip() and line.strip()[0].isdigit()
     ]
     if not lines:
         print(

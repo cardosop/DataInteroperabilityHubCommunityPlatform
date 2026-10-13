@@ -9,6 +9,7 @@ Validates Traefik reverse-proxy security headers and configuration:
 """
 
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -18,15 +19,25 @@ TRAEFIK_URL = os.environ.get("TRAEFIK_URL", os.environ.get("API_BASE_URL", "http
 TIMEOUT = int(os.environ.get("TEST_HTTP_TIMEOUT", "15"))
 
 
-def _fetch_headers(path: str = "/") -> dict | None:
-    """Fetch response headers from the target URL. Returns None if unreachable."""
+def _fetch_headers(path: str = "/", extra_headers: dict | None = None) -> dict | None:
+    """Fetch response headers from the target URL. Returns None if unreachable.
+
+    Retries twice with a short backoff — a single transient connection
+    blip on the loaded test host must not silently drop the probe.
+    """
     url = f"{TRAEFIK_URL}{path}"
-    try:
-        req = urllib.request.Request(url, method="HEAD")
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return dict(resp.headers)
-    except (urllib.error.URLError, OSError):
-        return None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, method="HEAD", headers=extra_headers or {})
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                return dict(resp.headers)
+        except urllib.error.HTTPError as e:
+            # A 4xx/5xx response still carries the security headers we
+            # check — only connection-level failures mean "unreachable".
+            return dict(e.headers)
+        except (urllib.error.URLError, OSError):
+            time.sleep(0.5 * (attempt + 1))
+    return None
 
 
 class TestTraefikSecurityHeaders:
@@ -53,13 +64,21 @@ class TestTraefikSecurityHeaders:
         assert xcto.lower() == "nosniff", f"Expected nosniff, got {xcto}"
 
     def test_strict_transport_security_header(self):
-        """HSTS header with reasonable max-age."""
-        headers = _fetch_headers("/health/")
+        """HSTS header with reasonable max-age.
+
+        Simulates the TLS edge by marking the request
+        ``X-Forwarded-Proto: https`` (Traefik does this for real on
+        staging/prod). With SECURE_HSTS_SECONDS configured, the API must
+        then emit HSTS itself — defense in depth behind the edge.
+        """
+        headers = _fetch_headers("/health/", extra_headers={"X-Forwarded-Proto": "https"})
         if headers is None:
             pytest.skip("Target service unreachable")  # noqa: skip-in-body — runtime service dependency
         hsts = headers.get("Strict-Transport-Security") or headers.get("strict-transport-security")
-        if hsts is None:
-            pytest.skip("HSTS header not present (expected in staging/production only)")  # noqa: skip-in-body — runtime service dependency
+        assert hsts is not None, (
+            "HSTS missing for a secure-marked request — the API must emit "
+            "Strict-Transport-Security when SECURE_HSTS_SECONDS is configured."
+        )
         assert "max-age" in hsts.lower(), f"HSTS missing max-age: {hsts}"
 
     def test_referrer_policy_header(self):
@@ -83,19 +102,31 @@ class TestTraefikSecurityHeaders:
         assert len(csp) > 0
 
 
+# Traefik config paths — resolved at MODULE level so the class-body
+# ``@pytest.mark.skipif`` decorators can reference them (they evaluate at
+# import time, before any test method runs).
+TRAEFIK_YML = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "infrastructure",
+    "traefik",
+    "traefik.yml",
+)
+ROUTES_YML = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "infrastructure",
+    "traefik",
+    "dynamic",
+    "routes.yml",
+)
+
+
 class TestTraefikTLSConfig:
     """Validate Traefik TLS configuration."""
 
-@pytest.mark.skipif(not os.path.exists(traefik_yml), reason="traefik.yml not found")
+    @pytest.mark.skipif(not os.path.exists(TRAEFIK_YML), reason="traefik.yml not found")
     def test_api_insecure_disabled(self):
         """Traefik API insecure mode must be false in production configs."""
-        traefik_yml = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "infrastructure",
-            "traefik",
-            "traefik.yml",
-        )
-        with open(traefik_yml) as f:
+        with open(TRAEFIK_YML) as f:
             content = f.read()
         assert "api:" in content, "traefik.yml must have api section"
         # insecure: false is the secure default.
@@ -104,22 +135,13 @@ class TestTraefikTLSConfig:
                 "Traefik api.insecure must be false in production"
             )
 
-@pytest.mark.skipif(not os.path.exists(routes_yml), reason="Traefik routes config not found")
+    @pytest.mark.skipif(not os.path.exists(ROUTES_YML), reason="Traefik routes config not found")
     def test_traefik_dashboard_auth_configured(self):
         """Traefik dashboard should have basicAuth middleware."""
-        routes_yml = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "infrastructure",
-            "traefik",
-            "dynamic",
-            "routes.yml",
-        )
+        routes_yml = ROUTES_YML
         if not os.path.exists(routes_yml):
             routes_yml = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "infrastructure",
-                "traefik",
-                "dynamic",
+                os.path.dirname(ROUTES_YML),
                 "routes.yml.tmpl",
             )
         with open(routes_yml) as f:
@@ -135,10 +157,16 @@ class TestTraefikTLSConfig:
 
 
 class TestTraefikRateLimiting:
-    """Validate Traefik rate limiting configuration."""
+    """Rate limiting moved to the application layer — guard the boundary."""
 
-    def test_rate_limit_middleware_exists(self):
-        """Traefik should have rate limiting middleware configured."""
+    def test_no_rate_limit_middleware_in_traefik(self):
+        """Traefik must NOT carry rate limiting anymore.
+
+        Rate limiting lives in ``hub.apps.core.rate_limiting`` + DRF
+        throttle classes (Phase 273); Traefik is the edge only. A
+        rateLimit/rate-limit token in the dynamic config is an
+        architectural regression.
+        """
         routes_yml = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "infrastructure",
@@ -156,5 +184,7 @@ class TestTraefikRateLimiting:
         with open(path) as f:
             content = f.read()
         has_ratelimit = "rateLimit" in content or "RateLimit" in content or "rate-limit" in content
-        if not has_ratelimit:
-            pytest.skip("Rate limiting not configured in Traefik routes")  # noqa: skip-in-body — runtime service dependency
+        assert not has_ratelimit, (
+            "Rate limiting configured in Traefik routes — it is owned by "
+            "the application layer (hub.apps.core.rate_limiting)."
+        )

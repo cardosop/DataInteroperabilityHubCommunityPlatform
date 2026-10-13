@@ -48,14 +48,14 @@ class TestEventStreamIsolation:
     def test_event_query_by_tenant_a_excludes_tenant_b(self, tenant_a, tenant_b):
         """Direct ORM query scoped to Tenant A excludes Tenant B events."""
         events_a = Event.objects.filter(tenant_id=tenant_a.id)
-        event_ids = set(str(e.event_id) for e in events_a)
+        event_ids = {str(e.event_id) for e in events_a}
         assert str(self.event_a.event_id) in event_ids
         assert str(self.event_b.event_id) not in event_ids
 
     def test_event_query_by_tenant_b_excludes_tenant_a(self, tenant_a, tenant_b):
         """Direct ORM query scoped to Tenant B excludes Tenant A events."""
         events_b = Event.objects.filter(tenant_id=tenant_b.id)
-        event_ids = set(str(e.event_id) for e in events_b)
+        event_ids = {str(e.event_id) for e in events_b}
         assert str(self.event_b.event_id) in event_ids
         assert str(self.event_a.event_id) not in event_ids
 

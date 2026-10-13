@@ -3,9 +3,15 @@
  */
 
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useDataset, useUpdateDataset, useDeleteDataset } from '../hooks/useDatasets';
+import {
+  useDataset,
+  useUpdateDataset,
+  useDeleteDataset,
+  useRetireDataset,
+} from '../hooks/useDatasets';
 import { AssetPicker } from '../../../shared/components/pickers';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
+import { DatasetRetireConfirmModal } from './DatasetRetireConfirmModal';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
@@ -16,16 +22,20 @@ import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useState } from 'react';
 import './DatasetDetailPage.css';
 import { Button } from '../../../shared/components/Button';
+import { StatusBadge } from '../../../shared/components/StatusBadge';
+import { DatasetStatus } from '../../../shared/types/datasets';
 
 export function DatasetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: dataset, isLoading, error, refetch } = useDataset(id || null);
   const updateMutation = useUpdateDataset();
+  const retireMutation = useRetireDataset();
   const deleteMutation = useDeleteDataset();
   const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRetireConfirm, setShowRetireConfirm] = useState(false);
   const [editData, setEditData] = useState<{ asset_id: string | null }>({ asset_id: null });
 
   const handleEdit = () => {
@@ -58,6 +68,20 @@ export function DatasetDetailPage() {
   };
 
   const handleDeleteClick = () => setShowDeleteConfirm(true);
+  // Phase 260.4.A — retirement: modal-confirmed POST /datasets/{id}/retire/.
+  // On success the mutation invalidates the detail query and the page
+  // re-renders with the Retired badge (CTA disappears).
+  const handleRetireClick = () => setShowRetireConfirm(true);
+  const handleRetireConfirm = async () => {
+    if (!id) return;
+    setShowRetireConfirm(false);
+    try {
+      await retireMutation.mutateAsync(id);
+      toast.success('Dataset retired.');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to retire dataset');
+    }
+  };
   const handleDeleteConfirm = async () => {
     if (!id) return;
     setShowDeleteConfirm(false);
@@ -85,7 +109,14 @@ export function DatasetDetailPage() {
           ← Back to Datasets
         </Button>
         <div className="dataset-detail-actions">
-          {!isEditing ? (
+          {dataset.status === DatasetStatus.RETIRED ? (
+            // Retired datasets surface the badge instead of lifecycle CTAs.
+            // The wrapper carries the E2E-pinned testid; the shared
+            // StatusBadge provides the styled pill.
+            <span data-testid="dataset-detail-retired-badge">
+              <StatusBadge status="RETIRED" />
+            </span>
+          ) : !isEditing ? (
             <>
               <Button onClick={handleEdit} variant="secondary">Edit</Button>
               {!(dataset.asset_id || dataset.asset) && (
@@ -96,6 +127,13 @@ export function DatasetDetailPage() {
                   Link to Asset
                 </Button>
               )}
+              <Button
+                onClick={handleRetireClick}
+                variant="danger"
+                data-testid="dataset-detail-retire-btn"
+              >
+                Retire
+              </Button>
               <Button onClick={handleDeleteClick} variant="danger" loading={deleteMutation.isPending}>
                 Delete
               </Button>
@@ -237,6 +275,18 @@ export function DatasetDetailPage() {
         message="Are you sure you want to delete this dataset? This action cannot be undone."
         confirmLabel="Delete"
         variant="danger"
+      />
+
+      <DatasetRetireConfirmModal
+        open={showRetireConfirm}
+        datasetName={dataset.name}
+        // Retention-window copy: the tenant config's data_retention_days is
+        // the canonical value; the detail page keeps a lightweight default
+        // rather than fetching the full tenant config for one line of copy.
+        retentionDays={90}
+        onCancel={() => setShowRetireConfirm(false)}
+        onConfirm={handleRetireConfirm}
+        isPending={retireMutation.isPending}
       />
     </div>
   );

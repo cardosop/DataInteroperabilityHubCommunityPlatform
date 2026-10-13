@@ -9,7 +9,8 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ContractFormat, type ContractValidationResult } from '../../../shared/types/contracts';
-import { ODPSProductForm, makeEmptyODPSFormData } from './ODPSProductForm';
+import { ODPSProductForm, } from './ODPSProductForm';
+import { makeEmptyODPSFormData } from './odpsProductFormFactories';
 import { ModelsEditor } from './ModelsEditor';
 import {
   parseODPSDocument,

@@ -31,7 +31,7 @@ class Command(BaseCommand):
         parser.add_argument("--batch-size", type=int, default=50)
         parser.add_argument("--dry-run", action="store_true")
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         cooldown = timedelta(minutes=options["cooldown_minutes"])
         batch_size = options["batch_size"]
         dry_run = options["dry_run"]

@@ -60,7 +60,7 @@ class MigrateContractsToODPSTestBase(ContractsTestBase):
         )
 
     def _create_odcs_contract_with_marketplace(
-        self, marketplace_data: dict = None, has_odps_link: bool = False
+        self, marketplace_data: dict | None = None, has_odps_link: bool = False
     ) -> Contract:
         """Create an ODCS contract with marketplace metadata."""
         contract_service = self.contract_service

@@ -118,6 +118,10 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
   });
 
   test('Phase 7.5.L — Semantic: page loads; SPARQL query; URI lookup', async ({ page }) => {
+    // Paid layer (semantic/SPARQL) is absent in core-only mode — the
+    // describe above groups scheduled/semantic/schema/webhooks gap
+    // tests, so this test must gate itself out of the core subset.
+    test.skip(process.env.E2E_CORE_ONLY === '1', 'semantic (paid layer) absent in core-only mode');
     await page.goto('/semantic', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
@@ -152,6 +156,34 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
     // Capability available - test semantic functionality
     await waitForLoadingComplete(page, { timeout: 15000 });
 
+    // Churn recovery (b7 #39): this spec navigates with a bare
+    // page.goto, so under a mid-batch API stall the SPA auth gate can
+    // strand the route before the semantic page mounts (15s visibility
+    // budget expired with the page never rendering). Wait for EITHER
+    // terminal first, then use the app's Retry ONCE on the transient
+    // signature.
+    // intentional: bounded terminal wait — a null result just means "no error terminal rendered" and the strict expect below reports the real state.
+    await page
+      .waitForSelector(
+        '.semantic-page, [data-testid="semantic-page"], .error-display, [data-testid="error-display"]',
+        { timeout: 20000 }
+      )
+      .catch(() => null);
+    const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
+    if ((await errorDisplay.count()) > 0) {
+      // intentional: diagnostic-only read — an empty read just skips the retry and the strict assertion below reports the visible state.
+      const errText = (await errorDisplay.textContent().catch(() => '')) ?? '';
+      if (/NETWORK_ERROR|Network Error|Failed to fetch|connection|INTERNAL_ERROR|SERVICE_UNAVAILABLE|ECONNREFUSED|timed out/i.test(errText)) {
+        await errorDisplay.locator('button:has-text("Retry")').first().click();
+        // intentional: the retry may also fail under sustained churn — the strict toBeVisible below then fails with the real state.
+        await page
+          .locator('.semantic-page, [data-testid="semantic-page"]')
+          .first()
+          .waitFor({ state: 'visible', timeout: 30000 })
+          .catch(() => null);
+      }
+    }
+
     const semanticPage = page.locator('.semantic-page, [data-testid="semantic-page"]');
     await expect(semanticPage.first()).toBeVisible({ timeout: 15000 });
 
@@ -164,7 +196,11 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
     const sparqlSection = page.locator('[data-testid="semantic-sparql-section"]');
     await expect(sparqlSection).toBeVisible({ timeout: 5000 });
 
-    const queryInput = page.locator('#sparql-query');
+    // The SPARQL input is a CodeMirror 6 contenteditable — the legacy
+    // #sparql-query textarea id died with the editor migration. The
+    // stable selector is the contentAttributes testid the component
+    // stamps on the editor content (sparql-query-editor).
+    const queryInput = page.locator('[data-testid="sparql-query-editor"]');
     await expect(queryInput).toBeVisible({ timeout: 5000 });
     await queryInput.fill('SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 5');
 
@@ -215,11 +251,13 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
   test('Phase 7.5.M — Schema Matching: submit schema-matching request and assert result or error shown', async ({
     page,
   }) => {
+    // Paid layer (ai/schema-matching) is absent in core-only mode.
+    test.skip(process.env.E2E_CORE_ONLY === '1', 'ai schema-matching (paid layer) absent in core-only mode');
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
       timeout: 60000,
       contentSelector:
-        '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1',
+        '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
 
@@ -337,7 +375,14 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
   });
 
   test('Phase 7.5.J — Webhooks: create webhook; list shows it; delete', async ({ page }) => {
-    test.setTimeout(90000);
+    // Budget arithmetic: beforeEach login (~15s) + loginUser (~10s) +
+    // navigation helper (60s) + create-form terminal wait (20s) + the
+    // churn-recovery retry below (30s) + create/detail waits (~30s) +
+    // list round-trip (~40s) — exceeds the old 90s cap whenever the
+    // event-types fetch hits a mid-batch stall (b7 #40: the fill burned
+    // the whole budget waiting for a form that never rendered). 180s
+    // lets the retry + strict assertions run to completion.
+    test.setTimeout(180000);
     const webhookName = `e2e-webhook-${Date.now()}`;
     const webhookUrl = 'https://example.com/webhook';
     const webhookSecret = 'e2e-secret-key';
@@ -360,6 +405,34 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
     await page.getByRole('button', { name: 'Create webhook' }).first().click();
     await page.waitForURL(/\/webhooks\/create/, { timeout: 5000 });
     await page.waitForTimeout(2000);
+
+    // Churn recovery (b7 #40): WebhookCreatePage renders
+    // LoadingSpinner → ErrorDisplay ("Failed to load event types") when
+    // the event-types fetch dies mid-batch; the form never renders and
+    // the fill below burned the whole 90s budget. Wait for EITHER
+    // terminal, then use the app's Retry ONCE (it reloads the create
+    // route) on the transient signature.
+    // intentional: bounded terminal wait — a null result just means "no error terminal rendered" and the strict fill below reports the real state.
+    await page
+      .waitForSelector(
+        'label[for="webhook-name"], .error-display, [data-testid="error-display"]',
+        { timeout: 20000 }
+      )
+      .catch(() => null);
+    const createErrorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
+    if ((await createErrorDisplay.count()) > 0) {
+      // intentional: diagnostic-only read — an empty read just skips the retry and the strict fill below reports the visible state.
+      const errText = (await createErrorDisplay.textContent().catch(() => '')) ?? '';
+      if (/NETWORK_ERROR|Network Error|Failed to fetch|connection|INTERNAL_ERROR|SERVICE_UNAVAILABLE|ECONNREFUSED|timed out/i.test(errText)) {
+        await createErrorDisplay.locator('button:has-text("Retry")').first().click();
+        // intentional: the retry may also fail under sustained churn — the strict fill below then fails with the real state.
+        await page
+          .locator('label[for="webhook-name"]')
+          .first()
+          .waitFor({ state: 'visible', timeout: 30000 })
+          .catch(() => null);
+      }
+    }
 
     await page.getByLabel(/Name \(required\)/i).fill(webhookName);
     await page.getByLabel(/URL \(required\)/i).fill(webhookUrl);
@@ -466,7 +539,11 @@ test.describe("Phase 7.5 gap — scheduled / semantic / schema / webhooks @depre
     await expect(deleteBtn).toBeVisible({ timeout: 15000 });
     await deleteBtn.click();
     await page.waitForTimeout(1000);
-    const confirmBtn = page.locator('.webhook-delete-actions .btn-danger');
+    // The shared Button component emits `btn--danger` (BEM-ish) — the
+    // legacy `.btn-danger` class died in the Button consolidation
+    // ("Replaces scattered .btn-danger"); the old selector matched
+    // nothing and the confirm CTA never clicked (b7 #16).
+    const confirmBtn = page.locator('.webhook-delete-actions .btn--danger');
     await expect(confirmBtn).toBeVisible({ timeout: 5000 });
     await confirmBtn.click();
     await page.waitForURL(/\/webhooks\/?$/, { timeout: 10000 });

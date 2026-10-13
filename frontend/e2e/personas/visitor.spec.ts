@@ -6,10 +6,17 @@
  * No mocks/stubs; real backend only.
  */
 
-import '../journeys/auth/JOURNEY-AUTH-001.spec';
-import '../journeys/auth/JOURNEY-AUTH-002.spec';
-import '../journeys/auth/JOURNEY-AUTH-003.spec';
-import '../journeys/auth/JOURNEY-AUTH-004.spec';
+// Core-only mode (E2E_CORE_ONLY=1): the imported journey specs are FULL-mode
+// journeys; the core subset runs the persona's own RBAC tests below instead.
+if (process.env.E2E_CORE_ONLY !== '1') {
+  await import('../journeys/auth/JOURNEY-AUTH-001.spec');
+  await import('../journeys/auth/JOURNEY-AUTH-002.spec');
+  await import('../journeys/auth/JOURNEY-AUTH-003.spec');
+  await import('../journeys/auth/JOURNEY-AUTH-004.spec');
+  await import('../journeys/auth/JOURNEY-DB-003.spec');
+  await import('../journeys/auth/JOURNEY-DB-004.spec');
+
+}
 
 import { test, expect } from '@playwright/test';
 import { clearAuthStorage, gotoWithRetry } from '../fixtures/auth';

@@ -20,6 +20,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from django.db import DatabaseError
+
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
@@ -38,6 +40,72 @@ from hub.apps.governance.models import (
 from hub.apps.users.models import User
 
 logger = logging.getLogger(__name__)
+
+
+def user_is_active(user: Any) -> bool:
+    """W2.4 (A-5) — liveness through the custom ``User.is_active()`` METHOD.
+
+    The custom User model defines ``is_active()`` (status-based), which
+    SHADOWS the AbstractBaseUser ``is_active`` BooleanField. A validator
+    that reads ``user.is_active`` gets the BOUND METHOD — a truthy value —
+    so ``hasattr(user, "is_active") and not user.is_active`` could never
+    fire: the pre-W2.4 "inactive user" checks were vacuously green. This
+    helper calls the method when present and falls back to the field for
+    plain objects.
+    """
+    attr = getattr(user, "is_active", None)
+    if callable(attr):
+        return bool(attr())
+    return bool(attr)
+
+
+def resolve_step_approver_ids(step_def: Any, access_request: Any) -> list[str] | None:
+    """W2.4 (R2-D5) — resolve a chain step's authorized approver IDs.
+
+    * dict step with ``role`` → the tenant's ACTIVE users holding that
+      role (resolved at validation time — the pre-W2.4 validator read
+      ``step_def.get("approvers")``, a key the ``{step, role, label}``
+      format never carries, so every approver was rejected);
+    * dict step with ``approvers`` → those IDs (legacy pinned format);
+    * string step → ``None`` (callers keep the legacy AR-approvers-list
+      fallback);
+    * anything else → ``[]`` (no resolved approvers — the dangling case).
+    """
+    if isinstance(step_def, str):
+        return None
+    if isinstance(step_def, dict):
+        role = step_def.get("role")
+        if role:
+            from hub.apps.users.models import UserRole, UserStatus
+
+            return [
+                str(uid)
+                for uid in UserRole.objects.filter(
+                    role__tenant_id=access_request.tenant_id,
+                    role__name=role,
+                    user__status=UserStatus.ACTIVE,
+                ).values_list("user_id", flat=True)
+            ]
+        approvers = step_def.get("approvers")
+        if isinstance(approvers, list):
+            return [str(a) for a in approvers]
+        return []
+    return []
+
+
+def tenant_admin_user_ids(tenant_id: Any) -> list[str]:
+    """W2.4 (A-7) — the tenant's ACTIVE TENANT_ADMIN user IDs (the
+    dangling-approver re-route target)."""
+    from hub.apps.users.models import UserRole, UserStatus
+
+    return [
+        str(uid)
+        for uid in UserRole.objects.filter(
+            role__tenant_id=tenant_id,
+            role__name="TENANT_ADMIN",
+            user__status=UserStatus.ACTIVE,
+        ).values_list("user_id", flat=True)
+    ]
 
 
 @dataclass
@@ -65,8 +133,12 @@ class GovernanceRuleExecutionContext(RuleExecutionContext):
         base_dict.update(
             {
                 "policy_id": str(self.policy.id) if self.policy else None,
-                "access_request_id": str(self.access_request.id) if self.access_request else None,
-                "classification_id": str(self.classification.id) if self.classification else None,
+                "access_request_id": (
+                    str(self.access_request.id) if self.access_request else None
+                ),
+                "classification_id": (
+                    str(self.classification.id) if self.classification else None
+                ),
                 "tenant_id": str(self.tenant.id) if self.tenant else None,
                 "user_id": str(self.user.id) if self.user else None,
             }
@@ -98,7 +170,7 @@ class GovernanceBusinessRules(BusinessRules):
         return "GovernanceBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -140,10 +212,18 @@ class GovernanceBusinessRules(BusinessRules):
             user = kwargs.get("user")
 
             # If not in kwargs, try to get from context.metadata or context.resource
-            if context and hasattr(context, "metadata") and isinstance(context.metadata, dict):
+            if (
+                context
+                and hasattr(context, "metadata")
+                and isinstance(context.metadata, dict)
+            ):
                 policy = policy or context.metadata.get("policy")
-                access_request = access_request or context.metadata.get("access_request")
-                classification = classification or context.metadata.get("classification")
+                access_request = access_request or context.metadata.get(
+                    "access_request"
+                )
+                classification = classification or context.metadata.get(
+                    "classification"
+                )
                 tenant = tenant or context.metadata.get("tenant")
                 user = user or context.metadata.get("user")
 
@@ -164,7 +244,9 @@ class GovernanceBusinessRules(BusinessRules):
 
         # Validate access request if provided
         if access_request and validation_type in ("access_request", "all"):
-            access_request_result = self._validate_access_request(access_request, tenant, user)
+            access_request_result = self._validate_access_request(
+                access_request, tenant, user
+            )
             result = result.combine(access_request_result)
             validated_items.append("access_request")
 
@@ -179,7 +261,9 @@ class GovernanceBusinessRules(BusinessRules):
 
         # Validate classification if provided
         if classification and validation_type in ("classification", "all"):
-            classification_result = self._validate_classification(classification, tenant, user)
+            classification_result = self._validate_classification(
+                classification, tenant, user
+            )
             result = result.combine(classification_result)
             validated_items.append("classification")
 
@@ -212,7 +296,7 @@ class GovernanceBusinessRules(BusinessRules):
         return result
 
     def _validate_policy(
-        self, policy: AccessPolicy, tenant: Any | None = None, user: User | None = None
+        self, policy: AccessPolicy, tenant: Any | None = None, _user: User | None = None
     ) -> ValidationResult:
         """
         Validate access policy comprehensively.
@@ -233,15 +317,22 @@ class GovernanceBusinessRules(BusinessRules):
         """
         # Initialize combined result
         result = ValidationResult(is_valid=True)
-        details = {"policy_id": str(policy.id), "policy_name": policy.name, "validation_checks": []}
+        details = {
+            "policy_id": str(policy.id),
+            "policy_name": policy.name,
+            "validation_checks": [],
+        }
 
         # Validate tenant context consistency
-        if self.tenant_id and policy.tenant_id:
-            if str(policy.tenant_id) != str(self.tenant_id):
-                result.errors.append(
-                    f"Policy tenant ({policy.tenant_id}) does not match "
-                    f"context tenant ({self.tenant_id})"
-                )
+        if (
+            self.tenant_id
+            and policy.tenant_id
+            and str(policy.tenant_id) != str(self.tenant_id)
+        ):
+            result.errors.append(
+                f"Policy tenant ({policy.tenant_id}) does not match "
+                f"context tenant ({self.tenant_id})"
+            )
 
         # Validate tenant context if provided
         if tenant and policy.tenant_id and str(tenant.id) != str(policy.tenant_id):
@@ -446,18 +537,23 @@ class GovernanceBusinessRules(BusinessRules):
                         else:
                             # Validate operator values
                             for op, op_value in value.items():
-                                if op in ["$gte", "$lte", "$gt", "$lt"]:
-                                    if not isinstance(op_value, (int, float)):
-                                        errors.append(
-                                            f"Policy '{policy.name}' user condition '{key}' operator '{op}' "
-                                            f"requires numeric value, got {type(op_value).__name__}"
-                                        )
-                                elif op in ["$in", "$nin"]:
-                                    if not isinstance(op_value, list):
-                                        errors.append(
-                                            f"Policy '{policy.name}' user condition '{key}' operator '{op}' "
-                                            f"requires list value, got {type(op_value).__name__}"
-                                        )
+                                if op in [
+                                    "$gte",
+                                    "$lte",
+                                    "$gt",
+                                    "$lt",
+                                ] and not isinstance(op_value, (int, float)):
+                                    errors.append(
+                                        f"Policy '{policy.name}' user condition '{key}' operator '{op}' "
+                                        f"requires numeric value, got {type(op_value).__name__}"
+                                    )
+                                elif op in ["$in", "$nin"] and not isinstance(
+                                    op_value, list
+                                ):
+                                    errors.append(
+                                        f"Policy '{policy.name}' user condition '{key}' operator '{op}' "
+                                        f"requires list value, got {type(op_value).__name__}"
+                                    )
                     elif isinstance(value, list):
                         # List value is valid (e.g., user_roles: ["admin", "manager"])
                         pass
@@ -484,18 +580,23 @@ class GovernanceBusinessRules(BusinessRules):
                         else:
                             # Validate operator values
                             for op, op_value in value.items():
-                                if op in ["$gte", "$lte", "$gt", "$lt"]:
-                                    if not isinstance(op_value, (int, float)):
-                                        errors.append(
-                                            f"Policy '{policy.name}' resource condition '{key}' operator '{op}' "
-                                            f"requires numeric value, got {type(op_value).__name__}"
-                                        )
-                                elif op in ["$in", "$nin"]:
-                                    if not isinstance(op_value, list):
-                                        errors.append(
-                                            f"Policy '{policy.name}' resource condition '{key}' operator '{op}' "
-                                            f"requires list value, got {type(op_value).__name__}"
-                                        )
+                                if op in [
+                                    "$gte",
+                                    "$lte",
+                                    "$gt",
+                                    "$lt",
+                                ] and not isinstance(op_value, (int, float)):
+                                    errors.append(
+                                        f"Policy '{policy.name}' resource condition '{key}' operator '{op}' "
+                                        f"requires numeric value, got {type(op_value).__name__}"
+                                    )
+                                elif op in ["$in", "$nin"] and not isinstance(
+                                    op_value, list
+                                ):
+                                    errors.append(
+                                        f"Policy '{policy.name}' resource condition '{key}' operator '{op}' "
+                                        f"requires list value, got {type(op_value).__name__}"
+                                    )
                     elif not isinstance(value, (str, int, float, bool, list)):
                         warnings.append(
                             f"Policy '{policy.name}' resource condition '{key}' has unusual value type: "
@@ -526,18 +627,24 @@ class GovernanceBusinessRules(BusinessRules):
                                             f"requires numeric value, got {type(op_value).__name__}"
                                         )
                                     # Validate range operators make sense
-                                    if op == "$gte" and "$lte" in value:
-                                        if value["$gte"] > value["$lte"]:
-                                            errors.append(
-                                                f"Policy '{policy.name}' environment condition '{key}' has invalid range: "
-                                                f"$gte ({value['$gte']}) > $lte ({value['$lte']})"
-                                            )
-                                    if op == "$gt" and "$lt" in value:
-                                        if value["$gt"] >= value["$lt"]:
-                                            errors.append(
-                                                f"Policy '{policy.name}' environment condition '{key}' has invalid range: "
-                                                f"$gt ({value['$gt']}) >= $lt ({value['$lt']})"
-                                            )
+                                    if (
+                                        op == "$gte"
+                                        and "$lte" in value
+                                        and value["$gte"] > value["$lte"]
+                                    ):
+                                        errors.append(
+                                            f"Policy '{policy.name}' environment condition '{key}' has invalid range: "
+                                            f"$gte ({value['$gte']}) > $lte ({value['$lte']})"
+                                        )
+                                    if (
+                                        op == "$gt"
+                                        and "$lt" in value
+                                        and value["$gt"] >= value["$lt"]
+                                    ):
+                                        errors.append(
+                                            f"Policy '{policy.name}' environment condition '{key}' has invalid range: "
+                                            f"$gt ({value['$gt']}) >= $lt ({value['$lt']})"
+                                        )
                                 elif op in ["$in", "$nin"]:
                                     if not isinstance(op_value, list):
                                         errors.append(
@@ -598,7 +705,11 @@ class GovernanceBusinessRules(BusinessRules):
         """
         errors = []
         warnings = []
-        details = {"validation_type": "policy_conflicts", "conflicts_valid": False, "conflicts": []}
+        details = {
+            "validation_type": "policy_conflicts",
+            "conflicts_valid": False,
+            "conflicts": [],
+        }
 
         # Determine tenant ID
         tenant_id = (
@@ -625,7 +736,9 @@ class GovernanceBusinessRules(BusinessRules):
         if policy.asset:
             queryset = queryset.filter(Q(asset=policy.asset) | Q(asset__isnull=True))
         elif policy.dataset:
-            queryset = queryset.filter(Q(dataset=policy.dataset) | Q(dataset__isnull=True))
+            queryset = queryset.filter(
+                Q(dataset=policy.dataset) | Q(dataset__isnull=True)
+            )
         else:
             # Tenant-wide policy - check against all tenant-wide and resource-specific policies
             pass
@@ -703,11 +816,15 @@ class GovernanceBusinessRules(BusinessRules):
         if not policy1.conditions or not policy2.conditions:
             return conflict_info
 
-        if not isinstance(policy1.conditions, dict) or not isinstance(policy2.conditions, dict):
+        if not isinstance(policy1.conditions, dict) or not isinstance(
+            policy2.conditions, dict
+        ):
             return conflict_info
 
         # Use condition overlap detection logic (similar to DataMeshBusinessRules)
-        overlap_result = self._check_condition_overlap(policy1.conditions, policy2.conditions)
+        overlap_result = self._check_condition_overlap(
+            policy1.conditions, policy2.conditions
+        )
         conflict_info["overlapping_conditions"] = overlap_result["overlaps"]
 
         if not overlap_result["overlaps"]:
@@ -857,7 +974,9 @@ class GovernanceBusinessRules(BusinessRules):
                 details["precedence_valid"] = True
                 details["priority_invalid"] = True
                 details["skip_precedence_check"] = True
-                return ValidationResult(is_valid=True, warnings=warnings, details=details)
+                return ValidationResult(
+                    is_valid=True, warnings=warnings, details=details
+                )
         except (ValueError, TypeError) as e:
             # Django's IntegerField raised an error trying to convert invalid value
             # This is expected for invalid structure tests - skip precedence validation
@@ -882,7 +1001,9 @@ class GovernanceBusinessRules(BusinessRules):
         if policy.asset:
             queryset = queryset.filter(Q(asset=policy.asset) | Q(asset__isnull=True))
         elif policy.dataset:
-            queryset = queryset.filter(Q(dataset=policy.dataset) | Q(dataset__isnull=True))
+            queryset = queryset.filter(
+                Q(dataset=policy.dataset) | Q(dataset__isnull=True)
+            )
 
         same_priority_policies = list(queryset)
 
@@ -908,9 +1029,13 @@ class GovernanceBusinessRules(BusinessRules):
 
         # Filter by resource scope
         if policy.asset:
-            all_policies = all_policies.filter(Q(asset=policy.asset) | Q(asset__isnull=True))
+            all_policies = all_policies.filter(
+                Q(asset=policy.asset) | Q(asset__isnull=True)
+            )
         elif policy.dataset:
-            all_policies = all_policies.filter(Q(dataset=policy.dataset) | Q(dataset__isnull=True))
+            all_policies = all_policies.filter(
+                Q(dataset=policy.dataset) | Q(dataset__isnull=True)
+            )
 
         # Check if there are policies with very close priorities that might be confusing
         close_priority_threshold = 5
@@ -928,7 +1053,9 @@ class GovernanceBusinessRules(BusinessRules):
                 for p in close_priority_policies
             ]
 
-        details["precedence_valid"] = True  # Precedence validation doesn't fail, only warns
+        details["precedence_valid"] = (
+            True  # Precedence validation doesn't fail, only warns
+        )
 
         return ValidationResult(
             is_valid=True,  # Precedence issues are warnings, not errors
@@ -938,7 +1065,10 @@ class GovernanceBusinessRules(BusinessRules):
         )
 
     def _validate_access_request(
-        self, access_request: AccessRequest, tenant: Any | None = None, user: User | None = None
+        self,
+        access_request: AccessRequest,
+        tenant: Any | None = None,
+        user: User | None = None,
     ) -> ValidationResult:
         """
         Validate access request.
@@ -961,19 +1091,28 @@ class GovernanceBusinessRules(BusinessRules):
         result = ValidationResult(is_valid=True)
         details = {
             "access_request_id": str(getattr(access_request, "id", None) or ""),
-            "status": getattr(access_request, "status", AccessRequestStatus.PENDING.value),
+            "status": getattr(
+                access_request, "status", AccessRequestStatus.PENDING.value
+            ),
         }
 
         # Validate tenant context consistency
-        if self.tenant_id and access_request.tenant_id:
-            if str(access_request.tenant_id) != str(self.tenant_id):
-                result.errors.append(
-                    f"Access request tenant ({access_request.tenant_id}) does not match "
-                    f"context tenant ({self.tenant_id})"
-                )
+        if (
+            self.tenant_id
+            and access_request.tenant_id
+            and str(access_request.tenant_id) != str(self.tenant_id)
+        ):
+            result.errors.append(
+                f"Access request tenant ({access_request.tenant_id}) does not match "
+                f"context tenant ({self.tenant_id})"
+            )
 
         # Validate access request has a resource
-        if not access_request.asset and not access_request.dataset and not access_request.file:
+        if (
+            not access_request.asset
+            and not access_request.dataset
+            and not access_request.file
+        ):
             result.errors.append(
                 "Access request must have at least one resource (asset, dataset, or file)"
             )
@@ -990,23 +1129,31 @@ class GovernanceBusinessRules(BusinessRules):
             result.errors.append("Access request must have a requested access type")
 
         # Validate tenant context if provided
-        if tenant and access_request.tenant_id:
-            if str(tenant.id) != str(access_request.tenant_id):
-                result.errors.append(
-                    f"Access request tenant ({access_request.tenant_id}) does not match "
-                    f"provided tenant ({tenant.id})"
-                )
+        if (
+            tenant
+            and access_request.tenant_id
+            and str(tenant.id) != str(access_request.tenant_id)
+        ):
+            result.errors.append(
+                f"Access request tenant ({access_request.tenant_id}) does not match "
+                f"provided tenant ({tenant.id})"
+            )
 
         # Validate user context if provided
-        if user and access_request.requested_by_id:
-            if str(user.id) != str(access_request.requested_by_id):
-                result.warnings.append(
-                    f"Access request requested_by ({access_request.requested_by_id}) does not match "
-                    f"provided user ({user.id})"
-                )
+        if (
+            user
+            and access_request.requested_by_id
+            and str(user.id) != str(access_request.requested_by_id)
+        ):
+            result.warnings.append(
+                f"Access request requested_by ({access_request.requested_by_id}) does not match "
+                f"provided user ({user.id})"
+            )
 
         # Comprehensive validation: eligibility
-        eligibility_result = self._validate_access_request_eligibility(access_request, tenant, user)
+        eligibility_result = self._validate_access_request_eligibility(
+            access_request, tenant, user
+        )
         result = result.combine(eligibility_result)
         details["eligibility_validated"] = True
 
@@ -1038,7 +1185,10 @@ class GovernanceBusinessRules(BusinessRules):
         return result
 
     def _validate_access_request_eligibility(
-        self, access_request: AccessRequest, tenant: Any | None = None, user: User | None = None
+        self,
+        access_request: AccessRequest,
+        tenant: Any | None = None,
+        user: User | None = None,
     ) -> ValidationResult:
         """
         Validate access request eligibility (user can request access).
@@ -1067,7 +1217,7 @@ class GovernanceBusinessRules(BusinessRules):
         if not user:
             try:
                 user = access_request.requested_by
-            except Exception as e:
+            except (AttributeError, DatabaseError) as e:
                 errors.append(f"Failed to retrieve user from access request: {e!s}")
                 return ValidationResult(
                     is_valid=False, errors=errors, warnings=warnings, details=details
@@ -1082,8 +1232,8 @@ class GovernanceBusinessRules(BusinessRules):
         details["user_id"] = str(user.id)
         details["user_email"] = user.email
 
-        # Validate user is active
-        if hasattr(user, "is_active") and not user.is_active:
+        # Validate user is active — W2.4 (A-5): the status-based METHOD.
+        if not user_is_active(user):
             errors.append(f"User {user.email} is not active and cannot request access")
             details["user_active"] = False
         else:
@@ -1133,7 +1283,10 @@ class GovernanceBusinessRules(BusinessRules):
         )
 
     def _validate_resource_access(
-        self, access_request: AccessRequest, tenant: Any | None = None, user: User | None = None
+        self,
+        access_request: AccessRequest,
+        tenant: Any | None = None,
+        _user: User | None = None,
     ) -> ValidationResult:
         """
         Validate resource access (resource exists and is accessible).
@@ -1301,7 +1454,9 @@ class GovernanceBusinessRules(BusinessRules):
 
             # Validate new status is valid
             if new_status not in valid_statuses:
-                errors.append(f"Invalid new status: {new_status}. Valid statuses: {valid_statuses}")
+                errors.append(
+                    f"Invalid new status: {new_status}. Valid statuses: {valid_statuses}"
+                )
                 return ValidationResult(
                     is_valid=False, errors=errors, warnings=warnings, details=details
                 )
@@ -1380,40 +1535,52 @@ class GovernanceBusinessRules(BusinessRules):
             "approver_email": approver.email,
         }
 
-        # Validate approver is active
-        if hasattr(approver, "is_active") and not approver.is_active:
+        # Validate approver is active — W2.4 (A-5): the status-based
+        # User.is_active() METHOD, not the AbstractBaseUser field (the
+        # method shadows the field; the pre-W2.4 read of ``approver.is_active``
+        # got the bound method — always truthy — so this check never fired).
+        if not user_is_active(approver):
             errors.append(f"Approver {approver.email} is not active")
             details["approver_active"] = False
         else:
             details["approver_active"] = True
 
-        # Validate approver belongs to tenant
-        if tenant:
-            if not hasattr(approver, "tenant") or not approver.tenant:
-                errors.append(f"Approver {approver.email} does not belong to any tenant")
-                details["approver_has_tenant"] = False
-            elif str(approver.tenant.id) != str(tenant.id):
-                errors.append(
-                    f"Approver {approver.email} belongs to tenant {approver.tenant.id} but "
-                    f"access request is for tenant {tenant.id}"
-                )
-                details["approver_tenant_match"] = False
-            else:
-                details["approver_has_tenant"] = True
-                details["approver_tenant_match"] = True
-        elif access_request.tenant:
-            if not hasattr(approver, "tenant") or not approver.tenant:
-                errors.append(f"Approver {approver.email} does not belong to any tenant")
-                details["approver_has_tenant"] = False
-            elif str(approver.tenant.id) != str(access_request.tenant.id):
-                errors.append(
-                    f"Approver {approver.email} belongs to tenant {approver.tenant.id} but "
-                    f"access request is for tenant {access_request.tenant.id}"
-                )
-                details["approver_tenant_match"] = False
-            else:
-                details["approver_has_tenant"] = True
-                details["approver_tenant_match"] = True
+        # Validate approver belongs to tenant.
+        # W2.4 (R2-D5) — a marketplace-linked AR (order via the commercial
+        # hook) may be approved by the ORDER'S LISTING tenant too: the
+        # provider-side approver is cross-tenant by design (the AR lives in
+        # the consumer tenant; the listing's tenant users are the sanctioned
+        # approvers). The listing tenant resolves through the sanctioned
+        # commercial seam — governance never imports marketplace models.
+        ar_tenant_id = None
+        if tenant is not None:
+            ar_tenant_id = str(tenant.id)
+        elif access_request.tenant_id:
+            ar_tenant_id = str(access_request.tenant_id)
+
+        allowed_tenant_ids = {ar_tenant_id} if ar_tenant_id else set()
+        if ar_tenant_id:
+            from hub.apps.core.commercial_hooks import get_access_request_order
+
+            _order = get_access_request_order(access_request)
+            _listing = getattr(_order, "listing", None) if _order is not None else None
+            _listing_tenant_id = str(getattr(_listing, "tenant_id", None) or "")
+            if _listing_tenant_id:
+                allowed_tenant_ids.add(_listing_tenant_id)
+                details["approver_listing_tenant_allowed"] = True
+
+        if not hasattr(approver, "tenant") or not approver.tenant:
+            errors.append(f"Approver {approver.email} does not belong to any tenant")
+            details["approver_has_tenant"] = False
+        elif allowed_tenant_ids and str(approver.tenant.id) not in allowed_tenant_ids:
+            errors.append(
+                f"Approver {approver.email} belongs to tenant {approver.tenant.id} but "
+                f"access request is for tenant {ar_tenant_id}"
+            )
+            details["approver_tenant_match"] = False
+        else:
+            details["approver_has_tenant"] = True
+            details["approver_tenant_match"] = True
 
         # Validate access request is in an approvable state.
         # Multi-step workflows transition to PENDING_NEXT_APPROVER
@@ -1424,7 +1591,7 @@ class GovernanceBusinessRules(BusinessRules):
         }
         if access_request.status not in _approvable:
             errors.append(
-                f"Access request is not in an approvable state (status: "
+                f"Access request is not pending (status: "
                 f"{access_request.status}). Only pending or "
                 f"pending-next-approver requests can be approved."
             )
@@ -1437,27 +1604,51 @@ class GovernanceBusinessRules(BusinessRules):
         is_authorized = False
 
         # Check multi-step approval workflow
-        if access_request.approval_workflow and len(access_request.approval_workflow) > 0:
+        if (
+            access_request.approval_workflow
+            and len(access_request.approval_workflow) > 0
+        ):
             details["approval_type"] = "multi_step"
             current_step = access_request.current_approval_step
 
             if current_step < len(access_request.approval_workflow):
                 step_def = access_request.approval_workflow[current_step]
-                if isinstance(step_def, dict):
-                    step_approvers = step_def.get("approvers", [])
-                elif isinstance(step_def, str):
-                    # Legacy string format — step is a role name.
-                    # Fall back to the access request's approvers list,
-                    # filtered by role match if a role field is available.
-                    step_approvers = access_request.approvers or []
-                else:
-                    step_approvers = []
+                # W2.4 (R2-D5) — resolve approvers BY ROLE for the
+                # {step, role, label} dict format (the pre-W2.4 code read
+                # ``step_def.get("approvers")`` — a key that format never
+                # carries — so every approver was rejected). String steps
+                # keep the legacy AR-approvers-list fallback.
+                step_approvers = resolve_step_approver_ids(step_def, access_request)
+                if step_approvers is None:
+                    step_approvers = [str(a) for a in (access_request.approvers or [])]
                 details["current_step"] = current_step
                 details["step_approvers"] = step_approvers
 
                 if approver_id_str in step_approvers:
                     is_authorized = True
                     details["approver_in_step"] = True
+                elif not step_approvers:
+                    # W2.4 (A-7) — dangling-approver re-routing: the step's
+                    # role resolves to ZERO eligible users. Without a
+                    # re-route the chain is stuck forever; re-route to the
+                    # tenant's TENANT_ADMINs (platform admins can always
+                    # approve via the override below).
+                    details["step_dangling"] = True
+                    admin_ids = tenant_admin_user_ids(access_request.tenant_id)
+                    if approver_id_str in admin_ids:
+                        is_authorized = True
+                        details["approver_rerouted_to_tenant_admin"] = True
+                        warnings.append(
+                            f"Step {current_step} has no eligible approvers for its role — "
+                            f"re-routed to tenant admin {approver.email}"
+                        )
+                    else:
+                        errors.append(
+                            f"Step {current_step} has no eligible approvers for its role and "
+                            f"approver {approver.email} is not a tenant admin (escalate to a "
+                            f"tenant admin or a platform admin)"
+                        )
+                        details["approver_in_step"] = False
                 else:
                     errors.append(
                         f"Approver {approver.email} is not authorized for step {current_step} of "
@@ -1470,6 +1661,20 @@ class GovernanceBusinessRules(BusinessRules):
                     f"with {len(access_request.approval_workflow)} steps"
                 )
                 details["step_valid"] = False
+
+            # W2.4 (R2-D5) — segregation of duties: the same approver cannot
+            # clear two CONSECUTIVE steps. The previous step's clearer is
+            # read from the per-step clearance ledger.
+            _records = getattr(access_request, "approval_step_records", None) or []
+            if _records and current_step > 0:
+                _prev = _records[-1]
+                if str(_prev.get("cleared_by") or "") == approver_id_str:
+                    errors.append(
+                        f"Approver {approver.email} cannot clear step {current_step}: "
+                        f"the same approver cannot clear two consecutive steps "
+                        f"(segregation of duties)"
+                    )
+                    details["segregation_violation"] = True
         else:
             # Single-step approval
             details["approval_type"] = "single_step"
@@ -1517,88 +1722,111 @@ class GovernanceBusinessRules(BusinessRules):
             from hub.apps.governance.models import ApprovalDelegation
 
             now = timezone.now()
-            active_delegation = ApprovalDelegation.objects.filter(
-                tenant=access_request.tenant,
-                delegate_id=approver.id,
-                start_at__lte=now,
-                end_at__gte=now,
-            ).first()
+            candidates = list(
+                ApprovalDelegation.objects.filter(
+                    tenant=access_request.tenant,
+                    delegate_id=approver.id,
+                    start_at__lte=now,
+                    end_at__gte=now,
+                ).order_by("-created_at")
+            )
 
-            if active_delegation:
-                # Phase 272.6 — verify the delegate has the role
-                # required for the current workflow step.  When the
-                # workflow has not been snapshotted yet (first
-                # approval), look up the role directly from the
-                # applicable ALLOW policy.
-                _workflow = access_request.approval_workflow or []
-                _step_idx = access_request.current_approval_step
-                _delegation_role_ok = True
-                _required_role = None
+            # Phase 272.6 — verify the delegate has the role required
+            # for the current workflow step. When the workflow has not
+            # been snapshotted yet (first approval), look up the role
+            # directly from the applicable ALLOW policy.
+            _workflow = access_request.approval_workflow or []
+            _step_idx = access_request.current_approval_step
+            _required_role = None
 
-                if (
-                    _workflow
-                    and 0 <= _step_idx < len(_workflow)
-                    and isinstance(_workflow[_step_idx], str)
-                ):
-                    _required_role = _workflow[_step_idx]
-                elif not _workflow and _step_idx == 0:
-                    # Workflow not yet snapshotted — look up the
-                    # applicable ALLOW policy's first chain step.
-                    from django.db.models import Q as _Q
+            if _workflow and 0 <= _step_idx < len(_workflow):
+                # W2.4 — dict steps ({step, role, label}) carry the
+                # required role on the ``role`` key; string steps are
+                # the role name itself. Pre-W2.4 only string steps were
+                # checked, so ANY delegation cleared a dict step.
+                _step_def = _workflow[_step_idx]
+                if isinstance(_step_def, str):
+                    _required_role = _step_def
+                elif isinstance(_step_def, dict) and _step_def.get("role"):
+                    _required_role = _step_def["role"]
+            elif not _workflow and _step_idx == 0:
+                # Workflow not yet snapshotted — look up the
+                # applicable ALLOW policy's first chain step.
+                from django.db.models import Q as _Q
 
-                    from hub.apps.governance.models import AccessPolicy as _Ap
+                from hub.apps.governance.models import AccessPolicy as _Ap
 
-                    _policy = (
-                        _Ap.objects.filter(
-                            tenant=access_request.tenant,
-                            enabled=True,
-                            effect="ALLOW",
-                        )
-                        .filter(
-                            _Q(asset_id=access_request.asset_id)
-                            if access_request.asset_id
-                            else _Q(dataset_id=access_request.dataset_id)
-                        )
-                        .exclude(
-                            _Q(required_approval_chain=[])
-                            | _Q(required_approval_chain__isnull=True)
-                        )
-                        .order_by("priority")
-                        .first()
+                _policy = (
+                    _Ap.objects.filter(
+                        tenant=access_request.tenant,
+                        enabled=True,
+                        effect="ALLOW",
                     )
-                    if _policy and _policy.required_approval_chain:
-                        _first_step = _policy.required_approval_chain[0]
-                        if isinstance(_first_step, str):
-                            _required_role = _first_step
+                    .filter(
+                        _Q(asset_id=access_request.asset_id)
+                        if access_request.asset_id
+                        else _Q(dataset_id=access_request.dataset_id)
+                    )
+                    .exclude(
+                        _Q(required_approval_chain=[])
+                        | _Q(required_approval_chain__isnull=True)
+                    )
+                    .order_by("priority")
+                    .first()
+                )
+                if _policy and _policy.required_approval_chain:
+                    _first_step = _policy.required_approval_chain[0]
+                    if isinstance(_first_step, str):
+                        _required_role = _first_step
+                    elif isinstance(_first_step, dict) and _first_step.get("role"):
+                        _required_role = _first_step["role"]
 
+            # W2.4 — with multiple active delegations for the same delegate,
+            # the FIRST role-qualifying candidate wins. The pre-W2.4
+            # ``.first()`` picked an arbitrary row, so a valid delegation
+            # could be rejected because an unrelated delegation's delegator
+            # lacked the role (order-dependent flake).
+            active_delegation = None
+            _delegation_role_ok = False
+            _failed_delegator = None
+            for _candidate in candidates:
+                _candidate_ok = True
                 if _required_role is not None:
                     # Verify the DELEGATOR has the required role —
                     # the delegate inherits the delegator's authority,
                     # so the delegator's role membership is what matters.
                     _delegator_role_ids = set(
-                        active_delegation.delegator.user_roles.values_list(
+                        _candidate.delegator.user_roles.values_list(
                             "role__name", flat=True
                         )
                     )
                     if _required_role not in _delegator_role_ids:
-                        _delegation_role_ok = False
-                        errors.append(
-                            f"Delegator {active_delegation.delegator.email} "
-                            f"does not have the required role "
-                            f"'{_required_role}' for step {_step_idx} "
-                            f"of the approval chain, so delegate "
-                            f"{approver.email} cannot act on their behalf."
-                        )
-                        details["delegator_missing_role"] = True
-                        details["delegator_required_role"] = _required_role
+                        _candidate_ok = False
+                        if _failed_delegator is None:
+                            _failed_delegator = _candidate.delegator
+                if _candidate_ok:
+                    active_delegation = _candidate
+                    _delegation_role_ok = True
+                    break
+
+            if active_delegation:
 
                 if _delegation_role_ok:
                     is_authorized = True
                 details["delegation_used"] = _delegation_role_ok
                 details["delegator_id"] = str(active_delegation.delegator_id)
-                # Clear the earlier "not in approvers list" error since
-                # the delegation grants authority.
-                errors = [e for e in errors if "not in the approvers list" not in e]
+                # Clear the earlier authorization errors since the
+                # delegation grants authority — the single-step
+                # "not in approvers list" error AND the multi-step /
+                # dangling-step authorization errors (the segregation and
+                # tenant errors are independent violations and stay).
+                errors = [
+                    e
+                    for e in errors
+                    if "not in the approvers list" not in e
+                    and "is not authorized for step" not in e
+                    and "has no eligible approvers" not in e
+                ]
                 if _delegation_role_ok:
                     warnings.append(
                         f"Approver {approver.email} is acting as delegate for "
@@ -1624,6 +1852,29 @@ class GovernanceBusinessRules(BusinessRules):
                                 "access_request_id": str(access_request.id),
                             },
                         )
+                    # W2.4 (A-4) — per-delegation usage recording: F() so
+                    # concurrent uses never lose an increment.
+                    with contextlib.suppress(Exception):
+                        from django.db.models import F as _F
+
+                        ApprovalDelegation.objects.filter(
+                            pk=active_delegation.pk
+                        ).update(
+                            usage_count=_F("usage_count") + 1,
+                            last_used_at=timezone.now(),
+                        )
+            elif _failed_delegator is not None and _required_role is not None:
+                # Every active delegation failed the role check — report
+                # against the first (most recent) failing delegator.
+                errors.append(
+                    f"Delegator {_failed_delegator.email} "
+                    f"does not have the required role "
+                    f"'{_required_role}' for step {_step_idx} "
+                    f"of the approval chain, so delegate "
+                    f"{approver.email} cannot act on their behalf."
+                )
+                details["delegator_missing_role"] = True
+                details["delegator_required_role"] = _required_role
 
         # Check if approver is platform admin (has all permissions)
         if hasattr(approver, "is_platform_admin") and approver.is_platform_admin:
@@ -1706,7 +1957,9 @@ class GovernanceBusinessRules(BusinessRules):
             details["valid_categories"] = valid_categories
         else:
             details["category_valid"] = True
-            details["priority"] = self._get_classification_priority(classification.category)
+            details["priority"] = self._get_classification_priority(
+                classification.category
+            )
 
         details["is_valid"] = len(errors) == 0
         details["has_warnings"] = len(warnings) > 0
@@ -1757,8 +2010,12 @@ class GovernanceBusinessRules(BusinessRules):
                     ).exclude(id=classification.id)
 
                     for ds_class in dataset_classifications:
-                        ds_priority = self._get_classification_priority(ds_class.category)
-                        field_priority = self._get_classification_priority(classification.category)
+                        ds_priority = self._get_classification_priority(
+                            ds_class.category
+                        )
+                        field_priority = self._get_classification_priority(
+                            classification.category
+                        )
 
                         # Field should be at least as sensitive as dataset
                         if field_priority < ds_priority:
@@ -1768,9 +2025,13 @@ class GovernanceBusinessRules(BusinessRules):
                                 f"than dataset classification ({ds_class.category}, priority={ds_priority})"
                             )
                             details["inconsistency_detected"] = True
-                            details["inconsistency_type"] = "field_less_sensitive_than_dataset"
+                            details["inconsistency_type"] = (
+                                "field_less_sensitive_than_dataset"
+                            )
                 else:
-                    errors.append("Field-level classification requires a dataset reference")
+                    errors.append(
+                        "Field-level classification requires a dataset reference"
+                    )
             # Asset-level or dataset-level classification
             elif classification.dataset:
                 # Dataset-level classification - check consistency with asset-level
@@ -1782,8 +2043,12 @@ class GovernanceBusinessRules(BusinessRules):
                 ).exclude(id=classification.id)
 
                 for asset_class in asset_classifications:
-                    asset_priority = self._get_classification_priority(asset_class.category)
-                    dataset_priority = self._get_classification_priority(classification.category)
+                    asset_priority = self._get_classification_priority(
+                        asset_class.category
+                    )
+                    dataset_priority = self._get_classification_priority(
+                        classification.category
+                    )
 
                     # Dataset should be at least as sensitive as asset
                     if dataset_priority < asset_priority:
@@ -1793,7 +2058,9 @@ class GovernanceBusinessRules(BusinessRules):
                             f"({asset_class.category}, priority={asset_priority})"
                         )
                         details["inconsistency_detected"] = True
-                        details["inconsistency_type"] = "dataset_less_sensitive_than_asset"
+                        details["inconsistency_type"] = (
+                            "dataset_less_sensitive_than_asset"
+                        )
 
                 # Check consistency with other datasets of the same asset
                 other_dataset_classifications = (
@@ -1808,8 +2075,12 @@ class GovernanceBusinessRules(BusinessRules):
                 )
 
                 for other_ds_class in other_dataset_classifications:
-                    other_priority = self._get_classification_priority(other_ds_class.category)
-                    current_priority = self._get_classification_priority(classification.category)
+                    other_priority = self._get_classification_priority(
+                        other_ds_class.category
+                    )
+                    current_priority = self._get_classification_priority(
+                        classification.category
+                    )
 
                     # Significant difference in sensitivity
                     if abs(current_priority - other_priority) > 2:
@@ -1829,7 +2100,9 @@ class GovernanceBusinessRules(BusinessRules):
                     field_name__isnull=True,
                 ).exclude(id=classification.id)
 
-                asset_priority = self._get_classification_priority(classification.category)
+                asset_priority = self._get_classification_priority(
+                    classification.category
+                )
 
                 for ds_class in dataset_classifications:
                     ds_priority = self._get_classification_priority(ds_class.category)
@@ -1842,7 +2115,9 @@ class GovernanceBusinessRules(BusinessRules):
                             f"({classification.category}, priority={asset_priority})"
                         )
                         details["inconsistency_detected"] = True
-                        details["inconsistency_type"] = "dataset_less_sensitive_than_asset"
+                        details["inconsistency_type"] = (
+                            "dataset_less_sensitive_than_asset"
+                        )
 
         elif classification.dataset:
             # Dataset-level classification without asset, or field-level classification
@@ -1858,7 +2133,9 @@ class GovernanceBusinessRules(BusinessRules):
                     field_name__isnull=True,  # Dataset-level classifications
                 ).exclude(id=classification.id)
 
-                field_priority = self._get_classification_priority(classification.category)
+                field_priority = self._get_classification_priority(
+                    classification.category
+                )
 
                 for ds_class in dataset_classifications:
                     ds_priority = self._get_classification_priority(ds_class.category)
@@ -1871,7 +2148,9 @@ class GovernanceBusinessRules(BusinessRules):
                             f"than dataset classification ({ds_class.category}, priority={ds_priority})"
                         )
                         details["inconsistency_detected"] = True
-                        details["inconsistency_type"] = "field_less_sensitive_than_dataset"
+                        details["inconsistency_type"] = (
+                            "field_less_sensitive_than_dataset"
+                        )
             else:
                 # Dataset-level classification - check field-level classifications for this dataset
                 field_classifications = DataClassification.objects.filter(
@@ -1880,10 +2159,14 @@ class GovernanceBusinessRules(BusinessRules):
                     field_name__isnull=False,
                 ).exclude(id=classification.id)
 
-                dataset_priority = self._get_classification_priority(classification.category)
+                dataset_priority = self._get_classification_priority(
+                    classification.category
+                )
 
                 for field_class in field_classifications:
-                    field_priority = self._get_classification_priority(field_class.category)
+                    field_priority = self._get_classification_priority(
+                        field_class.category
+                    )
 
                     # Fields should be at least as sensitive as dataset
                     if field_priority < dataset_priority:
@@ -1893,9 +2176,13 @@ class GovernanceBusinessRules(BusinessRules):
                             f"than dataset classification ({classification.category}, priority={dataset_priority})"
                         )
                         details["inconsistency_detected"] = True
-                        details["inconsistency_type"] = "field_less_sensitive_than_dataset"
+                        details["inconsistency_type"] = (
+                            "field_less_sensitive_than_dataset"
+                        )
         else:
-            errors.append("Classification must have at least one resource (asset or dataset)")
+            errors.append(
+                "Classification must have at least one resource (asset or dataset)"
+            )
 
         if not details.get("inconsistency_detected"):
             details["consistent"] = True
@@ -1935,7 +2222,9 @@ class GovernanceBusinessRules(BusinessRules):
         # Get previous category if not provided
         if previous_category is None and classification.pk:
             try:
-                previous_classification = DataClassification.objects.get(pk=classification.pk)
+                previous_classification = DataClassification.objects.get(
+                    pk=classification.pk
+                )
                 previous_category = previous_classification.category
             except DataClassification.DoesNotExist:
                 # New classification, no previous category
@@ -2040,7 +2329,8 @@ class GovernanceBusinessRules(BusinessRules):
             if asset_classifications.exists():
                 # Get the most restrictive asset classification
                 asset_priorities = [
-                    self._get_classification_priority(ac.category) for ac in asset_classifications
+                    self._get_classification_priority(ac.category)
+                    for ac in asset_classifications
                 ]
                 max_asset_priority = max(asset_priorities) if asset_priorities else 0
                 most_restrictive_asset = max(
@@ -2075,9 +2365,12 @@ class GovernanceBusinessRules(BusinessRules):
             if dataset_classifications.exists():
                 # Get the most restrictive dataset classification
                 dataset_priorities = [
-                    self._get_classification_priority(dc.category) for dc in dataset_classifications
+                    self._get_classification_priority(dc.category)
+                    for dc in dataset_classifications
                 ]
-                max_dataset_priority = max(dataset_priorities) if dataset_priorities else 0
+                max_dataset_priority = (
+                    max(dataset_priorities) if dataset_priorities else 0
+                )
                 most_restrictive_dataset = max(
                     dataset_classifications,
                     key=lambda dc: self._get_classification_priority(dc.category),
@@ -2130,7 +2423,7 @@ class GovernanceBusinessRules(BusinessRules):
         self,
         classification: DataClassification,
         tenant: Any | None = None,
-        user: User | None = None,
+        _user: User | None = None,
         previous_category: str | None = None,
     ) -> ValidationResult:
         """
@@ -2160,12 +2453,15 @@ class GovernanceBusinessRules(BusinessRules):
         }
 
         # Validate tenant context consistency
-        if self.tenant_id and classification.tenant_id:
-            if str(classification.tenant_id) != str(self.tenant_id):
-                result.errors.append(
-                    f"Classification tenant ({classification.tenant_id}) does not match "
-                    f"context tenant ({self.tenant_id})"
-                )
+        if (
+            self.tenant_id
+            and classification.tenant_id
+            and str(classification.tenant_id) != str(self.tenant_id)
+        ):
+            result.errors.append(
+                f"Classification tenant ({classification.tenant_id}) does not match "
+                f"context tenant ({self.tenant_id})"
+            )
 
         # Validate classification has a resource
         if not classification.asset and not classification.dataset:
@@ -2174,12 +2470,15 @@ class GovernanceBusinessRules(BusinessRules):
             )
 
         # Validate tenant context if provided
-        if tenant and classification.tenant_id:
-            if str(tenant.id) != str(classification.tenant_id):
-                result.errors.append(
-                    f"Classification tenant ({classification.tenant_id}) does not match "
-                    f"provided tenant ({tenant.id})"
-                )
+        if (
+            tenant
+            and classification.tenant_id
+            and str(tenant.id) != str(classification.tenant_id)
+        ):
+            result.errors.append(
+                f"Classification tenant ({classification.tenant_id}) does not match "
+                f"provided tenant ({tenant.id})"
+            )
 
         # Comprehensive validation: classification level
         level_result = self._validate_classification_level(classification)
@@ -2192,7 +2491,9 @@ class GovernanceBusinessRules(BusinessRules):
         details["consistency_validated"] = True
 
         # Comprehensive validation: classification change
-        change_result = self._validate_classification_change(classification, previous_category)
+        change_result = self._validate_classification_change(
+            classification, previous_category
+        )
         result = result.combine(change_result)
         details["change_validated"] = True
 
@@ -2229,10 +2530,15 @@ class GovernanceBusinessRules(BusinessRules):
 
         details["is_valid"] = len(errors) == 0
 
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, details=details)
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, details=details
+        )
 
     def _validate_compliance_report_generation_eligibility(
-        self, user: User | None = None, tenant: Any | None = None, regulation: str | None = None
+        self,
+        user: User | None = None,
+        tenant: Any | None = None,
+        regulation: str | None = None,
     ) -> ValidationResult:
         """
         Validate report generation eligibility (user has permission).
@@ -2259,7 +2565,9 @@ class GovernanceBusinessRules(BusinessRules):
         }
 
         if not user:
-            errors.append("User is required for report generation eligibility validation")
+            errors.append(
+                "User is required for report generation eligibility validation"
+            )
             details["user_provided"] = False
             return ValidationResult(
                 is_valid=False, errors=errors, warnings=warnings, details=details
@@ -2269,9 +2577,11 @@ class GovernanceBusinessRules(BusinessRules):
         details["user_id"] = str(user.id)
         details["user_email"] = user.email
 
-        # Validate user is active
-        if hasattr(user, "is_active") and not user.is_active:
-            errors.append(f"User {user.email} is not active and cannot generate compliance reports")
+        # Validate user is active — W2.4 (A-5): the status-based METHOD.
+        if not user_is_active(user):
+            errors.append(
+                f"User {user.email} is not active and cannot generate compliance reports"
+            )
             details["user_active"] = False
         else:
             details["user_active"] = True
@@ -2457,11 +2767,15 @@ class GovernanceBusinessRules(BusinessRules):
 
                 # Validate dates are not in the future
                 if start_date > timezone.now():
-                    errors.append(f"Start date ({start_date.date()}) cannot be in the future")
+                    errors.append(
+                        f"Start date ({start_date.date()}) cannot be in the future"
+                    )
                     details["future_start_date"] = True
 
                 if end_date > timezone.now():
-                    errors.append(f"End date ({end_date.date()}) cannot be in the future")
+                    errors.append(
+                        f"End date ({end_date.date()}) cannot be in the future"
+                    )
                     details["future_end_date"] = True
         elif start_date or end_date:
             errors.append(
@@ -2573,7 +2887,10 @@ class GovernanceBusinessRules(BusinessRules):
         )
 
     def _validate_compliance_report_access(
-        self, report: ComplianceReport, user: User | None = None, tenant: Any | None = None
+        self,
+        report: ComplianceReport,
+        user: User | None = None,
+        tenant: Any | None = None,
     ) -> ValidationResult:
         """
         Validate report access (user can access report).
@@ -2612,9 +2929,11 @@ class GovernanceBusinessRules(BusinessRules):
         details["user_id"] = str(user.id)
         details["user_email"] = user.email
 
-        # Validate user is active
-        if hasattr(user, "is_active") and not user.is_active:
-            errors.append(f"User {user.email} is not active and cannot access compliance reports")
+        # Validate user is active — W2.4 (A-5): the status-based METHOD.
+        if not user_is_active(user):
+            errors.append(
+                f"User {user.email} is not active and cannot access compliance reports"
+            )
             details["user_active"] = False
         else:
             details["user_active"] = True
@@ -2667,7 +2986,9 @@ class GovernanceBusinessRules(BusinessRules):
         if not report.report_data or (
             isinstance(report.report_data, dict) and len(report.report_data) == 0
         ):
-            warnings.append("Report has no data. Report may not have been generated successfully")
+            warnings.append(
+                "Report has no data. Report may not have been generated successfully"
+            )
             details["has_data"] = False
         else:
             details["has_data"] = True
@@ -2724,8 +3045,10 @@ class GovernanceBusinessRules(BusinessRules):
 
         # Comprehensive validation: eligibility (if user provided and not just accessing existing report)
         if validation_type in ["all", "eligibility"] and user and not report:
-            eligibility_result = self._validate_compliance_report_generation_eligibility(
-                user, tenant, regulation
+            eligibility_result = (
+                self._validate_compliance_report_generation_eligibility(
+                    user, tenant, regulation
+                )
             )
             result = result.combine(eligibility_result)
             details["eligibility_validated"] = True
@@ -2748,7 +3071,9 @@ class GovernanceBusinessRules(BusinessRules):
 
         # Comprehensive validation: access (if report exists)
         if validation_type in ["all", "access"] and report and user:
-            access_result = self._validate_compliance_report_access(report, user, tenant)
+            access_result = self._validate_compliance_report_access(
+                report, user, tenant
+            )
             result = result.combine(access_result)
             details["access_validated"] = True
 
@@ -2759,7 +3084,9 @@ class GovernanceBusinessRules(BusinessRules):
 
         return result
 
-    def _validate_permissions(self, user: User, tenant: Any | None = None) -> ValidationResult:
+    def _validate_permissions(
+        self, user: User, tenant: Any | None = None
+    ) -> ValidationResult:
         """
         Validate user permissions.
 
@@ -2787,7 +3114,11 @@ class GovernanceBusinessRules(BusinessRules):
             )
 
         # Validate user tenant matches context tenant if both provided
-        if self.tenant_id and user.tenant_id and str(user.tenant_id) != str(self.tenant_id):
+        if (
+            self.tenant_id
+            and user.tenant_id
+            and str(user.tenant_id) != str(self.tenant_id)
+        ):
             warnings.append(
                 f"User tenant ({user.tenant_id}) does not match context tenant ({self.tenant_id})"
             )
@@ -2807,7 +3138,7 @@ class ApproverIdentityRule:
         self.tenant_id = tenant_id
         self.user_id = user_id
 
-    def validate(self, access_request, tenant, approver):
+    def validate(self, _access_request, _tenant, approver):
         from hub.apps.core.business_rules.base import ValidationResult
 
         if approver is None:
@@ -2830,12 +3161,14 @@ class ApprovalStageRule:
         self.tenant_id = tenant_id
         self.user_id = user_id
 
-    def validate_transition(self, access_request, tenant, approver, new_status=None):
+    def validate_transition(self, access_request, _tenant, _approver, new_status=None):
         from hub.apps.core.business_rules.base import ValidationResult
         from hub.apps.governance.state_machine import ALLOWED_TRANSITIONS
 
         if access_request is None:
-            return ValidationResult(is_valid=False, errors=["Access request is required"])
+            return ValidationResult(
+                is_valid=False, errors=["Access request is required"]
+            )
         current = access_request.status
         if hasattr(current, "value"):
             current = current.value
@@ -2862,18 +3195,49 @@ class ApprovalQuorumRule:
         self.tenant_id = tenant_id
         self.user_id = user_id
 
-    def validate(self, access_request, tenant):
+    def validate(self, access_request, _tenant, approver=None):
         from hub.apps.core.business_rules.base import ValidationResult
 
         if access_request is None:
-            return ValidationResult(is_valid=False, errors=["Access request is required"])
-        # Anti-self-dealing: same user cannot both request and be the
-        # most recent approver on the same access request.
-        requested_by_id = getattr(access_request, "requested_by_id", None)
-        approved_by_id = getattr(access_request, "approved_by_id", None)
-        if requested_by_id and approved_by_id and requested_by_id == approved_by_id:
             return ValidationResult(
-                is_valid=False,
-                errors=["Same user cannot both request and approve the same access request"],
+                is_valid=False, errors=["Access request is required"]
             )
+        # Anti-self-dealing heuristic — evaluated ONLY when the current
+        # approver is not supplied (the standalone rule pins). On the live
+        # path the chain always passes the approver, and the pinned
+        # Phase 272 contract lets the requester serve as the FIRST
+        # approver of a multi-step chain (approved_by then holds a
+        # previous approver, so the old heuristic mis-fired on step 2
+        # whenever step 1 was cleared by the requester). The live-path
+        # multi-step guard is the segregation check below.
+        if approver is None:
+            requested_by_id = str(
+                getattr(access_request, "requested_by_id", None) or ""
+            )
+            approved_by_id = str(getattr(access_request, "approved_by_id", None) or "")
+            if requested_by_id and approved_by_id and requested_by_id == approved_by_id:
+                return ValidationResult(
+                    is_valid=False,
+                    errors=[
+                        "Same user cannot both request and approve the same access request"
+                    ],
+                )
+        # W2.4 (R2-D5) — segregation of duties: the same approver cannot
+        # clear two CONSECUTIVE steps. The previous step's clearer comes
+        # from the per-step clearance ledger; the chain rule finally
+        # implements what its docstring always promised.
+        if approver is not None:
+            approver_id = str(getattr(approver, "id", None) or "")
+            records = getattr(access_request, "approval_step_records", None) or []
+            step_idx = getattr(access_request, "current_approval_step", 0)
+            if records and step_idx > 0:
+                prev_cleared_by = str(records[-1].get("cleared_by") or "")
+                if prev_cleared_by and prev_cleared_by == approver_id:
+                    return ValidationResult(
+                        is_valid=False,
+                        errors=[
+                            "Same approver cannot clear two consecutive steps "
+                            "(segregation of duties)"
+                        ],
+                    )
         return ValidationResult(is_valid=True)

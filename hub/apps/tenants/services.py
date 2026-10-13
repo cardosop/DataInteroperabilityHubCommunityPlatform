@@ -481,7 +481,7 @@ class TenantService(BaseService, TenantEventPublisher):
             try:
                 tenant = Tenant.all_objects.get(pk=tenant_id)
             except Tenant.DoesNotExist:
-                raise NotFoundError(f"Tenant with id {tenant_id} not found")
+                raise NotFoundError(f"Tenant with id {tenant_id} not found") from None
 
             if tenant.status == TenantStatus.DELETED or tenant.deleted_at is not None:
                 raise ValidationError("Tenant is already deleted")
@@ -693,7 +693,23 @@ class PlanLimitService(BaseService):
             ValidationError: If limit exceeded (with code 'plan_limit_exceeded')
             NotFoundError: If tenant or plan not found
         """
-        from hub.apps.billing.limit_registry import get_resource_count
+        # Phase 313 — billing is the paid layer. Core-only deployments have
+        # no plan counters: the private core mode raises RuntimeError (app
+        # uninstalled), the public tree raises ModuleNotFoundError (module
+        # absent). Either way limits are unlimited by construction — return
+        # the unlimited result before touching the registry.
+        try:
+            from hub.apps.billing.limit_registry import get_resource_count
+        except (RuntimeError, ModuleNotFoundError):
+            return {
+                "allowed": True,
+                "current": 0,
+                "max": None,
+                "remaining": None,
+                "limit_key": limit_key,
+                "plan_slug": None,
+                "plan_tier": None,
+            }
 
         def _check():
             # Acquire row-level lock on the tenant to serialize concurrent checks.
@@ -734,10 +750,7 @@ class PlanLimitService(BaseService):
                         )
 
             # Get limit from plan (or 0 when no ML plan)
-            if plan is None:
-                max_limit = 0
-            else:
-                max_limit = plan.get_limit(limit_key)
+            max_limit = 0 if plan is None else plan.get_limit(limit_key)
 
             # Query current usage from the resource counter registry.
             # This count is authoritative — it runs inside the lock scope.
@@ -905,15 +918,20 @@ class TenantUsageService(BaseService):
                 period_end=local_period_end,
             )
 
-            # Calculate API calls count (from BaaS APIUsage or audit events)
-            from hub.apps.baas.models import APIKey, APIUsage
+            # Calculate API calls count (from BaaS APIUsage or audit events).
+            # Phase 313 — baas is the paid layer; in core-only mode no BaaS
+            # API usage records exist, so the dimension is 0.
+            try:
+                from hub.apps.baas.models import APIKey, APIUsage
 
-            api_keys = APIKey.objects.filter(tenant_id=tenant_id)
-            api_calls_count = APIUsage.objects.filter(
-                api_key__in=api_keys,
-                timestamp__gte=local_period_start,
-                timestamp__lte=local_period_end,
-            ).count()
+                api_keys = APIKey.objects.filter(tenant_id=tenant_id)
+                api_calls_count = APIUsage.objects.filter(
+                    api_key__in=api_keys,
+                    timestamp__gte=local_period_start,
+                    timestamp__lte=local_period_end,
+                ).count()
+            except (RuntimeError, ModuleNotFoundError):
+                api_calls_count = 0
 
             # Get current asset count
             from hub.apps.assets.models import Asset
@@ -1016,7 +1034,14 @@ class TenantUsageService(BaseService):
             if cached is not None:
                 return cached
 
-            from hub.apps.billing.limit_registry import RESOURCE_COUNTERS, get_resource_count
+            # Phase 313 — billing is the paid layer; in core-only mode there
+            # are no counters to read (private core raises RuntimeError for
+            # the uninstalled app, the public tree raises
+            # ModuleNotFoundError for the absent module).
+            try:
+                from hub.apps.billing.limit_registry import RESOURCE_COUNTERS, get_resource_count
+            except (RuntimeError, ModuleNotFoundError):
+                return {"tenant_id": str(tenant_id)}
 
             usage: dict[str, Any] = {"tenant_id": str(tenant_id)}
 
@@ -1091,9 +1116,9 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
         name: str,
         slug: str,
         plan_slug: str = "free",
-        first_user_email: str = None,
-        first_user_password: str = None,
-        first_user_display_name: str = None,
+        first_user_email: str | None = None,
+        first_user_password: str | None = None,
+        first_user_display_name: str | None = None,
         region: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -1118,7 +1143,13 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
         def _create():
             import logging
 
-            from hub.apps.billing.services import SubscriptionService
+            # Phase 313 — billing is the paid layer; core-only mode has
+            # no subscription provisioning (the onboarding still succeeds
+            # with subscription=None).
+            try:
+                from hub.apps.billing.services import SubscriptionService
+            except (RuntimeError, ModuleNotFoundError):
+                SubscriptionService = None  # type: ignore[assignment]
             from hub.apps.tenants.models import TenantConfig
             from hub.apps.tenants.validators import get_platform_defaults
             from hub.apps.users.models import Role, User, UserRole, UserStatus
@@ -1135,7 +1166,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
             try:
                 plan = TenantPlan.objects.get(slug=plan_slug, is_active=True)
             except TenantPlan.DoesNotExist:
-                raise NotFoundError(f"Plan with slug '{plan_slug}' not found")
+                raise NotFoundError(f"Plan with slug '{plan_slug}' not found") from None
 
             # Create tenant (nested atomic block acts as savepoint)
             try:
@@ -1166,7 +1197,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
                 raise ValidationError(
                     f"Tenant with slug '{slug}' or name '{name}' already exists",
                     code="SLUG_EXISTS",
-                )
+                ) from None
 
             # Create first user (nested atomic block acts as savepoint)
             try:
@@ -1177,7 +1208,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
                         tenant=tenant,
                         display_name=first_user_display_name
                         or (
-                            first_user_email.split("@")[0]
+                            first_user_email.split("@", maxsplit=1)[0]
                             if "@" in first_user_email
                             else first_user_email
                         ),
@@ -1187,7 +1218,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
                 raise ValidationError(
                     "Email address is already registered",
                     code="EMAIL_EXISTS",
-                )
+                ) from None
 
             # Assign TENANT_ADMIN role
             try:
@@ -1218,7 +1249,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
 
             # Create Stripe customer and subscription
             subscription = None
-            if plan.tier != "FREE":
+            if plan.tier != "FREE" and SubscriptionService is not None:
                 try:
                     subscription_service = SubscriptionService()
                     subscription_service.create_customer(tenant=tenant, email=first_user_email)
@@ -1234,17 +1265,24 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
                         message=f"Failed to create Stripe subscription during onboarding: {e}",
                     )
             else:
-                # For FREE plan, create a subscription record without Stripe
-                from hub.apps.billing.models import Subscription, SubscriptionStatus
-
-                subscription = Subscription.objects.create(
-                    tenant=tenant,
-                    plan=plan,
-                    status=SubscriptionStatus.ACTIVE,
-                    current_period_start=timezone.now(),
-                    current_period_end=timezone.now()
-                    + timedelta(days=365 * 100),  # Effectively forever
-                )
+                # For FREE plan, create a subscription record without Stripe.
+                # Phase 313 — core-only has no billing models; skip.
+                try:
+                    from hub.apps.billing.models import (
+                        Subscription,
+                        SubscriptionStatus,
+                    )
+                except (RuntimeError, ModuleNotFoundError):
+                    Subscription = None  # type: ignore[assignment]
+                if Subscription is not None:
+                    subscription = Subscription.objects.create(
+                        tenant=tenant,
+                        plan=plan,
+                        status=SubscriptionStatus.ACTIVE,
+                        current_period_start=timezone.now(),
+                        current_period_end=timezone.now()
+                        + timedelta(days=365 * 100),  # Effectively forever
+                    )
 
             # Publish tenant.created event
             self.publish_tenant_created(
@@ -1315,7 +1353,9 @@ class PersonalTenantService(BaseService, TenantEventPublisher):
 
     @transaction.atomic
     def create_personal_tenant_for_user(
-        self, email: str, display_name: str | None = None
+        self,
+        email: str,
+        display_name: str | None = None,
     ) -> Tenant:
         """
         Create a personal tenant for a user (self-service registration).
@@ -1337,7 +1377,14 @@ class PersonalTenantService(BaseService, TenantEventPublisher):
         """
         from django.db import IntegrityError
 
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        # Phase 313 — billing is the paid layer. The FREE-plan subscription
+        # row is a billing concept: private core mode raises RuntimeError
+        # (app uninstalled), the public tree raises ModuleNotFoundError
+        # (module absent). Skip the subscription row in core deployments.
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            Subscription = SubscriptionStatus = None  # type: ignore[assignment]
         from hub.apps.users.models import Role
 
         def _create() -> Tenant:
@@ -1349,7 +1396,7 @@ class PersonalTenantService(BaseService, TenantEventPublisher):
                     "FREE plan not found. Run 'python manage.py seed_default_plans' to create default plans.",
                     code="PLAN_NOT_FOUND",
                     details={"required_plan": "free"},
-                )
+                ) from None
 
             name = f"Personal - {email}"
             max_slug_attempts = 5
@@ -1400,13 +1447,14 @@ class PersonalTenantService(BaseService, TenantEventPublisher):
                 max_queued_jobs=platform_defaults.get("max_queued_jobs"),
             )
 
-            Subscription.objects.create(
-                tenant=tenant,
-                plan=plan,
-                status=SubscriptionStatus.ACTIVE,
-                current_period_start=timezone.now(),
-                current_period_end=timezone.now() + timedelta(days=365 * 100),
-            )
+            if Subscription is not None:
+                Subscription.objects.create(
+                    tenant=tenant,
+                    plan=plan,
+                    status=SubscriptionStatus.ACTIVE,
+                    current_period_start=timezone.now(),
+                    current_period_end=timezone.now() + timedelta(days=365 * 100),
+                )
 
             for role_name, description in [
                 ("DATA_PROVIDER", "Can create and manage data assets"),

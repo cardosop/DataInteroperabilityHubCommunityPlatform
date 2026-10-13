@@ -494,12 +494,14 @@ class ODPSExportJobIntegrationTest(TestCase):
         # Job should be COMPLETED (normal) or retried with 100% progress.
         # Either way, the export ran and the contract should be updated.
         self.assertIn(
-            job.status, [JobStatus.COMPLETED, JobStatus.PENDING],
-            f"Job should be COMPLETED or retried-PENDING; got {job.status}"
+            job.status,
+            [JobStatus.COMPLETED, JobStatus.PENDING],
+            f"Job should be COMPLETED or retried-PENDING; got {job.status}",
         )
         self.contract.refresh_from_db()
-        self.assertIsNotNone(self.contract.original_raw,
-                             "Export should have populated original_raw on contract")
+        self.assertIsNotNone(
+            self.contract.original_raw, "Export should have populated original_raw on contract"
+        )
         exported_odps = json.loads(self.contract.original_raw)
         self.assertIn("schema", exported_odps)
         self.assertIn("version", exported_odps)

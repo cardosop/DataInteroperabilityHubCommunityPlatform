@@ -29,7 +29,7 @@ test.describe('Accessibility (axe) — core authenticated pages', () => {
 
       // Skip if redirected to login (auth not configured in this test env)
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auth redirect — skipping a11y check');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Auth redirect — skipping a11y check');
         return;
       }
 

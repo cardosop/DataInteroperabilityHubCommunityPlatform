@@ -1,6 +1,6 @@
 # Service Integration Impact Report
 
-**Generated:** 2026-06-13T21:03:51.404101
+**Generated:** 2026-10-04T21:12:23.408339
 
 ## Summary
 
@@ -129,8 +129,8 @@ This matrix shows the number of service calls from each source service to each t
 #### Service Clients
 
 - **ComplianceServiceClient**
-  - Base URL: `http://compliance-service:8082`
-  - Methods: 4
+  - Base URL: `unknown`
+  - Methods: 5
 
 #### Endpoints (8)
 
@@ -193,7 +193,7 @@ This matrix shows the number of service calls from each source service to each t
 #### Service Clients
 
 - **DQServiceClient**
-  - Base URL: `http://localhost:8084`
+  - Base URL: `unknown`
   - Methods: 2
 
 #### Endpoints (2)
@@ -355,21 +355,21 @@ This matrix shows the number of service calls from each source service to each t
 
 - **SemanticServiceClient**
   - Base URL: `http://semantic-service:8081`
-  - Methods: 14
+  - Methods: 19
 
-#### Endpoints (19)
+#### Endpoints (22)
 
 - `/api/v1/assets/{asset.id}/contracts/`
 - `/api/v1/semantic/ontologies/{ont.id}/`
 - `/context.jsonld`
+- `/delete-resource-triples`
+- `/export`
 - `/health`
 - `/id/`
 - `/ingest`
 - `/map/asset`
 - `/map/contract`
-- `/map/dataset`
-- `/map/odps`
-- ... and 9 more endpoints
+- ... and 12 more endpoints
 
 ---
 
@@ -406,7 +406,7 @@ This matrix shows the number of service calls from each source service to each t
 
 - **WebhookDeliveryClient**
   - Base URL: `unknown`
-  - Methods: 3
+  - Methods: 4
 
 ---
 

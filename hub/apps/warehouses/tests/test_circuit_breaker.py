@@ -6,6 +6,7 @@ Verifies per-tenant circuit-breaker isolation for all 4 connectors.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 
 import pytest
@@ -26,12 +27,10 @@ class TestCircuitBreakerContract(TestCase):
         The ImportError path silently passes (breaker not yet wired).
         The wired path raises ConnectionError only if the breaker is open.
         """
-        try:
+        # Breaker open is a valid outcome when wired — the test verifies
+        # the method doesn't crash with unexpected exceptions.
+        with contextlib.suppress(ConnectionError):
             connector._check_circuit_breaker(self.tenant_id)
-        except ConnectionError:
-            # Breaker open is a valid outcome when wired — the test verifies
-            # the method doesn't crash with unexpected exceptions.
-            pass
 
     def test_snowflake_breaker_per_tenant(self):
         from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector

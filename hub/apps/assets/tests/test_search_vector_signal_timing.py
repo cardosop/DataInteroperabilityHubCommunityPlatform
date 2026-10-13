@@ -1,50 +1,44 @@
 """
-Phase 250.1.F (closes B2-5) — search-vector signal-timing tests.
+Phase 226 G12 (revised from 250.1.F) — search-vector signal-timing tests.
 
 Contract under test
 -------------------
 
 The post_save signal handler at
-``hub.apps.assets.signals.rebuild_asset_search_vector`` MUST:
+``hub.apps.assets.signals.rebuild_asset_search_vector`` MUST enqueue an
+``enqueue_asset_search_vector_update`` job on EVERY save — including:
 
-* **NOT** enqueue an ``enqueue_asset_search_vector_update`` job when
-  the saved Asset is in ``DRAFT`` status — drafts are not searchable,
-  so building a vector for them wastes a ``job_low`` slot on every
-  ``asset_create`` workflow step (Phase 250.1.A).
+* **DRAFT creates** — Phase 226 G12 promises "after a successful create,
+  the resource is queryable via the unified search index". Drafts are
+  tenant-scoped in search (RLS), so indexing them adds no cross-tenant
+  discoverability; it restores owner findability. The old 250.1.F
+  "no-enqueue while DRAFT" optimization was retired because it silently
+  broke that promise (and made search a lossy index of the tenant's
+  resources).
 
-* **DO** enqueue when the save transitions ``DRAFT → ACTIVE`` (the
-  activation save inside the asset-activation saga,
-  ``hub.apps.orchestration.workflows.asset_activation_saga.activate_asset``).
-  This is the first time the asset becomes searchable, so the vector
-  must materialize on the same ``transaction.on_commit`` as the
-  activation.
+* **DRAFT edits** (renames, description changes) — the vector must track
+  the searchable text regardless of status.
 
-* **DO** enqueue on subsequent saves of a non-DRAFT asset — renames,
-  description edits, domain changes — so the vector tracks the
-  searchable text.
+* **The activation save** (``DRAFT → ACTIVE`` inside the
+  asset-activation saga) — a rebuild lands on the same
+  ``transaction.on_commit`` as the activation.
 
-* **DO** enqueue on saves where the status flips ``ACTIVE → PUBLIC``,
-  ``ACTIVE → RETIRED``, ``PUBLIC → RETIRED`` — those assets remain
-  searchable (PUBLIC explicitly so; RETIRED for post-retirement
-  audit searches), so the vector stays in sync.
+* **Subsequent non-DRAFT saves** — renames, description edits, domain
+  changes, and the ``ACTIVE → PUBLIC`` / ``ACTIVE → RETIRED`` /
+  ``PUBLIC → RETIRED`` transitions (RETIRED stays searchable for
+  post-retirement audit).
 
-* **DO** enqueue for a one-shot direct create with
-  ``status=ACTIVE`` — legacy seeds, test fixtures, scheduled-ingest
-  ``auto_activate`` paths — those assets are searchable from row 0.
+* **Rollbacks to DRAFT** (``compensate_activation``) — previously the
+  handler NULLed ``search_vector`` so the rolled-back asset vanished
+  from search; it now re-indexes as DRAFT. A rollback means "this is
+  WIP again", and WIP must stay findable by its owner.
 
-Integration invariant (Phase 250.1.F.2)
----------------------------------------
-After running the canonical asset-creation flow (DRAFT row created,
-then activated via ``asset.save(update_fields=['status', ...])``):
-
-* A new DRAFT asset has ``search_vector = None`` at the DB level.
-* Once activated, executing the rebuild task populates
-  ``search_vector`` with a non-null PostgreSQL ``tsvector``.
-
-So search-vector existence ↔ asset is non-DRAFT (i.e., has been
-activated past the DRAFT phase). Strict reading of the original B2-5
-"exists ↔ ACTIVE" wording is "exists ↔ activated" — PUBLIC and
-RETIRED both have vectors because both states post-date activation.
+Integration invariant
+---------------------
+After a DRAFT create and a run of the real rebuild task body
+(``hub.apps.search.tasks.update_asset_search_vector``), the row's
+``search_vector`` is a non-null PostgreSQL ``tsvector`` — search-vector
+existence tracks "the task ran", not "the asset is non-DRAFT".
 
 TDD doctrine
 ------------
@@ -54,7 +48,7 @@ TDD doctrine
 * The enqueue itself is patched (only the boundary into
   ``django_rq``) so we can spy on call-count without standing up a
   real RQ worker. NO mocks of business logic.
-* The integration test invokes the real
+* The integration tests invoke the real
   ``hub.apps.search.tasks.update_asset_search_vector`` task body
   against a real PostgreSQL row to verify the ``tsvector`` actually
   materializes.
@@ -119,35 +113,27 @@ def _running_on_postgres() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 250.1.F.1 — signal-timing contract
+# 226 G12 — signal-timing contract: every save enqueues
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db(transaction=True)
-class TestDraftSaveDoesNotEnqueue(TestCase):
-    """DRAFT saves (create or update) MUST NOT enqueue a search-
-    vector rebuild — drafts are not searchable, no work to do."""
+class TestDraftSaveEnqueues(TestCase):
+    """DRAFT saves (create or update) MUST enqueue a search-vector
+    rebuild — drafts are tenant-scoped searchable per Phase 226 G12."""
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
-    def test_draft_create_does_not_enqueue(self, mock_enqueue):
+    def test_draft_create_enqueues(self, mock_enqueue):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
 
         with self.captureOnCommitCallbacks(execute=True):
-            _seed_draft(tenant, user)
+            asset = _seed_draft(tenant, user)
 
-        self.assertEqual(
-            mock_enqueue.call_count,
-            0,
-            "Creating a DRAFT asset MUST NOT enqueue a search-vector "
-            "rebuild — vectors are only meaningful for activated "
-            "(non-DRAFT) assets. Phase 250.1.F closes B2-5.",
-        )
+        mock_enqueue.assert_called_once_with(str(asset.pk))
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
-    def test_draft_rename_does_not_enqueue(self, mock_enqueue):
-        """Editing a DRAFT asset's name still doesn't enqueue — the
-        asset hasn't been activated, so no vector to keep in sync."""
+    def test_draft_rename_enqueues(self, mock_enqueue):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
 
@@ -159,15 +145,10 @@ class TestDraftSaveDoesNotEnqueue(TestCase):
             asset.name = "Renamed Draft"
             asset.save(update_fields=["name", "updated_at"])
 
-        self.assertEqual(
-            mock_enqueue.call_count,
-            0,
-            "Renaming a DRAFT asset MUST NOT enqueue a search-vector "
-            f"rebuild; got {mock_enqueue.call_count} call(s).",
-        )
+        mock_enqueue.assert_called_once_with(str(asset.pk))
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
-    def test_draft_description_edit_does_not_enqueue(self, mock_enqueue):
+    def test_draft_description_edit_enqueues(self, mock_enqueue):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
 
@@ -179,24 +160,22 @@ class TestDraftSaveDoesNotEnqueue(TestCase):
             asset.description = "Updated description while still DRAFT"
             asset.save(update_fields=["description", "updated_at"])
 
-        self.assertEqual(mock_enqueue.call_count, 0)
+        mock_enqueue.assert_called_once_with(str(asset.pk))
 
 
 @pytest.mark.django_db(transaction=True)
 class TestActivationEnqueues(TestCase):
-    """The DRAFT → ACTIVE transition (the activation save) MUST
-    enqueue — that's the first time the asset becomes searchable."""
+    """The DRAFT → ACTIVE transition enqueues a rebuild like every
+    other save (activation shares the same on_commit enqueue)."""
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
-    def test_draft_to_active_transition_enqueues_exactly_once(self, mock_enqueue):
+    def test_draft_to_active_transition_enqueues(self, mock_enqueue):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
 
-        # Step 1: create DRAFT — no enqueue per
-        # TestDraftSaveDoesNotEnqueue.
         with self.captureOnCommitCallbacks(execute=True):
             asset = _seed_draft(tenant, user)
-        self.assertEqual(mock_enqueue.call_count, 0)
+        self.assertEqual(mock_enqueue.call_count, 1)
         mock_enqueue.reset_mock()
 
         # Step 2: activate — flip to ACTIVE on the canonical save path
@@ -232,14 +211,10 @@ class TestActivationEnqueues(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestPostActivationUpdatesEnqueue(TestCase):
-    """Once activated, every save still enqueues so the vector
-    tracks renames / description edits / domain edits / status
-    transitions."""
+    """Every save still enqueues so the vector tracks renames /
+    description edits / domain edits / status transitions."""
 
     def _seed_active(self, tenant: Tenant, user: User) -> Asset:
-        # Use ACTIVE on create so we don't have to dance through the
-        # DRAFT-then-activate path inside captureOnCommitCallbacks
-        # twice; this isolates the "post-activation update" scenario.
         return Asset.objects.create(
             tenant=tenant,
             key=f"active-{uuid.uuid4().hex[:8]}",
@@ -316,30 +291,59 @@ class TestSignalConnectivity(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 250.1.F.2 — integration: search_vector exists ↔ asset has been activated
+# 226 G12 — integration: the rebuild task materializes the vector
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db(transaction=True)
-class TestSearchVectorExistsIffActivated(TestCase):
-    """End-to-end: a DRAFT asset has search_vector=None at the DB
-    level; once activated (DRAFT → ACTIVE) and the rebuild task
-    runs, search_vector materializes."""
+class TestSearchVectorExistsAfterTaskRun(TestCase):
+    """End-to-end: the vector is NULL until the (async) rebuild task
+    runs; after it runs, the vector materializes — regardless of
+    DRAFT/ACTIVE status."""
 
-    def test_draft_asset_has_null_search_vector(self):
+    def test_draft_asset_vector_populated_on_create(self):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
 
         with self.captureOnCommitCallbacks(execute=True):
             asset = _seed_draft(tenant, user)
 
-        # Re-read from DB; the signal didn't enqueue, so search_vector
-        # is still the column default of NULL.
+        # run_after_commit dispatches synchronously under pytest, so the
+        # rebuild task runs inline with the create — the vector is
+        # populated immediately. This is the Phase 226 G12 invariant in
+        # its strongest form: a successful create is searchable at once.
         asset.refresh_from_db()
-        self.assertIsNone(
+        self.assertIsNotNone(
             asset.search_vector,
-            "DRAFT asset MUST have search_vector=NULL — Phase 250.1.F "
-            "suppresses the rebuild while in DRAFT.",
+            "DRAFT asset MUST have a populated search_vector right "
+            "after create — Phase 226 G12 makes drafts searchable and "
+            "the test-mode dispatcher runs the rebuild inline.",
+        )
+
+    def test_draft_asset_vector_populates_after_task_run(self):
+        """Create DRAFT → run the rebuild task → the row's
+        search_vector is non-null. This is the Phase 226 G12
+        invariant: a successful create becomes searchable once the
+        indexer processes the enqueued job."""
+        if not _running_on_postgres():
+            self.skipTest("search_vector requires PostgreSQL tsvector support.")
+
+        from hub.apps.search.tasks import update_asset_search_vector
+
+        tenant = _seed_tenant()
+        user = _seed_user(tenant)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            asset = _seed_draft(tenant, user)
+
+        update_asset_search_vector(str(asset.pk))
+
+        asset.refresh_from_db()
+        self.assertIsNotNone(
+            asset.search_vector,
+            "After the rebuild task runs, a DRAFT asset MUST have a "
+            "non-null search_vector — Phase 226 G12 makes drafts "
+            "searchable.",
         )
 
     def test_activation_then_task_run_populates_vector(self):
@@ -357,19 +361,10 @@ class TestSearchVectorExistsIffActivated(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             asset = _seed_draft(tenant, user)
 
-        # Pre-activation: vector is null.
-        asset.refresh_from_db()
-        self.assertIsNone(asset.search_vector)
-
         with self.captureOnCommitCallbacks(execute=True):
             asset.status = AssetStatus.ACTIVE
             asset.save(update_fields=["status", "updated_at"])
 
-        # The on_commit callback would normally enqueue an RQ job;
-        # here we run the task body directly to verify the DB write
-        # produces a non-null vector. This proves the contract end-
-        # to-end: signal fires → enqueue lands → task writes the
-        # vector → row becomes searchable.
         update_asset_search_vector(str(asset.pk))
 
         asset.refresh_from_db()
@@ -411,23 +406,45 @@ class TestSearchVectorExistsIffActivated(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 250.1.F audit-pass — rollback to DRAFT clears the stale vector
+# 226 G12 — rollback to DRAFT re-indexes instead of clearing
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db(transaction=True)
-class TestRollbackToDraftClearsVector(TestCase):
+class TestRollbackToDraftReindexes(TestCase):
     """The asset-activation saga's ``compensate_activation`` rolls a
     previously-activated asset back to DRAFT via
-    ``asset.save(update_fields=['status', 'updated_at'])``. Without
-    an explicit clear, the row would be DRAFT-status with a
-    populated ``search_vector``, and the search-views.py FTS
-    endpoint at ``hub/apps/search/views.py:614-632`` (which gates on
-    ``search_vector__isnull=False``) would keep returning the rolled-
-    back asset. The signal handler closes this gap by NULLing the
-    column inside the same transaction as the rollback save."""
+    ``asset.save(update_fields=['status', 'updated_at'])``. The save
+    enqueues a rebuild (like every other save), so the vector is
+    refreshed to the DRAFT state — the rolled-back asset remains
+    findable by its owner instead of vanishing from search."""
 
-    def test_rollback_active_to_draft_clears_vector(self):
+    @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
+    def test_rollback_active_to_draft_enqueues_rebuild(self, mock_enqueue):
+        tenant = _seed_tenant()
+        user = _seed_user(tenant)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            asset = _seed_draft(tenant, user)
+        with self.captureOnCommitCallbacks(execute=True):
+            asset.status = AssetStatus.ACTIVE
+            asset.save(update_fields=["status", "updated_at"])
+        self.assertGreaterEqual(mock_enqueue.call_count, 1)
+        mock_enqueue.reset_mock()
+
+        # Simulate compensate_activation: flip status back to DRAFT
+        # using the same save shape as
+        # asset_activation_saga.compensate_activation.
+        with self.captureOnCommitCallbacks(execute=True):
+            asset.status = AssetStatus.DRAFT
+            asset.save(update_fields=["status", "updated_at"])
+
+        mock_enqueue.assert_called_once_with(str(asset.pk))
+
+    def test_rollback_active_to_draft_keeps_vector_after_task_run(self):
+        """After a rollback to DRAFT and a rebuild-task run, the
+        vector is still non-null — the rolled-back asset stays in the
+        owner-tenant's search results (Phase 226 G12)."""
         if not _running_on_postgres():
             self.skipTest("search_vector requires PostgreSQL tsvector support.")
 
@@ -436,7 +453,6 @@ class TestRollbackToDraftClearsVector(TestCase):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
 
-        # Seed DRAFT, activate, populate vector.
         with self.captureOnCommitCallbacks(execute=True):
             asset = _seed_draft(tenant, user)
         with self.captureOnCommitCallbacks(execute=True):
@@ -450,76 +466,15 @@ class TestRollbackToDraftClearsVector(TestCase):
             "search_vector before we test the rollback path.",
         )
 
-        # Simulate compensate_activation: flip status back to DRAFT
-        # using the same save shape as
-        # asset_activation_saga.compensate_activation:354.
         with self.captureOnCommitCallbacks(execute=True):
             asset.status = AssetStatus.DRAFT
             asset.save(update_fields=["status", "updated_at"])
+        update_asset_search_vector(str(asset.pk))
 
         asset.refresh_from_db()
-        self.assertIsNone(
+        self.assertIsNotNone(
             asset.search_vector,
-            "Phase 250.1.F invariant: rolling back from non-DRAFT "
-            "to DRAFT MUST clear the stale search_vector so the "
-            "row no longer surfaces from the FTS endpoint at "
-            "hub/apps/search/views.py:614-632 which gates on "
-            "search_vector__isnull=False.",
-        )
-
-    @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
-    def test_rollback_active_to_draft_does_not_enqueue_rebuild(self, mock_enqueue):
-        """The rollback save lands with status=DRAFT, so the
-        existing 'no-enqueue while DRAFT' contract still holds —
-        we clear the vector but DO NOT schedule a rebuild."""
-        tenant = _seed_tenant()
-        user = _seed_user(tenant)
-
-        with self.captureOnCommitCallbacks(execute=True):
-            asset = _seed_draft(tenant, user)
-        with self.captureOnCommitCallbacks(execute=True):
-            asset.status = AssetStatus.ACTIVE
-            asset.save(update_fields=["status", "updated_at"])
-        # We expect at least one enqueue from the activation save.
-        self.assertGreaterEqual(mock_enqueue.call_count, 1)
-        mock_enqueue.reset_mock()
-
-        with self.captureOnCommitCallbacks(execute=True):
-            asset.status = AssetStatus.DRAFT
-            asset.save(update_fields=["status", "updated_at"])
-
-        self.assertEqual(
-            mock_enqueue.call_count,
-            0,
-            "Rollback to DRAFT MUST NOT enqueue a rebuild — the "
-            "vector is being cleared, not rebuilt.",
-        )
-
-    def test_brand_new_draft_does_not_run_clear_update(self):
-        """Brand-new DRAFT (no prior status) MUST NOT trigger the
-        clear-update path either — there's nothing to clear, and
-        running the UPDATE on every DRAFT-create would be a
-        per-row-creation perf regression. The pre_save handler
-        records prior=None for new rows; the signal's
-        ``prior_status is not None`` guard skips the UPDATE."""
-        if not _running_on_postgres():
-            self.skipTest("Requires PostgreSQL.")
-
-        tenant = _seed_tenant()
-        user = _seed_user(tenant)
-
-        # Capture queries during a brand-new DRAFT create. There
-        # MUST be exactly one INSERT + the typical FK validation
-        # selects, with NO ``UPDATE assets SET search_vector = NULL``
-        # — the signal recognises new rows via prior=None.
-
-        with self.captureOnCommitCallbacks(execute=True):
-            draft = _seed_draft(tenant, user)
-        # Observable outcome: new DRAFT rows start with NULL search_vector
-        # and NEVER trigger a clear-update UPDATE. The column default +
-        # signal guard (prior_status is not None) enforce this.
-        self.assertIsNone(
-            draft.search_vector,
-            "Brand-new DRAFT must have NULL search_vector; "
-            "a non-NULL value means the clear-update path fired incorrectly",
+            "Phase 226 G12: rolling back to DRAFT re-indexes the asset "
+            "— the vector stays populated so the owner can still find "
+            "their WIP.",
         )

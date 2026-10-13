@@ -21,6 +21,7 @@ run because the test never commits.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 
 import pytest
@@ -33,6 +34,54 @@ from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan, Ten
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+# ── Connection-cascade guard ───────────────────────────────────────
+# TransactionTestCase._fixture_teardown calls call_command('flush')
+# which runs inside transaction.atomic() and can leave the Django
+# connection wrapper's closed_in_transaction flag set.  When
+# _post_teardown then calls conn.close(), close() returns early
+# (without setting connection = None) when closed_in_transaction is
+# True.  The next TestCase.setUpClass then inherits a stale psycopg2
+# connection and fails with InterfaceError: connection already closed.
+#
+# The fix: override _post_teardown to force-reset every connection
+# wrapper after the parent teardown completes — regardless of what
+# state closed_in_transaction is in.
+# ──────────────────────────────────────────────────────────────────
+
+
+def _force_reset_connections():
+    """Set every connection wrapper to a pristine state."""
+    from django.db import connections
+
+    for alias in connections:
+        conn = connections[alias]
+        with contextlib.suppress(Exception):
+            conn.close()
+        conn.connection = None
+        conn.closed_in_transaction = False
+        conn.needs_rollback = False
+        conn.in_atomic_block = False
+        conn.savepoint_ids = []
+        conn.atomic_blocks = []
+        with contextlib.suppress(Exception):
+            conn.ensure_connection()
+
+
+class _CleanConnectionsMixin:
+    """Mixin: force-reset connections after TransactionTestCase teardown."""
+
+    def _post_teardown(self):
+        try:
+            super()._post_teardown()
+        finally:
+            _force_reset_connections()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        _force_reset_connections()
 
 
 def _new_tenant() -> Tenant:
@@ -112,7 +161,7 @@ def _onboarding_completed_audit_count(tenant: Tenant) -> int:
 # ---------------------------------------------------------------------------
 
 
-class OnboardingSignalOrderingTests(TransactionTestCase):
+class OnboardingSignalOrderingTests(_CleanConnectionsMixin, TransactionTestCase):
     """All 3! = 6 orderings should converge on the same end state."""
 
     def test_admin_first_then_kyc_then_subscription(self):
@@ -178,7 +227,7 @@ class OnboardingSignalOrderingTests(TransactionTestCase):
 # ---------------------------------------------------------------------------
 
 
-class OnboardingSignalIdempotencyTests(TransactionTestCase):
+class OnboardingSignalIdempotencyTests(_CleanConnectionsMixin, TransactionTestCase):
     """The completion timestamp is a one-way ratchet."""
 
     def test_kyc_status_change_after_completion_does_not_reemit(self):
@@ -232,7 +281,7 @@ class OnboardingSignalIdempotencyTests(TransactionTestCase):
 # ---------------------------------------------------------------------------
 
 
-class OnboardingSignalSubscriptionGateTests(TransactionTestCase):
+class OnboardingSignalSubscriptionGateTests(_CleanConnectionsMixin, TransactionTestCase):
     def test_canceled_subscription_does_not_complete_onboarding(self):
         tenant = _new_tenant()
         _grant_admin(tenant)
@@ -252,6 +301,10 @@ class OnboardingSignalSubscriptionGateTests(TransactionTestCase):
 
         tenant.refresh_from_db()
         self.assertIsNone(tenant.onboarding_completed_at)
+        self.assertFalse(
+            tenant.asset_creation_enabled,
+            "INCOMPLETE_EXPIRED subscription must not release the kill switch",
+        )
 
     def test_trial_subscription_completes_onboarding(self):
         tenant = _new_tenant()
@@ -269,7 +322,7 @@ class OnboardingSignalSubscriptionGateTests(TransactionTestCase):
 # ---------------------------------------------------------------------------
 
 
-class OnboardingKycHandlerOrderingRegressionTests(TransactionTestCase):
+class OnboardingKycHandlerOrderingRegressionTests(_CleanConnectionsMixin, TransactionTestCase):
     """250.6.D audit-pass regression — pin the KYC-handler invariant.
 
     The original ``_onboarding_check_kyc_change`` implementation
@@ -349,7 +402,7 @@ class OnboardingKycHandlerOrderingRegressionTests(TransactionTestCase):
         self.assertEqual(_onboarding_completed_audit_count(tenant), 1)
 
 
-class OnboardingServiceIntegrationTests(TransactionTestCase):
+class OnboardingServiceIntegrationTests(_CleanConnectionsMixin, TransactionTestCase):
     """The 250.6.D.1 contract end-to-end: ``create_tenant_with_first_user``
     starts the gate CLOSED; downstream onboarding-flow steps release it."""
 

@@ -154,7 +154,7 @@ test.describe('JOURNEY-ODPS-BITOL-LIFECYCLE', () => {
       await linksSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       if (!(await linksSection.isVisible().catch(() => false))) {
-        test.skip(true, 'ODPS links section not visible (linking job may not have run yet)');
+        test.skip(!(await linksSection.isVisible().catch(() => false)), 'ODPS links section not visible (linking job may not have run yet)');
         return;
       }
       await expect(linksSection).toContainText('Linked');

@@ -35,7 +35,7 @@ def check_manifest(filepath: Path) -> list[str]:
     issues = []
     try:
         content = filepath.read_text()
-    except Exception:
+    except (OSError, ValueError):
         return [f"Cannot read {filepath}"]
 
     # Check for resource limits on containers

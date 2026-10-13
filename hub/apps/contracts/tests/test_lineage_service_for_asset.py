@@ -22,6 +22,7 @@ contracts, and lineage edges.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 from django.test import TestCase
@@ -29,6 +30,9 @@ from django.test import TestCase
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+if TYPE_CHECKING:
+    from hub.apps.contracts.models import Contract
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -50,7 +54,7 @@ def _make_contract(
     *,
     name: str,
     asset: Asset | None = None,
-) -> Contract:  # type: ignore[name-defined]  # test: edge-case type exercise
+) -> Contract:
     from hub.apps.contracts.models import (
         Contract,
         ContractStatus,

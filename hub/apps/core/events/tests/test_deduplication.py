@@ -34,9 +34,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis.RedisError):
         return None
+    else:
+        return client
 
 
 class EventDeduplicationTest(TestCase):
@@ -54,7 +55,7 @@ class EventDeduplicationTest(TestCase):
             keys = self.redis_client.keys("event:dedup:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def tearDown(self):
@@ -63,7 +64,7 @@ class EventDeduplicationTest(TestCase):
             keys = self.redis_client.keys("event:dedup:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_generate_deduplication_key(self):

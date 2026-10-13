@@ -184,3 +184,74 @@ class TestErrorCodeHelpers(TestCase):
             get_error_message(None, status.HTTP_500_INTERNAL_SERVER_ERROR),
             "Internal server error",
         )
+
+
+class TestDrfValidationErrorEnvelope(TestCase):
+    """DRF ValidationError → envelope message/code contract (task 0.15).
+
+    Field-level DRF ValidationErrors carry ``ErrorDetail`` objects; the
+    envelope must render the HUMAN strings (joined), never the Python
+    repr ``[ErrorDetail(string=..., code=...)]`` — and must surface the
+    first DOMAIN code nested in the field errors (skipping Django/DRF's
+    generic ``invalid``/``required``/``blank``/``null``) instead of
+    collapsing everything to ``VALIDATION_ERROR``.
+    """
+
+    def _drf_validation_error(self, detail):
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        return DRFValidationError(detail)
+
+    def test_message_joins_human_field_error_strings(self):
+        exc = self._drf_validation_error(
+            {
+                "host": [
+                    "Host 'evil.example.com' is not a Databricks workspace host.",
+                ],
+                "region": ["This field is required."],
+            }
+        )
+        message = get_error_message(exc, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Host 'evil.example.com' is not a Databricks workspace host.", message)
+        self.assertIn("This field is required.", message)
+        self.assertNotIn("ErrorDetail", message)
+        self.assertNotIn("string=", message)
+
+    def test_message_list_detail_joined(self):
+        exc = self._drf_validation_error(["First problem.", "Second problem."])
+        message = get_error_message(exc, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("First problem.", message)
+        self.assertIn("Second problem.", message)
+
+    def test_code_extracts_nested_domain_code(self):
+        exc = self._drf_validation_error(
+            {
+                "host": [
+                    "Host 'evil.example.com' is not a Databricks workspace host.",
+                ],
+            }
+        )
+        # Attach a domain code to the nested ErrorDetail — the shape the
+        # serializers produce for dict-form model validation errors.
+        exc.detail["host"][0].code = "DATABRICKS_HOST_NOT_ALLOWED"
+        code = get_error_code(exc, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(code, "DATABRICKS_HOST_NOT_ALLOWED")
+
+    def test_code_skips_generic_django_codes(self):
+        exc = self._drf_validation_error({"region": ["This field is required."]})
+        code = get_error_code(exc, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(code, StandardErrorCodes.VALIDATION_ERROR)
+
+    def test_code_uses_first_domain_code_across_fields(self):
+        exc = self._drf_validation_error(
+            {
+                "region": ["Bad region."],
+                "host": ["Bad host."],
+            }
+        )
+        exc.detail["region"][0].code = "DATA_RESIDENCY_MISMATCH"
+        exc.detail["host"][0].code = "DATABRICKS_HOST_NOT_ALLOWED"
+        code = get_error_code(exc, status.HTTP_400_BAD_REQUEST)
+        # dict iteration order is insertion order — the first field's
+        # domain code wins; either is a valid machine-readable answer.
+        self.assertIn(code, ("DATA_RESIDENCY_MISMATCH", "DATABRICKS_HOST_NOT_ALLOWED"))

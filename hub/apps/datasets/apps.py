@@ -13,11 +13,11 @@ class DatasetsConfig(AppConfig):
     verbose_name = "Datasets"
 
     def ready(self):
-        import hub.apps.datasets.signals  # noqa: F401
+        import hub.apps.datasets.signals
         from hub.apps.datasets.orphan_file_reconcile import (
             install_dataset_orphan_file_hooks,
         )
 
         install_dataset_orphan_file_hooks()
 
-        from . import business_rules  # noqa: F401 — preload @register_rule
+        from . import business_rules

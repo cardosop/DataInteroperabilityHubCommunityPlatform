@@ -90,19 +90,19 @@ class ConnectionServiceMixin:
             delta=1,
         )
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(
-                "marketplace_integration.create_connection",
-                attributes={
-                    "tenant_id": tenant_id,
-                    "user_id": user_id,
-                    "marketplace_type": marketplace_type,
-                    "connection_name": name,
-                },
-            )
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(
+            "marketplace_integration.create_connection",
+            attributes={
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "marketplace_type": marketplace_type,
+                "connection_name": name,
+            },
+        )
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceConnection:
             # Validate marketplace type
             valid_types = [mt.value for mt in MarketplaceType]
             if marketplace_type not in valid_types:
@@ -115,12 +115,12 @@ class ConnectionServiceMixin:
             try:
                 tenant_obj = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                raise NotFoundError(f"Tenant with id {tenant_id} not found")
+                raise NotFoundError(f"Tenant with id {tenant_id} not found") from None
 
             try:
                 user_obj = User.objects.get(id=user_id)
             except User.DoesNotExist:
-                raise NotFoundError(f"User with id {user_id} not found")
+                raise NotFoundError(f"User with id {user_id} not found") from None
 
             # Validate via MarketplaceIntegrationBusinessRules before mutation
             payload_connection = MarketplaceConnection(
@@ -179,7 +179,7 @@ class ConnectionServiceMixin:
                             raise ValidationError(
                                 f"Connection config '{key}' targets a private/reserved address: {ssrf_exc}",
                                 code="SSRF_VIOLATION",
-                            )
+                            ) from ssrf_exc
 
             # Create connection (nested atomic block acts as savepoint)
             try:
@@ -195,13 +195,13 @@ class ConnectionServiceMixin:
                 raise ConflictError(
                     f"Connection with name '{name}' already exists for tenant {tenant_id}",
                     details={"name": name, "tenant_id": tenant_id},
-                )
+                ) from None
             except DjangoValidationError as e:
                 if "already exists" in str(e):
                     raise ConflictError(
                         f"Connection with name '{name}' already exists for tenant {tenant_id}",
                         details={"name": name, "tenant_id": tenant_id},
-                    )
+                    ) from None
                 raise
 
             # Record metrics
@@ -325,6 +325,8 @@ class ConnectionServiceMixin:
 
             return connection
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             # Re-raise service errors
             if span:
@@ -351,6 +353,8 @@ class ConnectionServiceMixin:
             raise ValidationError(
                 f"Failed to create marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -409,18 +413,18 @@ class ConnectionServiceMixin:
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(
-                "marketplace_integration.update_connection",
-                attributes={
-                    "connection_id": connection_id,
-                    "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id,
-                },
-            )
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(
+            "marketplace_integration.update_connection",
+            attributes={
+                "connection_id": connection_id,
+                "tenant_id": effective_tenant_id,
+                "user_id": effective_user_id,
+            },
+        )
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceConnection:
             # Get connection
             connection = self.get_resource_or_raise(
                 MarketplaceConnection, connection_id, tenant_id=effective_tenant_id
@@ -431,23 +435,20 @@ class ConnectionServiceMixin:
             original_values = {}
 
             # Update name if provided
-            if name is not None:
-                if name != connection.name:
-                    # Check for duplicate name
-                    if (
-                        MarketplaceConnection.objects.filter(
-                            tenant_id=effective_tenant_id, name=name
-                        )
-                        .exclude(id=connection_id)
-                        .exists()
-                    ):
-                        raise ConflictError(
-                            f"Connection with name '{name}' already exists for tenant {effective_tenant_id}",
-                            details={"name": name, "tenant_id": effective_tenant_id},
-                        )
-                    original_values["name"] = connection.name
-                    connection.name = name
-                    changes["name"] = name
+            if name is not None and name != connection.name:
+                # Check for duplicate name
+                if (
+                    MarketplaceConnection.objects.filter(tenant_id=effective_tenant_id, name=name)
+                    .exclude(id=connection_id)
+                    .exists()
+                ):
+                    raise ConflictError(
+                        f"Connection with name '{name}' already exists for tenant {effective_tenant_id}",
+                        details={"name": name, "tenant_id": effective_tenant_id},
+                    )
+                original_values["name"] = connection.name
+                connection.name = name
+                changes["name"] = name
 
             # Update config if provided
             if config is not None:
@@ -592,6 +593,8 @@ class ConnectionServiceMixin:
 
             return connection
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             # Re-raise service errors
             if span:
@@ -617,6 +620,8 @@ class ConnectionServiceMixin:
             raise ValidationError(
                 f"Failed to update marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -863,7 +868,7 @@ class ConnectionServiceMixin:
                 try:
                     Tenant.objects.get(id=effective_tenant_id)
                 except Tenant.DoesNotExist:
-                    raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+                    raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
             # Build query
             query = MarketplaceConnection.objects.all()
@@ -892,8 +897,6 @@ class ConnectionServiceMixin:
                 f"Listed {len(connections)} marketplace connections for tenant {effective_tenant_id}"
             )
 
-            return connections
-
         except NotFoundError:
             # Re-raise service errors
             if span:
@@ -913,6 +916,8 @@ class ConnectionServiceMixin:
                 },
             )
             raise
+        else:
+            return connections
         finally:
             if span_context:
                 try:
@@ -980,8 +985,6 @@ class ConnectionServiceMixin:
                 )
                 set_span_status(StatusCode.OK)
 
-            return connection
-
         except NotFoundError as e:
             # Re-raise service errors
             if span:
@@ -1002,6 +1005,8 @@ class ConnectionServiceMixin:
                 },
             )
             raise
+        else:
+            return connection
         finally:
             if span_context:
                 try:
@@ -1242,8 +1247,6 @@ class ConnectionServiceMixin:
                 f"Tested marketplace connection {connection.id}: {'SUCCESS' if success else 'FAILED'}"
             )
 
-            return result
-
         except (NotFoundError, ValidationError) as e:
             # Re-raise service errors
             if span:
@@ -1267,6 +1270,8 @@ class ConnectionServiceMixin:
             raise ValidationError(
                 f"Failed to test marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
+        else:
+            return result
         finally:
             if span_context:
                 try:

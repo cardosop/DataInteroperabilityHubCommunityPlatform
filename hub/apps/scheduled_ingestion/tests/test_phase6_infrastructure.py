@@ -74,11 +74,11 @@ class TestHubClientInfrastructure(TestCase):
 
                 with self.assertRaises(ValueError) as cm:
                     HubClient()
-                self.assertIn("HUB_BASE_URL", str(cm.exception))
+                assert "HUB_BASE_URL" in str(cm.exception)
             except ImportError:
                 raise unittest.SkipTest(
                     "hub_client not available (prefect-integration not in path)"
-                )
+                ) from None
 
     def test_hub_client_requires_hub_worker_api_key(self):
         """Test that HubClient raises ValueError if HUB_WORKER_API_KEY is not set."""
@@ -90,11 +90,11 @@ class TestHubClientInfrastructure(TestCase):
 
                 with self.assertRaises(ValueError) as cm:
                     HubClient()
-                self.assertIn("HUB_WORKER_API_KEY", str(cm.exception))
+                assert "HUB_WORKER_API_KEY" in str(cm.exception)
             except ImportError:
                 raise unittest.SkipTest(
                     "hub_client not available (prefect-integration not in path)"
-                )
+                ) from None
 
     def test_hub_client_initializes_with_env_vars(self):
         """Test that HubClient initializes successfully with environment variables."""
@@ -110,12 +110,12 @@ class TestHubClientInfrastructure(TestCase):
                 from hub_client import HubClient
 
                 client = HubClient()
-                self.assertEqual(client.base_url, "http://api-service:8000")
-                self.assertEqual(client.api_key, self.worker_api_key)
+                assert client.base_url == "http://api-service:8000"
+                assert client.api_key == self.worker_api_key
             except ImportError:
                 raise unittest.SkipTest(
                     "hub_client not available (prefect-integration not in path)"
-                )
+                ) from None
 
     def test_hub_client_initializes_with_explicit_params(self):
         """Test that HubClient initializes with explicit parameters (overrides env vars)."""
@@ -134,12 +134,12 @@ class TestHubClientInfrastructure(TestCase):
                     base_url="http://api-service:8000",
                     api_key=self.worker_api_key,
                 )
-                self.assertEqual(client.base_url, "http://api-service:8000")
-                self.assertEqual(client.api_key, self.worker_api_key)
+                assert client.base_url == "http://api-service:8000"
+                assert client.api_key == self.worker_api_key
             except ImportError:
                 raise unittest.SkipTest(
                     "hub_client not available (prefect-integration not in path)"
-                )
+                ) from None
 
     def test_hub_client_strips_trailing_slash(self):
         """Test that HubClient strips trailing slash from base_url."""
@@ -155,11 +155,11 @@ class TestHubClientInfrastructure(TestCase):
                 from hub_client import HubClient
 
                 client = HubClient()
-                self.assertEqual(client.base_url, "http://api-service:8000")
+                assert client.base_url == "http://api-service:8000"
             except ImportError:
                 raise unittest.SkipTest(
                     "hub_client not available (prefect-integration not in path)"
-                )
+                ) from None
 
 
 class TestEnvironmentConfiguration(SimpleTestCase):
@@ -175,21 +175,21 @@ class TestEnvironmentConfiguration(SimpleTestCase):
         test_url = "http://api-service:8000"
         with patch.dict(os.environ, {"HUB_BASE_URL": test_url}, clear=False):
             url = os.getenv("HUB_BASE_URL")
-            self.assertEqual(url, test_url)
+            assert url == test_url
 
     def test_hub_worker_api_key_environment_variable(self):
         """Test that HUB_WORKER_API_KEY can be read from environment."""
         test_key = "test-api-key-12345"
         with patch.dict(os.environ, {"HUB_WORKER_API_KEY": test_key}, clear=False):
             key = os.getenv("HUB_WORKER_API_KEY")
-            self.assertEqual(key, test_key)
+            assert key == test_key
 
     def test_docker_compose_default_values(self):
         """Test that default values match docker-compose configuration."""
         # Default in docker-compose.yml: http://api-service:8000
         default_url = os.getenv("HUB_BASE_URL", "http://api-service:8000")
-        self.assertIn("api-service", default_url)
-        self.assertIn("8000", default_url)
+        assert "api-service" in default_url
+        assert "8000" in default_url
 
 
 class TestHubAPIConnectivity(TestCase):
@@ -277,20 +277,20 @@ class TestHubAPIConnectivity(TestCase):
                 client = HubClient()
                 # Test header generation
                 headers = client._headers(str(self.tenant.id))
-                self.assertEqual(headers["Authorization"], f"ApiKey {self.worker_api_key}")
-                self.assertEqual(headers["X-Tenant-ID"], str(self.tenant.id))
-                self.assertEqual(headers["Content-Type"], "application/json")
+                assert headers["Authorization"] == f"ApiKey {self.worker_api_key}"
+                assert headers["X-Tenant-ID"] == str(self.tenant.id)
+                assert headers["Content-Type"] == "application/json"
             except ImportError:
                 raise unittest.SkipTest(
                     "hub_client not available (prefect-integration not in path)"
-                )
+                ) from None
 
     def test_docker_compose_environment_defaults(self):
         """Test that docker-compose defaults match expected values."""
         # Default in docker-compose.yml and docker-compose.dev.yml
         # HUB_BASE_URL defaults to http://api-service:8000 when unset
         default_url = os.getenv("HUB_BASE_URL", "http://api-service:8000")
-        self.assertIn("api-service", default_url)
-        self.assertIn("8000", default_url)
+        assert "api-service" in default_url
+        assert "8000" in default_url
         # HUB_WORKER_API_KEY defaults to empty string (must be set explicitly)
         # This is correct - API key should not have a default

@@ -196,39 +196,31 @@ class TriggerScheduleRunTwiceTest(TestCase):
         # idempotent-fetch.
         ds1 = Dataset.objects.get(id=ds1_id)
         ds2 = Dataset.objects.get(id=ds2_id)
-        self.assertIsNotNone(ds1.asset)
-        self.assertIsNotNone(ds2.asset)
-        self.assertEqual(ds1.asset_id, ds2.asset_id)
+        assert ds1.asset is not None
+        assert ds2.asset is not None
+        assert ds1.asset_id == ds2.asset_id
 
         # --- 260.7.C.1 monotonic version contract.
-        self.assertEqual(ds1.version, 1, "first run must produce version=1")
-        self.assertEqual(ds2.version, 2, "second run must produce version=N+1=2")
+        assert ds1.version == 1, "first run must produce version=1"
+        assert ds2.version == 2, "second run must produce version=N+1=2"
 
         # --- 260.7.C.1 is_current flip (the half that already worked).
-        self.assertFalse(
-            ds1.is_current,
-            "prior version must be flipped to is_current=False on supersession",
+        assert not ds1.is_current, (
+            "prior version must be flipped to is_current=False on supersession"
         )
-        self.assertTrue(
-            ds2.is_current,
-            "new version must be is_current=True",
-        )
+        assert ds2.is_current, "new version must be is_current=True"
 
         # --- 260.7.C.1 archived_at stamping (the half that 260.7.C
         # adds — it was a gap in the bulk-update path).
-        self.assertIsNotNone(
-            ds1.archived_at,
+        assert ds1.archived_at is not None, (
             "prior version MUST have archived_at stamped at supersession "
-            "(was a gap pre-260.7.C — bulk update only flipped is_current)",
+            "(was a gap pre-260.7.C — bulk update only flipped is_current)"
         )
-        self.assertIsNone(
-            ds2.archived_at,
-            "current version must NOT have archived_at set",
-        )
+        assert ds2.archived_at is None, "current version must NOT have archived_at set"
 
         # --- Version-tree integrity: v2.parent_version → v1.
-        self.assertIsNone(ds1.parent_version)
-        self.assertEqual(ds2.parent_version_id, ds1.id)
+        assert ds1.parent_version is None
+        assert ds2.parent_version_id == ds1.id
 
     @pytest.mark.integration
     def test_only_one_is_current_after_two_runs(self):
@@ -260,10 +252,8 @@ class TriggerScheduleRunTwiceTest(TestCase):
             asset_id=asset_id,
             is_current=True,
         ).count()
-        self.assertEqual(
-            current_count,
-            1,
-            f"exactly one Dataset per (tenant, asset) must have is_current=True; got {current_count}",
+        assert current_count == 1, (
+            f"exactly one Dataset per (tenant, asset) must have is_current=True; got {current_count}"
         )
 
 
@@ -385,10 +375,9 @@ class VersionHistoryManagerArchivedAtUnitTest(TestCase):
         # only is_current=True row, and the .exclude(id=parent.id)
         # excludes itself).
         parent.refresh_from_db()
-        self.assertTrue(parent.is_current)
-        self.assertIsNone(
-            parent.archived_at,
-            "first version's archived_at must remain NULL (no prior to archive)",
+        assert parent.is_current
+        assert parent.archived_at is None, (
+            "first version's archived_at must remain NULL (no prior to archive)"
         )
 
         # Create a SECOND version against the SAME asset. The bulk
@@ -413,31 +402,21 @@ class VersionHistoryManagerArchivedAtUnitTest(TestCase):
         child.refresh_from_db()
 
         # Pin the is_current half (was already correct pre-260.7.C).
-        self.assertFalse(
-            parent.is_current,
-            "supersession: prior version's is_current MUST be False",
-        )
-        self.assertTrue(
-            child.is_current,
-            "supersession: new version's is_current MUST be True",
-        )
+        assert not parent.is_current, "supersession: prior version's is_current MUST be False"
+        assert child.is_current, "supersession: new version's is_current MUST be True"
 
         # Pin the archived_at half (was the gap 260.7.C.1 closed).
-        self.assertIsNotNone(
-            parent.archived_at,
+        assert parent.archived_at is not None, (
             "260.7.C.1 contract: prior version's archived_at MUST be stamped "
-            "by the bulk update — was NULL pre-fix",
+            "by the bulk update — was NULL pre-fix"
         )
         # Sanity bound: archived_at is recent (within the test window).
-        self.assertGreaterEqual(parent.archived_at, before_call)
-        self.assertLessEqual(parent.archived_at, timezone.now())
+        assert parent.archived_at >= before_call
+        assert parent.archived_at <= timezone.now()
 
         # The new version MUST NOT have archived_at set — only
         # superseded versions do.
-        self.assertIsNone(
-            child.archived_at,
-            "current version must NOT have archived_at set",
-        )
+        assert child.archived_at is None, "current version must NOT have archived_at set"
 
     @pytest.mark.integration
     def test_create_version_with_is_current_false_does_not_touch_others(self):
@@ -478,16 +457,10 @@ class VersionHistoryManagerArchivedAtUnitTest(TestCase):
         v2.refresh_from_db()
 
         # v1 untouched: still is_current, no archived_at stamp.
-        self.assertTrue(
-            v1.is_current,
-            "is_current=False on new version must NOT flip the existing current",
-        )
-        self.assertIsNone(
-            v1.archived_at,
-            "is_current=False path must NOT stamp archived_at on others",
-        )
+        assert v1.is_current, "is_current=False on new version must NOT flip the existing current"
+        assert v1.archived_at is None, "is_current=False path must NOT stamp archived_at on others"
         # v2 written with is_current=False as requested.
-        self.assertFalse(v2.is_current)
+        assert not v2.is_current
 
 
 @pytest.mark.django_db(transaction=True)

@@ -53,7 +53,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
     @action(detail=False, methods=["get"], url_path="unread-count")
-    def unread_count(self, request):
+    def unread_count(self, _request):
         """Return the unread count for the badge.
 
         GET /api/v1/notifications/user-notifications/unread-count/
@@ -62,7 +62,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({"count": count}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="read")
-    def mark_read(self, request, id=None):
+    def mark_read(self, _request, id=None):
         """Mark a single notification as read.
 
         POST /api/v1/notifications/user-notifications/{id}/read/
@@ -74,7 +74,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path="read-all")
-    def mark_all_read(self, request):
+    def mark_all_read(self, _request):
         """Mark every unread notification for this user as read.
 
         POST /api/v1/notifications/user-notifications/read-all/

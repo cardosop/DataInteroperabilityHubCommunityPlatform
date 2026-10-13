@@ -175,9 +175,6 @@ def check_rate_limit(
         )
         return False, error
 
-    # When tenant_id is present, global + tenant + user checks run.
-    has_tenant = True
-
     # Get Redis client
     if redis_client is None:
         try:
@@ -187,146 +184,136 @@ def check_rate_limit(
             redis_client = redis.from_url(
                 redis_url, decode_responses=False, socket_connect_timeout=0.1
             )
-        except Exception as e:
+        except (redis.RedisError, ValueError) as e:
             logger.warning("rate_limit_redis_connection_error", error=str(e))
             # Fail open if Redis is unavailable
             return True, None
 
     current_time = time.time()
 
-    # Check global limit first (most restrictive)
-    try:
-        global_key = generate_rate_limit_key(level="global")
-        global_limit = get_rate_limit("global")
-        is_allowed, count, reset_time = _check_single_limit(
-            redis_client, global_key, global_limit, current_time
+    # Check limits in order: global (most restrictive), tenant, then user.
+    levels: list[tuple[str, str, int]] = [
+        ("global", generate_rate_limit_key(level="global"), get_rate_limit("global")),
+    ]
+    if tenant_id:
+        levels.append(
+            (
+                "tenant",
+                generate_rate_limit_key(tenant_id=tenant_id, level="tenant"),
+                get_rate_limit("tenant"),
+            )
+        )
+    if tenant_id and user_id:
+        levels.append(
+            (
+                "user",
+                generate_rate_limit_key(tenant_id=tenant_id, user_id=user_id, level="user"),
+                get_rate_limit("user"),
+            )
+        )
+
+    for level, key, limit in levels:
+        is_allowed, error = _check_rate_limit_level(
+            level=level,
+            key=key,
+            limit=limit,
+            current_time=current_time,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            redis_client=redis_client,
         )
         if not is_allowed:
-            retry_seconds = max(0, int(reset_time - current_time))
-            retry_after_minutes = (retry_seconds + 59) // 60  # Round up to minutes
-            error = ODPSRefResolutionError(
-                message=f"Global ODPS $ref resolution rate limit exceeded: {count}/{global_limit} requests per hour. Please retry after {retry_after_minutes} minute(s) (at {reset_time})",
-                retry_after=reset_time,
-                error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
-            )
-            logger.warning(
-                "odps_ref_rate_limit_exceeded",
-                level="global",
-                count=count,
-                limit=global_limit,
-                reset_time=reset_time,
-            )
-            # Track rate limit violation metrics
-            try:
-                odps_rate_limit_violations_total.labels(
-                    level="global", tenant_id=tenant_id or "unknown", user_id=""
-                ).inc()
-            except Exception as metrics_err:
-                logger.debug(
-                    "odps_rate_limit_metrics_failed",
-                    extra={
-                        "error_type": type(metrics_err).__name__,
-                        "error": str(metrics_err),
-                        "level": "global",
-                    },
-                )
             return False, error
-    except Exception as e:
-        logger.warning("rate_limit_check_error", level="global", error=str(e))
-        # Fail open on errors
-
-    # Check tenant limit (skip when no tenant context, e.g. ref resolution in CI/CLI)
-    if has_tenant and tenant_id:
-        try:
-            tenant_key = generate_rate_limit_key(tenant_id=tenant_id, level="tenant")
-            tenant_limit = get_rate_limit("tenant")
-            is_allowed, count, reset_time = _check_single_limit(
-                redis_client, tenant_key, tenant_limit, current_time
-            )
-            if not is_allowed:
-                retry_seconds = max(0, int(reset_time - current_time))
-                retry_after_minutes = (retry_seconds + 59) // 60  # Round up to minutes
-                error = ODPSRefResolutionError(
-                    message=f"Tenant ODPS $ref resolution rate limit exceeded: {count}/{tenant_limit} requests per hour. Please retry after {retry_after_minutes} minute(s) (at {reset_time})",
-                    retry_after=reset_time,
-                    error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
-                    tenant_id=tenant_id,
-                )
-                logger.warning(
-                    "odps_ref_rate_limit_exceeded",
-                    level="tenant",
-                    tenant_id=tenant_id,
-                    count=count,
-                    limit=tenant_limit,
-                    reset_time=reset_time,
-                )
-                # Track rate limit violation metrics
-                try:
-                    odps_rate_limit_violations_total.labels(
-                        level="tenant", tenant_id=tenant_id, user_id=""
-                    ).inc()
-                except Exception as metrics_err:
-                    logger.debug(
-                        "odps_rate_limit_metrics_failed",
-                        extra={
-                            "error_type": type(metrics_err).__name__,
-                            "error": str(metrics_err),
-                            "level": "tenant",
-                        },
-                    )
-                return False, error
-        except Exception as e:
-            logger.warning("rate_limit_check_error", level="tenant", error=str(e))
-            # Fail open on errors
-
-    # Check user limit
-    if has_tenant and tenant_id and user_id:
-        try:
-            user_key = generate_rate_limit_key(tenant_id=tenant_id, user_id=user_id, level="user")
-            user_limit = get_rate_limit("user")
-            is_allowed, count, reset_time = _check_single_limit(
-                redis_client, user_key, user_limit, current_time
-            )
-            if not is_allowed:
-                retry_seconds = max(0, int(reset_time - current_time))
-                retry_after_minutes = (retry_seconds + 59) // 60  # Round up to minutes
-                error = ODPSRefResolutionError(
-                    message=f"User ODPS $ref resolution rate limit exceeded: {count}/{user_limit} requests per hour. Please retry after {retry_after_minutes} minute(s) (at {reset_time})",
-                    retry_after=reset_time,
-                    error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                )
-                logger.warning(
-                    "odps_ref_rate_limit_exceeded",
-                    level="user",
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    count=count,
-                    limit=user_limit,
-                    reset_time=reset_time,
-                )
-                # Track rate limit violation metrics
-                try:
-                    odps_rate_limit_violations_total.labels(
-                        level="user", tenant_id=tenant_id, user_id=user_id or ""
-                    ).inc()
-                except Exception as metrics_err:
-                    logger.debug(
-                        "odps_rate_limit_metrics_failed",
-                        extra={
-                            "error_type": type(metrics_err).__name__,
-                            "error": str(metrics_err),
-                            "level": "user",
-                        },
-                    )
-                return False, error
-        except Exception as e:
-            logger.warning("rate_limit_check_error", level="user", error=str(e))
-            # Fail open on errors
 
     # All checks passed
     return True, None
+
+    # Tenant-level check runs below via the shared per-level helper
+    # (skipped when no tenant context, e.g. ref resolution in CI/CLI).
+
+    # User-level check runs below via the shared per-level helper
+    # (skipped when no tenant/user context).
+
+
+def _check_rate_limit_level(
+    level: str,
+    key: str,
+    limit: int,
+    current_time: float,
+    tenant_id: str | None,
+    user_id: str | None,
+    redis_client: Any,
+) -> tuple[bool, ODPSRefResolutionError | None]:
+    """
+    Check a single rate-limit level.
+
+    Returns (True, None) when the request is allowed at this level or when
+    the Redis check fails (fail open), and (False, error) when the limit
+    is exceeded.
+
+    Args:
+        level: Rate limit level - "tenant", "user", or "global"
+        key: Redis key for this level
+        limit: Maximum number of requests allowed per window
+        current_time: Current timestamp
+        tenant_id: Tenant UUID (None for global checks)
+        user_id: User UUID (None for global and tenant checks)
+        redis_client: Redis client
+
+    Returns:
+        Tuple of (is_allowed, error)
+    """
+    try:
+        is_allowed, count, reset_time = _check_single_limit(redis_client, key, limit, current_time)
+    except (redis.RedisError, ValueError) as e:
+        logger.warning("rate_limit_check_error", level=level, error=str(e))
+        # Fail open on errors
+        return True, None
+
+    if is_allowed:
+        return True, None
+
+    retry_seconds = max(0, int(reset_time - current_time))
+    retry_after_minutes = (retry_seconds + 59) // 60  # Round up to minutes
+    error = ODPSRefResolutionError(
+        message=(
+            f"{level.capitalize()} ODPS $ref resolution rate limit exceeded: "
+            f"{count}/{limit} requests per hour. Please retry after "
+            f"{retry_after_minutes} minute(s) (at {reset_time})"
+        ),
+        retry_after=reset_time,
+        error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
+        tenant_id=tenant_id if level in ("tenant", "user") else None,
+        user_id=user_id if level == "user" else None,
+    )
+    log_kwargs: dict[str, Any] = {
+        "level": level,
+        "count": count,
+        "limit": limit,
+        "reset_time": reset_time,
+    }
+    if level in ("tenant", "user"):
+        log_kwargs["tenant_id"] = tenant_id
+    if level == "user":
+        log_kwargs["user_id"] = user_id
+    logger.warning("odps_ref_rate_limit_exceeded", **log_kwargs)
+    # Track rate limit violation metrics
+    try:
+        odps_rate_limit_violations_total.labels(
+            level=level,
+            tenant_id=tenant_id or "unknown",
+            user_id=(user_id or "") if level == "user" else "",
+        ).inc()
+    except Exception as metrics_err:
+        logger.debug(
+            "odps_rate_limit_metrics_failed",
+            extra={
+                "error_type": type(metrics_err).__name__,
+                "error": str(metrics_err),
+                "level": level,
+            },
+        )
+    return False, error
 
 
 def _check_single_limit(
@@ -390,7 +377,7 @@ def _check_single_limit(
 
         return True, current_count + 1, reset_time
 
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         logger.warning("rate_limit_redis_error", key=key, error=str(e))
         # Fail open on Redis errors
         return True, 0, int(current_time + RATE_LIMIT_WINDOW)
@@ -427,7 +414,7 @@ def get_rate_limit_info(
             redis_client = redis.from_url(
                 redis_url, decode_responses=False, socket_connect_timeout=0.1
             )
-        except Exception as e:
+        except (redis.RedisError, ValueError) as e:
             logger.warning(
                 "rate_limit_info_redis_connection_error",
                 extra={"error_type": type(e).__name__, "error": str(e)},
@@ -443,7 +430,7 @@ def get_rate_limit_info(
         global_limit = get_rate_limit("global")
         global_info = _get_limit_info(redis_client, global_key, global_limit, current_time)
         result["global"] = global_info
-    except Exception as e:
+    except (redis.RedisError, ValueError, TypeError) as e:
         logger.debug(
             "rate_limit_info_global_failed", extra={"error_type": type(e).__name__, "error": str(e)}
         )
@@ -455,7 +442,7 @@ def get_rate_limit_info(
             tenant_limit = get_rate_limit("tenant")
             tenant_info = _get_limit_info(redis_client, tenant_key, tenant_limit, current_time)
             result["tenant"] = tenant_info
-        except Exception as e:
+        except (redis.RedisError, ValueError, TypeError) as e:
             logger.debug(
                 "rate_limit_info_tenant_failed",
                 extra={"error_type": type(e).__name__, "error": str(e)},
@@ -468,7 +455,7 @@ def get_rate_limit_info(
             user_limit = get_rate_limit("user")
             user_info = _get_limit_info(redis_client, user_key, user_limit, current_time)
             result["user"] = user_info
-        except Exception as e:
+        except (redis.RedisError, ValueError, TypeError) as e:
             logger.debug(
                 "rate_limit_info_user_failed",
                 extra={"error_type": type(e).__name__, "error": str(e)},
@@ -513,7 +500,7 @@ def _get_limit_info(redis_client: Any, key: str, limit: int, current_time: float
             "remaining": max(0, limit - count),
             "reset_time": reset_time,
         }
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         logger.debug(
             "rate_limit_get_limit_info_failed",
             extra={"error_type": type(e).__name__, "error": str(e), "key": key},

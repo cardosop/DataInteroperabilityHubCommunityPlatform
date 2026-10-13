@@ -18,7 +18,7 @@ except ImportError:
     class DummyPytest:
         class mark:
             @staticmethod
-            def django_db(**kwargs):
+            def django_db(**_kwargs):
                 return lambda f: f
 
             @staticmethod

@@ -19,9 +19,9 @@ To run these tests:
 3. Run: pytest sdk/python/tests/test_mesh_api.py -v
 """
 import asyncio
+import contextlib
 import subprocess
 import uuid
-from typing import Optional
 
 import pytest
 
@@ -33,7 +33,6 @@ from datahub_interoperability.errors import (
 from tests._sdk_test_helpers import (
     create_real_api_config,
 )
-import contextlib
 
 # File-specific tenant parameters
 _MESH_TENANT_SLUG = "mesh-sdk-test-tenant"
@@ -599,7 +598,7 @@ async def test_get_compliance_report_not_found_error(real_client):
 # Helper Functions
 
 
-async def _create_test_policy(client: DataHubClient, tenant_slug: str) -> Optional[str]:
+async def _create_test_policy(_client: DataHubClient, tenant_slug: str) -> str | None:
     """Create a test policy via Django shell for the given tenant.
 
     Tries the test Docker Compose stack first (api-service-test /
@@ -646,7 +645,7 @@ print(policy.id)
     for compose_cmd, manage_py in _compose_attempts:
         try:
             result = subprocess.run(
-                compose_cmd + ["python", manage_py, "shell"],
+                [*compose_cmd, "python", manage_py, "shell"],
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
@@ -655,11 +654,11 @@ print(policy.id)
             )
             if result.returncode == 0:
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) == 36 and "-" in line:
                         return line
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
     return None

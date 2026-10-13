@@ -123,14 +123,18 @@ test.describe('Test Quality Canary', () => {
       0
     );
 
-    // Must have either a login page or the app shell — not just a blank document
-    const hasAppShell =
-      (await page
-        .locator('.app-sidebar, .app-header, [data-testid="app-header"], .login-page, [data-testid="landing-page"]')
-        .count()) > 0;
+    // Must have either a login page or the app shell — not just a blank document.
+    // domcontentloaded fires BEFORE React mounts, so the previous version of this
+    // test asserted the DOM too early and flaked as a false "blank page" on slow
+    // machines (HDD dev box): the shell/landing markup appears only after
+    // hydration. Wait for the union selector like every other spec does.
+    const appMarker = page.locator(
+      '.app-sidebar, .app-header, [data-testid="app-header"], .login-page, [data-testid="landing-page"]'
+    );
+    await appMarker.first().waitFor({ state: 'visible', timeout: 20000 });
     expect(
-      hasAppShell,
+      await appMarker.count(),
       'App root must render .app-sidebar, .app-header, [data-testid="app-header"], .login-page, or landing-page'
-    ).toBe(true);
+    ).toBeGreaterThan(0);
   });
 });

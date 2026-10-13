@@ -10,8 +10,8 @@
  *   4. revoke the Blob URL after the click to free memory.
  *
  * On a mismatch the wrapper rethrows :class:`ChecksumMismatchError`
- * so callers (FileListPage / FileDetailModal) can surface a toast
- * AND the platform audit row is already durable.
+ * so callers (FileDetailPage) can surface a toast AND the platform
+ * audit row is already durable.
  */
 
 import {

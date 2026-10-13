@@ -13,6 +13,7 @@ from django.test import TestCase, override_settings
 
 from hub.apps.core.events.deduplication import (
     DEFAULT_DEDUPLICATION_TTL,
+    PUBLISHER_DEDUP_NAMESPACE,
     check_event_duplicate,
     generate_deduplication_key,
 )
@@ -22,6 +23,22 @@ from hub.apps.tenants.models import Tenant
 uid = uuid.uuid4().hex[:8]
 
 logger = structlog.get_logger(__name__)
+
+
+def _publisher_key(event_type, event_data):
+    """The W4.1 publisher-side key — ``event:sent:*`` namespace."""
+    return generate_deduplication_key(event_type, event_data, namespace=PUBLISHER_DEDUP_NAMESPACE)
+
+
+def _clear_all_namespaces(redis_client):
+    """Drop publisher/consumer/legacy dedup keys (W4.1 namespace split)."""
+    for prefix in ("event:dedup:*", "event:sent:*", "event:cons:*"):
+        try:
+            keys = redis_client.keys(prefix)
+            if keys:
+                redis_client.delete(*keys)
+        except redis.RedisError:
+            pass
 
 
 def get_real_redis_client_or_none():
@@ -35,9 +52,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis.RedisError):
         return None
+    else:
+        return client
 
 
 class EventPublisherDeduplicationTest(TestCase):
@@ -53,21 +71,11 @@ class EventPublisherDeduplicationTest(TestCase):
             self.skipTest("Redis not available for integration tests")
 
         # Clear deduplication keys before each test
-        try:
-            keys = self.redis_client.keys("event:dedup:*")
-            if keys:
-                self.redis_client.delete(*keys)
-        except Exception:
-            pass
+        _clear_all_namespaces(self.redis_client)
 
     def tearDown(self):
         """Clean up test fixtures."""
-        try:
-            keys = self.redis_client.keys("event:dedup:*")
-            if keys:
-                self.redis_client.delete(*keys)
-        except Exception:
-            pass
+        _clear_all_namespaces(self.redis_client)
 
     def test_publisher_skips_duplicate_event(self):
         """Test that publisher skips publishing duplicate events."""
@@ -149,7 +157,7 @@ class EventPublisherDeduplicationTest(TestCase):
         event_id = publisher.publish(event_type=event_type, data=event_data)
 
         # Verify event ID is stored in Redis
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _publisher_key(event_type, event_data)
         is_dup, stored_id = check_event_duplicate(deduplication_key, redis_client=self.redis_client)
         self.assertTrue(is_dup)
         self.assertEqual(stored_id, event_id)
@@ -217,7 +225,7 @@ class EventPublisherDeduplicationTest(TestCase):
         publisher = EventPublisher(service_name="test_service", tenant_id=str(self.tenant.id))
 
         # Step 1: Check if duplicate (should not be)
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _publisher_key(event_type, event_data)
         is_dup, existing_id = check_event_duplicate(
             deduplication_key, redis_client=self.redis_client
         )
@@ -265,7 +273,7 @@ class EventPublisherDeduplicationTest(TestCase):
         publisher.publish(event_type=event_type, data=event_data)
 
         # Verify TTL is set
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _publisher_key(event_type, event_data)
         ttl = self.redis_client.ttl(deduplication_key)
         self.assertGreater(ttl, 0)
         self.assertLessEqual(ttl, DEFAULT_DEDUPLICATION_TTL)

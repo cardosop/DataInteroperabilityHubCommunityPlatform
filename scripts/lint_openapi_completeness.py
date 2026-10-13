@@ -50,7 +50,10 @@ def _generate_openapi_paths() -> set[str]:
 
     generator = SchemaGenerator(urlconf="hub.urls")
     schema = generator.get_schema(request=request, public=True)
-    return set(schema.get("paths", {}).keys())
+    # Normalize trailing slashes on BOTH sides of the comparison — the
+    # router root is documented as /api/v1/auth/ while the registered set
+    # rstrip()s; a slash difference is not an undocumented endpoint.
+    return {p.rstrip("/") for p in schema.get("paths", {})}
 
 
 def _enumerate_registered_urls() -> set[str]:
@@ -76,18 +79,48 @@ def _walk_resolver(resolver, prefix: str, acc: set[str]):
             new_prefix = new_prefix.replace("\\", "")
             _walk_resolver(pattern, new_prefix, acc)
         elif isinstance(pattern, URLPattern):
-            # Build the full path
-            route = f"{prefix}{pattern.pattern}"
-            # Normalize: strip regex syntax, trailing slash
-            route = route.replace("^", "").replace("$", "")
-            route = route.replace("(?P<", "{").replace(">", "}")
-            # Remove regex quantifiers and lookaheads
+            if not str(pattern.pattern):
+                continue  # empty pattern under an include — not a route
             import re as _re
 
-            route = _re.sub(r"\[.*?\]", "{param}", route)
-            route = _re.sub(r"\{[^}]*\}[+?]", "{param}", route)
-            # Only report API paths
-            if "/api/" in route or "/auth/" in route:
+            # Build the full path and normalize regex syntax to the path
+            # SHAPE only (Phase U triage: the old pipeline emitted
+            # artifacts like `dashboard\.{format}{param})/?` that could
+            # never match a documented path — every substitution below
+            # exists to prevent one).
+            route = f"{prefix}{pattern.pattern}"
+            route = route.replace("^", "").replace("$", "").replace("\\", "")
+            # 1. Django path converters keep their param NAME:
+            #    <uuid:session_id> -> {session_id}.
+            route = _re.sub(r"<[a-z_]+:([^>]+)>", r"{\1}", route)
+            # 2. Named regex groups keep their param NAME (and drop the
+            #    character class): (?P<id>[^/.]+) -> {id}.
+            route = _re.sub(r"\(\?P<([^>]+)>[^)]*\)", r"{\1}", route)
+            # 3. Unnamed character classes collapse to {param}.
+            route = _re.sub(r"\[[^\]]*\]", "{param}", route)
+            # 4. DRF format-suffix routes register as
+            #    <base>.{format}.../? — the OpenAPI document records only
+            #    the BASE path; cut everything from the format marker.
+            for marker in (".{format", "{format"):
+                if marker in route:
+                    route = route.split(marker, 1)[0]
+                    break
+            # The router root's OWN format variant normalizes to the bare
+            # parent include (e.g. /api/v1/auth) — that is the APIRoot
+            # browsable page, not a client endpoint with schema coverage.
+            if route.rstrip("/") == prefix.rstrip("/"):
+                continue
+            # 5. Remaining regex metacharacters are syntax, not shape.
+            for ch in "()?+*":
+                route = route.replace(ch, "")
+            # Include-prefix joins can produce double slashes.
+            route = route.replace("//", "/")
+            # A route that normalized to nothing but slashes (e.g. the
+            # resolver's bare `^$` pattern) is an include artifact.
+            if not route.strip("/"):
+                continue
+            # Only report API paths (never the test-only mailhog surface).
+            if ("/api/" in route or "/auth/" in route) and "/test/" not in route:
                 # Ensure leading slash
                 if not route.startswith("/"):
                     route = "/" + route

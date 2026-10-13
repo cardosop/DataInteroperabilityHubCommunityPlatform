@@ -416,7 +416,7 @@ class ExclusiveBoundsTest(TestCase):
         result = self.normalizer.normalize(contract, spec_version="3.1.0")
         hc = result.hub_contract
         fields = hc.get("schema", {}).get("fields", [])
-        pct = [f for f in fields if f.get("name") == "pct"][0]
+        pct = next(f for f in fields if f.get("name") == "pct")
         lto = pct.get("logicalTypeOptions", {})
         assert lto["exclusiveMaximum"] == {"value": 99.99, "type": "numeric_bound"}
 

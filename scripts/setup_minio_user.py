@@ -41,7 +41,7 @@ def setup_minio_user():
                 if "hub" in line.lower():
                     network_name = line.strip()
                     break
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass  # Use default
 
     docker_cmd = [
@@ -124,7 +124,7 @@ def setup_minio_user():
             "❌ Docker not found. Please install Docker or run this script in an environment with Docker."
         )
         return False
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"❌ Error: {e}")
         return False
 

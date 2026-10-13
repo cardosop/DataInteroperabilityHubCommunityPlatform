@@ -12,7 +12,7 @@ class WorkflowDefinitionListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkflowDefinition
-        fields = [
+        fields = (
             "id",
             "name",
             "version",
@@ -21,7 +21,7 @@ class WorkflowDefinitionListSerializer(serializers.ModelSerializer):
             "dependencies",
             "metadata",
             "created_at",
-        ]
+        )
 
 
 class WorkflowDefinitionDetailSerializer(serializers.ModelSerializer):
@@ -29,7 +29,7 @@ class WorkflowDefinitionDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkflowDefinition
-        fields = [
+        fields = (
             "id",
             "name",
             "version",
@@ -40,7 +40,7 @@ class WorkflowDefinitionDetailSerializer(serializers.ModelSerializer):
             "metadata",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class WorkflowTriggerRequestSerializer(serializers.Serializer):

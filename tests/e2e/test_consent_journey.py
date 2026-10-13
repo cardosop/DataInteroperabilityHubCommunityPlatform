@@ -34,6 +34,7 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
         # ConsentPurpose create/update requires TENANT_ADMIN role (IsTenantAdmin permission)
         # Consent dashboard requires TENANT_ADMIN or DPO (IsTenantAdminOrDPO permission)
         from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+
         ensure_user_has_tenant_admin_role(self.user)
 
         # Configure consent signing keys so grant/revoke operations succeed

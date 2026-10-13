@@ -25,9 +25,7 @@ class JobRetryMetricsTest(TestCase):
 
     def test_job_retry_count_labels(self):
         """job_retry_count Histogram accepts labels and observe()."""
-        job_retry_count.labels(
-            job_type="ODPS_NORMALIZATION", queue_name="job_default"
-        ).observe(2.0)
+        job_retry_count.labels(job_type="ODPS_NORMALIZATION", queue_name="job_default").observe(2.0)
 
     def test_job_retry_delay_seconds_metric_exists(self):
         """Test that job_retry_delay_seconds metric exists"""

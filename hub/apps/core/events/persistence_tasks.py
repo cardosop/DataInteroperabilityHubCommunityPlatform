@@ -173,7 +173,7 @@ def persist_events_batch_async(
                             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                         else:
                             timestamp = timezone.now()
-                    except Exception:
+                    except (ValueError, AttributeError):
                         timestamp = timezone.now()
 
                     event_obj = Event(
@@ -248,7 +248,8 @@ def _validate_event_persistence(event_id: str, event_data: dict[str, Any]):
     Raises:
         Exception: If validation fails
     """
-    try:
+
+    def _validate() -> None:
         persisted_event = Event.objects.get(event_id=event_id)
 
         # Validate key fields
@@ -270,8 +271,10 @@ def _validate_event_persistence(event_id: str, event_data: dict[str, Any]):
             "event_persistence_validated", event_id=event_id, event_type=persisted_event.event_type
         )
 
+    try:
+        _validate()
     except Event.DoesNotExist:
-        raise ValueError(f"Event {event_id} was not persisted")
+        raise ValueError(f"Event {event_id} was not persisted") from None
     except Exception as e:
         logger.error(
             "event_persistence_validation_error", event_id=event_id, error=str(e), exc_info=True

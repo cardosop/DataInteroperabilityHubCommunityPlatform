@@ -8,6 +8,8 @@ All require worker authentication (HUB_WORKER_API_KEY or API key with scope sche
 import base64
 import logging
 
+from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import (
@@ -39,6 +41,7 @@ from .internal_serializers import (
     InternalUpdateIngestionRunSerializer,
 )
 from .models import (
+    IngestionRunStateMachine,
     ScheduledIngestion,
     ScheduledIngestionRun,
     ScheduledIngestionRunStatus,
@@ -77,8 +80,8 @@ class InternalRunViewSet(ViewSet):
     Worker-only; tenant and ownership validated on every request.
     """
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     @extend_schema(
         summary="Create scheduled ingestion run",
@@ -167,6 +170,25 @@ class InternalRunViewSet(ViewSet):
                     status=status.HTTP_200_OK,
                 )
 
+        # 6.2 — the dlt dispatch spine: a dlt-flagged tenant executes
+        # the canonical entrypoint synchronously (the hub performs the
+        # read); the run's terminal state records the dlt outcome.
+        if getattr(scheduled_ingestion.tenant, "data_movement_enabled", False):
+            service = IngestionService(
+                tenant_id=tenant_id,
+                user_id=str(request.user.id) if request.user else None,
+            )
+            result = service.execute_ingestion_run(
+                scheduled_ingestion_id,
+                tenant_id=tenant_id,
+                prefect_flow_run_id=prefect_flow_run_id or None,
+                idempotency_key=idempotency_key or None,
+            )
+            return Response(
+                {"scheduled_ingestion_id": scheduled_ingestion_id, **result},
+                status=status.HTTP_200_OK,
+            )
+
         with transaction.atomic():
             run = ScheduledIngestionRun.objects.create(
                 scheduled_ingestion=scheduled_ingestion,
@@ -254,6 +276,97 @@ class InternalRunViewSet(ViewSet):
             404: OpenApiResponse(description="Run not found"),
         },
     )
+    @extend_schema(
+        summary="Cancel scheduled ingestion run",
+        description=(
+            "Cancel a PENDING/RUNNING run (the guarded matrix admits "
+            "PENDING/RUNNING → CANCELLED; the worker already honours "
+            "CANCELLED).  A terminal run answers 400 INVALID_TRANSITION. "
+            "Requires worker authentication and X-Tenant-ID header."
+        ),
+        responses={
+            200: OpenApiResponse(description="Run cancelled"),
+            400: OpenApiResponse(description="Invalid transition"),
+            401: OpenApiResponse(description="Authentication required"),
+            403: OpenApiResponse(description="Forbidden (tenant mismatch)"),
+            404: OpenApiResponse(description="Run not found"),
+        },
+    )
+    def cancel(self, request, pk=None):
+        """POST .../internal/runs/{run_id}/cancel/ — the semantic cancel
+        action (W3.6, R2-P4/F13)."""
+        tenant_id = _get_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant required", "code": "TENANT_REQUIRED", "details": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            run = ScheduledIngestionRun.objects.select_related("scheduled_ingestion").get(id=pk)
+        except ScheduledIngestionRun.DoesNotExist:
+            return Response(
+                {"error": "Run not found", "code": "NOT_FOUND", "details": {"run_id": pk}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if str(run.scheduled_ingestion.tenant_id) != tenant_id:
+            return Response(
+                {"error": "Run does not belong to tenant", "code": "FORBIDDEN", "details": {}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        with transaction.atomic():
+            run = (
+                ScheduledIngestionRun.objects.select_for_update()
+                .select_related("scheduled_ingestion")
+                .get(id=pk)
+            )
+            old_status = run.status
+            try:
+                IngestionRunStateMachine.validate_transition(
+                    old_status, ScheduledIngestionRunStatus.CANCELLED
+                )
+            except DjangoValidationError as e:
+                return Response(
+                    {
+                        "error": str(e),
+                        "code": "INVALID_TRANSITION",
+                        "details": {
+                            "run_id": pk,
+                            "from_status": old_status,
+                            "to_status": ScheduledIngestionRunStatus.CANCELLED,
+                        },
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            run.status = ScheduledIngestionRunStatus.CANCELLED
+            run.completed_at = timezone.now()
+            run.save(update_fields=["status", "completed_at", "updated_at"])
+
+        # Terminal-status metric (mirrors the PATCH's completion block).
+        try:
+            duration = (
+                (run.completed_at - run.started_at).total_seconds()
+                if run.completed_at and run.started_at
+                else 0
+            )
+            scheduled_ingestion_runs_total.labels(
+                status=ScheduledIngestionRunStatus.CANCELLED,
+                scheduled_ingestion_id=str(run.scheduled_ingestion_id),
+                tenant_id=tenant_id,
+            ).inc(1)
+            scheduled_ingestion_duration_seconds.labels(
+                scheduled_ingestion_id=str(run.scheduled_ingestion_id),
+                status=ScheduledIngestionRunStatus.CANCELLED,
+                tenant_id=tenant_id,
+            ).observe(duration)
+        except Exception:
+            logger.exception("ingestion_cancel_metrics_failed")
+
+        return Response(
+            {"id": str(run.id), "status": ScheduledIngestionRunStatus.CANCELLED},
+            status=status.HTTP_200_OK,
+        )
+
     def partial_update(self, request, pk=None):
         """PATCH .../internal/runs/{run_id}/ — update status, counts, result_json, completed_at."""
         tenant_id = _get_tenant_id(request)
@@ -279,15 +392,43 @@ class InternalRunViewSet(ViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        old_status = run.status
-        update_fields = ["updated_at"]
-        for key, value in data.items():
-            if value is not None and hasattr(run, key):
-                setattr(run, key, value)
-                update_fields.append(key)
-        run.save(update_fields=update_fields)
+        # W3.1 (R2-P1) — internal PATCH status writes are validated against
+        # the shared guarded matrix inside a row lock: a terminal run can
+        # never be re-opened (no FAILED→COMPLETED re-fire) and a worker
+        # completion can never overwrite CANCELLED. The model-level guard
+        # (ScheduledIngestionRun.clean) is the backstop for every other
+        # writer.
+        with transaction.atomic():
+            run = (
+                ScheduledIngestionRun.objects.select_for_update()
+                .select_related("scheduled_ingestion")
+                .get(id=pk)
+            )
+            old_status = run.status
+            new_status = data.get("status") or old_status
+            if new_status != old_status:
+                try:
+                    IngestionRunStateMachine.validate_transition(old_status, new_status)
+                except DjangoValidationError as e:
+                    return Response(
+                        {
+                            "error": str(e),
+                            "code": "INVALID_TRANSITION",
+                            "details": {
+                                "run_id": pk,
+                                "from_status": old_status,
+                                "to_status": new_status,
+                            },
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            update_fields = ["updated_at"]
+            for key, value in data.items():
+                if value is not None and hasattr(run, key):
+                    setattr(run, key, value)
+                    update_fields.append(key)
+            run.save(update_fields=update_fields)
 
-        new_status = data.get("status") or old_status
         if new_status in ("COMPLETED", "FAILED") and new_status != old_status:
             apply_run_completion_side_effects(run, new_status)
 
@@ -388,8 +529,8 @@ class InternalRunViewSet(ViewSet):
 class InternalConfigView(APIView):
     """GET .../internal/config/{scheduled_ingestion_id}/ — config for worker (credentials masked)."""
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     def get(self, request, scheduled_ingestion_id):
         tenant_id = _get_tenant_id(request)
@@ -453,8 +594,8 @@ class InternalConfigView(APIView):
 class InternalProcessFileView(APIView):
     """POST .../internal/process-file/ — process one file for a run (validate, DQ, create file/dataset, index, incremental state)."""
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     def post(self, request):
         tenant_id = _get_tenant_id(request)
@@ -488,14 +629,50 @@ class InternalProcessFileView(APIView):
             )
         scheduled_ingestion_id = str(run.scheduled_ingestion_id)
 
+        # W1.14 — per-file cap enforced BEFORE a full read: an oversized
+        # upload is rejected without loading the whole body into memory.
+        max_file_bytes = int(getattr(settings, "WORKER_INTERNAL_MAX_FILE_BYTES", 100 * 1024 * 1024))
+
+        def _too_large_response():
+            # W1.19 — convention 8: the enforcement emits its audit event.
+            # (Module-level import at the top — a local re-import here
+            # would shadow it for the WHOLE function scope and crash the
+            # success path's audit at UnboundLocalError.)
+            try:
+                create_audit_event(
+                    resource_type="SCHEDULED_INGESTION_FILE",
+                    action="WORKER_FILE_UPLOAD_REJECTED",
+                    tenant=_get_tenant(request),
+                    details={
+                        "code": "FILE_TOO_LARGE",
+                        "max_file_bytes": max_file_bytes,
+                    },
+                )
+            except Exception:
+                logger.warning("worker_file_rejection_audit_failed", exc_info=True)
+            return Response(
+                {
+                    "error": (
+                        f"File exceeds the {max_file_bytes} byte limit for internal worker uploads"
+                    ),
+                    "code": "FILE_TOO_LARGE",
+                    "details": {"max_file_bytes": max_file_bytes},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         file_obj = request.FILES.get("file")
         file_content = None
         if file_obj:
-            file_content = file_obj.read()
+            if file_obj.size > max_file_bytes:
+                return _too_large_response()
+            file_content = file_obj.read(max_file_bytes + 1)
+            if len(file_content) > max_file_bytes:
+                return _too_large_response()
         elif request.data.get("file_content"):
             try:
                 file_content = base64.b64decode(request.data.get("file_content"))
-            except Exception:
+            except (ValueError, TypeError):
                 return Response(
                     {
                         "error": "Invalid file_content base64",
@@ -504,6 +681,8 @@ class InternalProcessFileView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if len(file_content) > max_file_bytes:
+                return _too_large_response()
         if not file_content:
             return Response(
                 {
@@ -534,6 +713,20 @@ class InternalProcessFileView(APIView):
             )
         except ServiceValidationError as e:
             code = getattr(e, "code", "VALIDATION_ERROR")
+            # W1.19 — convention 8: the extension rejection emits its
+            # audit event (best-effort).
+            if code == "UNSUPPORTED_FORMAT":
+                # Module-level import — see the note on the too-large
+                # branch (local re-imports shadow the function scope).
+                try:
+                    create_audit_event(
+                        resource_type="SCHEDULED_INGESTION_FILE",
+                        action="WORKER_FILE_UPLOAD_REJECTED",
+                        tenant=_get_tenant(request),
+                        details={"code": code, "file_path": file_path},
+                    )
+                except Exception:
+                    logger.warning("worker_file_rejection_audit_failed", exc_info=True)
             try:
                 scheduled_ingestion_files_failed_total.labels(
                     scheduled_ingestion_id=scheduled_ingestion_id,
@@ -635,8 +828,8 @@ class InternalTestDataView(APIView):
     - **Header guard**: X-Internal-Test-Data header must be set.
     """
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     def get(self, request, filename):
         from django.conf import settings
@@ -679,8 +872,8 @@ class InternalCreateJobView(APIView):
     and link to prefect_flow_run_id.
     """
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     def post(self, request):
         tenant_id = _get_tenant_id(request)

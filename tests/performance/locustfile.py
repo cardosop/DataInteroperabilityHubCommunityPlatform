@@ -93,23 +93,23 @@ except ImportError:
 
 # Export all users for Locust
 __all__ = [
+    "APIEndpointsAvailabilityUser",
+    "DatabaseQueryPerformanceUser",
+    "EnduranceTestMemoryMonitor",
+    # Endurance testing
+    "EnduranceTestUser",
     # Load testing
     "FileUploadDownloadUser",
     "JobQueueThroughputUser",
-    "DatabaseQueryPerformanceUser",
-    "APIEndpointsAvailabilityUser",
-    # Stress testing
-    "StressTestUser",
-    "StressTestOverloadUser",
-    # Endurance testing
-    "EnduranceTestUser",
-    "EnduranceTestMemoryMonitor",
-    # Spike testing
-    "SpikeTestUser",
-    "SpikeTestRapidUser",
     # ODPS-specific testing
     "ODPSIngestionLoadUser",
     "ODPSRefResolutionStressUser",
+    "SpikeTestRapidUser",
+    # Spike testing
+    "SpikeTestUser",
+    "StressTestOverloadUser",
+    # Stress testing
+    "StressTestUser",
 ]
 
 # Filter out None values (for missing imports)

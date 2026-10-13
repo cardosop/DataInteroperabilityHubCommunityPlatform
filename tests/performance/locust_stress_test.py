@@ -18,7 +18,7 @@ import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True

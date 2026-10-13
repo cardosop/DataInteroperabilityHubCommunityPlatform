@@ -30,7 +30,7 @@ class Command(BaseCommand):
             "--verbose", action="store_true", default=False, help="Show per-section progress."
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         import uuid as _uuid
 
         from hub.apps.audit.models import AuditEvent

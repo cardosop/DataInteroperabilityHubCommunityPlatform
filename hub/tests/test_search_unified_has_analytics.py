@@ -35,16 +35,21 @@ class UnifiedSearchAnalyticsTest(TestCase):
         assert "result_count=" in source, "track_search must receive result_count"
 
     def test_analytics_failure_does_not_break_search(self):
-        """track_search must be wrapped in try/except (fire-and-forget)."""
+        """track_search must be wrapped in a protective block (fire-and-forget)."""
         from hub.apps.search.views import UnifiedSearchView
 
         source = inspect.getsource(UnifiedSearchView)
-        # The try/except wrapping track_search
+        # The protective wrapper around track_search
         track_idx = source.index("track_search")
-        # Find the nearest preceding 'try:' before track_search
-        before_track = source[:track_idx]
-        assert "try:" in before_track[before_track.rfind("\n\n") :], (
-            "track_search must be inside try/except to not break search"
+        # Find the nearest preceding paragraph before track_search
+        wrapper = source[:track_idx]
+        wrapper = wrapper[wrapper.rfind("\n\n") :]
+        # The fire-and-forget contract is satisfied by either an explicit
+        # try/except or contextlib.suppress (same guarantee: an analytics
+        # failure must never break the search response).
+        assert "try:" in wrapper or "suppress(" in wrapper, (
+            "track_search must be inside try/except (or contextlib.suppress) "
+            "to not break search"
         )
 
     def test_search_viewset_has_deprecation_headers_in_source(self):

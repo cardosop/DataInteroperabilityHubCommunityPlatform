@@ -78,7 +78,7 @@ class AccessAnalyticsServiceTest(TestCase):
         resource_ids = [p.get("resource_id") for p in patterns]
         self.assertIn(resource_uuid, resource_ids)
         # Verify pattern structure contains expected fields
-        pattern = [p for p in patterns if p.get("resource_id") == resource_uuid][0]
+        pattern = next(p for p in patterns if p.get("resource_id") == resource_uuid)
         self.assertEqual(pattern["resource_type"], "ASSET")
         self.assertEqual(pattern["action"], "READ")
         self.assertGreaterEqual(pattern["access_count"], 10)

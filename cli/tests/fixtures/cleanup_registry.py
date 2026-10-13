@@ -23,7 +23,10 @@ This module implements layers 1 and 2. Layer 3 lives in the hub app.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import pytest
 

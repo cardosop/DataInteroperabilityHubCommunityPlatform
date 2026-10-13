@@ -23,12 +23,12 @@ def _get_source_connector_factory():
             0, os.path.join(os.path.dirname(__file__), "../../../services/prefect-integration")
         )
         from connectors.factory import SourceConnectorFactory
-
-        return SourceConnectorFactory
     except ImportError:
         # If connectors are not available (e.g., missing Google Cloud libraries), return None
         # This allows tests to mock the processor without requiring all dependencies
         return None
+    else:
+        return SourceConnectorFactory
 
 
 # Import Django models
@@ -151,8 +151,6 @@ class ScheduledIngestionProcessor:
                 datasets_created=result["datasets_created"],
             )
 
-            return result
-
         except Exception as e:
             logger.error(
                 "Scheduled ingestion processing failed",
@@ -161,6 +159,8 @@ class ScheduledIngestionProcessor:
                 exc_info=True,
             )
             raise
+        else:
+            return result
 
     def _discover_files(self) -> list[str]:
         """
@@ -169,7 +169,8 @@ class ScheduledIngestionProcessor:
         Returns:
             List of file paths/keys
         """
-        try:
+
+        def _discover() -> list[str]:
             factory = self._connector_factory or _get_source_connector_factory()
             if factory is None:
                 raise ConnectorNotAvailableError(
@@ -187,6 +188,9 @@ class ScheduledIngestionProcessor:
             file_pattern = self.file_pattern or ".*"
             files = connector.discover_files(self.source_config, file_pattern)
             return files
+
+        try:
+            files = _discover()
         except ConnectorNotAvailableError:
             raise
         except Exception as e:
@@ -198,6 +202,8 @@ class ScheduledIngestionProcessor:
                 exc_info=True,
             )
             raise ConnectionError(f"Failed to discover files: {e!s}") from e
+        else:
+            return files
 
     def _filter_files(self, files: list[str]) -> list[str]:
         """
@@ -239,7 +245,7 @@ class ScheduledIngestionProcessor:
 
                 if last_modified:
                     if isinstance(last_modified, str):
-                        from dateutil.parser import parse
+                        from dateutil.parser import parse  # type: ignore[import-untyped]
 
                         last_modified = parse(last_modified)
                     file_timestamp = last_modified
@@ -326,9 +332,10 @@ class ScheduledIngestionProcessor:
                     ) from e
 
                 # Create temporary file
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
-                temp_path = temp_file.name
-                temp_file.close()
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=Path(file_path).suffix
+                ) as temp_file:
+                    temp_path = temp_file.name
 
                 # Download file
                 result = connector.download_file(self.source_config, file_path, temp_path)
@@ -471,12 +478,9 @@ class ScheduledIngestionProcessor:
         if source_config.get("enable_dq_validation", False):
             return True
 
-        # Check ingestion_state config
-        if ingestion_config.get("enable_dq_validation", False):
-            return True
-
-        # Default: don't run DQ check (can be enabled per ingestion)
-        return False
+        # Check ingestion_state config (default: don't run DQ check — it can be
+        # enabled per ingestion)
+        return ingestion_config.get("enable_dq_validation", False)
 
     def _run_dq_check(self, file_content: bytes, file_format: str) -> dict[str, Any] | None:
         """
@@ -529,8 +533,6 @@ class ScheduledIngestionProcessor:
                 quality_score=dq_result.get("quality_score"),
             )
 
-            return dq_result
-
         except Exception as e:
             logger.warning(
                 "DQ check failed",
@@ -544,8 +546,10 @@ class ScheduledIngestionProcessor:
             # For now, we'll fail in strict mode if DQ is enabled
             source_config = self.source_config or {}
             if source_config.get("dq_strict_mode", True):
-                raise ValueError(f"DQ check failed: {e!s}")
+                raise ValueError(f"DQ check failed: {e!s}") from None
             return None
+        else:
+            return dq_result
 
     def _is_dq_result_valid(self, dq_result: dict[str, Any]) -> bool:
         """

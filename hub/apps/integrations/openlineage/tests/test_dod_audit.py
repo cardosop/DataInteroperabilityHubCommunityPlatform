@@ -159,6 +159,18 @@ def _hmac_sign(body: bytes) -> str:
 # ---------------------------------------------------------------------------
 
 
+# bcrypt is a declared dependency (requirements.txt) but some local
+# venvs run without it — key-hashing tests skip in that environment.
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None  # type: ignore[assignment]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(bcrypt is None, reason="bcrypt not installed"),
+]
+
+
 class TestOutboundMetric(TransactionTestCase):
     """REQ-LIN-F4-001 — outbound metric labels exercised against a real
     HTTP endpoint (no internal mocking)."""
@@ -916,12 +928,14 @@ class TestDlqDepthGauge(TransactionTestCase):
 
         # Patch the canonical metric symbol at its source — the
         # sweep imports it lazily inside ``_record_dlq_depth_metric``.
-        with mock.patch("hub.apps.observability.metrics.openlineage_dlq_depth") as gauge:
-            with mock.patch(
+        with (
+            mock.patch("hub.apps.observability.metrics.openlineage_dlq_depth") as gauge,
+            mock.patch(
                 "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
-            ) as adapter_cls:
-                adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
-                openlineage_dlq_replay_sweep(max_rows=10)
+            ) as adapter_cls,
+        ):
+            adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
+            openlineage_dlq_replay_sweep(max_rows=10)
 
         # Sweep emits both depth labels: one per ``permanently_failed`` value.
         labelsets = [c.kwargs for c in gauge.labels.call_args_list]

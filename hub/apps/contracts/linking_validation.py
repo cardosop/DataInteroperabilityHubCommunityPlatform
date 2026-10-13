@@ -51,7 +51,7 @@ def validate_contract_exists(contract_id: str, tenant_id: str | None = None) -> 
             message=f"Contract not found: {contract_id}",
             error_code="CONTRACT_NOT_FOUND",
             context={"contract_id": contract_id},
-        )
+        ) from None
 
     if str(contract.tenant_id) != str(tenant_id):
         raise LinkingValidationError(
@@ -394,7 +394,7 @@ def validate_odps_to_odcs_link(odps_contract: Contract) -> Contract | None:
                 "odcs_link": str(odcs_link),
                 "description": "ODPS → ODCS link points to non-existent contract",
             },
-        )
+        ) from None
 
     # Validate that linked contract is actually ODCS
     if odcs_contract.original_spec_type != OriginalSpecType.ODCS:
@@ -470,7 +470,7 @@ def validate_odcs_to_odps_link(odcs_contract: Contract) -> Contract | None:
                 "odps_link": str(odps_link),
                 "description": "ODCS → ODPS link points to non-existent contract",
             },
-        )
+        ) from None
 
     # Validate that linked contract is actually ODPS
     if odps_contract.original_spec_type != OriginalSpecType.ODPS:

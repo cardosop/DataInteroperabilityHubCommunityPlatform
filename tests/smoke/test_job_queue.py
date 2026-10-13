@@ -15,7 +15,9 @@ Required env vars:
 
 Optional env vars:
     SMOKE_JOB_API_PATH    Path to the jobs API (default: /api/v1/jobs/)
-    SMOKE_JOB_TYPE        Job type identifier for no-op test (default: no_op)
+    SMOKE_JOB_TYPE        Job type identifier for the smoke job
+                          (default: API_KEY_ROTATION_REMINDER — a sweep job
+                          that completes trivially when nothing is expiring)
     SMOKE_JOB_POLL_TIMEOUT  Max seconds to wait for completion (default: 30)
     SMOKE_JOB_POLL_INTERVAL Poll interval in seconds (default: 2)
 
@@ -28,12 +30,13 @@ message, giving actionable signal even when the job infrastructure is up.
 
 import os
 import time
+import uuid
 
 import pytest
 import requests
 
 JOB_API_PATH = os.getenv("SMOKE_JOB_API_PATH", "/api/v1/jobs/")
-JOB_TYPE = os.getenv("SMOKE_JOB_TYPE", "no_op")
+JOB_TYPE = os.getenv("SMOKE_JOB_TYPE", "RETENTION_ENFORCEMENT_SWEEP")
 POLL_TIMEOUT = int(os.getenv("SMOKE_JOB_POLL_TIMEOUT", "30"))
 POLL_INTERVAL = float(os.getenv("SMOKE_JOB_POLL_INTERVAL", "2"))
 
@@ -75,12 +78,15 @@ class TestJobQueue:
         Timeout: SMOKE_JOB_POLL_TIMEOUT seconds (default: 30).
         """
         # --- Step 1: Enqueue the job ----------------------------------------
+        # JobCreateSerializer contract: `type` (JobType choice),
+        # `resource_type`, `resource_id` (UUID), optional details_json.
         enqueue_response = authenticated_session.post(
             f"{base_url}{JOB_API_PATH}",
             json={
-                "job_type": JOB_TYPE,
-                "payload": {},
-                "priority": "low",
+                "type": JOB_TYPE,
+                "resource_type": "SMOKE_TEST",
+                "resource_id": str(uuid.uuid4()),
+                "details_json": {"source": "smoke-test"},
             },
             timeout=timeout,
         )

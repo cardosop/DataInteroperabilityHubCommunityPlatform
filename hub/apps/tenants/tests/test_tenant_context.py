@@ -76,7 +76,7 @@ class TenantContextTest(TestCase):
             self.assertEqual(_current_tenant_guc(), tenant_id)
             raise ValueError("decorated boom")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="decorated boom"):
             raise_inside_decorated()
         self.assertEqual(_current_tenant_guc(), baseline)
 

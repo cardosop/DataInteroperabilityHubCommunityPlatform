@@ -110,10 +110,12 @@ class TestContractsRestBusinessRulesAlignment(TestCase):
         )
         UserRole.objects.get_or_create(user=self.user_a, role=role)
 
-    def test_contract_create_rejects_asset_from_other_tenant_returns_400_no_mutation(self):
+    def test_contract_create_rejects_asset_from_other_tenant_returns_404_no_mutation(self):
         """
         When contract create is called with asset_id belonging to another tenant,
-        business rule rejects; API returns 400 and no contract is created.
+        the tenant-scoped asset lookup rejects with 404 NOT_FOUND (does not leak
+        the asset's existence to other tenants — current service contract,
+        contract_service._create). No contract is created.
         """
         self.client.force_authenticate(user=self.user_b)
         count_before = Contract.objects.count()
@@ -126,14 +128,14 @@ class TestContractsRestBusinessRulesAlignment(TestCase):
         }
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(Contract.objects.count(), count_before)
         self.assertIn("error", response.json())
-        # Business rule error: asset does not exist for tenant
+        # NotFoundError(code="NOT_FOUND") envelope from the service layer
         self.assertIn(
-            "BUSINESS_RULES_VALIDATION",
-            response.json().get("code", ""),
-            msg="Expected business rules validation code",
+            "NOT_FOUND",
+            str(response.json().get("code", "")),
+            msg="Expected NOT_FOUND error code",
         )
 
     def test_contract_create_valid_succeeds_and_rule_invoked(self):
@@ -302,10 +304,7 @@ class TestODPSCreateProductBusinessRulesAlignment(TestCase):
         # Validation may happen at parser/serializer level or business-rules
         # level. Accept any error description field.
         error_desc = (
-            data.get("error")
-            or data.get("detail")
-            or data.get("message")
-            or data.get("code", "")
+            data.get("error") or data.get("detail") or data.get("message") or data.get("code", "")
         )
         self.assertTrue(error_desc, f"Expected error description in response: {data}")
 
@@ -584,10 +583,10 @@ class TestAssetsRestBusinessRulesAlignment(TestCase):
         self.assertEqual(asset.status, AssetStatus.RETIRED)
 
 
-# Placeholder test classes for Phase 18.4–18.7 (datasets, marketplace,
+# Placeholder test classes for Phase 18.4-18.7 (datasets, marketplace,
 # files, governance, compliance, dq, mesh, virtualization, scheduled_ingestion,
-# integrations, social). Add tests as each app’s service layer is aligned
-# with business rules (tasks 18.2–18.7).
+# integrations, social). Add tests as each app`s service layer is aligned
+# with business rules (tasks 18.2-18.7).
 
 
 class TestDatasetsRestBusinessRulesAlignment(TestCase):
@@ -1196,8 +1195,9 @@ class TestMeshRestBusinessRulesAlignment(TestCase):
         self.assertEqual(domain.name, "to-update-empty")
         data = response.json()
         # Response may use "detail" (DRF standard) or "error" key
-        self.assertTrue("error" in data or "detail" in data,
-                        f"Expected error or detail key in response: {data}")
+        self.assertTrue(
+            "error" in data or "detail" in data, f"Expected error or detail key in response: {data}"
+        )
         self.assertIn(data.get("code", ""), ("VALIDATION_ERROR", "BUSINESS_RULES_VALIDATION"))
 
 
@@ -1492,8 +1492,10 @@ class TestIntegrationsRestBusinessRulesAlignment(TestCase):
             count_before,
         )
         data = response.json()
-        self.assertTrue("error" in data or "detail" in data or "name" in data,
-                        f"Expected error detail in response: {data}")
+        self.assertTrue(
+            "error" in data or "detail" in data or "name" in data,
+            f"Expected error detail in response: {data}",
+        )
         code = data.get("code", "")
         if code:
             self.assertIn(

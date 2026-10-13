@@ -311,7 +311,7 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
         # Error formats should be consistent (all dicts)
         if error_formats:
             self.assertTrue(
-                all(fmt == dict for fmt in error_formats),
+                all(fmt is dict for fmt in error_formats),
                 "Error response formats should be consistent",
             )
 

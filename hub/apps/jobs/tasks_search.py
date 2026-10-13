@@ -6,6 +6,8 @@ Handlers for Search indexing job execution.
 SAVING CHECKPOINT: This module contains Search job handlers (< 700 lines per project rule).
 """
 
+from typing import Any
+
 import structlog
 
 from .models import Job
@@ -44,7 +46,7 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
         resource_id=str(resource_id),
     )
 
-    try:
+    def _index() -> dict[str, Any]:
         # Index based on resource type
         if resource_type == "CONTRACT":
             contract = Contract.objects.get(id=resource_id)
@@ -83,18 +85,20 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
             "resource_id": str(resource_id),
         }
 
+    try:
+        result = _index()
     except Contract.DoesNotExist:
-        raise ValueError(f"Contract {resource_id} not found")
+        raise ValueError(f"Contract {resource_id} not found") from None
     except Asset.DoesNotExist:
-        raise ValueError(f"Asset {resource_id} not found")
+        raise ValueError(f"Asset {resource_id} not found") from None
     except Dataset.DoesNotExist:
-        raise ValueError(f"Dataset {resource_id} not found")
+        raise ValueError(f"Dataset {resource_id} not found") from None
     except Exception as e:
         # Check if it's a VirtualDataset.DoesNotExist
         from hub.apps.virtualization.models import VirtualDataset
 
         if isinstance(e, VirtualDataset.DoesNotExist):
-            raise ValueError(f"VirtualDataset {resource_id} not found")
+            raise ValueError(f"VirtualDataset {resource_id} not found") from None
         # Log and re-raise other exceptions
         logger.error(
             "Search index update job failed",
@@ -105,3 +109,5 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
             error=str(e),
         )
         raise
+    else:
+        return result

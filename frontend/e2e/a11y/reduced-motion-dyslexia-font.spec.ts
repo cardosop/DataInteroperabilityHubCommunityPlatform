@@ -28,6 +28,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       await page.emulateMedia({ reducedMotion: 'reduce' });
 
       await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="app-shell"]')
         .waitFor({ state: 'visible', timeout: 15000 })
@@ -41,20 +42,6 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       );
       expect(motionQuery).toBe(true);
 
-      // Every element should have clamped animation/transition durations
-      const styles = await page.evaluate(() => {
-        const body = document.body;
-        const computed = window.getComputedStyle(body);
-        return {
-          animationDuration: computed.animationDuration,
-          transitionDuration: computed.transitionDuration,
-          scrollBehavior: computed.scrollBehavior,
-        };
-      });
-
-      // In reduced motion, durations should be 0.01ms or '0s'
-      const isClamped = (val: string) =>
-        val.includes('0.01ms') || val === '0s' || val === '0ms';
       // Animation/transition durations are inherited — body may not have
       // them directly unless set. The important check is that the media
       // query matches (verified above) and the CSS rules are loaded.
@@ -72,6 +59,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
 
       // Navigate to a page that may show skeleton loaders
       await page.goto('/assets', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="asset-list-page"], .asset-list-page, .app-shell, [data-testid="app-shell"]')
         .first()
@@ -112,6 +100,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       await page.emulateMedia({ reducedMotion: 'reduce' });
 
       await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="app-shell"]')
         .waitFor({ state: 'visible', timeout: 15000 })
@@ -189,6 +178,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="app-shell"]')
         .waitFor({ state: 'visible', timeout: 15000 })
@@ -229,6 +219,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="app-shell"]')
         .waitFor({ state: 'visible', timeout: 15000 })
@@ -265,6 +256,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="app-shell"]')
         .waitFor({ state: 'visible', timeout: 15000 })
@@ -306,6 +298,7 @@ test.describe('Reduced Motion & Dyslexia Font (278.Z.3) @a11y', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
         .locator('[data-testid="app-shell"]')
         .waitFor({ state: 'visible', timeout: 15000 })

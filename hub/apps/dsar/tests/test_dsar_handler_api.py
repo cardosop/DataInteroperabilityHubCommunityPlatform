@@ -39,6 +39,7 @@ def _grant_role(tenant: Tenant, user: User, role_name: str) -> None:
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
+@pytest.mark.journey("JOURNEY-CPO-GDPR-EXPORT-COMPLETE")
 class DsarHandlerApiTests(TestCase):
     """Handler ViewSet: list, reject; permission matrix for DPO vs consumer."""
 

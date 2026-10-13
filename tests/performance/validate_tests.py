@@ -20,37 +20,37 @@ def validate_imports():
 
     try:
         print("✅ helpers.py imports OK")
-    except Exception as e:
+    except OSError as e:
         errors.append(f"helpers.py: {e}")
         print(f"❌ helpers.py import failed: {e}")
 
     try:
         print("✅ test_file_upload_download.py imports OK")
-    except Exception as e:
+    except OSError as e:
         errors.append(f"test_file_upload_download.py: {e}")
         print(f"❌ test_file_upload_download.py import failed: {e}")
 
     try:
         print("✅ test_job_queue_throughput.py imports OK")
-    except Exception as e:
+    except OSError as e:
         errors.append(f"test_job_queue_throughput.py: {e}")
         print(f"❌ test_job_queue_throughput.py import failed: {e}")
 
     try:
         print("✅ test_database_query_performance.py imports OK")
-    except Exception as e:
+    except OSError as e:
         errors.append(f"test_database_query_performance.py: {e}")
         print(f"❌ test_database_query_performance.py import failed: {e}")
 
     try:
         print("✅ test_api_endpoints_availability.py imports OK")
-    except Exception as e:
+    except OSError as e:
         errors.append(f"test_api_endpoints_availability.py: {e}")
         print(f"❌ test_api_endpoints_availability.py import failed: {e}")
 
     try:
         print("✅ locustfile.py imports OK")
-    except Exception as e:
+    except OSError as e:
         errors.append(f"locustfile.py: {e}")
         print(f"❌ locustfile.py import failed: {e}")
 

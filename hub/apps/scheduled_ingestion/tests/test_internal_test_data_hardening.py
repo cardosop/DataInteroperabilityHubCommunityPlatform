@@ -77,7 +77,7 @@ class InternalTestDataViewHardeningTest(TestCase):
             self.url,
             HTTP_X_INTERNAL_TEST_DATA="1",
         )
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
 
     @override_settings(ENVIRONMENT="staging")
     def test_returns_404_in_staging(self):
@@ -90,7 +90,7 @@ class InternalTestDataViewHardeningTest(TestCase):
             self.url,
             HTTP_X_INTERNAL_TEST_DATA="1",
         )
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
 
     # ----- Authentication (220.2.1) -----
 
@@ -102,10 +102,7 @@ class InternalTestDataViewHardeningTest(TestCase):
         )
         # DRF returns 401 for unauthenticated requests when
         # authentication_classes is set (not empty).
-        self.assertIn(
-            resp.status_code,
-            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
-        )
+        assert resp.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
 
     def test_wrong_api_key_returns_401(self):
         """Invalid API key must be rejected."""
@@ -117,10 +114,7 @@ class InternalTestDataViewHardeningTest(TestCase):
             self.url,
             HTTP_X_INTERNAL_TEST_DATA="1",
         )
-        self.assertIn(
-            resp.status_code,
-            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
-        )
+        assert resp.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
 
     def test_api_key_without_worker_scope_returns_403(self):
         """API key without scheduled_ingestion:internal scope must be rejected."""
@@ -141,7 +135,7 @@ class InternalTestDataViewHardeningTest(TestCase):
             self.url,
             HTTP_X_INTERNAL_TEST_DATA="1",
         )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
 
     # ----- Functional: happy path -----
 
@@ -155,9 +149,9 @@ class InternalTestDataViewHardeningTest(TestCase):
             self.url,
             HTTP_X_INTERNAL_TEST_DATA="1",
         )
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        assert resp.status_code == status.HTTP_200_OK
         # Content should be the test CSV
-        self.assertIn(b"id,name", resp.content)
+        assert b"id,name" in resp.content
 
     def test_worker_authenticated_without_header_returns_404(self):
         """Worker-authenticated but missing X-Internal-Test-Data header returns 404."""
@@ -166,7 +160,7 @@ class InternalTestDataViewHardeningTest(TestCase):
             HTTP_X_TENANT_ID=str(self.tenant.id),
         )
         resp = self.client.get(self.url)
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
 
     def test_unknown_filename_returns_404(self):
         """Request for non-existent file returns 404."""
@@ -178,4 +172,4 @@ class InternalTestDataViewHardeningTest(TestCase):
             "/api/v1/scheduled-ingestions/internal/test-data/evil.sh",
             HTTP_X_INTERNAL_TEST_DATA="1",
         )
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        assert resp.status_code == status.HTTP_404_NOT_FOUND

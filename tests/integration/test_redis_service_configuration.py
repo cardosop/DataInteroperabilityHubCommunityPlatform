@@ -30,7 +30,8 @@ class TestRedisServiceConfiguration:
     """Unit tests for Redis service configuration in Docker Compose files."""
 
     @pytest.fixture(scope="class")
-    def docker_compose_files(self):
+    @classmethod
+    def docker_compose_files(cls):
         """Get paths to all Docker Compose files."""
         return {
             "main": project_root / "docker-compose.yml",
@@ -41,7 +42,8 @@ class TestRedisServiceConfiguration:
         }
 
     @pytest.fixture(scope="class")
-    def docker_compose_configs(self, docker_compose_files):
+    @classmethod
+    def docker_compose_configs(cls, docker_compose_files):
         """Load all Docker Compose configurations."""
         configs = {}
         for name, file_path in docker_compose_files.items():
@@ -156,17 +158,30 @@ class TestRedisServiceConfiguration:
                 )
 
     def test_redis_queue_persistence_config(self, docker_compose_configs):
-        """Test that redis-queue has AOF persistence configured."""
+        """Test redis-queue persistence posture.
+
+        Phase T.4 (W16 infra prerequisite) deliberately REMOVED AOF from the
+        test stack (the appendonly file corrupted under I/O load on this
+        host). The queue has RDB persistence via the default redis save
+        schedule and must NOT carry --appendonly in the TEST compose.
+        """
         for name, config in docker_compose_configs.items():
             services = config.get("services", {})
             service_name = "redis-queue-test" if name == "test" else "redis-queue"
             if service_name in services:
                 service_config = services[service_name]
-                command = service_config.get("command", "")
-                # Should have --appendonly yes for AOF persistence
-                assert "--appendonly" in str(command) or "appendonly" in str(command).lower(), (
-                    f"{service_name} should have AOF persistence configured in {name}"
-                )
+                command = str(service_config.get("command", ""))
+                if name == "test":
+                    # Test stack: AOF intentionally removed (corruption risk).
+                    assert "--appendonly" not in command.lower(), (
+                        f"{service_name} must NOT have AOF configured in {name} "
+                        "(Phase T.4 removed it — see docker-compose.test.yml)"
+                    )
+                else:
+                    # Non-test stacks keep AOF for durability.
+                    assert "--appendonly" in command.lower(), (
+                        f"{service_name} should have AOF persistence configured in {name}"
+                    )
 
     def test_redis_events_persistence_config(self, docker_compose_configs):
         """Test that redis-events has AOF persistence configured."""
@@ -192,7 +207,7 @@ class TestRedisServiceConfiguration:
                 env = service_config.get("environment", {})
                 # Should have --maxmemory configured
                 assert "--maxmemory" in str(command) or any(
-                    "MAX_MEMORY" in str(k).upper() for k in env.keys()
+                    "MAX_MEMORY" in str(k).upper() for k in env
                 ), f"{service_name} should have memory limit configured in {name}"
 
     def test_redis_queue_memory_limit(self, docker_compose_configs):
@@ -206,7 +221,7 @@ class TestRedisServiceConfiguration:
                 env = service_config.get("environment", {})
                 # Should have --maxmemory configured
                 assert "--maxmemory" in str(command) or any(
-                    "MAX_MEMORY" in str(k).upper() for k in env.keys()
+                    "MAX_MEMORY" in str(k).upper() for k in env
                 ), f"{service_name} should have memory limit configured in {name}"
 
     def test_redis_events_memory_limit(self, docker_compose_configs):
@@ -220,7 +235,7 @@ class TestRedisServiceConfiguration:
                 env = service_config.get("environment", {})
                 # Should have --maxmemory configured
                 assert "--maxmemory" in str(command) or any(
-                    "MAX_MEMORY" in str(k).upper() for k in env.keys()
+                    "MAX_MEMORY" in str(k).upper() for k in env
                 ), f"{service_name} should have memory limit configured in {name}"
 
     def test_redis_channels_memory_limit(self, docker_compose_configs):
@@ -234,7 +249,7 @@ class TestRedisServiceConfiguration:
                 env = service_config.get("environment", {})
                 # Should have --maxmemory configured
                 assert "--maxmemory" in str(command) or any(
-                    "MAX_MEMORY" in str(k).upper() for k in env.keys()
+                    "MAX_MEMORY" in str(k).upper() for k in env
                 ), f"{service_name} should have memory limit configured in {name}"
 
     def test_redis_queue_noeviction_policy(self, docker_compose_configs):
@@ -349,7 +364,8 @@ class TestMultiRedisDockerComposeSetup:
     """
 
     @pytest.fixture(scope="class")
-    def docker_compose_file(self):
+    @classmethod
+    def docker_compose_file(cls):
         """Get path to docker-compose.yml."""
         return project_root / "docker-compose.yml"
 
@@ -363,7 +379,9 @@ class TestMultiRedisDockerComposeSetup:
             assert result is True, "redis-cache should respond to ping"
         except redis.ConnectionError:
             if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
-                pytest.skip("redis-cache not accessible (Docker Compose services may not be running)")
+                pytest.skip(
+                    "redis-cache not accessible (Docker Compose services may not be running)"
+                )
             raise
 
     def test_redis_queue_accessible(self, docker_compose_file):
@@ -376,7 +394,9 @@ class TestMultiRedisDockerComposeSetup:
             assert result is True, "redis-queue should respond to ping"
         except redis.ConnectionError:
             if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
-                pytest.skip("redis-queue not accessible (Docker Compose services may not be running)")
+                pytest.skip(
+                    "redis-queue not accessible (Docker Compose services may not be running)"
+                )
             raise
 
     def test_redis_events_accessible(self, docker_compose_file):
@@ -389,7 +409,9 @@ class TestMultiRedisDockerComposeSetup:
             assert result is True, "redis-events should respond to ping"
         except redis.ConnectionError:
             if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
-                pytest.skip("redis-events not accessible (Docker Compose services may not be running)")
+                pytest.skip(
+                    "redis-events not accessible (Docker Compose services may not be running)"
+                )
             raise
 
     def test_redis_channels_accessible(self, docker_compose_file):
@@ -402,7 +424,9 @@ class TestMultiRedisDockerComposeSetup:
             assert result is True, "redis-channels should respond to ping"
         except redis.ConnectionError:
             if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
-                pytest.skip("redis-channels not accessible (Docker Compose services may not be running)")
+                pytest.skip(
+                    "redis-channels not accessible (Docker Compose services may not be running)"
+                )
             raise
 
     def test_redis_instances_isolated(self, docker_compose_file):
@@ -435,5 +459,7 @@ class TestMultiRedisDockerComposeSetup:
             cache_client.delete(test_key)
         except redis.ConnectionError:
             if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
-                pytest.skip("Redis instances not accessible (Docker Compose services may not be running)")
+                pytest.skip(
+                    "Redis instances not accessible (Docker Compose services may not be running)"
+                )
             raise

@@ -103,7 +103,6 @@ class TestContractAPIEndpoints(TestCase):
 
         # May return 500 if DataContract service unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,
@@ -216,8 +215,8 @@ class TestScheduledIngestionAPIEndpoints(TestCase):
             response.status_code,
             [
                 status.HTTP_201_CREATED,
-                status.HTTP_207_MULTI_STATUS,    # Prefect sync partial failure (e.g. timeout)
-                status.HTTP_400_BAD_REQUEST,     # Validation error
+                status.HTTP_207_MULTI_STATUS,  # Prefect sync partial failure (e.g. timeout)
+                status.HTTP_400_BAD_REQUEST,  # Validation error
                 status.HTTP_405_METHOD_NOT_ALLOWED,  # Endpoint configuration issue
                 status.HTTP_500_INTERNAL_SERVER_ERROR,  # Connection test exception
             ],
@@ -363,7 +362,6 @@ class TestScheduledIngestionAPIEndpoints(TestCase):
 
         # May return 200, 202, 404 if endpoint not implemented, or 500 if Prefect unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,
@@ -520,7 +518,6 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
 
         # May return 201, 202, 404 if endpoint not implemented, or 500 if service unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_201_CREATED,
@@ -536,7 +533,6 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
 
         # May return 200, 404 if endpoint not implemented, or 500 if service unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,
@@ -556,7 +552,6 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
 
         # May return 200, 404 if endpoint not implemented, or 500 if service unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,

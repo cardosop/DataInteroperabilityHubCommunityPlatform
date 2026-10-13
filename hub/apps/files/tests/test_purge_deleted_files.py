@@ -1,5 +1,5 @@
 """
-Phase 260.1.A.7–A.8 — file hard-purge command, retention eligibility, tenant grace.
+Phase 260.1.A.7-A.8 — file hard-purge command, retention eligibility, tenant grace.
 
 Uses real Redis (distributed lock), DB, and optional S3/MinIO. Skips purge tests
 when Redis is unreachable (same pattern as idempotency tests).
@@ -19,7 +19,6 @@ from django.utils import timezone
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from hub.apps.api.middleware.idempotency_utils import get_redis_client
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.file_retention import file_is_purge_eligible
 from hub.apps.files.models import File, FileScanStatus, FileStatus

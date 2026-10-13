@@ -8,7 +8,8 @@ from typing import Any
 
 import structlog
 from django.contrib.postgres.search import SearchVector
-from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError, transaction
 
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract
@@ -18,6 +19,22 @@ from hub.apps.governance.models import ClassificationCategory, DataClassificatio
 from .models import SearchIndex
 
 logger = structlog.get_logger(__name__)
+
+
+def enqueue_contract_reindex(contract_id: str) -> None:
+    """Reindex a contract's SearchIndex row on the low-priority queue.
+
+    W4.2 (R2-B5): this symbol is what
+    ``contracts/cache_invalidation._trigger_search_reindex`` imports on
+    the post-save cascade — pre-fix it did NOT exist and the call site
+    swallowed the ImportError, so contract PATCH never refreshed the
+    SearchIndex row the unified search UI reads (Phase 226 G12).  The
+    lazy import breaks the tasks→indexing module cycle
+    (``search.tasks`` imports ``SearchIndexer`` from this module).
+    """
+    from hub.apps.search.tasks import enqueue_contract_reindex as _enqueue
+
+    _enqueue(contract_id)
 
 
 class SearchIndexer:
@@ -127,7 +144,7 @@ class SearchIndexer:
                         )
                         return highest.category
 
-        except Exception as e:
+        except (DatabaseError, ValidationError) as e:
             logger.warning(
                 "Failed to get classification",
                 tenant_id=tenant_id,
@@ -277,6 +294,7 @@ class SearchIndexer:
             resource_id=asset.id,
             defaults={
                 "title": title,
+                "key": asset.key,
                 "description": description,
                 "tags": tags,
                 "tags_text": tags_text,
@@ -287,9 +305,11 @@ class SearchIndexer:
             },
         )
 
-        # Update search vector
+        # Update search vector — the key carries weight A so ``?q={key}``
+        # (Phase 226 G12) matches the row directly.
         search_index.search_vector = (
-            SearchVector("title", weight="A", config="english")
+            SearchVector("key", weight="A", config="english")
+            + SearchVector("title", weight="A", config="english")
             + SearchVector("description", weight="B", config="english")
             + SearchVector("tags_text", weight="C", config="english")
         )
@@ -466,6 +486,13 @@ class SearchIndexer:
             tenant_id=tenant_id, resource_type=resource_type, resource_id=resource_id
         ).delete()
 
+        try:
+            from hub.apps.search.cache_invalidation import invalidate_search_cache
+
+            invalidate_search_cache()
+        except Exception:
+            logger.warning("search_cache_invalidation_failed", exc_info=True)
+
         logger.info(
             "Deleted search index",
             tenant_id=tenant_id,
@@ -488,7 +515,9 @@ class SearchIndexer:
             try:
                 SearchIndexer.index_contract(contract)
             except Exception as e:
-                logger.error("Failed to index contract", contract_id=str(contract.id), error=str(e))
+                logger.exception(
+                    "Failed to index contract", contract_id=str(contract.id), error=str(e)
+                )
 
         # Index assets
         assets = Asset.objects.filter(queryset)
@@ -496,7 +525,7 @@ class SearchIndexer:
             try:
                 SearchIndexer.index_asset(asset)
             except Exception as e:
-                logger.error("Failed to index asset", asset_id=str(asset.id), error=str(e))
+                logger.exception("Failed to index asset", asset_id=str(asset.id), error=str(e))
 
         # Index datasets
         datasets = Dataset.objects.filter(queryset)
@@ -504,7 +533,9 @@ class SearchIndexer:
             try:
                 SearchIndexer.index_dataset(dataset)
             except Exception as e:
-                logger.error("Failed to index dataset", dataset_id=str(dataset.id), error=str(e))
+                logger.exception(
+                    "Failed to index dataset", dataset_id=str(dataset.id), error=str(e)
+                )
 
         # Index virtual datasets
         try:
@@ -515,7 +546,7 @@ class SearchIndexer:
                 try:
                     SearchIndexer.index_virtual_dataset(virtual_dataset)
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "Failed to index virtual dataset",
                         virtual_dataset_id=str(virtual_dataset.id),
                         error=str(e),

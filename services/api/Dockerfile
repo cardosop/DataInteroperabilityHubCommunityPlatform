@@ -10,8 +10,12 @@ WORKDIR /app
 
 # Install system dependencies (unixodbc + PostgreSQL ODBC driver for virtualization ODBC sources,
 # libfreetype6 for reportlab PDF invoice generation)
+# Phase U.6: no `apt-get upgrade` — upgrading inside a build is
+# non-reproducible (layer contents depend on WHEN the build runs) and on
+# 2026-09-01 it stalled the staging bring-up for 1.7h on a slow mirror.
+# Fresh base images are pulled at build time; pin what we need and install.
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     gcc \
     postgresql-client \
@@ -69,6 +73,36 @@ COPY --chown=appuser:appuser . .
 RUN --mount=type=cache,target=/root/.cache/pip \
     cd /app/cli && pip install --timeout=1200 --retries=20 -e . && \
     cd /app/sdk/python && pip install --timeout=1200 --retries=20 -e .
+
+# git for the in-container repo-side tests (tests/security/test_secrets_rotation.py
+# shells out to the real binary against the bind-mounted .git). Installed as its
+# own late layer so a change to this line never invalidates the expensive pip
+# requirement layers above.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# gitleaks for the in-container tracked-tree secrets scan
+# (tests/security/test_secrets_rotation.py::test_gitleaks_reports_tree_clean).
+# Static binary, same pattern and late-layer caching rationale as the
+# docker CLI install above.
+RUN curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+    -o /tmp/gitleaks.tgz && \
+    tar -xzf /tmp/gitleaks.tgz -C /tmp && \
+    mv /tmp/gitleaks /usr/local/bin/gitleaks && \
+    chmod +x /usr/local/bin/gitleaks && \
+    rm -f /tmp/gitleaks.tgz
+
+# promtool for Prometheus alert-rule validation
+# (tests/infrastructure/test_synthetic_probes.py::test_promtool_validates_rules).
+# Copied from the official Prometheus image — version matches the stack.
+COPY --from=prom/prometheus:v2.53.0 /bin/promtool /usr/local/bin/promtool
+
+# Python SDK editable install — tests/sdk_python/test_sdk_installation.py
+# (and importlib.metadata checks elsewhere) require the SDK pip-installed,
+# not just importable via PYTHONPATH.
+RUN pip install --no-cache-dir -e /app/sdk/python
 
 # OCI standard labels for registry UX (visible in GHCR, Docker Hub, etc.)
 ENV OTEL_SERVICE_VERSION=${GIT_SHA} \

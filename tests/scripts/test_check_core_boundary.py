@@ -25,12 +25,14 @@ def _manifest(root: Path, paid: list[str]) -> None:
         "hub/apps/manifest.py",
         "_PAID_MODULES: frozenset[str] = frozenset({\n"
         + body
-        + '\n})\n'
+        + "\n})\n"
         + 'ALL_HUB_APPS: tuple[str, ...] = ("hub.apps.core",)\n',
     )
 
 
-def _run(root: Path, allowlist: Path | None = None, extra: list[str] | None = None) -> subprocess.CompletedProcess:
+def _run(
+    root: Path, allowlist: Path | None = None, extra: list[str] | None = None
+) -> subprocess.CompletedProcess:
     cmd = [sys.executable, str(SCRIPT), "--root", str(root)]
     if allowlist is not None:
         cmd += ["--allowlist", str(allowlist)]
@@ -58,9 +60,7 @@ def test_planted_violation_is_caught(tmp_path):
 def test_allowlisted_entry_is_tolerated(tmp_path):
     root, allow = _fixture(tmp_path)
     _write(root, "hub/apps/core/somewhere.py", "from hub.apps.semantic.models import X\n")
-    allow.write_text(
-        "hub/apps/core/somewhere.py:1:audited transitional entry\n"
-    )
+    allow.write_text("hub/apps/core/somewhere.py:1:audited transitional entry\n")
     result = _run(root, allowlist=allow)
     assert result.returncode == 0, result.stdout
     assert "1 allowlisted" in result.stdout

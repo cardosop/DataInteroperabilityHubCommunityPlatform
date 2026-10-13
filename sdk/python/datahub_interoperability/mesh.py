@@ -4,7 +4,7 @@ Data Mesh operations for DataHub SDK.
 Provides methods for managing data mesh domains, topology, policies, and compliance.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -31,14 +31,14 @@ class MeshAPI:
     async def create_domain(
         self,
         name: str,
-        description: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        boundaries: Optional[Dict[str, Any]] = None,
-        capabilities: Optional[Dict[str, Any]] = None,
-        resource_quota: Optional[Dict[str, Any]] = None,
+        description: str | None = None,
+        owner_id: str | None = None,
+        boundaries: dict[str, Any] | None = None,
+        capabilities: dict[str, Any] | None = None,
+        resource_quota: dict[str, Any] | None = None,
         status: str = "ACTIVE",
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create a new data mesh domain.
 
@@ -59,7 +59,7 @@ class MeshAPI:
             ValidationError: If domain data is invalid
             ConflictError: If domain name already exists
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "name": name.strip() if name else name,
             "status": status,
         }
@@ -80,13 +80,13 @@ class MeshAPI:
 
     async def list_domains(
         self,
-        status: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        search: Optional[str] = None,
-        ordering: Optional[str] = None,
+        status: str | None = None,
+        owner_id: str | None = None,
+        search: str | None = None,
+        ordering: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List data mesh domains with filtering and pagination.
 
@@ -102,7 +102,7 @@ class MeshAPI:
         Returns:
             Paginated response with domains list
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": min(page_size, 100),  # Enforce max page size
         }
@@ -121,7 +121,7 @@ class MeshAPI:
     async def get_domain(
         self,
         domain_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get domain details by ID.
 
@@ -139,15 +139,15 @@ class MeshAPI:
     async def update_domain(
         self,
         domain_id: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        boundaries: Optional[Dict[str, Any]] = None,
-        capabilities: Optional[Dict[str, Any]] = None,
-        resource_quota: Optional[Dict[str, Any]] = None,
-        status: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        owner_id: str | None = None,
+        boundaries: dict[str, Any] | None = None,
+        capabilities: dict[str, Any] | None = None,
+        resource_quota: dict[str, Any] | None = None,
+        status: str | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update an existing data mesh domain.
 
@@ -169,7 +169,7 @@ class MeshAPI:
             NotFoundError: If domain not found
             ValidationError: If update data is invalid
         """
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if name is not None:
             data["name"] = name.strip() if name else name
@@ -212,7 +212,7 @@ class MeshAPI:
     async def get_topology(
         self,
         include_health_metrics: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get complete data mesh topology including all domains, relationships, and health metrics.
 
@@ -229,7 +229,7 @@ class MeshAPI:
         Raises:
             ValidationError: If request is invalid
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "include_health_metrics": str(include_health_metrics).lower(),
         }
 
@@ -238,7 +238,7 @@ class MeshAPI:
     async def get_domain_topology(
         self,
         domain_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get topology view for a specific domain including its relationships and health metrics.
 
@@ -262,8 +262,8 @@ class MeshAPI:
         self,
         domain_id: str,
         policy_id: str,
-        overrides: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Apply an access policy to a data mesh domain with optional overrides.
 
@@ -285,7 +285,7 @@ class MeshAPI:
             NotFoundError: If domain or policy not found
             ValidationError: If validation fails (policy disabled, domain inactive, invalid overrides)
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "policy_id": policy_id,
         }
 
@@ -297,10 +297,10 @@ class MeshAPI:
     async def list_policies(
         self,
         domain_id: str,
-        status: Optional[str] = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List all policies applied to a data mesh domain with filtering and pagination.
 
@@ -321,7 +321,7 @@ class MeshAPI:
         Raises:
             NotFoundError: If domain not found
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": min(page_size, 100),  # Enforce max page size
         }
@@ -335,7 +335,7 @@ class MeshAPI:
         self,
         domain_id: str,
         policy_id: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Remove (revoke) a policy application from a data mesh domain.
 
@@ -356,8 +356,8 @@ class MeshAPI:
     async def check_compliance(
         self,
         domain_id: str,
-        asset_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        asset_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Check compliance status for a data mesh domain and generate a compliance report.
 
@@ -381,7 +381,7 @@ class MeshAPI:
             NotFoundError: If domain or asset not found
             ValidationError: If validation fails
         """
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if asset_id:
             data["asset_id"] = asset_id
@@ -392,7 +392,7 @@ class MeshAPI:
         self,
         domain_id: str,
         report_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get detailed information about a specific compliance report for a data mesh domain.
 

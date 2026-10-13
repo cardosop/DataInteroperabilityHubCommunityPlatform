@@ -234,7 +234,8 @@ class APIKeyModelMethodTests(TestCase):
         self.api_key.refresh_from_db()
         self.assertIsNotNone(self.api_key.last_used_at)
         self.assertLess(
-            (timezone.now() - self.api_key.last_used_at).total_seconds(), 5,
+            (timezone.now() - self.api_key.last_used_at).total_seconds(),
+            5,
         )
 
     def test_revoke_sets_revoked_at(self):

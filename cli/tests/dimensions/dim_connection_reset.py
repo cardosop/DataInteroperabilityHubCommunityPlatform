@@ -32,7 +32,7 @@ def _reset_server(port: int, send_partial: bool = True) -> None:
         if send_partial:
             # Send partial HTTP response then RST
             conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n{"partial":')
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: connection-reset observation window
         # Force RST by setting SO_LINGER to 0 then closing
         conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b"\x01\x00\x00\x00\x00\x00\x00\x00")
         conn.close()
@@ -47,7 +47,7 @@ def test_connection_reset_raises_error():
     port = unique_port()
     server_thread = threading.Thread(target=_reset_server, args=(port, True), daemon=True)
     server_thread.start()
-    time.sleep(0.1)  # let server bind
+    time.sleep(0.1)  # INTENTIONAL: let server bind
 
     with pytest.raises(
         (
@@ -65,7 +65,7 @@ def test_connection_reset_before_response_raises_error():
     port = unique_port()
     server_thread = threading.Thread(target=_reset_server, args=(port, False), daemon=True)
     server_thread.start()
-    time.sleep(0.1)
+    time.sleep(0.1)  # INTENTIONAL: reset-observation window
 
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.get(f"http://127.0.0.1:{port}/api/v1/assets/", timeout=5)

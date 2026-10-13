@@ -5,12 +5,14 @@ Tests security features including CSRF, password hashing, session management,
 authentication, authorization, and input validation.
 """
 
+import contextlib
 import json
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
+from django.db import IntegrityError
 from django.middleware.csrf import get_token
 from django.test import Client, TestCase
 
@@ -65,7 +67,12 @@ class SecurityFeaturesTest(TestCase):
 
         # Verify password is hashed (not plain text)
         self.assertNotEqual(user.password, password)
-        self.assertTrue(user.password.startswith("pbkdf2_"))  # Django's default hasher
+        # The test env swaps in MD5PasswordHasher for speed — assert against
+        # the CONFIGURED hasher, not a hardcoded pbkdf2 prefix.
+        from django.contrib.auth.hashers import get_hashers
+
+        expected_prefix = f"{get_hashers()[0].algorithm}$"
+        self.assertTrue(user.password.startswith(expected_prefix))
 
         # Verify password check works
         self.assertTrue(check_password(password, user.password))
@@ -147,11 +154,9 @@ class SecurityFeaturesTest(TestCase):
         malicious_input = "'; DROP TABLE users; --"
 
         # This should be escaped by Django ORM
-        try:
+        with contextlib.suppress(User.DoesNotExist):
             User.objects.get(email=malicious_input)
-            # If user doesn't exist, that's fine - the important thing is no SQL injection
-        except User.DoesNotExist:
-            pass
+        # If user doesn't exist, that's fine - the important thing is no SQL injection
 
         # Verify no SQL injection occurred (users table still exists)
         self.assertTrue(User.objects.exists() or User.objects.count() >= 0)
@@ -163,7 +168,7 @@ class SecurityFeaturesTest(TestCase):
         from hub.apps.assets.models import Asset
 
         # Try to create asset with invalid data
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError):  # tenant FK is NOT NULL
             # Invalid tenant (should fail validation)
             Asset.objects.create(tenant=None, name="Test Asset")  # Required field
 

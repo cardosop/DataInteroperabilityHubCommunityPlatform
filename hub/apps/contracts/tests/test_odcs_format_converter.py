@@ -5,6 +5,7 @@ Tests format conversion utilities (JSON/YAML) following engineering best practic
 """
 
 import json
+from unittest.mock import patch
 
 import pytest
 from django.test import TestCase
@@ -546,10 +547,21 @@ class ODCSFormatYAMLTest(TestCase):
         Scenario: Format ODCS document as YAML without PyYAML installed
         Expected: ODCSExportError indicating PyYAML is required
         """
-        # This test will only work if PyYAML is actually not available
-        # In most cases, PyYAML will be available, so we'll test the error message
-        # by checking the error handling logic
-        # Covered by implementation error handling
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-contract",
+            "name": "Test Contract",
+        }
+
+        with (
+            patch("hub.apps.contracts.odcs_format_converter.YAML_AVAILABLE", False),
+            self.assertRaises(ODCSExportError) as cm,
+        ):
+            format_odcs_as_yaml(odcs_doc)
+
+        self.assertIn("PyYAML is not available", cm.exception.message)
+        self.assertEqual(cm.exception.error_code, ODCSExportError.ERROR_CODE_EXPORT_FAILED)
 
 
 class ODCSFormatRoundTripTest(TestCase):

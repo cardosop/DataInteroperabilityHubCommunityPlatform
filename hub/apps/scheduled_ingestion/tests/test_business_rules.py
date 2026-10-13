@@ -32,7 +32,7 @@ from hub.apps.scheduled_ingestion.models import (
 )
 from hub.apps.scheduled_ingestion.services import IngestionService
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -52,9 +52,7 @@ def _ensure_db_connection():
             connections.close_all()
             connection.ensure_connection()
         except Exception as _exc:
-            _LOGGER.warning(
-                "DB connection recovery failed in setUp — test may fail: %s", _exc
-            )
+            _LOGGER.warning("DB connection recovery failed in setUp — test may fail: %s", _exc)
 
 
 class ScheduledIngestionBusinessRulesInitializationTest(TestCase):
@@ -80,35 +78,35 @@ class ScheduledIngestionBusinessRulesInitializationTest(TestCase):
         rules = ScheduledIngestionBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        self.assertEqual(rules.tenant_id, str(self.tenant.id))
-        self.assertEqual(rules.user_id, str(self.user.id))
-        self.assertTrue(rules.enable_caching)
-        self.assertTrue(rules.enable_metrics)
-        self.assertTrue(rules.enable_tracing)
-        self.assertTrue(rules.enable_logging)
+        assert rules.tenant_id == str(self.tenant.id)
+        assert rules.user_id == str(self.user.id)
+        assert rules.enable_caching
+        assert rules.enable_metrics
+        assert rules.enable_tracing
+        assert rules.enable_logging
 
     def test_scheduled_ingestion_business_rules_initialization_without_tenant(self):
         """Test ScheduledIngestionBusinessRules initialization without tenant"""
         rules = ScheduledIngestionBusinessRules(user_id=str(self.user.id))
-        self.assertIsNone(rules.tenant_id)
-        self.assertEqual(rules.user_id, str(self.user.id))
+        assert rules.tenant_id is None
+        assert rules.user_id == str(self.user.id)
 
     def test_scheduled_ingestion_business_rules_initialization_without_user(self):
         """Test ScheduledIngestionBusinessRules initialization without user"""
         rules = ScheduledIngestionBusinessRules(tenant_id=str(self.tenant.id))
-        self.assertEqual(rules.tenant_id, str(self.tenant.id))
-        self.assertIsNone(rules.user_id)
+        assert rules.tenant_id == str(self.tenant.id)
+        assert rules.user_id is None
 
     def test_scheduled_ingestion_business_rules_initialization_without_tenant_and_user(self):
         """Test ScheduledIngestionBusinessRules initialization without tenant and user"""
         rules = ScheduledIngestionBusinessRules()
-        self.assertIsNone(rules.tenant_id)
-        self.assertIsNone(rules.user_id)
+        assert rules.tenant_id is None
+        assert rules.user_id is None
 
     def test_scheduled_ingestion_business_rules_get_rule_name(self):
         """Test ScheduledIngestionBusinessRules get_rule_name method"""
         rules = ScheduledIngestionBusinessRules()
-        self.assertEqual(rules.get_rule_name(), "ScheduledIngestionBusinessRules")
+        assert rules.get_rule_name() == "ScheduledIngestionBusinessRules"
 
 
 class ScheduledIngestionBusinessRulesRegistrationTest(TestCase):
@@ -118,27 +116,27 @@ class ScheduledIngestionBusinessRulesRegistrationTest(TestCase):
         """Test ScheduledIngestionBusinessRules is registered in the registry"""
         registry = get_registry()
         rule = registry.get_rule("scheduled_ingestion_validation")
-        self.assertIsNotNone(rule)
-        self.assertEqual(rule.rule_name, "scheduled_ingestion_validation")
-        self.assertEqual(rule.rule_class, ScheduledIngestionBusinessRules)
-        self.assertIn("scheduled_ingestion", rule.tags)
-        self.assertIn("validation", rule.tags)
-        self.assertIn("ingestion", rule.tags)
+        assert rule is not None
+        assert rule.rule_name == "scheduled_ingestion_validation"
+        assert rule.rule_class == ScheduledIngestionBusinessRules
+        assert "scheduled_ingestion" in rule.tags
+        assert "validation" in rule.tags
+        assert "ingestion" in rule.tags
 
     def test_scheduled_ingestion_business_rules_priority(self):
         """Test ScheduledIngestionBusinessRules has correct priority"""
         registry = get_registry()
         rule = registry.get_rule("scheduled_ingestion_validation")
-        self.assertIsNotNone(rule)
-        self.assertEqual(rule.priority, 10)
+        assert rule is not None
+        assert rule.priority == 10
 
     def test_scheduled_ingestion_business_rules_description(self):
         """Test ScheduledIngestionBusinessRules has correct description"""
         registry = get_registry()
         rule = registry.get_rule("scheduled_ingestion_validation")
-        self.assertIsNotNone(rule)
-        self.assertIn("scheduled ingestion", rule.description.lower())
-        self.assertIn("validates", rule.description.lower())
+        assert rule is not None
+        assert "scheduled ingestion" in rule.description.lower()
+        assert "validates" in rule.description.lower()
 
 
 class ScheduledIngestionRuleExecutionContextTest(TestCase):
@@ -182,12 +180,12 @@ class ScheduledIngestionRuleExecutionContextTest(TestCase):
             tenant=self.tenant,
             user=self.user,
         )
-        self.assertEqual(context.tenant_id, str(self.tenant.id))
-        self.assertEqual(context.user_id, str(self.user.id))
-        self.assertEqual(context.schedule, self.schedule)
-        self.assertEqual(context.ingestion_run, self.ingestion_run)
-        self.assertEqual(context.tenant, self.tenant)
-        self.assertEqual(context.user, self.user)
+        assert context.tenant_id == str(self.tenant.id)
+        assert context.user_id == str(self.user.id)
+        assert context.schedule == self.schedule
+        assert context.ingestion_run == self.ingestion_run
+        assert context.tenant == self.tenant
+        assert context.user == self.user
 
     def test_scheduled_ingestion_rule_execution_context_to_dict(self):
         """Test ScheduledIngestionRuleExecutionContext to_dict method"""
@@ -200,14 +198,14 @@ class ScheduledIngestionRuleExecutionContextTest(TestCase):
             user=self.user,
         )
         context_dict = context.to_dict()
-        self.assertEqual(context_dict["tenant_id"], str(self.tenant.id))
-        self.assertEqual(context_dict["user_id"], str(self.user.id))
-        self.assertEqual(context_dict["schedule_id"], str(self.schedule.id))
-        self.assertEqual(context_dict["schedule_name"], self.schedule.name)
-        self.assertEqual(context_dict["schedule_status"], self.schedule.status)
-        self.assertEqual(context_dict["ingestion_run_id"], str(self.ingestion_run.id))
-        self.assertEqual(context_dict["ingestion_run_status"], self.ingestion_run.status)
-        self.assertEqual(context_dict["source_type"], self.schedule.source_type)
+        assert context_dict["tenant_id"] == str(self.tenant.id)
+        assert context_dict["user_id"] == str(self.user.id)
+        assert context_dict["schedule_id"] == str(self.schedule.id)
+        assert context_dict["schedule_name"] == self.schedule.name
+        assert context_dict["schedule_status"] == self.schedule.status
+        assert context_dict["ingestion_run_id"] == str(self.ingestion_run.id)
+        assert context_dict["ingestion_run_status"] == self.ingestion_run.status
+        assert context_dict["source_type"] == self.schedule.source_type
 
     def test_scheduled_ingestion_rule_execution_context_to_dict_without_schedule(self):
         """Test ScheduledIngestionRuleExecutionContext to_dict without schedule"""
@@ -216,14 +214,14 @@ class ScheduledIngestionRuleExecutionContextTest(TestCase):
         )
         context_dict = context.to_dict()
         # tenant_id and user_id should be set from context parameters
-        self.assertEqual(context_dict["tenant_id"], str(self.tenant.id))
-        self.assertEqual(context_dict["user_id"], str(self.user.id))
+        assert context_dict["tenant_id"] == str(self.tenant.id)
+        assert context_dict["user_id"] == str(self.user.id)
         # Schedule-related fields should be None since schedule is not provided
-        self.assertIsNone(context_dict["schedule_id"])
-        self.assertIsNone(context_dict["schedule_name"])
-        self.assertIsNone(context_dict["schedule_status"])
-        self.assertIsNone(context_dict["ingestion_run_id"])
-        self.assertIsNone(context_dict["source_type"])
+        assert context_dict["schedule_id"] is None
+        assert context_dict["schedule_name"] is None
+        assert context_dict["schedule_status"] is None
+        assert context_dict["ingestion_run_id"] is None
+        assert context_dict["source_type"] is None
 
 
 class ScheduledIngestionScheduleFormatValidationTest(TestCase):
@@ -260,9 +258,9 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details.get("cron_expression_valid"))
+        assert result.is_valid
+        assert len(result.errors) == 0
+        assert result.details.get("cron_expression_valid")
 
     def test_validate_cron_expression_invalid(self):
         """Test validation of invalid cron expression"""
@@ -277,9 +275,9 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertFalse(result.details.get("cron_expression_valid"))
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert not result.details.get("cron_expression_valid")
 
     def test_validate_cron_expression_missing(self):
         """Test validation when cron expression is missing"""
@@ -294,9 +292,9 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("Cron expression is required", result.errors[0])
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "Cron expression is required" in result.errors[0]
 
     def test_validate_daily_schedule_valid(self):
         """Test validation of valid daily schedule"""
@@ -311,9 +309,9 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details.get("time_format_valid"))
+        assert result.is_valid
+        assert len(result.errors) == 0
+        assert result.details.get("time_format_valid")
 
     def test_validate_daily_schedule_invalid_time(self):
         """Test validation of daily schedule with invalid time"""
@@ -328,8 +326,8 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_weekly_schedule_valid(self):
         """Test validation of valid weekly schedule"""
@@ -344,10 +342,10 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details.get("days_of_week_valid"))
-        self.assertTrue(result.details.get("time_format_valid"))
+        assert result.is_valid
+        assert len(result.errors) == 0
+        assert result.details.get("days_of_week_valid")
+        assert result.details.get("time_format_valid")
 
     def test_validate_weekly_schedule_invalid_days(self):
         """Test validation of weekly schedule with invalid days"""
@@ -362,8 +360,8 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_monthly_schedule_valid(self):
         """Test validation of valid monthly schedule"""
@@ -378,10 +376,10 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details.get("day_of_month_valid"))
-        self.assertTrue(result.details.get("time_format_valid"))
+        assert result.is_valid
+        assert len(result.errors) == 0
+        assert result.details.get("day_of_month_valid")
+        assert result.details.get("time_format_valid")
 
     def test_validate_monthly_schedule_invalid_day(self):
         """Test validation of monthly schedule with invalid day"""
@@ -396,8 +394,8 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_format(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
 
 class ScheduledIngestionScheduleConflictDetectionTest(TestCase):
@@ -446,11 +444,11 @@ class ScheduledIngestionScheduleConflictDetectionTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_conflicts(schedule1)
-        self.assertTrue(result.is_valid)
+        assert result.is_valid
         # Check that conflict check passed and count is 0
-        self.assertTrue(result.details.get("conflict_check_passed"))
+        assert result.details.get("conflict_check_passed")
         overlapping_count = result.details.get("overlapping_schedules_count", 0)
-        self.assertEqual(overlapping_count, 0)
+        assert overlapping_count == 0
 
     def test_validate_schedule_conflicts_same_source_different_time(self):
         """Test conflict detection for same source but different times"""
@@ -478,7 +476,7 @@ class ScheduledIngestionScheduleConflictDetectionTest(TestCase):
         )
         result = self.rules._validate_schedule_conflicts(schedule1)
         # Should not have conflicts since times are different
-        self.assertTrue(result.is_valid or len(result.errors) == 0)
+        assert result.is_valid or len(result.errors) == 0
 
     def test_validate_schedule_conflicts_paused_schedule(self):
         """Test conflict detection skips paused schedules"""
@@ -494,8 +492,8 @@ class ScheduledIngestionScheduleConflictDetectionTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_conflicts(schedule1)
-        self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get("conflict_check_skipped"))
+        assert result.is_valid
+        assert result.details.get("conflict_check_skipped")
 
 
 class ScheduledIngestionScheduleTimezoneValidationTest(TestCase):
@@ -532,9 +530,9 @@ class ScheduledIngestionScheduleTimezoneValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_timezone(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details.get("timezone_valid"))
+        assert result.is_valid
+        assert len(result.errors) == 0
+        assert result.details.get("timezone_valid")
 
     def test_validate_timezone_invalid(self):
         """Test validation of invalid timezone"""
@@ -549,8 +547,8 @@ class ScheduledIngestionScheduleTimezoneValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_timezone(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_timezone_default_utc(self):
         """Test validation defaults to UTC if timezone not specified"""
@@ -565,8 +563,8 @@ class ScheduledIngestionScheduleTimezoneValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_timezone(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
 
 class ScheduledIngestionScheduleResourceValidationTest(TestCase):
@@ -603,8 +601,8 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_resource(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
     def test_validate_s3_source_missing_bucket(self):
         """Test validation of S3 source config missing bucket"""
@@ -619,9 +617,9 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_resource(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("bucket", result.errors[0].lower())
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "bucket" in result.errors[0].lower()
 
     def test_validate_http_source_valid(self):
         """Test validation of valid HTTP source config"""
@@ -636,8 +634,8 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_resource(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
     def test_validate_database_source_valid(self):
         """Test validation of valid database source config"""
@@ -652,8 +650,8 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_resource(schedule)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
     def test_validate_database_source_missing_fields(self):
         """Test validation of database source config missing required fields"""
@@ -668,8 +666,8 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_schedule_resource(schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
 
 class ScheduledIngestionBusinessRulesIntegrationTest(TestCase):
@@ -707,8 +705,8 @@ class ScheduledIngestionBusinessRulesIntegrationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules.validate(schedule=schedule, validation_type="schedule")
-        self.assertTrue(result.is_valid)
-        self.assertIn("schedule", result.details.get("validated_items", []))
+        assert result.is_valid
+        assert "schedule" in result.details.get("validated_items", [])
 
     def test_validate_schedule_with_invalid_config(self):
         """Test validation catches invalid schedule configuration"""
@@ -723,8 +721,8 @@ class ScheduledIngestionBusinessRulesIntegrationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules.validate(schedule=schedule, validation_type="schedule")
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_integration_with_ingestion_service(self):
         """Test integration with IngestionService"""
@@ -743,7 +741,7 @@ class ScheduledIngestionBusinessRulesIntegrationTest(TestCase):
 
         # Validate schedule using business rules
         result = self.rules.validate(schedule=schedule, validation_type="schedule")
-        self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
+        assert result.is_valid, f"Validation failed: {result.errors}"
 
         # Verify schedule can be retrieved by IngestionService
         # IngestionService inherits from BaseService which doesn't take tenant_id in constructor
@@ -752,8 +750,8 @@ class ScheduledIngestionBusinessRulesIntegrationTest(TestCase):
         retrieved_schedule = service.get_ingestion_status(
             scheduled_ingestion_id=str(schedule.id), tenant_id=str(self.tenant.id)
         )
-        self.assertEqual(retrieved_schedule.id, schedule.id)
-        self.assertEqual(retrieved_schedule.name, schedule.name)
+        assert retrieved_schedule.id == schedule.id
+        assert retrieved_schedule.name == schedule.name
 
 
 class ScheduledIngestionSourceValidationTest(TestCase):
@@ -781,25 +779,25 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         """Test source type validation with valid source types"""
         for source_type in SourceType.values:
             result = self.rules._validate_source_type(source_type)
-            self.assertTrue(result.is_valid, f"Source type {source_type} should be valid")
-            self.assertEqual(len(result.errors), 0)
-            self.assertTrue(result.details.get("source_type_valid"))
+            assert result.is_valid, f"Source type {source_type} should be valid"
+            assert len(result.errors) == 0
+            assert result.details.get("source_type_valid")
 
     def test_validate_source_type_invalid(self):
         """Test source type validation with invalid source type"""
         invalid_source_type = "INVALID_TYPE"
         result = self.rules._validate_source_type(invalid_source_type)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("Invalid source type", result.errors[0])
-        self.assertFalse(result.details.get("source_type_valid"))
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "Invalid source type" in result.errors[0]
+        assert not result.details.get("source_type_valid")
 
     def test_validate_source_type_missing(self):
         """Test source type validation when source type is missing"""
         result = self.rules._validate_source_type(None)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("required", result.errors[0].lower())
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "required" in result.errors[0].lower()
 
     def test_validate_source_config_required_fields_s3(self):
         """Test required fields validation for S3 source"""
@@ -808,17 +806,17 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         result = self.rules._validate_source_config_required_fields(
             SourceType.S3.value, source_config
         )
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
         # Missing required field
         source_config = {"region": "us-east-1"}  # Missing bucket
         result = self.rules._validate_source_config_required_fields(
             SourceType.S3.value, source_config
         )
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("bucket", result.errors[0].lower())
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "bucket" in result.errors[0].lower()
 
     def test_validate_source_config_required_fields_database(self):
         """Test required fields validation for DATABASE source"""
@@ -827,16 +825,16 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         result = self.rules._validate_source_config_required_fields(
             SourceType.DATABASE.value, source_config
         )
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
         # Missing required fields
         source_config = {"host": "localhost"}  # Missing database
         result = self.rules._validate_source_config_required_fields(
             SourceType.DATABASE.value, source_config
         )
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_source_config_required_fields_http(self):
         """Test required fields validation for HTTP source"""
@@ -845,16 +843,16 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         result = self.rules._validate_source_config_required_fields(
             SourceType.HTTP.value, source_config
         )
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
         # Missing required field
         source_config = {}  # Missing base_url
         result = self.rules._validate_source_config_required_fields(
             SourceType.HTTP.value, source_config
         )
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_source_config_required_fields_ftp(self):
         """Test required fields validation for FTP source"""
@@ -863,24 +861,24 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         result = self.rules._validate_source_config_required_fields(
             SourceType.FTP.value, source_config
         )
-        self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert len(result.errors) == 0
 
         # Missing required field
         source_config = {}  # Missing host
         result = self.rules._validate_source_config_required_fields(
             SourceType.FTP.value, source_config
         )
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_source_with_dict(self):
         """Test source validation with dictionary source"""
         source = {"source_type": SourceType.S3, "source_config": {"bucket": "test-bucket"}}
         result = self.rules._validate_source(source)
         # Should pass basic validation (connection test may fail if connector unavailable)
-        self.assertIsNotNone(result.details.get("source_type"))
-        self.assertIn("validation_checks", result.details)
+        assert result.details.get("source_type") is not None
+        assert "validation_checks" in result.details
 
     def test_validate_source_with_scheduled_ingestion(self):
         """Test source validation with ScheduledIngestion instance"""
@@ -895,23 +893,23 @@ class ScheduledIngestionSourceValidationTest(TestCase):
             created_by=self.user,
         )
         result = self.rules._validate_source(schedule, tenant=self.tenant)
-        self.assertIsNotNone(result.details.get("source_type"))
-        self.assertIn("validation_checks", result.details)
+        assert result.details.get("source_type") is not None
+        assert "validation_checks" in result.details
 
     def test_validate_source_invalid_type(self):
         """Test source validation with invalid source type"""
         source = {"source_type": "INVALID_TYPE", "source_config": {}}
         result = self.rules._validate_source(source)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_source_not_dict_or_schedule(self):
         """Test source validation with invalid source type (not dict or ScheduledIngestion)"""
         source = "invalid source"
         result = self.rules._validate_source(source)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("dictionary or ScheduledIngestion", result.errors[0])
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "dictionary or ScheduledIngestion" in result.errors[0]
 
     def test_validate_source_connection_skipped_when_connector_unavailable(self):
         """Test that connection validation gracefully handles connector factory unavailability"""
@@ -921,7 +919,7 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         )
         # Should not fail if connector factory unavailable - should return warning instead
         # Connection test may be skipped, but validation should still return a result
-        self.assertIn("connection_validation", result.details)
+        assert "connection_validation" in result.details
         # If connector unavailable, should have warning but not error
         if not result.is_valid:
             # If it fails, it should be due to missing required fields, not connector unavailability
@@ -932,7 +930,7 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         # Note: This test may make actual HTTP requests
         source_config = {"base_url": "https://httpbin.org/status/200"}
         result = self.rules._validate_source_accessibility(SourceType.HTTP.value, source_config)
-        self.assertIn("accessibility_validation", result.details)
+        assert "accessibility_validation" in result.details
         # Should not fail validation even if URL is unreachable (should be warning)
         # Accessibility check is informational, not blocking
 
@@ -942,11 +940,11 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         result = self.rules._validate_source_schema_compatibility(
             SourceType.S3.value, source_config, None
         )
-        self.assertTrue(result.is_valid)  # Should not fail if no target asset
-        self.assertGreater(len(result.warnings), 0)
+        assert result.is_valid  # Should not fail if no target asset
+        assert len(result.warnings) > 0
         # Check that skip_reason exists and contains relevant text
         skip_reason = result.details.get("skip_reason", "")
-        self.assertTrue("no_target_asset" in skip_reason or "skip" in skip_reason.lower())
+        assert "no_target_asset" in skip_reason or "skip" in skip_reason.lower()
 
     def test_validate_source_comprehensive_with_schedule(self):
         """Test comprehensive source validation with ScheduledIngestion instance"""
@@ -964,19 +962,19 @@ class ScheduledIngestionSourceValidationTest(TestCase):
 
         # Check that all validation checks were performed
         validation_checks = result.details.get("validation_checks", {})
-        self.assertIn("source_type", validation_checks)
-        self.assertIn("connection", validation_checks)
-        self.assertIn("accessibility", validation_checks)
+        assert "source_type" in validation_checks
+        assert "connection" in validation_checks
+        assert "accessibility" in validation_checks
 
         # Source type should be valid
-        self.assertTrue(result.details.get("source_type_valid", False))
+        assert result.details.get("source_type_valid", False)
 
         # Should have source_type in details (it's stored as string from the model)
         # ScheduledIngestion.source_type is stored as a string in the database
         # So it will be 'S3', not SourceType.S3 enum
         source_type_in_details = result.details.get("source_type")
         # It should be the string 'S3' (the enum value)
-        self.assertEqual(source_type_in_details, SourceType.S3.value)
+        assert source_type_in_details == SourceType.S3.value
 
     def test_validate_source_integration_with_service(self):
         """Test source validation integration with ScheduledIngestionService"""
@@ -995,8 +993,8 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         result = self.rules.validate(source=schedule, validation_type="source")
 
         # Should have validation result
-        self.assertIsNotNone(result)
-        self.assertIn("source_validation", result.details)
+        assert result is not None
+        assert "source_validation" in result.details
 
         # Verify schedule can be used with service
         # IngestionService inherits from BaseService which doesn't have __init__
@@ -1005,14 +1003,14 @@ class ScheduledIngestionSourceValidationTest(TestCase):
         service = IngestionService()
         service.tenant_id = str(self.tenant.id)
         # Service should be able to work with validated schedule
-        self.assertIsNotNone(service)
-        self.assertEqual(service.tenant_id, str(self.tenant.id))
+        assert service is not None
+        assert service.tenant_id == str(self.tenant.id)
 
         # Verify we can retrieve the schedule using the service
         retrieved = service.get_ingestion_status(
             scheduled_ingestion_id=str(schedule.id), tenant_id=str(self.tenant.id)
         )
-        self.assertEqual(retrieved.id, schedule.id)
+        assert retrieved.id == schedule.id
 
 
 class IngestionRunValidationTest(TestCase):
@@ -1060,8 +1058,8 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_run_eligibility(run, self.schedule)
-        self.assertIn("eligibility_validation", result.details)
-        self.assertTrue(result.details.get("schedule_active", False))
+        assert "eligibility_validation" in result.details
+        assert result.details.get("schedule_active", False)
 
     def test_validate_run_eligibility_paused_schedule(self):
         """Test run eligibility validation with paused schedule"""
@@ -1071,9 +1069,9 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_run_eligibility(run, self.schedule)
-        self.assertFalse(result.is_valid)
-        self.assertFalse(result.details.get("schedule_active", True))
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert not result.details.get("schedule_active", True)
+        assert len(result.errors) > 0
 
     def test_validate_run_status_transition_pending(self):
         """Test status transition validation for PENDING run"""
@@ -1081,10 +1079,10 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_run_status_transition(run)
-        self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get("timestamps_consistent", False))
-        self.assertEqual(result.details.get("current_status"), ScheduledIngestionRunStatus.PENDING)
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert result.details.get("timestamps_consistent", False)
+        assert result.details.get("current_status") == ScheduledIngestionRunStatus.PENDING
+        assert len(result.errors) == 0
 
     def test_validate_run_status_transition_running(self):
         """Test status transition validation for RUNNING run"""
@@ -1094,10 +1092,10 @@ class IngestionRunValidationTest(TestCase):
             started_at=self.timezone.now(),
         )
         result = self.rules._validate_run_status_transition(run)
-        self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get("timestamps_consistent", False))
-        self.assertIsNotNone(result.details.get("started_at"))
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert result.details.get("timestamps_consistent", False)
+        assert result.details.get("started_at") is not None
+        assert len(result.errors) == 0
 
     def test_validate_run_status_transition_running_without_started_at(self):
         """Test status transition validation for RUNNING run without started_at"""
@@ -1105,8 +1103,8 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.RUNNING
         )
         result = self.rules._validate_run_status_transition(run)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_run_status_transition_completed(self):
         """Test status transition validation for COMPLETED run"""
@@ -1119,9 +1117,9 @@ class IngestionRunValidationTest(TestCase):
             completed_at=completed_at,
         )
         result = self.rules._validate_run_status_transition(run)
-        self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get("timestamps_consistent", False))
-        self.assertEqual(len(result.errors), 0)
+        assert result.is_valid
+        assert result.details.get("timestamps_consistent", False)
+        assert len(result.errors) == 0
 
     def test_validate_run_status_transition_completed_invalid_timestamps(self):
         """Test status transition validation for COMPLETED run with invalid timestamps"""
@@ -1134,8 +1132,8 @@ class IngestionRunValidationTest(TestCase):
             completed_at=completed_at,
         )
         result = self.rules._validate_run_status_transition(run)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_incremental_ingestion_valid_state(self):
         """Test incremental ingestion validation with valid state"""
@@ -1151,8 +1149,8 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_incremental_ingestion(run, self.schedule)
-        self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get("state_structure_valid", False))
+        assert result.is_valid
+        assert result.details.get("state_structure_valid", False)
 
     def test_validate_incremental_ingestion_invalid_state_structure(self):
         """Test incremental ingestion validation with invalid state structure"""
@@ -1162,8 +1160,8 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_incremental_ingestion(run, self.schedule)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_incremental_ingestion_inconsistent_state(self):
         """Test incremental ingestion validation with inconsistent state"""
@@ -1177,8 +1175,8 @@ class IngestionRunValidationTest(TestCase):
         )
         result = self.rules._validate_incremental_ingestion(run, self.schedule)
         # Should have warning but not error
-        self.assertTrue(result.is_valid)
-        self.assertGreater(len(result.warnings), 0)
+        assert result.is_valid
+        assert len(result.warnings) > 0
 
     def test_validate_run_retry_no_job(self):
         """Test run retry validation without job"""
@@ -1186,9 +1184,9 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_run_retry(run)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(result.details.get("retry_count"), 0)
-        self.assertEqual(result.details.get("max_retries"), 2)
+        assert result.is_valid
+        assert result.details.get("retry_count") == 0
+        assert result.details.get("max_retries") == 2
 
     def test_validate_run_retry_with_job(self):
         """Test run retry validation with job"""
@@ -1208,10 +1206,10 @@ class IngestionRunValidationTest(TestCase):
             job_id=job.id,
         )
         result = self.rules._validate_run_retry(run)
-        self.assertTrue(result.is_valid)
-        self.assertEqual(result.details.get("retry_count"), 1)
-        self.assertEqual(result.details.get("max_retries"), 2)
-        self.assertTrue(result.details.get("retry_count_within_limit", False))
+        assert result.is_valid
+        assert result.details.get("retry_count") == 1
+        assert result.details.get("max_retries") == 2
+        assert result.details.get("retry_count_within_limit", False)
 
     def test_validate_run_retry_exceeded_max_retries(self):
         """Test run retry validation when max retries exceeded"""
@@ -1231,8 +1229,8 @@ class IngestionRunValidationTest(TestCase):
             job_id=job.id,
         )
         result = self.rules._validate_run_retry(run)
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        assert not result.is_valid
+        assert len(result.errors) > 0
 
     def test_validate_ingestion_run_comprehensive(self):
         """Test comprehensive ingestion run validation"""
@@ -1248,13 +1246,13 @@ class IngestionRunValidationTest(TestCase):
             files_failed=2,
         )
         result = self.rules._validate_ingestion_run(run, tenant=self.tenant)
-        self.assertIn("ingestion_run_validation", result.details)
-        self.assertIn("validation_checks", result.details)
+        assert "ingestion_run_validation" in result.details
+        assert "validation_checks" in result.details
         validation_checks = result.details.get("validation_checks", {})
-        self.assertIn("eligibility", validation_checks)
-        self.assertIn("status_transition", validation_checks)
-        self.assertIn("incremental", validation_checks)
-        self.assertIn("retry", validation_checks)
+        assert "eligibility" in validation_checks
+        assert "status_transition" in validation_checks
+        assert "incremental" in validation_checks
+        assert "retry" in validation_checks
 
     def test_validate_ingestion_run_integration_with_service(self):
         """Test ingestion run validation integration with ScheduledIngestionService"""
@@ -1262,9 +1260,9 @@ class IngestionRunValidationTest(TestCase):
             scheduled_ingestion=self.schedule, status=ScheduledIngestionRunStatus.PENDING
         )
         result = self.rules._validate_ingestion_run(run, tenant=self.tenant)
-        self.assertIsNotNone(result)
+        assert result is not None
 
         # Verify service can work with validated run
         service = IngestionService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        self.assertIsNotNone(service)
-        self.assertEqual(service.tenant_id, str(self.tenant.id))
+        assert service is not None
+        assert service.tenant_id == str(self.tenant.id)

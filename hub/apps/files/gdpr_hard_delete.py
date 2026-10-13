@@ -11,8 +11,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from botocore.exceptions import BotoCoreError
 from django.db import transaction
 from django.utils import timezone
+
+from hub.apps.files.storage import StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,7 @@ def hard_purge_file_for_erasure(
     if storage is not None:
         try:
             storage.delete_file(storage_path)
-        except Exception as exc:
+        except (StorageError, BotoCoreError) as exc:
             logger.warning(
                 "gdpr_hard_purge_s3_delete_failed file_id=%s error=%s",
                 pk,

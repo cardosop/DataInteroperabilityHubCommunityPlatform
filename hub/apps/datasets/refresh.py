@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File
+if TYPE_CHECKING:
+    from hub.apps.datasets.models import Dataset
+    from hub.apps.files.models import File
 
 
 def canonical_schema_hash(schema: dict | None) -> str:
@@ -85,7 +86,7 @@ def reinfer_dataset_schema(
     file_format = format_map.get(file_obj.content_type, "CSV")
     if file_format == "CSV":
         filename_lower = (file_obj.name or "").lower()
-        if filename_lower.endswith(".json") or filename_lower.endswith(".ndjson"):
+        if filename_lower.endswith((".json", ".ndjson")):
             file_format = "JSON"
         elif filename_lower.endswith(".parquet"):
             file_format = "PARQUET"
@@ -132,7 +133,7 @@ def reinfer_dataset_schema(
         raise ServiceValidationError(
             f"Schema inference failed: {exc}",
             details={"file_format": file_format, "error": str(exc)},
-        )
+        ) from exc
 
     # Phase 260.5.F — surface sampled flags on refreshed schema so
     # contract drift / FE consumers see the partial-read signal.

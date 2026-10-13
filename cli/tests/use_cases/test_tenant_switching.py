@@ -34,63 +34,112 @@ def _auth_headers(token: str, tenant_id: str | None = None) -> dict:
 # ===========================================================================
 
 
-def test_switch_tenant_header_changes_context():
-    """Provision a user in two tenants. Verify that setting X-Tenant-Id
-    on GET /auth/me/ returns a different tenant context for each.
+def _setup_two_tenants(creds):
+    """Use the E2E helper to give the user a secondary tenant membership.
 
-    To set this up we provision the same role under two different tenant
-    slugs. If multi-tenant provisioning is not available, the test
-    verifies that the X-Tenant-Id header is at least accepted.
+    Returns (primary_id, secondary_id) or skips.  The X-Tenant-Id header
+    is only accepted for the user's own tenants (platform admins bypass
+    the membership check), and /auth/me/ ALWAYS returns the home tenant —
+    so switching is verified by resource creation in each context, not
+    by /auth/me/ output.
+    """
+    import time as _time
+
+    from tests._persona_provisioning import _e2e_token
+
+    base = api_base_url()
+    for _attempt in range(3):
+        resp = requests.post(
+            f"{base}/test/ensure-e2e-tenant-switch-setup/",
+            headers={
+                **_auth_headers(creds.api_key),
+                "X-E2E-Token": _e2e_token(),
+            },
+            json={},
+            timeout=20,
+        )
+        if resp.status_code == 200:
+            body = resp.json()
+            primary = body.get("primary_tenant_id")
+            secondary = body.get("secondary_tenant_id")
+            if primary and secondary and primary != secondary:
+                return primary, secondary
+        if resp.status_code == 404:
+            pytest.skip("E2E tenant-switch-setup helper not available (404)")
+        _time.sleep(2)
+    pytest.skip("E2E tenant-switch-setup failed after 3 attempts")
+
+
+def test_switch_tenant_header_changes_context():
+    """Switching tenant context via X-Tenant-Id changes the tenant scope
+    of the request — verified by creating an asset in each context and
+    confirming it is visible in one tenant's list and not the other's.
+
+    /auth/me/ always returns the HOME tenant (API contract), so the
+    context change cannot be asserted from /auth/me/ output.
     """
     base = api_base_url()
+    # NOTE: platform admins bypass tenant scoping in the list/create
+    # querysets ("admins see all records"), so switching must be
+    # verified with a non-admin user that holds real memberships —
+    # the E2E switch-setup helper gives tenant_admin a secondary one.
+    admin_creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID  # fixed platform role name
 
-    # Provision in default tenant
-    creds_a = provision_persona("data_analyst")
+    tenant_a, tenant_b = _setup_two_tenants(admin_creds)
 
-    # Provision in a second tenant (using tenant_slug parameter)
-    try:
-        creds_b = provision_persona("data_analyst", tenant_slug="tenant-b")  # noqa: PHASE216-STATIC-ID
-    except Exception:
-        pytest.skip("Multi-tenant provisioning not available — cannot test tenant switching")
-
-    # If both provisions returned the same tenant, we cannot test switching
-    if creds_a.tenant_id == creds_b.tenant_id:
-        pytest.skip("Both provisions returned the same tenant_id — multi-tenant not configured")
-
-    # Use creds_a (which should have access to both tenants if the admin
-    # added them) — or use platform_admin who typically has cross-tenant access
-    admin_creds = provision_persona("platform_admin")
-
-    # GET /auth/me/ with tenant A header
+    # The header is accepted for both tenants (200, not 403)
     me_a = requests.get(
         f"{base}/auth/me/",
-        headers=_auth_headers(admin_creds.api_key, creds_a.tenant_id),
+        headers=_auth_headers(admin_creds.api_key, tenant_a),
         timeout=15,
     )
     assert me_a.status_code == 200, (
         f"/auth/me/ with tenant A returned {me_a.status_code}: {me_a.text[:300]}"
     )
-
-    # GET /auth/me/ with tenant B header
     me_b = requests.get(
         f"{base}/auth/me/",
-        headers=_auth_headers(admin_creds.api_key, creds_b.tenant_id),
+        headers=_auth_headers(admin_creds.api_key, tenant_b),
         timeout=15,
     )
     assert me_b.status_code == 200, (
         f"/auth/me/ with tenant B returned {me_b.status_code}: {me_b.text[:300]}"
     )
 
-    # The tenant context should differ
-    body_a = me_a.json()
-    body_b = me_b.json()
-    tenant_field_a = body_a.get("tenant_id") or body_a.get("tenant", {}).get("id")  # noqa: PHASE216-STATIC-ID
-    tenant_field_b = body_b.get("tenant_id") or body_b.get("tenant", {}).get("id")  # noqa: PHASE216-STATIC-ID
+    # Create an asset in tenant A's context
+    asset_key = fresh_id("tsw")
+    create_resp = requests.post(
+        f"{base}/assets/",
+        headers={
+            **_auth_headers(admin_creds.api_key, tenant_a),
+            "Content-Type": "application/json",
+        },
+        json={
+            "name": f"Switch {asset_key}",
+            "key": asset_key,
+            "description": "Tenant switch context probe",
+            "visibility": "PUBLIC",
+        },
+        timeout=15,
+    )
+    assert create_resp.status_code in (200, 201), (
+        f"Asset creation in tenant A failed: {create_resp.status_code}: {create_resp.text[:300]}"
+    )
 
-    if tenant_field_a and tenant_field_b:
-        assert tenant_field_a != tenant_field_b, (
-            f"Tenant context did not change: A={tenant_field_a}, B={tenant_field_b}"
-        )
+    # Visible in tenant A's list, absent from tenant B's list
+    list_a = requests.get(
+        f"{base}/assets/?key={asset_key}",
+        headers=_auth_headers(admin_creds.api_key, tenant_a),
+        timeout=15,
+    )
+    list_b = requests.get(
+        f"{base}/assets/?key={asset_key}",
+        headers=_auth_headers(admin_creds.api_key, tenant_b),
+        timeout=15,
+    )
+    results_a = list_a.json().get("results", [])
+    results_b = list_b.json().get("results", [])
+    assert results_a, "asset not visible in tenant A after creation"
+    assert not results_b, f"asset wrongly visible in tenant B's context: {results_b}"
 
 
 def test_switch_to_unauthorized_tenant_returns_403():

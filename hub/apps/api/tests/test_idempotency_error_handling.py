@@ -123,7 +123,7 @@ class TestIdempotencyErrorHandling(TestCase):
             record = get_idempotency_record(redis_client, redis_key)
             if record is None:
                 break
-            time.sleep(0.05)  # noqa: sleep-needed — retry loop
+            time.sleep(0.05)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         self.assertIsNone(record, "Expired key should be deleted by Redis after TTL expires")
 
@@ -199,9 +199,7 @@ class TestIdempotencyErrorHandling(TestCase):
 
         self.assertEqual(response.status_code, 410)
         response_body = json.loads(response.content)
-        self.assertEqual(
-            response_body["error"]["code"], "IDEMPOTENCY_KEY_EXPIRED"
-        )
+        self.assertEqual(response_body["error"]["code"], "IDEMPOTENCY_KEY_EXPIRED")
         self.assertEqual(response_body["error"]["http_status"], 410)
 
     def test_idempotency_conflict_returns_409(self):

@@ -20,13 +20,9 @@ class TestApiLogic:
 
     def test_semantic_service_health_responds(self):
         """Verify the semantic service health endpoint returns 200."""
-        semantic_url = os.getenv(
-            "SEMANTIC_SERVICE_URL", "http://semantic-service-test:8081"
-        )
+        semantic_url = os.getenv("SEMANTIC_SERVICE_URL", "http://semantic-service-test:8081")
         try:
-            response = requests.get(
-                f"{semantic_url.rstrip('/')}/health", timeout=10
-            )
+            response = requests.get(f"{semantic_url.rstrip('/')}/health", timeout=20)
         except requests.exceptions.RequestException as e:
             pytest.skip(f"Semantic service not reachable: {e}")
 

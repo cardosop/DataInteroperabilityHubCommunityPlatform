@@ -28,12 +28,11 @@ from rest_framework.test import APIClient
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.services import DatasetService
+from hub.apps.datasets.tests.conftest import extract_error_code
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from hub.apps.datasets.tests.conftest import extract_error_code
 
 User = get_user_model()
 

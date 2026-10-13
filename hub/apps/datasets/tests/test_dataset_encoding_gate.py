@@ -38,12 +38,11 @@ from rest_framework.test import APIClient
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.services import DatasetService
+from hub.apps.datasets.tests.conftest import extract_error_code
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from hub.apps.datasets.tests.conftest import extract_error_code
 
 User = get_user_model()
 
@@ -421,7 +420,9 @@ class DatasetRefreshEncodingGateAPITest(TransactionTestCase):
         )
         # The refresh endpoint wraps the updated dataset under the
         # "dataset" key alongside "schema_drift" and "schema_changed".
-        self.assertIn("dataset", response.data,
-                      "Refresh response must include dataset key")
-        self.assertIn("schema_json", response.data["dataset"],
-                      "Refreshed dataset must include re-inferred schema_json")
+        self.assertIn("dataset", response.data, "Refresh response must include dataset key")
+        self.assertIn(
+            "schema_json",
+            response.data["dataset"],
+            "Refreshed dataset must include re-inferred schema_json",
+        )

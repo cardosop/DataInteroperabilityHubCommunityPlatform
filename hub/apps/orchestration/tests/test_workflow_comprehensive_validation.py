@@ -23,6 +23,7 @@ All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
 
+import contextlib
 import time
 import uuid
 from typing import Any
@@ -302,10 +303,8 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow (will fail at step2)
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             instance = self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         # Wait for compensation to complete
         time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async workflow execution
@@ -366,10 +365,8 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow (will fail at step2)
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             instance = self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         # Refresh to get latest state
         instance.refresh_from_db()
@@ -430,10 +427,8 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow (will fail at step3)
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             instance = self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         # Wait a bit for compensation to complete
         time.sleep(0.3)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async workflow execution
@@ -488,10 +483,8 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow (will fail at step2)
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             instance = self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         # Wait for rollback to complete
         time.sleep(0.3)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async workflow execution
@@ -543,10 +536,8 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow - it will fail because task fails
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             instance = self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         # Get fresh instance from DB
         instance = WorkflowInstance.objects.get(id=instance.id)

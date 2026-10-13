@@ -181,7 +181,7 @@ class TestTestEndpointAuditor:
             # Convert TestEndpointMapping objects to dicts for comparison
             mapping_dicts = [asdict(m) for m in mapping]
             # Get unique endpoint paths
-            unique_endpoints = set(m["endpoint_path"] for m in mapping_dicts)
+            unique_endpoints = {m["endpoint_path"] for m in mapping_dicts}
             assert "/api/v1/assets/" in unique_endpoints
             assert "/api/v1/contracts/" in unique_endpoints
 

@@ -643,7 +643,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="transformationpipeline",
             constraint=models.UniqueConstraint(
-                fields=("tenant", "name", "version"), name="unique_pipeline_name_version_per_tenant"
+                fields=["tenant", "name", "version"], name="unique_pipeline_name_version_per_tenant"
             ),
         ),
         migrations.AddIndex(
@@ -732,7 +732,7 @@ class Migration(migrations.Migration):
             model_name="pipelineexecution",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("idempotency_key__isnull", False)),
-                fields=("idempotency_key",),
+                fields=["idempotency_key",],
                 name="unique_idempotency_key_when_set",
             ),
         ),

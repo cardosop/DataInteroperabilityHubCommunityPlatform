@@ -46,7 +46,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
     def _create_odps_contract_with_marketplace(
-        self, version: str, marketplace_data: dict = None
+        self, version: str, marketplace_data: dict | None = None
     ) -> dict:
         """Helper to create ODPS contract with marketplace section"""
         contract = self.base_odps_contract.copy()
@@ -60,7 +60,9 @@ class ODPSNormalizationIntegrationTest(TestCase):
 
         return contract
 
-    def _create_odps_contract_with_license(self, version: str, license_data: dict = None) -> dict:
+    def _create_odps_contract_with_license(
+        self, version: str, license_data: dict | None = None
+    ) -> dict:
         """Helper to create ODPS contract with license section"""
         contract = self.base_odps_contract.copy()
         contract["schema"] = f"https://opendataproducts.org/schema/v{version}"

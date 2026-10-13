@@ -12,13 +12,15 @@ import requests
 class PerformanceTestHelper:
     """Helper class for performance test setup and utilities"""
 
-    def __init__(self, base_url: str = None):
+    def __init__(self, base_url: str | None = None):
         self.base_url = base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
         self.api_base = f"{self.base_url}/api/v1"
         self._users_cache: dict[str, dict] = {}
         self._test_password = "perf-test-password-123"
 
-    def create_test_tenant_and_user(self, tenant_name: str = None, user_email: str = None) -> dict:
+    def create_test_tenant_and_user(
+        self, tenant_name: str | None = None, user_email: str | None = None
+    ) -> dict:
         """
         Create a test tenant and user for performance testing via API.
 
@@ -93,8 +95,10 @@ class PerformanceTestHelper:
             data += chunk
         return data
 
-    def calculate_percentiles(self, values: list, percentiles: list = [50, 95, 99]) -> dict:
+    def calculate_percentiles(self, values: list, percentiles: list | None = None) -> dict:
         """Calculate percentile values from a list"""
+        if percentiles is None:
+            percentiles = [50, 95, 99]
         if not values:
             return {f"p{p}": 0 for p in percentiles}
 

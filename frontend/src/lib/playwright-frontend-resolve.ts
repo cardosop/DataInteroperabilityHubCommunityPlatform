@@ -10,6 +10,25 @@
  * FRONTEND_URL / PLAYWRIGHT_BASE_URL, then Vite default 5173.
  */
 
+/**
+ * Dev security-header set revision.
+ *
+ * The Vite dev server stamps every response with this value
+ * (X-Vite-Security-Headers-Rev, see securityHeadersPlugin in
+ * vite.config.ts). Playwright's webServer accepts ANY process on the
+ * resolved port via reuseExistingServer — including a `vite` started
+ * hours earlier that still serves the vite.config.ts it loaded at
+ * startup. global-setup compares the served revision against this
+ * constant and fails fast when they differ, instead of running
+ * security-header specs against an outdated header set (2026-09-22
+ * 21:56 run: a 13:38 vite served the pre-Referrer-Policy set and
+ * failed 3 specs).
+ *
+ * BUMP whenever the dev header set in the securityHeadersPlugin
+ * changes.
+ */
+export const DEV_SECURITY_HEADERS_REV = '2026-09-25-1';
+
 export type PlaywrightFrontendResolution = {
   /** Origin only; no trailing slash (Playwright baseURL convention). */
   baseURL: string;

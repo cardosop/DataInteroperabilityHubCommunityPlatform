@@ -3,6 +3,8 @@ Workflow conflict resolution tests: cancel vs run, concurrent state changes.
 Real engine and DB; no mocks.
 """
 
+import contextlib
+
 from django.db import connection
 
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
@@ -51,7 +53,7 @@ class WorkflowConflictsTest(WorkflowConcurrencyTestBase):
             self.assertIsNotNone(inst)
             self.assertIn(inst.status, (WorkflowStatus.RUNNING, WorkflowStatus.COMPLETED))
         finally:
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # teardown cleanup: close errors must not mask the worker result
                 connection.close()
-            except Exception:
-                pass  # Ignore connection close errors in teardown

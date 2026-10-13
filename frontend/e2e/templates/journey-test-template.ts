@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { getTestUser, loginUser } from '../fixtures/auth';
 import {
   clickElement,
   fillField,
@@ -20,7 +20,7 @@ import {
   verifyFailureScenario,
   verifyHappyPath,
   waitForLoadingComplete,
-} from '../../fixtures/helpers';
+} from '../fixtures/helpers';
 
 test.describe('{JOURNEY_ID}: {JOURNEY_TITLE}', () => {
   test.setTimeout(180000); // 3 minutes default timeout

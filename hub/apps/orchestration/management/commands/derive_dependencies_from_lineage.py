@@ -52,7 +52,7 @@ class Command(BaseCommand):
             help="Report what would be created without persisting.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run: bool = options["dry_run"]
         target_tenant_id = options.get("tenant_id")
 
@@ -90,14 +90,8 @@ class Command(BaseCommand):
         # has outgoing edges and each target contract with incoming edges
         # for the same model/field, create a DATA dependency.
         for edge in edges:
-            source_type = _EDGE_TYPE_TO_PIPELINE_TYPE.get(
-                edge.edge_type,
-                None,
-            )
-            target_type = _EDGE_TYPE_TO_PIPELINE_TYPE.get(
-                edge.edge_type,
-                None,
-            )
+            source_type = _EDGE_TYPE_TO_PIPELINE_TYPE.get(edge.edge_type)
+            target_type = _EDGE_TYPE_TO_PIPELINE_TYPE.get(edge.edge_type)
             # Only auto-derive for known edge→pipeline mappings.
             if source_type is None or target_type is None:
                 continue
@@ -148,7 +142,7 @@ class Command(BaseCommand):
                             lineage_edge_id=str(edge.id),
                         )
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "lineage_dependency_derivation_failed",
                     tenant_id=tenant_id,
                     edge_id=str(edge.id),

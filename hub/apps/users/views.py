@@ -39,7 +39,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     queryset = User.objects.prefetch_related("user_roles__role").order_by("created_at")
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "id"
 
     pagination_class = StandardPageNumberPagination
@@ -61,7 +61,9 @@ class UserViewSet(viewsets.ModelViewSet):
             queryset = User.objects.prefetch_related("user_roles__role").all()
         # Regular users can only see users in their tenant
         elif hasattr(user, "tenant") and user.tenant:
-            queryset = User.objects.prefetch_related("user_roles__role").filter(tenant=user.tenant)
+            queryset = User.objects.prefetch_related("user_roles__role").filter(
+                tenant=user.tenant
+            )
         else:
             return User.objects.none()
 
@@ -73,32 +75,82 @@ class UserViewSet(viewsets.ModelViewSet):
         return queryset
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new user via service layer.
 
-        Creates user with optional role assignment and invitation.
+        W1.2 (oss-release-remediation, R2-S2): gated like update/destroy
+        (TENANT_ADMIN or PLATFORM_ADMIN). The tenant comes from the
+        REQUEST — a payload tenant is honored only for PLATFORM_ADMIN
+        (explicit cross-tenant create); anything else that diverges from
+        the authenticated tenant is 403. Requested roles must lie inside
+        the requester-assignable set (a tenant admin may assign only
+        roles of their own tenant; platform-level roles are escalation).
         """
-        # Set tenant from request user if not provided
-        data = request.data.copy()
-        tenant_id = None
-        if "tenant" not in data and hasattr(request.user, "tenant") and request.user.tenant:
-            tenant_id = str(request.user.tenant.id)
-            data["tenant"] = tenant_id
-        elif "tenant" in data:
-            tenant_id = str(data["tenant"])
+        perm = self._check_admin_update_permission(request)
+        if perm is not None:
+            return perm
 
-        serializer = UserCreateSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
+        from hub.apps.tenants.request_tenant import get_request_tenant_id
 
-        # Use service layer for creation (Phase 24.7.2)
-        from hub.apps.users.services import UserService
+        actor = request.user
+        is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
 
+        request_tenant_id = get_request_tenant_id(request)
+        if not request_tenant_id:
+            user_tenant_id = getattr(actor, "tenant_id", None)
+            request_tenant_id = str(user_tenant_id) if user_tenant_id else None
+
+        payload_tenant = request.data.get("tenant")
+        if is_platform_admin and payload_tenant:
+            tenant_id = str(payload_tenant)
+        else:
+            if payload_tenant and str(payload_tenant) != str(request_tenant_id or ""):
+                return Response(
+                    {
+                        "error": {
+                            "code": "CROSS_TENANT_FORBIDDEN",
+                            "message": "Cannot create users in another tenant.",
+                        }
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            tenant_id = request_tenant_id
         if not tenant_id:
             return Response(
                 {"error": "Tenant is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Role assignability: a tenant admin assigns only their own
+        # tenant's roles; platform-level (tenant=None) or foreign roles
+        # are escalation and rejected loudly, not silently dropped.
+        role_ids = list(request.data.get("role_ids") or [])
+        if role_ids and not is_platform_admin:
+            assignable = set(
+                Role.objects.filter(id__in=role_ids, tenant_id=tenant_id).values_list(
+                    "id", flat=True
+                )
+            )
+            if set(role_ids) - assignable:
+                return Response(
+                    {
+                        "error": {
+                            "code": "ROLE_ASSIGNMENT_FORBIDDEN",
+                            "message": (
+                                "Requested role assignment is outside the "
+                                "requester-assignable set."
+                            ),
+                        }
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        serializer = UserCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Use service layer for creation (Phase 24.7.2)
+        from hub.apps.users.services import UserService
 
         service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
         try:
@@ -115,7 +167,9 @@ class UserViewSet(viewsets.ModelViewSet):
         except Exception as e:
             from hub.apps.core.responses import handle_service_exception
             from hub.apps.core.services.base import NotFoundError
-            from hub.apps.core.services.base import ValidationError as ServiceValidationError
+            from hub.apps.core.services.base import (
+                ValidationError as ServiceValidationError,
+            )
 
             if isinstance(e, (ServiceValidationError, NotFoundError)):
                 return handle_service_exception(e)
@@ -147,13 +201,15 @@ class UserViewSet(viewsets.ModelViewSet):
             or (hasattr(actor, "has_role") and actor.has_role("TENANT_ADMIN"))
         ):
             return Response(
-                {"error": "Permission denied: TENANT_ADMIN or PLATFORM_ADMIN role required"},
+                {
+                    "error": "Permission denied: TENANT_ADMIN or PLATFORM_ADMIN role required"
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
         return None
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """Update user via service layer (full update). Requires TENANT_ADMIN or PLATFORM_ADMIN."""
         perm = self._check_admin_update_permission(request)
         if perm is not None:
@@ -165,7 +221,9 @@ class UserViewSet(viewsets.ModelViewSet):
         # Use service layer for update (Phase 24.7.2)
         from hub.apps.core.responses import handle_service_exception
         from hub.apps.core.services.base import NotFoundError
-        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.core.services.base import (
+            ValidationError as ServiceValidationError,
+        )
         from hub.apps.users.services import UserService
 
         tenant_id = str(user.tenant.id) if user.tenant else None
@@ -195,7 +253,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(UserSerializer(user).data)
 
     @transaction.atomic
-    def partial_update(self, request, *args, **kwargs):
+    def partial_update(self, request, *_args, **_kwargs):
         """Update user via service layer (partial update). Requires TENANT_ADMIN or PLATFORM_ADMIN."""
         perm = self._check_admin_update_permission(request)
         if perm is not None:
@@ -207,7 +265,9 @@ class UserViewSet(viewsets.ModelViewSet):
         # Use service layer for update (Phase 24.7.2)
         from hub.apps.core.responses import handle_service_exception
         from hub.apps.core.services.base import NotFoundError
-        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.core.services.base import (
+            ValidationError as ServiceValidationError,
+        )
         from hub.apps.users.services import UserService
 
         tenant_id = str(user.tenant.id) if user.tenant else None
@@ -237,7 +297,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(UserSerializer(user).data)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """Delete user via service layer. Requires TENANT_ADMIN or PLATFORM_ADMIN."""
         # Authorization: only admins can delete users
         perm = self._check_admin_update_permission(request)
@@ -283,7 +343,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
-    def destroy_old(self, request, *args, **kwargs):
+    def destroy_old(self, request, *_args, **_kwargs):
         """
         Delete a user.
 
@@ -295,7 +355,8 @@ class UserViewSet(viewsets.ModelViewSet):
         # Prevent self-deletion
         if user.id == request.user.id:
             return Response(
-                {"error": "Users cannot delete themselves"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Users cannot delete themselves"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Check if user has resources
@@ -315,7 +376,9 @@ class UserViewSet(viewsets.ModelViewSet):
                 request=request,
             )
 
-            return Response({"message": "User disabled (has resources)"}, status=status.HTTP_200_OK)
+            return Response(
+                {"message": "User disabled (has resources)"}, status=status.HTTP_200_OK
+            )
         else:
             # Hard delete: remove user completely
             user_id = user.id
@@ -370,10 +433,26 @@ class UserViewSet(viewsets.ModelViewSet):
         # Use service layer for invitation (Phase 24.7.2, 29.65.4)
         from hub.apps.core.responses import handle_service_exception
         from hub.apps.core.services.base import NotFoundError
-        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.core.services.base import (
+            ValidationError as ServiceValidationError,
+        )
         from hub.apps.users.services import UserService
 
         service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
+        # Distinguish "already a member" (idempotent re-invite → 400) from
+        # "existing user elsewhere granted membership" (→ 201). The
+        # service's created_new flag is False for both cases.
+        from hub.apps.users.models import UserTenantMembership
+
+        already_member = (
+            UserTenantMembership.objects.filter(
+                user__email__iexact=serializer.validated_data["email"],
+                tenant_id=tenant_id,
+            ).exists()
+            or User.objects.filter(
+                email__iexact=serializer.validated_data["email"], tenant_id=tenant_id
+            ).exists()
+        )
         try:
             user, created_new = service.invite_user_to_tenant(
                 tenant_id=tenant_id,
@@ -386,9 +465,12 @@ class UserViewSet(viewsets.ModelViewSet):
         except (ServiceValidationError, NotFoundError) as e:
             return handle_service_exception(e)
 
-        if not created_new:
+        if not created_new and already_member:
             return Response(
-                {"error": "User already exists in this tenant", "code": "USER_ALREADY_EXISTS"},
+                {
+                    "error": "User already exists in this tenant",
+                    "code": "USER_ALREADY_EXISTS",
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -417,7 +499,9 @@ class UserViewSet(viewsets.ModelViewSet):
             or (hasattr(actor, "has_role") and actor.has_role("TENANT_ADMIN"))
         ):
             return Response(
-                {"error": "Permission denied: TENANT_ADMIN role required to manage roles"},
+                {
+                    "error": "Permission denied: TENANT_ADMIN role required to manage roles"
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
         serializer = UserRoleAssignmentSerializer(data=request.data)
@@ -430,7 +514,8 @@ class UserViewSet(viewsets.ModelViewSet):
             role = Role.objects.get(id=role_id, tenant=user.tenant)
         except Role.DoesNotExist:
             return Response(
-                {"error": "Role not found or not in same tenant"}, status=status.HTTP_404_NOT_FOUND
+                {"error": "Role not found or not in same tenant"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         if action_type == "assign":
@@ -487,12 +572,9 @@ class UserViewSet(viewsets.ModelViewSet):
         # Check for files created by this user
         from hub.apps.files.models import File
 
-        if File.objects.filter(created_by=user).exists():
-            return True
+        return bool(File.objects.filter(created_by=user).exists())
 
-        return False
-
-    def _send_invitation_email(self, user, plaintext_token: str = None):
+    def _send_invitation_email(self, user, plaintext_token: str | None = None):
         """Send invitation email to user (11.3: plaintext_token for URL building).
 
         Deferred via transaction.on_commit so the task is only enqueued
@@ -531,21 +613,32 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     Roles are created automatically when tenants are created.
     """
 
-    queryset = Role.objects.all()
+    # Explicit ordering is REQUIRED for stable pagination: an unordered
+    # queryset lets the planner shift page boundaries between requests,
+    # so a consumer walking `next` links can MISS a role entirely (the
+    # E2E fail-closed fixture's DATA_PROVIDER lookup flaked exactly this
+    # way once the roles table passed 100 rows).
+    queryset = Role.objects.all().order_by("tenant_id", "name", "id")
     serializer_class = RoleSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "id"
 
     def get_queryset(self):
         """Filter queryset based on user permissions"""
         user = self.request.user
 
-        # Platform admins can see all roles
+        # Platform admins can see all roles.
+        # STABLE ORDERING IS REQUIRED: get_queryset() replaces the class-level
+        # queryset, and an unordered queryset lets Postgres shift page
+        # boundaries between pagination requests — a consumer walking `next`
+        # links can MISS a row entirely (the E2E fail-closed fixture's
+        # DATA_PROVIDER lookup failed exactly this way once the table passed
+        # ~100 rows; the row existed in the DB but landed on no fetched page).
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return Role.objects.all()
+            return Role.objects.all().order_by("tenant_id", "name", "id")
 
         # Regular users can only see roles in their tenant
         if hasattr(user, "tenant") and user.tenant:
-            return Role.objects.filter(tenant=user.tenant)
+            return Role.objects.filter(tenant=user.tenant).order_by("name", "id")
 
         return Role.objects.none()

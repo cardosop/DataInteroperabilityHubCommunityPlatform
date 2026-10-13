@@ -48,7 +48,7 @@ def list_records(page: int, page_size: int, output_format: str):
     try:
         data = api_client.get(f"{ROPA_BASE}/", params={"page": page, "page_size": page_size})
     except Exception as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
 
     results = data.get("results", []) if isinstance(data, dict) else []
     if output_format == "json":
@@ -87,7 +87,7 @@ def get_record(record_id: str, output_format: str):
     try:
         data = api_client.get(f"{ROPA_BASE}/{record_id}/")
     except Exception as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
 
     if output_format == "json":
         click.echo(json.dumps(data, indent=2, default=str))
@@ -132,7 +132,7 @@ def preview(regulation: str, output_format: str):
     try:
         data = api_client.get(f"{ROPA_BASE}/preview/", params={"regulation": regulation})
     except Exception as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
 
     if output_format == "json":
         click.echo(json.dumps(data, indent=2, default=str))
@@ -179,7 +179,7 @@ def generate(regulation: str, output_format: str, wait: bool, timeout: int):
             params={"regulation": regulation, "format": output_format},
         )
     except Exception as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
 
     click.echo(json.dumps(data, indent=2, default=str))
 
@@ -221,7 +221,7 @@ def download_ropa(record_id: str):
     try:
         data = api_client.get(f"{ROPA_BASE}/{record_id}/download/")
     except Exception as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
 
     url = data.get("download_url", "")
     if url:
@@ -242,7 +242,7 @@ def delete_record(record_id: str):
     try:
         api_client.delete(f"{ROPA_BASE}/{record_id}/delete/")
     except Exception as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"Deleted RoPA generation: {record_id}")
 
 

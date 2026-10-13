@@ -60,7 +60,7 @@ def _login_with_retry(email: str, password: str) -> requests.Response:
         if resp.status_code == 429:
             retry_after = int(resp.headers.get("Retry-After", "3"))
             wait = min(retry_after, 10) * (attempt + 1)
-            time.sleep(wait)  # noqa: sleep-needed — retry loop
+            time.sleep(wait)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             continue
         return resp
     return resp
@@ -137,8 +137,10 @@ def test_login_returns_tokens(persona_role: str):
         f"Response for {persona_role} missing refresh_token. Keys: {list(body.keys())}"
     )
     # Tokens must be non-empty strings
-    assert isinstance(body["access_token"], str) and len(body["access_token"]) > 10
-    assert isinstance(body["refresh_token"], str) and len(body["refresh_token"]) > 10
+    assert isinstance(body["access_token"], str)
+    assert len(body["access_token"]) > 10
+    assert isinstance(body["refresh_token"], str)
+    assert len(body["refresh_token"]) > 10
 
 
 @pytest.mark.parametrize("persona_role", AUTHENTICATED_PERSONAS)

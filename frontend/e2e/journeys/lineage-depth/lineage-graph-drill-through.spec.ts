@@ -60,7 +60,7 @@ test.describe('226.G5 — Lineage graph drill-through @critical @lineage', () =>
       data: { original_raw: odcs, original_format: 'JSON', original_spec_type: 'ODCS' },
     });
     if (!cRes.ok()) {
-      test.skip(true, `contract create failed (${cRes.status()})`);
+      test.skip(!cRes.ok(), `contract create failed (${cRes.status()})`);
       return;
     }
     const c = (await cRes.json()) as { id: string };
@@ -100,7 +100,7 @@ test.describe('226.G5 — Lineage graph drill-through @critical @lineage', () =>
         const parsed = JSON.parse(dotRaw);
         if (typeof parsed === 'string') dotText = parsed.trim();
       } catch {
-        // Not JSON-wrapped — use the raw body.
+        // intentional: non-JSON DOT bodies are valid — the raw body is used for the digraph/graph assertion — Not JSON-wrapped — use the raw body.
       }
       // DOT files start with `digraph` or `graph`. Empty body would mean
       // the renderer is broken.
@@ -123,7 +123,7 @@ test.describe('226.G5 — Lineage graph drill-through @critical @lineage', () =>
         const parsed = JSON.parse(mermaidRaw);
         if (typeof parsed === 'string') mermaidText = parsed.trim();
       } catch {
-        // Not JSON-wrapped — use the raw body.
+        // intentional: non-JSON Mermaid bodies are valid — the raw body is used for the graph assertion — Not JSON-wrapped — use the raw body.
       }
       // Mermaid graphs start with `graph` / `flowchart` / `classDiagram`.
       expect(

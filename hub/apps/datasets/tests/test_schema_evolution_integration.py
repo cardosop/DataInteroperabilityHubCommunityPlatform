@@ -286,9 +286,7 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
         # constraint fires first (IntegrityError) or a downstream attribute
         # access on the incomplete parent fires first (AttributeError).
         with self.assertRaises(Exception):
-            SchemaEvolutionTracker.track_schema_version(
-                child, parent_dataset=fake_parent
-            )
+            SchemaEvolutionTracker.track_schema_version(child, parent_dataset=fake_parent)
 
     # ========== EDGE CASES ==========
 
@@ -331,7 +329,9 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
         self.assertIsNotNone(schema_version)
         # Verify it was created successfully
         self.assertEqual(schema_version.dataset, child)
-        self.assertEqual(schema_version.compatibility_level, CompatibilityLevel.FULLY_COMPATIBLE.value)
+        self.assertEqual(
+            schema_version.compatibility_level, CompatibilityLevel.FULLY_COMPATIBLE.value
+        )
 
     # ========== ERROR HANDLING ==========
 
@@ -363,4 +363,6 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
         self.assertIsNotNone(schema_version)
         self.assertEqual(schema_version.dataset, child)
         # Both schemas are empty, so should be fully compatible
-        self.assertEqual(schema_version.compatibility_level, CompatibilityLevel.FULLY_COMPATIBLE.value)
+        self.assertEqual(
+            schema_version.compatibility_level, CompatibilityLevel.FULLY_COMPATIBLE.value
+        )

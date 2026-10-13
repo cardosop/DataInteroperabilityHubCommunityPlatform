@@ -82,9 +82,10 @@ def fix_broken_imports(file_path: Path):
                 file_path.write_text(new_content, encoding="utf-8")
                 return True
 
-        return False
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"Error fixing {file_path}: {e}")
+        return False
+    else:
         return False
 
 

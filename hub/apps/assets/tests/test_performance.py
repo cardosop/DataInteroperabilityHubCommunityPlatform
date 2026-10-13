@@ -8,14 +8,14 @@ Tests performance requirements for asset endpoints:
 These tests use real services and infrastructure (no mocks).
 """
 
-import uuid
 import statistics
 import time
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection, reset_queries
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -34,6 +34,7 @@ User = get_user_model()
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+
 class AssetPerformanceTest(TestCase):
     """Performance tests for asset endpoints"""
 
@@ -41,7 +42,12 @@ class AssetPerformanceTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
@@ -56,20 +62,20 @@ class AssetPerformanceTest(TestCase):
         execution_times = []
         query_counts = []
 
-        for i in range(iterations):
+        for _i in range(iterations):
             reset_queries()
             start_queries = len(connection.queries)
 
             start_time = time.perf_counter()
 
             if method == "POST":
-                response = self.client.post(url, data, format="json")
+                _response = self.client.post(url, data, format="json")
             elif method == "GET":
-                response = self.client.get(url, format="json")
+                _response = self.client.get(url, format="json")
             elif method == "PATCH":
-                response = self.client.patch(url, data, format="json")
+                _response = self.client.patch(url, data, format="json")
             elif method == "DELETE":
-                response = self.client.delete(url, format="json")
+                _response = self.client.delete(url, format="json")
 
             end_time = time.perf_counter()
 
@@ -87,12 +93,16 @@ class AssetPerformanceTest(TestCase):
             "p95": (
                 statistics.quantiles(execution_times, n=20)[18]
                 if len(execution_times) >= 20
-                else max(execution_times) if execution_times else 0
+                else max(execution_times)
+                if execution_times
+                else 0
             ),
             "p99": (
                 statistics.quantiles(execution_times, n=100)[98]
                 if len(execution_times) >= 100
-                else max(execution_times) if execution_times else 0
+                else max(execution_times)
+                if execution_times
+                else 0
             ),
             "avg_queries": statistics.mean(query_counts) if query_counts else 0,
             "max_queries": max(query_counts) if query_counts else 0,
@@ -126,15 +136,15 @@ class AssetPerformanceTest(TestCase):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.info(f"\n{'='*60}")
+        logger.info(f"\n{'=' * 60}")
         logger.info("POST /api/v1/assets/ Performance Results")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
         logger.info(f"P50: {results['p50']:.2f}ms")
         logger.info(f"P95: {results['p95']:.2f}ms (Target: < 1000ms)")
         logger.info(f"P99: {results['p99']:.2f}ms")
         logger.info(f"Average Queries: {results['avg_queries']:.2f}")
         logger.info(f"Max Queries: {results['max_queries']}")
-        logger.info(f"{'='*60}\n")
+        logger.info(f"{'=' * 60}\n")
 
     def test_activate_asset_performance(self):
         """Test POST /api/v1/assets/{id}/activate/ performance - Target: < 2000ms p95"""
@@ -184,15 +194,15 @@ class AssetPerformanceTest(TestCase):
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.info(f"\n{'='*60}")
+        logger.info(f"\n{'=' * 60}")
         logger.info("POST /api/v1/assets/{id}/activate/ Performance Results")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
         logger.info(f"P50: {results['p50']:.2f}ms")
         logger.info(f"P95: {results['p95']:.2f}ms (Target: < 2000ms)")
         logger.info(f"P99: {results['p99']:.2f}ms")
         logger.info(f"Average Queries: {results['avg_queries']:.2f}")
         logger.info(f"Max Queries: {results['max_queries']}")
-        logger.info(f"{'='*60}\n")
+        logger.info(f"{'=' * 60}\n")
 
     def test_create_asset_query_count(self):
         """Test that asset creation uses minimal database queries"""
@@ -319,7 +329,15 @@ class AssetPerformanceTest(TestCase):
         Asset.objects.filter(tenant=self.tenant, key__startswith="bulk-asset-").delete()
 
         # Verify metrics dict has all expected keys
-        expected_keys = {"execution_times", "query_counts", "p50", "p95", "p99", "avg_queries", "max_queries"}
+        expected_keys = {
+            "execution_times",
+            "query_counts",
+            "p50",
+            "p95",
+            "p99",
+            "avg_queries",
+            "max_queries",
+        }
         self.assertEqual(set(results.keys()), expected_keys)
 
         # Verify metrics have reasonable values
@@ -396,6 +414,7 @@ class AssetPerformanceTest(TestCase):
         self.assertEqual(len(results["execution_times"]), 1)
         self.assertEqual(len(results["query_counts"]), 1)
 
+
 # Concurrent tests moved to AssetConcurrentPerformanceTest (TransactionTestCase)
 # because TransactionTestCase truncates tables instead of using transactions,
 # making setUp data visible to worker threads.
@@ -415,8 +434,10 @@ class AssetConcurrentPerformanceTest(TransactionTestCase):
         self.client = APIClient()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
@@ -478,10 +499,10 @@ class AssetConcurrentPerformanceTest(TransactionTestCase):
         for thread in threads:
             thread.join()
 
-        self.assertEqual(len(errors), 0,
-                         f"Concurrent requests had errors: {errors}")
-        self.assertEqual(len(results), 10,
-                         f"Expected 10 successful concurrent creates, got {len(results)}")
+        self.assertEqual(len(errors), 0, f"Concurrent requests had errors: {errors}")
+        self.assertEqual(
+            len(results), 10, f"Expected 10 successful concurrent creates, got {len(results)}"
+        )
 
     def test_concurrent_performance_collects_errors(self):
         """Concurrent invalid requests collect error codes without crashing."""
@@ -517,8 +538,8 @@ class AssetConcurrentPerformanceTest(TransactionTestCase):
         for thread in threads:
             thread.join()
 
-        self.assertEqual(len(errors), 5,
-                         f"Expected 5 error responses, got {len(errors)}: {errors}")
+        self.assertEqual(len(errors), 5, f"Expected 5 error responses, got {len(errors)}: {errors}")
         for code in errors:
-            self.assertEqual(code, status.HTTP_400_BAD_REQUEST,
-                             f"Expected 400 for invalid key, got {code}")
+            self.assertEqual(
+                code, status.HTTP_400_BAD_REQUEST, f"Expected 400 for invalid key, got {code}"
+            )

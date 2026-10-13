@@ -5,7 +5,7 @@ Tests for automatic anomaly detection in data quality metrics.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from django.test import TestCase
@@ -72,7 +72,7 @@ class AnomalyDetectorTest(TestCase):
             created_by=self.user,
         )
 
-    def _create_dq_run(self, quality_score: float, completed_at: timezone.datetime = None) -> DQRun:
+    def _create_dq_run(self, quality_score: float, completed_at: datetime | None = None) -> DQRun:
         """Helper to create DQ run"""
         job = Job.objects.create(
             tenant=self.tenant,

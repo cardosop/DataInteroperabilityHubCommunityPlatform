@@ -33,7 +33,6 @@ from hub.apps.webhooks.models import (
 from hub.apps.webhooks.virtualization_event_subscriber import get_virtualization_event_subscriber
 
 
-
 @override_settings(WEBHOOK_ASYNC_DELIVERY=False)
 class VirtualizationWebhookE2ETest(TransactionTestCase):
     """E2E tests for virtualization webhook delivery from event bus"""

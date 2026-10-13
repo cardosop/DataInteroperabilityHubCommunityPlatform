@@ -173,10 +173,11 @@ class WorkflowE2ETestBase(E2ETestBase):
         instance = self.start_workflow_instance(str(instance.id))
         try:
             instance = self.execute_workflow_instance(str(instance.id))
-            return instance, None
         except Exception as e:
             instance.refresh_from_db()
             return instance, e
+        else:
+            return instance, None
 
     # --- Workflow state verification helpers ---
 

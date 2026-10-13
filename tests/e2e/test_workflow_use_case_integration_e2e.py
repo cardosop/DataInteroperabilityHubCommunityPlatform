@@ -28,6 +28,7 @@ pytestmark = [
 import json
 import uuid
 from datetime import timedelta
+from typing import ClassVar
 
 from django.utils import timezone
 
@@ -41,6 +42,9 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.marketplace.models import PricingModel
+from hub.apps.marketplace.workflows.marketplace_publication import (
+    MarketplacePublicationWorkflow,
+)
 from hub.apps.orchestration.models import StepStatus, WorkflowStatus
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
 from hub.apps.orchestration.workflows.compliance_reporting import (
@@ -48,9 +52,6 @@ from hub.apps.orchestration.workflows.compliance_reporting import (
 )
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from hub.apps.orchestration.workflows.data_quality import DataQualityCheckWorkflow
-from hub.apps.orchestration.workflows.marketplace_publication import (
-    MarketplacePublicationWorkflow,
-)
 from hub.apps.tenants.models import KYCStatus
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 
@@ -81,7 +82,7 @@ class TestUC_AM_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     AssetCreationWorkflow (create asset record), ContractCreationWorkflow (create contract).
     """
 
-    workflow_classes = [AssetCreationWorkflow, ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [AssetCreationWorkflow, ContractCreationWorkflow]
 
     def test_uc_am_001_asset_creation_workflow_with_business_rules(self):
         """UC-AM-001: AssetCreationWorkflow runs with business rules (create asset draft)."""
@@ -145,7 +146,7 @@ class TestUC_CM_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     Workflow: contract_creation (create and validate contract).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_uc_cm_001_create_contract_workflow_with_business_rules(self):
         """UC-CM-001: ContractCreationWorkflow runs with business rules (Create Contract)."""
@@ -221,7 +222,7 @@ class TestUC_MKT_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     Workflow: marketplace_publication (validate eligibility, create listing, publish).
     """
 
-    workflow_classes = [MarketplacePublicationWorkflow]
+    workflow_classes: ClassVar[list] = [MarketplacePublicationWorkflow]
 
     def setUp(self):
         super().setUp()
@@ -281,7 +282,7 @@ class TestUC_MKT_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
 class TestDataQualityUseCaseWorkflowE2E(WorkflowE2ETestBase):
     """6.9.4 — Workflows in Data Quality use cases (e.g. UC-DQ-001 Run Data Quality Check)."""
 
-    workflow_classes = [DataQualityCheckWorkflow]
+    workflow_classes: ClassVar[list] = [DataQualityCheckWorkflow]
 
     def test_uc_dq_workflow_execution_with_business_rules(self):
         """UC-DQ-001: DataQualityCheckWorkflow runs with business rules."""
@@ -322,7 +323,7 @@ class TestDataQualityUseCaseWorkflowE2E(WorkflowE2ETestBase):
 class TestComplianceUseCaseWorkflowE2E(WorkflowE2ETestBase):
     """6.9.4 — Workflows in Compliance use cases (e.g. UC-COMP-001 Run Compliance Scan)."""
 
-    workflow_classes = [ComplianceReportingWorkflow]
+    workflow_classes: ClassVar[list] = [ComplianceReportingWorkflow]
 
     def test_uc_comp_workflow_execution_with_business_rules(self):
         """UC-COMP-001: ComplianceReportingWorkflow runs with business rules."""
@@ -350,7 +351,7 @@ class TestComplianceUseCaseWorkflowE2E(WorkflowE2ETestBase):
 class TestAllOtherUseCaseCategoriesWorkflowCoverageE2E(WorkflowE2ETestBase):
     """6.9.4 — Coverage assertion for workflows in other use case categories."""
 
-    workflow_classes = [DataQualityCheckWorkflow, ComplianceReportingWorkflow]
+    workflow_classes: ClassVar[list] = [DataQualityCheckWorkflow, ComplianceReportingWorkflow]
 
     def test_other_use_case_categories_workflow_coverage(self):
         """Assert Data Quality and Compliance use case workflows are covered."""

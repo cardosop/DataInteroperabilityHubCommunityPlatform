@@ -70,6 +70,28 @@ def _extract_module_param(text, module_name, param):
     return _extract_block_assignment(text, module_name, param)
 
 
+def _resolve_local_ref(text, raw):
+    """Resolve a ``local.<key>`` reference against the file's locals blocks.
+
+    Cluster names etc. moved into ``locals { ... }`` blocks; module
+    parameters now reference them. Returns the resolved value, or the raw
+    value unchanged when it is not a local reference.
+    """
+    if not raw or not raw.startswith("local."):
+        return raw
+    key = raw[len("local.") :].strip()
+    for match in re.finditer(
+        r"locals\s*\{([^}]*)\}",
+        text,
+        re.DOTALL,
+    ):
+        body = match.group(1)
+        m = re.search(rf"^\s*{re.escape(key)}\s*=\s*([^#\n]+)", body, re.MULTILINE)
+        if m:
+            return m.group(1).strip().strip('"')
+    return raw
+
+
 # ---------------------------------------------------------------------------
 # 280.A.6.2.1 — Staging vs Production diff
 # ---------------------------------------------------------------------------
@@ -119,8 +141,12 @@ class TestTerraformStagingProdDiff:
 
     def test_cluster_name_different(self, staging_main, prod_main):
         """Cluster names must differ."""
-        staging_name = _extract_module_param(staging_main, "eks", "cluster_name")
-        prod_name = _extract_module_param(prod_main, "eks", "cluster_name")
+        staging_name = _resolve_local_ref(
+            staging_main, _extract_module_param(staging_main, "eks", "cluster_name")
+        )
+        prod_name = _resolve_local_ref(
+            prod_main, _extract_module_param(prod_main, "eks", "cluster_name")
+        )
         assert "staging" in staging_name.lower(), (
             f"Staging cluster name should contain 'staging': {staging_name}"
         )
@@ -151,8 +177,10 @@ class TestTerraformStagingProdDiff:
 
     def test_staging_single_node_group_prod_four(self, staging_main, prod_main):
         """Staging: 1 node group (general-ng). Prod: 4 (system, app, worker, GPU)."""
-        staging_ngs = staging_main.count("instance_types")
-        prod_ngs = prod_main.count("instance_types")
+        # Count only un-commented ``instance_types =`` assignments — staging
+        # carries a commented-out GPU node group that must not count.
+        staging_ngs = len(re.findall(r"^\s*instance_types\s*=", staging_main, re.MULTILINE))
+        prod_ngs = len(re.findall(r"^\s*instance_types\s*=", prod_main, re.MULTILINE))
         # Staging has 1 node group, prod has 4
         assert staging_ngs == 1, (
             f"Staging should have 1 node group, found {staging_ngs} instance_types"
@@ -375,15 +403,20 @@ class TestTerraformNoUnexpectedDrift:
             "app-ng",
             "worker-ng",
             "gpu-ng",  # prod-only node groups
+            "ami_type",  # GPU node group (AL2_x86_64_GPU)
+            "disk_size",  # GPU node group disk sizing
+            "effect",  # node taints (CriticalAddonsOnly / nvidia.com/gpu)
+            "key",
+            "value",  # taint key/value pairs
         }
         unexpected = prod_only - KNOWN_PROD_ONLY
-        # Don't fail on unexpected — just document them
-        # (this is informational; new params get added over time)
-        if unexpected:
-            pytest.skip(  # noqa: skip-in-body — runtime service dependency
-                f"Prod has params not in staging: {sorted(unexpected)}. "
-                f"Review if these are intentional."
-            )
+        # Any param beyond the documented set is real drift — a skip would
+        # silently tolerate it. Fail and make the author justify the new
+        # param by adding it to KNOWN_PROD_ONLY with a comment.
+        assert not unexpected, (
+            f"Prod has params not in staging: {sorted(unexpected)}. "
+            "If intentional, add them to KNOWN_PROD_ONLY with a comment."
+        )
 
 
 def _jaccard_similarity(a, b):

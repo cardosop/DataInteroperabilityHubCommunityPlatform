@@ -108,8 +108,11 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
             f"/api/v1/datasets/{parent_dataset_id}/versions/", version_data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED,
-                         "Version creation must return 201 when S3 is available")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "Version creation must return 201 when S3 is available",
+        )
         new_version_id = response.data["id"]
 
         # Verify version.created event was published
@@ -154,8 +157,11 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
             f"/api/v1/datasets/{parent_dataset_id}/versions/", version_data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED,
-                         "Version creation must return 201 when S3 is available")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "Version creation must return 201 when S3 is available",
+        )
         new_version_id = response.data["id"]
 
         # Verify version.created event was published
@@ -222,8 +228,11 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
             f"/api/v1/datasets/{parent_dataset_id}/versions/", version_data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED,
-                         "Version creation with valid data must return 201")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "Version creation with valid data must return 201",
+        )
 
         # Verify event metadata
         created_event = (
@@ -276,8 +285,9 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
                 versions_created += 1
                 parent_dataset_id = response.data["id"]  # Use new version as parent for next
 
-        self.assertGreater(versions_created, 0,
-                           "At least one version must be created when S3 is available")
+        self.assertGreater(
+            versions_created, 0, "At least one version must be created when S3 is available"
+        )
         event_count_after = Event.objects.filter(event_type="version.created").count()
         self.assertGreaterEqual(event_count_after, event_count_before)
 
@@ -322,8 +332,11 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
             f"/api/v1/datasets/{dataset.id}/versions/", version_data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED,
-                         "Version creation with empty data should succeed")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "Version creation with empty data should succeed",
+        )
         self.assertIn("id", response.data)
 
     # ========== ERROR HANDLING ==========

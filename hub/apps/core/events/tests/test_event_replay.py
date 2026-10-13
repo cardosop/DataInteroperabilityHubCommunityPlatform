@@ -337,6 +337,49 @@ class EventReplayAPITest(TestCase):
         self.assertEqual(response.data["events_replayed"], 0)
         self.assertEqual(response.data["total_events_found"], 0)
 
+    # ── W1.2b cross-tenant scope pins ──────────────────────────────────────
+
+    def test_tenant_admin_cannot_replay_a_foreign_tenants_events(self):
+        """W1.2b: the client-supplied tenant_id was used as the replay
+        scope directly — a TENANT_ADMIN could replay ANY tenant's events
+        (the cross-tenant leak class). Scope must come from the
+        authenticated tenant; a foreign tenant_id from a non-platform
+        admin is 403."""
+        foreign = Tenant.objects.create(
+            id=str(uuid.uuid4()),
+            name="Foreign Tenant",
+            slug=f"foreign-{uuid.uuid4().hex[:8]}",
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse("events:replay-events")
+        response = self.client.post(url, {"tenant_id": str(foreign.id)}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.json()["error"]["code"],
+            "CROSS_TENANT_FORBIDDEN",
+        )
+
+    def test_tenant_admin_can_replay_their_own_tenant(self):
+        """The matching tenant_id (or none at all) keeps the flow working."""
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse("events:replay-events")
+        response = self.client.post(url, {"tenant_id": self.tenant_id}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_platform_admin_can_replay_a_foreign_tenant_forensically(self):
+        """PLATFORM_ADMIN keeps the explicit cross-tenant replay path."""
+        foreign = Tenant.objects.create(
+            id=str(uuid.uuid4()),
+            name="Foreign Tenant",
+            slug=f"foreign-{uuid.uuid4().hex[:8]}",
+        )
+        self.admin_user.is_platform_admin = True
+        self.admin_user.save(update_fields=["is_platform_admin"])
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse("events:replay-events")
+        response = self.client.post(url, {"tenant_id": str(foreign.id)}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests

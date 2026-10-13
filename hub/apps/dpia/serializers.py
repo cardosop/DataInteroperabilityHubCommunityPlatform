@@ -35,7 +35,7 @@ class DpiaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dpia
-        fields = [
+        fields = (
             "id",
             "tenant",
             "asset",
@@ -54,8 +54,8 @@ class DpiaSerializer(serializers.ModelSerializer):
             "dpo_summary",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "status",
@@ -66,7 +66,7 @@ class DpiaSerializer(serializers.ModelSerializer):
             "reviewed_at",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class DpiaReviewSerializer(serializers.Serializer):

@@ -55,16 +55,18 @@ class TestDocumentationExistence(SimpleTestCase):
 
     def test_review_documentation_is_readable(self):
         """Test that review documentation is readable."""
-        self.assertTrue(self.review_doc.exists(),
-            f"Documentation file should exist at {self.review_doc}")
+        self.assertTrue(
+            self.review_doc.exists(), f"Documentation file should exist at {self.review_doc}"
+        )
         with open(self.review_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertGreater(len(content), 0, "Review documentation should not be empty")
 
     def test_guide_documentation_is_readable(self):
         """Test that guide documentation is readable."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertGreater(len(content), 0, "Guide documentation should not be empty")
@@ -111,8 +113,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_review_has_completion_status(self):
         """Test that review document has completion status."""
-        self.assertTrue(self.review_doc.exists(),
-            f"Documentation file should exist at {self.review_doc}")
+        self.assertTrue(
+            self.review_doc.exists(), f"Documentation file should exist at {self.review_doc}"
+        )
         with open(self.review_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -128,8 +131,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_review_has_link_to_guide(self):
         """Test that review document links to guide."""
-        self.assertTrue(self.review_doc.exists(),
-            f"Documentation file should exist at {self.review_doc}")
+        self.assertTrue(
+            self.review_doc.exists(), f"Documentation file should exist at {self.review_doc}"
+        )
         with open(self.review_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -140,24 +144,27 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_has_overview_section(self):
         """Test that guide has overview section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn("## Overview", content, "Guide should have Overview section")
 
     def test_guide_has_architecture_section(self):
         """Test that guide has architecture section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn("## Architecture", content, "Guide should have Architecture section")
 
     def test_guide_has_framework_features_section(self):
         """Test that guide has framework features section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -166,8 +173,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_documents_caching(self):
         """Test that guide documents caching feature."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             # Check for caching section
@@ -178,8 +186,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_documents_metrics(self):
         """Test that guide documents metrics feature."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             # Check for metrics section
@@ -190,8 +199,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_documents_tracing(self):
         """Test that guide documents tracing feature."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             # Check for tracing section
@@ -202,8 +212,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_documents_logging(self):
         """Test that guide documents logging feature."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             # Check for logging section
@@ -216,8 +227,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_has_business_rules_classes_section(self):
         """Test that guide has business rules classes section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -228,8 +240,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_all_business_rules_classes_documented(self):
         """Test that all business rules classes are documented in guide."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -248,8 +261,9 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_has_getting_started_section(self):
         """Test that guide has getting started section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -258,28 +272,27 @@ class TestDocumentationCompleteness(SimpleTestCase):
 
     def test_guide_has_advanced_usage_section(self):
         """Test that guide has advanced usage section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
-            self.assertIn(
-                "## Advanced Usage", content, "Guide should have Advanced Usage section"
-            )
+            self.assertIn("## Advanced Usage", content, "Guide should have Advanced Usage section")
 
     def test_guide_has_best_practices_section(self):
         """Test that guide has best practices section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
-            self.assertIn(
-                "## Best Practices", content, "Guide should have Best Practices section"
-            )
+            self.assertIn("## Best Practices", content, "Guide should have Best Practices section")
 
     def test_guide_has_troubleshooting_section(self):
         """Test that guide has troubleshooting section."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -301,8 +314,9 @@ class TestDocumentationAccuracy(SimpleTestCase):
 
     def test_documented_classes_exist_in_codebase(self):
         """Test that all documented classes actually exist."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -357,8 +371,9 @@ class TestDocumentationAccuracy(SimpleTestCase):
 
     def test_framework_base_class_documented(self):
         """Test that BusinessRules base class is documented."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -372,16 +387,18 @@ class TestDocumentationAccuracy(SimpleTestCase):
 
     def test_validation_result_documented(self):
         """Test that ValidationResult is documented."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn("ValidationResult", content, "Guide should document ValidationResult")
 
     def test_rule_execution_context_documented(self):
         """Test that RuleExecutionContext is documented."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -390,8 +407,9 @@ class TestDocumentationAccuracy(SimpleTestCase):
 
     def test_registry_documented(self):
         """Test that registry is documented."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -405,8 +423,9 @@ class TestDocumentationAccuracy(SimpleTestCase):
 
     def test_caching_configuration_matches_implementation(self):
         """Test that caching configuration in docs matches implementation."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -424,8 +443,9 @@ class TestDocumentationAccuracy(SimpleTestCase):
 
     def test_metrics_names_match_implementation(self):
         """Test that metrics names in docs match implementation."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -459,10 +479,12 @@ class TestDocumentationCrossReferences(SimpleTestCase):
 
     def test_review_links_to_guide(self):
         """Test that review document links to guide."""
-        self.assertTrue(self.review_doc.exists(),
-            f"Documentation file should exist at {self.review_doc}")
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.review_doc.exists(), f"Documentation file should exist at {self.review_doc}"
+        )
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.review_doc, encoding="utf-8") as f:
             content = f.read()
             # Check for markdown link or reference
@@ -474,8 +496,9 @@ class TestDocumentationCrossReferences(SimpleTestCase):
 
     def test_guide_references_base_class_location(self):
         """Test that guide references base class location."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -486,8 +509,9 @@ class TestDocumentationCrossReferences(SimpleTestCase):
 
     def test_guide_references_registry_location(self):
         """Test that guide references registry location."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
             self.assertIn(
@@ -507,8 +531,9 @@ class TestDocumentationCodeExamples(SimpleTestCase):
 
     def test_code_examples_use_correct_imports(self):
         """Test that code examples use correct import statements."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -536,8 +561,9 @@ class TestDocumentationCodeExamples(SimpleTestCase):
 
     def test_code_examples_use_business_rules_base_class(self):
         """Test that code examples extend BusinessRules correctly."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -594,8 +620,9 @@ class TestDocumentationClassDetails(SimpleTestCase):
 
     def test_each_class_has_location(self):
         """Test that each documented class has location information."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -622,8 +649,9 @@ class TestDocumentationClassDetails(SimpleTestCase):
 
     def test_each_class_has_purpose(self):
         """Test that each documented class has purpose description."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 
@@ -650,8 +678,9 @@ class TestDocumentationClassDetails(SimpleTestCase):
 
     def test_each_class_has_validation_capabilities(self):
         """Test that each documented class has validation capabilities listed."""
-        self.assertTrue(self.guide_doc.exists(),
-            f"Documentation file should exist at {self.guide_doc}")
+        self.assertTrue(
+            self.guide_doc.exists(), f"Documentation file should exist at {self.guide_doc}"
+        )
         with open(self.guide_doc, encoding="utf-8") as f:
             content = f.read()
 

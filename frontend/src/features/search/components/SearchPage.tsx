@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { Link, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -56,7 +57,29 @@ const SCOPES: Scope[] = [
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-function resultHref(item: { type: string; id: string }): string {
+// Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — UC objects have
+// no detail route yet (the catalog browser lands with 1.9), so UC
+// results render WITHOUT a navigation link instead of a 404 dead-end.
+// Matches both result shapes: the canonical slugs ("uc_table") and the
+// raw SearchIndex types ("DATABRICKS_UC_TABLE") served by the legacy
+// search path.
+const UC_RESULT_TYPES = new Set([
+  'uc_catalog',
+  'uc_schema',
+  'uc_table',
+  'uc_view',
+  'uc_volume',
+  'uc_model',
+  'DATABRICKS_UC_CATALOG',
+  'DATABRICKS_UC_SCHEMA',
+  'DATABRICKS_UC_TABLE',
+  'DATABRICKS_UC_VIEW',
+  'DATABRICKS_UC_VOLUME',
+  'DATABRICKS_UC_MODEL',
+]);
+
+function resultHref(item: { type: string; id: string }): string | null {
+  if (UC_RESULT_TYPES.has(item.type)) return null;
   const base = item.type.toLowerCase() + 's';
   return `/${base}/${item.id}`;
 }
@@ -90,7 +113,7 @@ export function SearchPage() {
 
   const [showRecents, setShowRecents] = useState(false);
   const [recentSearches, setRecentSearches] = useState<RecentSearchEntry[]>(() =>
-    getRecentSearches(),
+    getRecentSearches()
   );
 
   // Debounced triggers. We debounce both the query *and* the filter values
@@ -138,7 +161,7 @@ export function SearchPage() {
       .search(q, filters)
       .then((response) => {
         if (cancelled) return;
-        setData(response);
+        setData(normalizePaginated(response));
         recordSearch(q);
         setRecentSearches(getRecentSearches());
       })
@@ -179,10 +202,8 @@ export function SearchPage() {
     setShowRecents(false);
   }, []);
 
-  const showEmpty =
-    submitted && !loading && !error && (!data || data.results.length === 0);
-  const showResults =
-    submitted && !loading && !error && data && data.results.length > 0;
+  const showEmpty = submitted && !loading && !error && (!data || data.results.length === 0);
+  const showResults = submitted && !loading && !error && data && data.results.length > 0;
 
   return (
     <div className="search-page" data-testid="search-page">
@@ -254,9 +275,7 @@ export function SearchPage() {
               title={s.supported ? undefined : 'Not yet indexed'}
             >
               {s.label}
-              {!s.supported && (
-                <span className="search-page-scope-hint"> (soon)</span>
-              )}
+              {!s.supported && <span className="search-page-scope-hint"> (soon)</span>}
             </button>
           ))}
         </div>
@@ -322,8 +341,8 @@ export function SearchPage() {
               <span>Ontology-aware search</span>
             </label>
             <span className="search-filter-hint">
-              Expands queries via tenant ontology relations (synonyms,
-              equivalent classes, parent/child concepts).
+              Expands queries via tenant ontology relations (synonyms, equivalent classes,
+              parent/child concepts).
             </span>
           </div>
         </div>
@@ -359,9 +378,10 @@ export function SearchPage() {
             {data.total} result{data.total !== 1 ? 's' : ''} for &quot;{data.query}&quot;
           </div>
           <ul className="search-page-results-list" aria-label="Search results">
-            {data.results.map((item) => (
-              <li key={`${item.type}-${item.id}`} className="search-page-result-item">
-                <Link to={resultHref(item)}>
+            {data.results.map((item) => {
+              const href = resultHref(item);
+              const body = (
+                <>
                   <span className={`result-type-badge ${item.type}`}>{item.type}</span>
                   <h3>{item.title}</h3>
                   {item.description && <p>{item.description}</p>}
@@ -377,9 +397,14 @@ export function SearchPage() {
                       matched via ontology: {item.bridge_term}
                     </span>
                   )}
-                </Link>
-              </li>
-            ))}
+                </>
+              );
+              return (
+                <li key={`${item.type}-${item.id}`} className="search-page-result-item">
+                  {href ? <Link to={href}>{body}</Link> : body}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

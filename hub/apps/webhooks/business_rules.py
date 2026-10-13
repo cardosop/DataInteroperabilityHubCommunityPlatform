@@ -115,7 +115,7 @@ class WebhooksBusinessRules(BusinessRules):
         return "WebhooksBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -376,7 +376,8 @@ class WebhooksBusinessRules(BusinessRules):
 
         # Validate URL format
         try:
-            from django.core.validators import URLValidator, ValidationError as DjangoValidationError
+            from django.core.validators import URLValidator
+            from django.core.validators import ValidationError as DjangoValidationError
 
             validator = URLValidator()
             validator(webhook.url)
@@ -423,7 +424,7 @@ class WebhooksBusinessRules(BusinessRules):
                         warnings.append(
                             "Webhook URL returned 404. Endpoint may not exist or may require authentication."
                         )
-                    elif response.status_code == 401 or response.status_code == 403:
+                    elif response.status_code in {401, 403}:
                         warnings.append(
                             f"Webhook URL returned {response.status_code}. "
                             f"Endpoint requires authentication (this is expected for webhook endpoints)."
@@ -786,13 +787,12 @@ class WebhooksBusinessRules(BusinessRules):
             )
 
         # Validate user permissions if user provided
-        if user and delivery.webhook:
+        if user and delivery.webhook and user.tenant_id != delivery.webhook.tenant_id:
             # Check if user belongs to the same tenant as delivery's webhook
-            if user.tenant_id != delivery.webhook.tenant_id:
-                result.warnings.append(
-                    f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
-                    f"than delivery's webhook ({delivery.webhook.tenant_id})"
-                )
+            result.warnings.append(
+                f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
+                f"than delivery's webhook ({delivery.webhook.tenant_id})"
+            )
 
         result.details["delivery_id"] = str(delivery.id)
         result.details["delivery_status"] = delivery.status

@@ -6,7 +6,7 @@
  * count is 0 and capped at `99+` to keep the header compact.
  */
 
-import { Bell } from 'lucide-react';
+import { Bell } from '../../../shared/config/iconRegistry';
 import { useEffect, useRef, useState } from 'react';
 import {
   useNotificationRealtimeSync,

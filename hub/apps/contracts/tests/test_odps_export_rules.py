@@ -83,8 +83,6 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
         # YAML validation depends on PyYAML availability
         # If PyYAML is installed, should pass; otherwise should fail
         try:
-            import yaml
-
             self.assertTrue(result.is_valid)
             self.assertEqual(len(result.errors), 0)
         except ImportError:
@@ -99,8 +97,6 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
         self.assertTrue(result1.is_valid)
         # YAML depends on PyYAML availability
         try:
-            import yaml
-
             self.assertTrue(result2.is_valid)
         except ImportError:
             self.assertFalse(result2.is_valid)
@@ -124,7 +120,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
     def test_validate_export_format_none(self):
         """Test None format validation fails."""
         # Type ignore: intentionally testing None for validation
-        result = self.rules.validate_export_format(None)  # type: ignore[misc]  # test: edge-case type exercise
+        result = self.rules.validate_export_format(None)  # test: edge-case type exercise
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -371,7 +367,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         # Type ignore: intentionally testing invalid type for validation
         result = self.rules.validate_fidelity(
             contract=self.odps_contract,
-            exported_odps="not-a-dict",  # type: ignore[misc]  # test: edge-case type exercise
+            exported_odps="not-a-dict",  # test: edge-case type exercise
         )
 
         self.assertFalse(result.is_valid)

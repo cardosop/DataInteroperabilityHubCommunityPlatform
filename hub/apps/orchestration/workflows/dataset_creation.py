@@ -183,19 +183,19 @@ class DatasetCreationWorkflow:
         try:
             uuid_lib.UUID(str(file_id))
         except (ValueError, TypeError):
-            raise ValueError(f"Invalid file_id format: {file_id}. Must be a valid UUID.")
+            raise ValueError(f"Invalid file_id format: {file_id}. Must be a valid UUID.") from None
 
         from hub.apps.tenants.models import Tenant
 
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise ValueError(f"Tenant not found: {tenant_id}")
+            raise ValueError(f"Tenant not found: {tenant_id}") from None
 
         try:
             file_obj = File.objects.get(id=file_id, tenant=tenant)
         except File.DoesNotExist:
-            raise ValueError(f"File not found: {file_id} for tenant {tenant_id}")
+            raise ValueError(f"File not found: {file_id} for tenant {tenant_id}") from None
 
         # Validate file status
         if not file_obj.is_active():
@@ -217,7 +217,7 @@ class DatasetCreationWorkflow:
         # Infer format from filename if not in map
         if file_format == "CSV":
             filename_lower = file_obj.name.lower()
-            if filename_lower.endswith(".json") or filename_lower.endswith(".ndjson"):
+            if filename_lower.endswith((".json", ".ndjson")):
                 file_format = "JSON"
             elif filename_lower.endswith(".parquet"):
                 file_format = "PARQUET"
@@ -332,14 +332,14 @@ class DatasetCreationWorkflow:
                 }
         except Exception as e:
             # File doesn't exist in storage - this is an error
-            logger.error(
+            logger.exception(
                 "File not found in storage",
                 workflow_instance_id=str(instance.id),
                 file_id=str(file_obj.id),
                 storage_path=file_obj.storage_path,
                 error=str(e),
             )
-            raise ValueError(f"File not found in storage: {e!s}")
+            raise ValueError(f"File not found in storage: {e!s}") from e
 
         return {
             "uploaded": True,
@@ -404,18 +404,23 @@ class DatasetCreationWorkflow:
             elif file_format == "PARQUET":
                 file_content = b"\x00" * min(1024, file_obj.size) if file_obj.size > 0 else b""
             else:
-                raise ValueError(f"Cannot generate mock content for format: {file_format}")
+                raise ValueError(
+                    f"Cannot generate mock content for format: {file_format}"
+                ) from None
 
         # Infer schema based on format
-        try:
+        def _infer_schema() -> dict[str, Any]:
             if file_format == "CSV":
-                schema_json = infer_schema_from_csv(file_content)
+                return infer_schema_from_csv(file_content)
             elif file_format == "JSON":
-                schema_json = infer_schema_from_json(file_content)
+                return infer_schema_from_json(file_content)
             elif file_format == "PARQUET":
-                schema_json = infer_schema_from_parquet(file_content)
+                return infer_schema_from_parquet(file_content)
             else:
                 raise ValueError(f"Unsupported file format for schema inference: {file_format}")
+
+        try:
+            schema_json = _infer_schema()
         except Exception as e:
             logger.error(
                 "Schema inference failed",
@@ -425,7 +430,7 @@ class DatasetCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"Schema inference failed: {e!s}")
+            raise ValueError(f"Schema inference failed: {e!s}") from e
 
         logger.info(
             "Schema inferred",
@@ -830,8 +835,6 @@ class DatasetCreationWorkflow:
                 format=dataset.format,
                 row_count=dataset.row_count,
             )
-
-            return {"notifications_sent": True, "notification_type": "logged"}
         except Exception as e:
             logger.error(
                 "Failed to log dataset creation notification",
@@ -842,6 +845,8 @@ class DatasetCreationWorkflow:
             )
             # Don't fail workflow on notification errors
             return {"notifications_sent": False, "error": str(e)}
+        else:
+            return {"notifications_sent": True, "notification_type": "logged"}
 
     @staticmethod
     def _audit_logging_task(
@@ -939,7 +944,6 @@ class DatasetCreationWorkflow:
                     workflow_instance_id=str(instance.id),
                     dataset_id=dataset_id,
                 )
-                return {"rolled_back": True}
             except Dataset.DoesNotExist:
                 logger.warning(
                     "Dataset record not found for rollback",
@@ -990,6 +994,8 @@ class DatasetCreationWorkflow:
                         exc_info=True,
                     )
                     return {"rolled_back": False, "error": error_str}
+            else:
+                return {"rolled_back": True}
         except Exception as outer_error:
             # Catch any outer exceptions (e.g., transaction errors from test framework)
             error_str = str(outer_error)

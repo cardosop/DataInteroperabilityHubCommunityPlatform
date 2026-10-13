@@ -75,6 +75,24 @@ const ensureLocalStorage = () => {
 };
 ensureLocalStorage();
 
+// jsdom lacks ResizeObserver; several UI libraries construct one on mount.
+// Stub it globally (observe/unobserve/disconnect are no-ops — the observer
+// never fires in jsdom anyway). Suites that need real observation override
+// this in their own files (e.g. GraphCanvas.test.tsx).
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = ResizeObserverStub;
+}
+
+// jsdom lacks Element.scrollIntoView; palette/sidebar focus helpers call it.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 // Cleanup after each test
 afterEach(() => {
   cleanup();

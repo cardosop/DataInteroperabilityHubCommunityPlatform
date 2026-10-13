@@ -6,7 +6,7 @@ Provides patterns for accessing data across service boundaries in a microservice
 
 import time
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 import structlog
@@ -69,10 +69,10 @@ class ServiceCommunicationConfig:
     DEFAULT_RETRY_STRATEGY = RetryStrategy.EXPONENTIAL_BACKOFF
 
     # Retryable status codes
-    RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
+    RETRYABLE_STATUS_CODES: ClassVar[set[int]] = {500, 502, 503, 504}
 
     # Non-retryable status codes (don't retry on these)
-    NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 404, 409}
+    NON_RETRYABLE_STATUS_CODES: ClassVar[set[int]] = {400, 401, 403, 404, 409}
 
     @classmethod
     def get_timeout(cls, service_name: str | None = None) -> float:
@@ -193,10 +193,8 @@ class ServiceCommunicationConfig:
         """
         if status_code in cls.NON_RETRYABLE_STATUS_CODES:
             return False
-        if status_code in cls.RETRYABLE_STATUS_CODES:
-            return True
         # Don't retry on 2xx or other status codes
-        return False
+        return status_code in cls.RETRYABLE_STATUS_CODES
 
     @classmethod
     def calculate_retry_delay(
@@ -228,6 +226,19 @@ class ServiceCommunicationConfig:
             delay = base_delay
 
         return min(delay, max_delay)
+
+
+# Error type labels for client (4xx) HTTP status codes. 5xx is handled
+# separately in ServiceClient._get_error_type (SERVER_ERROR); anything else
+# (2xx, 3xx, unlisted 4xx) maps to CLIENT_ERROR.
+_ERROR_TYPE_BY_STATUS: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    409: "CONFLICT",
+    429: "RATE_LIMIT",
+}
 
 
 class ServiceClient:
@@ -315,22 +326,9 @@ class ServiceClient:
 
     def _get_error_type(self, status_code: int) -> str:
         """Get error type from HTTP status code."""
-        if status_code == 400:
-            return "BAD_REQUEST"
-        elif status_code == 401:
-            return "UNAUTHORIZED"
-        elif status_code == 403:
-            return "FORBIDDEN"
-        elif status_code == 404:
-            return "NOT_FOUND"
-        elif status_code == 409:
-            return "CONFLICT"
-        elif status_code == 429:
-            return "RATE_LIMIT"
-        elif status_code >= 500:
+        if status_code >= 500:
             return "SERVER_ERROR"
-        else:
-            return "CLIENT_ERROR"
+        return _ERROR_TYPE_BY_STATUS.get(status_code, "CLIENT_ERROR")
 
     def _request_with_retry(
         self,
@@ -485,7 +483,7 @@ class ServiceClient:
                         if span and _trace_available:
                             span.set_status(Status(StatusCode.ERROR, "Not Found"))
                             span.end()
-                        raise NotFoundError(self.service_name, path)
+                        raise NotFoundError(self.service_name, path) from None
 
                     # Check if should retry
                     if attempt < self.retry_count - 1 and ServiceCommunicationConfig.should_retry(
@@ -538,7 +536,7 @@ class ServiceClient:
                             "method": method,
                             "status_code": e.response.status_code,
                         },
-                    )
+                    ) from None
                 except httpx.TimeoutException as e:
                     duration_seconds = time.time() - start_time
 
@@ -584,7 +582,7 @@ class ServiceClient:
                         f"Failed to connect to {self.service_name}: {e}",
                         http_status=503,
                         details={"path": path, "method": method, "error": str(e)},
-                    )
+                    ) from None
                 except httpx.RequestError as e:
                     # Network errors are always retryable
                     duration_seconds = time.time() - start_time
@@ -622,7 +620,7 @@ class ServiceClient:
                         f"Failed to connect to {self.service_name}: {e}",
                         http_status=503,
                         details={"path": path, "method": method, "error": str(e)},
-                    )
+                    ) from None
         except Exception as e:
             # End tracing span with unexpected error
             if span and _trace_available:
@@ -914,7 +912,7 @@ class EventualConsistencyClient:
             try:
                 handler(event)
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Event handler failed",
                     service=service_name,
                     event_type=event_type,
@@ -933,13 +931,13 @@ def get_contract_client(tenant_id: str | None = None) -> ServiceClient:
     return client
 
 
-def get_asset_client(tenant_id: str | None = None, use_cache: bool = True) -> ServiceClient:
+def get_asset_client(_tenant_id: str | None = None, use_cache: bool = True) -> ServiceClient:
     """Get asset service client with optional caching."""
     if use_cache:
         return CachedServiceClient("asset-service", cache_ttl=3600)
     return ServiceClient("asset-service")
 
 
-def get_dataset_client(tenant_id: str | None = None) -> ServiceClient:
+def get_dataset_client(_tenant_id: str | None = None) -> ServiceClient:
     """Get dataset service client."""
     return ServiceClient("dataset-service")

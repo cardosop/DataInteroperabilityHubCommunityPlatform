@@ -190,8 +190,6 @@ def retry_dlq_entry(
                     tenant_id=tenant_id,
                 )
 
-                return True, None
-
             except EventBusError as e:
                 error_msg = f"Failed to republish event: {e!s}"
                 logger.error(
@@ -230,6 +228,8 @@ def retry_dlq_entry(
                 ).observe(processing_duration)
 
                 return False, error_msg
+            else:
+                return True, None
 
     except DeadLetterQueue.DoesNotExist:
         return False, "DLQ entry not found"

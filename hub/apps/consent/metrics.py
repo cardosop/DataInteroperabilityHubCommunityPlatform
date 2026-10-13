@@ -37,7 +37,7 @@ try:
         ["tenant_id", "result"],
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     consent_granted_total = _MetricStub()
     consent_withdrawn_total = _MetricStub()
     consent_verification_total = _MetricStub()

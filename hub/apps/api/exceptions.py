@@ -4,6 +4,8 @@ Custom exception handler for REST API
 Provides standardized error response format across all API endpoints.
 """
 
+import contextlib
+import re
 import uuid
 
 import structlog
@@ -31,6 +33,88 @@ ERROR_CODE_MAP = {
 }
 
 
+# Django/DRF's GENERIC field-error codes — carry no machine-readable
+# meaning, so nested-code extraction skips them (the HTTP-status mapping
+# remains the fallback, unchanged from the historical contract). Domain
+# codes (DATABRICKS_HOST_NOT_ALLOWED, DATA_RESIDENCY_MISMATCH, ...) are
+# NOT in this set and pass through to the envelope.
+_GENERIC_FIELD_CODES = frozenset(
+    {
+        # DRF field codes
+        "invalid",
+        "required",
+        "blank",
+        "null",
+        "empty",
+        "min_value",
+        "max_value",
+        "min_length",
+        "max_length",
+        "max_string_length",
+        "max_digits",
+        "max_decimal_places",
+        "max_whole_digits",
+        "unique",
+        "does_not_exist",
+        "incorrect_type",
+        "invalid_choice",
+        "overflow",
+        "not_a_list",
+        "not_a_dict",
+        "no_name",
+        # Django validator codes
+        "invalid_email",
+        "invalid_image",
+        "invalid_time",
+        "invalid_date",
+        "invalid_datetime",
+        "invalid_url",
+        "invalid_extension",
+        "file_too_large",
+        "too_short",
+        "too_long",
+    }
+)
+
+
+# W1.16 — dict-form domain codes travel in the ErrorDetail STRING
+# (services raise ValidationError({"field": ["SOME_DOMAIN_CODE"]}) and DRF
+# tags them code='invalid'); recognize the uppercase-snake shape so the
+# domain code reaches the envelope instead of collapsing to
+# VALIDATION_ERROR.  Human-readable messages ("This field is required")
+# never match this shape.
+_DOMAIN_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{3,}\Z")
+
+
+def _first_domain_code(detail) -> str | None:
+    """Walk a DRF ValidationError detail tree; return the first nested
+    code that is NOT one of Django/DRF's generic field-error codes."""
+    if isinstance(detail, dict):
+        for value in detail.values():
+            found = _first_domain_code(value)
+            if found:
+                return found
+    elif isinstance(detail, (list, tuple)):
+        for item in detail:
+            code = getattr(item, "code", None)
+            if code and str(code) not in _GENERIC_FIELD_CODES:
+                return str(code)
+            # ErrorDetail is a str subclass (no .string attribute) —
+            # the domain code is the string itself.
+            raw = str(item) if isinstance(item, str) else None
+            if (
+                raw
+                and _DOMAIN_CODE_RE.match(raw)
+                and raw not in _GENERIC_FIELD_CODES
+            ):
+                return raw
+            if isinstance(item, (dict, list, tuple)):
+                found = _first_domain_code(item)
+                if found:
+                    return found
+    return None
+
+
 def get_error_code(exc, http_status):
     """
     Get error code from exception or HTTP status.
@@ -45,6 +129,15 @@ def get_error_code(exc, http_status):
     # Check if exception has a code attribute
     if hasattr(exc, "code") and exc.code:
         return exc.code
+
+    # Dict-form ValidationErrors carry the DOMAIN code on the nested field
+    # errors (Django does not propagate top-level codes into dict-form
+    # errors) — surface the first one so e.g. DATABRICKS_HOST_NOT_ALLOWED
+    # reaches the envelope instead of collapsing to VALIDATION_ERROR.
+    if hasattr(exc, "detail"):
+        nested_code = _first_domain_code(exc.detail)
+        if nested_code:
+            return nested_code
 
     # Map HTTP status to error code
     return ERROR_CODE_MAP.get(http_status, "UNKNOWN_ERROR")
@@ -65,12 +158,43 @@ def get_error_message(exc, http_status):
     if hasattr(exc, "message") and exc.message:
         return exc.message
 
-    # Use exception string representation
-    message = str(exc)
+    # DRF ValidationErrors: render the HUMAN field-error strings, joined.
+    # ``str(exc)`` on these produces the Python repr
+    # ``[ErrorDetail(string=..., code=...)]`` — internal representation
+    # leaking into the user-facing envelope.
+    if hasattr(exc, "detail") and isinstance(exc.detail, (dict, list, tuple)):
+        parts: list[str] = []
+        detail = exc.detail
+
+        def collect(node) -> None:
+            if isinstance(node, dict):
+                for value in node.values():
+                    collect(value)
+            elif isinstance(node, (list, tuple)):
+                for item in node:
+                    if hasattr(item, "string"):
+                        parts.append(str(item.string))
+                    elif isinstance(item, (dict, list, tuple)):
+                        collect(item)
+                    else:
+                        parts.append(str(item))
+            else:
+                parts.append(str(node))
+
+        collect(detail)
+        message = "; ".join(parts) if parts else str(exc)
+    else:
+        # W1.16 — 5xx responses NEVER surface the raw exception string:
+        # SQL text, connection strings, and internal stack fragments must
+        # not reach clients.  The handler logs the real exception
+        # server-side; the envelope gets the generic default below.
+        # Typed 4xx business errors keep str(exc) — their messages are
+        # human-facing and safe by construction.
+        message = "" if http_status >= 500 else str(exc)
 
     # Remove stack traces and internal details
     if "Traceback" in message:
-        message = message.split("Traceback")[0].strip()
+        message = message.split("Traceback", maxsplit=1)[0].strip()
 
     # Default messages for common status codes
     if not message or message == "None":
@@ -168,10 +292,14 @@ def custom_exception_handler(exc, context):
     # returns None, and we default to 500.  Wrap it into a DRF
     # ValidationError so the framework produces a proper 400 with
     # field-level error detail (e.g. duplicate-constraint failures).
+    # Use as_serializer_error (NOT message_dict/messages) so nested
+    # field-error CODES survive — message_dict strips them and every
+    # dict-form domain code (DATABRICKS_HOST_NOT_ALLOWED, ...) collapsed
+    # to VALIDATION_ERROR in the envelope (task 0.15).
     if isinstance(exc, DjangoValidationError):
-        exc = DRFValidationError(
-            detail=exc.message_dict if hasattr(exc, "message_dict") else exc.messages,
-        )
+        from rest_framework.serializers import as_serializer_error
+
+        exc = DRFValidationError(detail=as_serializer_error(exc))
 
     response = exception_handler(exc, context)
     request = context.get("request")
@@ -225,10 +353,8 @@ def custom_exception_handler(exc, context):
                 # DRF >=3.15 stores ``wait`` on Throttled instances.
                 wait = getattr(exc, "wait", None)
                 if wait is not None:
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         custom_response_data["error"]["details"]["retry_after"] = int(wait)
-                    except (TypeError, ValueError):
-                        pass
                 else:
                     # Fallback: parse the wait seconds from the detail
                     # message (e.g. "…available in 60 seconds.").

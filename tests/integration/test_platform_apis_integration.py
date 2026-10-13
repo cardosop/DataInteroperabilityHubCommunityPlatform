@@ -56,18 +56,13 @@ class TestPlatformAPIsIntegration:
         single-tenant lookup, avoiding O(n) iteration over every
         ACTIVE/SUSPENDED tenant (6k+ under --reuse-db).
         """
-        response = self.client.get(
-            f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}"
-        )
+        response = self.client.get(f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "results" in data or "count" in data
         # The response must include the requested tenant
         results = data.get("results", [data] if isinstance(data, dict) else data)
-        tenant_ids = [
-            r.get("tenant_id") for r in results
-            if isinstance(r, dict)
-        ]
+        tenant_ids = [r.get("tenant_id") for r in results if isinstance(r, dict)]
         assert str(self.tenant.id) in tenant_ids, (
             f"Response should include test tenant {self.tenant.id}"
         )

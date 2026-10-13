@@ -211,19 +211,15 @@ class AuthManager:
 
         if not access_token:
             # No token at all — try refresh (might have a refresh_token)
-            if self.refresh_access_token():
-                return True
-            return False
+            return bool(self.refresh_access_token())
 
         # Check if the access token is expired (client-side JWT expiry check).
         # The 30 s default buffer avoids using a token that will expire during
         # an in-flight request.
         if self._is_token_expired(access_token):
-            if self.refresh_access_token():
-                return True
             # Refresh failed — token is expired and can't be renewed.
             # Don't clear the token here; the caller may want to retry.
-            return False
+            return bool(self.refresh_access_token())
 
         return True
 

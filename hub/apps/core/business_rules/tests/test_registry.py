@@ -272,8 +272,11 @@ class TestBusinessRulesRegistry(TestCase):
         Tag-based rule lookup is no longer supported on the registry.
         Use individual rule .execute() or execute_chain() instead.
         """
+        # B009: bind the name so the removal test doesn't trigger the
+        # "getattr with a constant" lint — the point is asserting absence.
+        _removed_attr = "get_rule_by_tag"
         with self.assertRaises(AttributeError):
-            self.registry.get_rule_by_tag
+            getattr(self.registry, _removed_attr)
 
     def test_enable_disable_rule_removed(self):
         """Test enable_rule and disable_rule were removed in Phase 274.6.

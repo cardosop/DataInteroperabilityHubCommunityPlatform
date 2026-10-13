@@ -20,12 +20,11 @@ import hashlib
 import json
 import re
 import uuid
-from typing import Union
 
 __all__ = [
-    "compose_idempotency_key",
-    "canonical_body_bytes",
     "IDEMPOTENCY_HEADER",
+    "canonical_body_bytes",
+    "compose_idempotency_key",
 ]
 
 
@@ -39,7 +38,7 @@ _SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def canonical_body_bytes(
-    body: Union[bytes, bytearray, str, dict, list],
+    body: bytes | bytearray | str | dict | list,
 ) -> bytes:
     """Return the canonical bytes used to compute the SHA-256 over a body.
 
@@ -62,8 +61,8 @@ def canonical_body_bytes(
 
 
 def compose_idempotency_key(
-    tenant_uuid: Union[str, uuid.UUID],
-    body: Union[bytes, bytearray, str, dict, list],
+    tenant_uuid: str | uuid.UUID,
+    body: bytes | bytearray | str | dict | list,
 ) -> str:
     """Compose ``<tenant_uuid>:<sha256(body)>`` per D250.8.
 

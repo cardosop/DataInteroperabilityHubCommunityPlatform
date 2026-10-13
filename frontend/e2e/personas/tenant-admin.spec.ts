@@ -14,6 +14,12 @@ import '../journeys/ta/JOURNEY-TA-005.spec';
 import '../journeys/ta/JOURNEY-TA-006.spec';
 import '../journeys/ta/JOURNEY-TA-007.spec';
 import '../journeys/ta/JOURNEY-TA-008.spec';
+// close-test-coverage-gaps 6.3 — the three multi-segment TA journeys
+// (widened-GATE-27 visible since 6.1) were orphaned: imported now so the
+// persona aggregator runs them.
+import '../journeys/ta/JOURNEY-TA-BILLING-UPGRADE.spec';
+import '../journeys/ta/JOURNEY-TA-SUBSCRIPTION.spec';
+import '../journeys/ta/JOURNEY-TA-TENANT-SETTINGS.spec';
 import '../journeys/marketplace/JOURNEY-MP-001.spec';
 
 import { test, expect } from '@playwright/test';
@@ -54,7 +60,8 @@ test.describe('Persona RBAC: Tenant Admin @critical', () => {
     await page.waitForLoadState('domcontentloaded');
     const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
     if (resolvedPath.includes('/login')) {
-      test.skip(true, 'Auth session expired — not an RBAC result');
+      // close-test-coverage-gaps 6.3 — conditional form (no-test-skip-true).
+      test.skip(resolvedPath.includes('/login'), 'Auth session expired — not an RBAC result');
       return;
     }
     expect(

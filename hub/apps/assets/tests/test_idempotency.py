@@ -66,11 +66,10 @@ class AssetIdempotencyKeyTest(TestCase):
         except Exception as _exc:
             # Re-raise anything that is NOT a Redis operational error
             # (connection refused, timeout, etc.) — coding bugs must
-            # surface as test failures.
-            try:
-                import redis.exceptions as _redis_exc
-            except ImportError:
-                raise  # redis not even importable → let it bubble up
+            # surface as test failures. An ImportError for redis
+            # bubbles up on its own.
+            import redis.exceptions as _redis_exc
+
             if not isinstance(_exc, _redis_exc.RedisError):
                 raise
         self.client = APIClient()

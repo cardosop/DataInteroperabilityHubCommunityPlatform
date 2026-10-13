@@ -59,7 +59,7 @@ def list_users(limit: int, offset: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list users: {e}")
+        raise click.ClickException(f"Failed to list users: {e}") from e
 
 
 @users.command("get")
@@ -92,7 +92,7 @@ def get_user(user_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get user: {e}")
+        raise click.ClickException(f"Failed to get user: {e}") from e
 
 
 @users.command("invite")
@@ -138,7 +138,7 @@ def invite_user(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to invite user: {e}")
+        raise click.ClickException(f"Failed to invite user: {e}") from e
 
 
 @users.command("roles")
@@ -170,4 +170,4 @@ def list_roles(user_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get user roles: {e}")
+        raise click.ClickException(f"Failed to get user roles: {e}") from e

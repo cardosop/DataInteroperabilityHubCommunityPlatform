@@ -119,7 +119,7 @@ class APIEndpointTester:
             else:
                 print(f"⚠️  Authentication failed: {response.status_code} - {response.text[:100]}")
                 return False
-        except Exception as e:
+        except (requests.RequestException, ValueError) as e:
             print(f"⚠️  Authentication error: {e!s}")
             return False
 
@@ -143,7 +143,7 @@ class APIEndpointTester:
 
         # Build full URL
         # Handle endpoints that are not under /api/v1/ (e.g., /health/, /metrics/)
-        if endpoint.startswith("/health/") or endpoint.startswith("/metrics/"):
+        if endpoint.startswith(("/health/", "/metrics/")):
             # These are root-level endpoints, not under /api/v1/
             url = f"{self.base_url}{endpoint}"
         elif endpoint.startswith("/"):
@@ -219,13 +219,13 @@ class APIEndpointTester:
         except requests.exceptions.ConnectionError:
             result.status = "broken"
             result.error_message = "Connection error - service may be down"
-        except Exception as e:
+        except (requests.RequestException, ValueError) as e:
             result.status = "broken"
             result.error_message = f"Error: {e!s}"
 
         return result
 
-    def _get_minimal_payload(self, endpoint: str, method: str) -> dict:
+    def _get_minimal_payload(self, endpoint: str, _method: str) -> dict:
         """Get minimal valid payload for an endpoint."""
         # Common payloads based on endpoint patterns
         if "asset" in endpoint.lower():
@@ -344,7 +344,7 @@ class APIEndpointTester:
                             continue
 
             # Reset table state if we hit a new section
-            if line_stripped.startswith("### ") or line_stripped.startswith("## "):
+            if line_stripped.startswith(("### ", "## ")):
                 in_table = False
 
         # Deduplicate and normalize
@@ -565,7 +565,7 @@ class APIEndpointTester:
         lines.append("| Endpoint | Method | Status | Status Code | Response Time (ms) | Notes |")
         lines.append("|----------|--------|--------|-------------|-------------------|-------|")
 
-        for endpoint, method in sorted(set((r.endpoint, r.method) for r in results)):
+        for endpoint, method in sorted({(r.endpoint, r.method) for r in results}):
             result = results_map.get((endpoint, method))
             if result:
                 status_icon = (

@@ -56,7 +56,7 @@ def fresh_id(prefix: str) -> str:
     """
     if not prefix:
         raise ValueError("fresh_id prefix must be non-empty")
-    if not all(c.isalnum() or c == "-" or c == "_" for c in prefix):
+    if not all(c.isalnum() or c in {"-", "_"} for c in prefix):
         raise ValueError(f"fresh_id prefix {prefix!r} must contain only [A-Za-z0-9_-]")
     worker = _xdist_worker_id()
     suffix = uuid.uuid4().hex[:8]

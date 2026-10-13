@@ -57,7 +57,7 @@ def _make_tenant(slug_prefix: str = "f2") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> User:  # type: ignore[name-defined]  # test: edge-case type exercise
+def _make_user(tenant: Tenant) -> User:  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",
@@ -627,7 +627,6 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
 class LineageEditAuditTests(TestCase):
     def test_one_audit_row_per_added_edge(self):
         from hub.apps.audit.models import AuditEvent
-        from hub.apps.contracts.models import LineageEdge  # noqa: F401
 
         tenant = _make_tenant("audit-add")
         user = _make_user(tenant)

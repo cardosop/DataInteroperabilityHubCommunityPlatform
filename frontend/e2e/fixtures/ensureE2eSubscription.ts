@@ -62,7 +62,7 @@ export async function ensureE2eSubscription(page: Page, accessToken: string): Pr
       },
     });
   } catch {
-    // Best-effort. The downstream POST will surface the real error if the
+    // intentional: best-effort prime — the downstream POST surfaces the real error if the tenant remains unprimed — Best-effort. The downstream POST will surface the real error if the
     // tenant remains unprimed.
   }
 }

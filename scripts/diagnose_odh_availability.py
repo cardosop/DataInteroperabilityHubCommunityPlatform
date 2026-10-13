@@ -14,10 +14,11 @@ def step(name, fn):
     try:
         result = fn()
         print(f"[OK] {name}: {result}")
-        return result
     except Exception as e:
         print(f"[FAIL] {name}: {type(e).__name__}: {e}", file=sys.stderr)
         raise
+    else:
+        return result
 
 
 # 1) Env URL
@@ -54,7 +55,7 @@ for attempt in range(3):
         if status != 200:
             continue
         break
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"   Attempt {attempt + 1}: {type(e).__name__}: {e}")
 else:
     print("ABORT: health check never returned 200")

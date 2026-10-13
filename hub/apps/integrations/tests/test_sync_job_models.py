@@ -205,7 +205,7 @@ class MarketplaceSyncJobModelTest(TestCase):
 
         # Advance time by 1 second so updated_at is guaranteed to change.
         # freezegun provides deterministic time control without wall-clock
-        # dependency (replaces fragile time.sleep(0.01)).
+        # noqa: sleep-needed  # dependency (replaces fragile time.sleep(0.01)).  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
         with freeze_time(timezone.now() + timezone.timedelta(seconds=1)):
             sync_job.mark_completed(items_synced=100, metadata={"duration": 30})
 

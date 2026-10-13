@@ -27,6 +27,8 @@ from hub.apps.contracts.normalization_engine import (
     _map_support_channels,
     _map_terms,
 )
+from hub.apps.contracts.source_paths import SourcePathTracker, track_field_mapping
+from hub.apps.contracts.typed_models import validate_hub_contract_dict
 from hub.apps.contracts.validation import (
     validate_and_enrich_contacts,
     validate_and_enrich_lineage,
@@ -35,8 +37,6 @@ from hub.apps.contracts.validation import (
     validate_and_enrich_servicelevels,
     validate_and_enrich_team,
 )
-from hub.apps.contracts.source_paths import SourcePathTracker, track_field_mapping
-from hub.apps.contracts.typed_models import validate_hub_contract_dict
 from hub.apps.contracts.versioning import get_default_version
 
 logger = structlog.get_logger(__name__)
@@ -85,7 +85,7 @@ class ODCSNormalizerBase(ABC):
             - ODCS 3.0.0 normalizer: return spec_version == "3.0.0"
         """
 
-    def supports(self, spec_type: str, spec_version: str, contract_data: dict[str, Any]) -> bool:
+    def supports(self, spec_type: str, spec_version: str, _contract_data: dict[str, Any]) -> bool:
         """
         Check if this normalizer supports the given spec type and version.
 
@@ -214,24 +214,23 @@ class ODCSNormalizerBase(ABC):
                 if status == NormalizationStatus.NORMALIZATION_FAILED:
                     # Check if this is a regression (version that should normally succeed)
                     regression_type = None
-                    if version_str in ["3.0.2", "3.0.1", "3.0.0"]:
+                    if version_str in ["3.0.2", "3.0.1", "3.0.0"] and len(errors) > 0:
                         # These are stable versions - failures might indicate regression
-                        if len(errors) > 0:
-                            # Check for specific regression patterns
-                            error_text = " ".join(errors).lower()
-                            if "schema" in error_text or "validation" in error_text:
-                                regression_type = "schema_validation"
-                            elif "field" in error_text or "mapping" in error_text:
-                                regression_type = "field_mapping"
-                            else:
-                                regression_type = "general_failure"
+                        # Check for specific regression patterns
+                        error_text = " ".join(errors).lower()
+                        if "schema" in error_text or "validation" in error_text:
+                            regression_type = "schema_validation"
+                        elif "field" in error_text or "mapping" in error_text:
+                            regression_type = "field_mapping"
+                        else:
+                            regression_type = "general_failure"
 
-                            if regression_type:
-                                odcs_normalization_regression_total.labels(
-                                    version=version_str,
-                                    regression_type=regression_type,
-                                    tenant_id=tenant_id,
-                                ).inc()
+                        if regression_type:
+                            odcs_normalization_regression_total.labels(
+                                version=version_str,
+                                regression_type=regression_type,
+                                tenant_id=tenant_id,
+                            ).inc()
             except Exception:
                 # Metrics failure should not affect normalization
                 pass
@@ -250,7 +249,7 @@ class ODCSNormalizerBase(ABC):
             # Catch any unexpected errors
             error_msg = f"Normalization failed: {e!s}"
             errors.append(error_msg)
-            logger.error(
+            logger.exception(
                 "odcs_normalization_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
@@ -283,7 +282,7 @@ class ODCSNormalizerBase(ABC):
                 # "odcs.io/v3.0.2" format
                 try:
                     return api_version.split("/v")[-1]
-                except Exception:
+                except (AttributeError, IndexError):
                     pass
             elif api_version.startswith("v") and "." in api_version:
                 # "v3.1.0" short format (ODCS v3.1.0+)
@@ -299,10 +298,10 @@ class ODCSNormalizerBase(ABC):
 
     def _map_version_specific_fields(
         self,
-        odcs_contract: dict[str, Any],
-        hub_contract: dict[str, Any],
-        warnings: list[str],
-        spec_version: str,
+        _odcs_contract: dict[str, Any],
+        _hub_contract: dict[str, Any],
+        _warnings: list[str],
+        _spec_version: str,
     ) -> None:
         """
         Hook for version-specific field mappings.
@@ -322,6 +321,7 @@ class ODCSNormalizerBase(ABC):
         """
         # Default implementation: no version-specific mappings
         # Subclasses can override to add version-specific logic
+        return None
 
     def _normalize_odcs_to_hubcontract(
         self, odcs_contract: dict[str, Any], spec_version: str
@@ -525,8 +525,6 @@ class ODCSNormalizerBase(ABC):
                 hub_contract["normalization"]["original_spec_version"] = spec_version
 
             # Return hub_contract (None if failed, dict if succeeded or partial)
-            return hub_contract, status, errors, warnings
-
         except Exception as e:
             # Phase 227 Wave 1 (227.L2.1) — preserve typed-error CODE so
             # downstream API consumers can detect SCHEMA_TOO_DEEP and
@@ -540,7 +538,7 @@ class ODCSNormalizerBase(ABC):
                 errors.append(f"[{error_code}] Normalization failed: {error_message}")
             else:
                 errors.append(f"Normalization failed: {error_message}")
-            logger.error(
+            logger.exception(
                 "odcs_normalization_error",
                 error=error_message,
                 error_type=type(e).__name__,
@@ -548,6 +546,8 @@ class ODCSNormalizerBase(ABC):
                 message="Error during ODCS normalization",
             )
             return None, NormalizationStatus.NORMALIZATION_FAILED, errors, warnings
+        else:
+            return hub_contract, status, errors, warnings
 
     # Common normalization methods (shared across all versions)
     # These methods are implemented in the base class and can be overridden
@@ -613,7 +613,7 @@ class ODCSNormalizerBase(ABC):
             hub_contract["info"]["tags"] = odcs_contract["tags"]
 
     def _normalize_schema(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS schema section to HubContract schema/models format."""
         models = []
@@ -662,7 +662,7 @@ class ODCSNormalizerBase(ABC):
             hub_contract["schema"] = _derive_schema_from_model(hub_contract["models"][0])
 
     def _normalize_quality(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS quality section to HubContract quality format."""
         if "quality" in odcs_contract:
@@ -678,7 +678,7 @@ class ODCSNormalizerBase(ABC):
                 hub_contract["quality"].update(contract_level_quality)
 
     def _normalize_privacy_compliance(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS privacy_compliance section to HubContract privacy_compliance format."""
         # Check for privacy_compliance, compliance, or privacy at top level
@@ -712,7 +712,7 @@ class ODCSNormalizerBase(ABC):
                 ]
 
     def _normalize_lifecycle(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS lifecycle section to HubContract lifecycle format."""
         if "lifecycle" in odcs_contract:
@@ -748,7 +748,7 @@ class ODCSNormalizerBase(ABC):
             hub_contract["contact"] = enriched_contacts
 
     def _normalize_support_channels(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS support channels (from support[] entries without name/email) to HubContract support format."""
         support_channels = _map_support_channels(odcs_contract)
@@ -756,7 +756,7 @@ class ODCSNormalizerBase(ABC):
             hub_contract["support"] = support_channels
 
     def _normalize_servers(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS servers to HubContract servers format."""
         servers = _map_servers(odcs_contract)
@@ -778,7 +778,7 @@ class ODCSNormalizerBase(ABC):
             hub_contract["terms"] = terms
 
     def _normalize_definitions(
-        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], _warnings: list[str]
     ) -> None:
         """Normalize ODCS authoritativeDefinitions to HubContract definitions format."""
         definitions = _map_definitions(odcs_contract)

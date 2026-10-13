@@ -115,14 +115,20 @@ export function ContractLineageVisualization({
   // deep-link so the user can fix it directly.
   // Tier 2 (``nodes.length > 1 && links.length === 0``): the contract
   // is structural but has no lineage edges. Existing copy stays.
+  // ``nodes``/``links`` are read defensively (?? []) — a payload-shape
+  // drift (the backend's point-in-time branch once emitted ``edges``
+  // instead of ``links``) crashed the WHOLE contract page with
+  // "Cannot read properties of undefined (reading 'length')" (the
+  // UC-LIN-TIME-TRAVEL-001 a11y run hit exactly this). An unexpected
+  // payload must degrade to the empty state, never take down the page.
   const isStructureless =
-    lineage && !isLoading && !error && lineage.nodes.length <= 1;
+    lineage && !isLoading && !error && (lineage.nodes ?? []).length <= 1;
   const showNoRelationshipsHint =
     lineage &&
     !isLoading &&
     !error &&
-    lineage.links.length === 0 &&
-    lineage.nodes.length > 1;
+    (lineage.links ?? []).length === 0 &&
+    (lineage.nodes ?? []).length > 1;
 
   return (
     <div className={styles.wrapper}>
@@ -187,7 +193,7 @@ export function ContractLineageVisualization({
           </label>
           {lineage && (
             <span className={styles.summary}>
-              {lineage.nodes.length} nodes &middot; {lineage.links.length} links
+              {(lineage.nodes ?? []).length} nodes &middot; {(lineage.links ?? []).length} links
             </span>
           )}
         </div>

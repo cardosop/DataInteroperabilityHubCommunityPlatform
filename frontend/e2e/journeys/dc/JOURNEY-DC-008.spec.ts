@@ -25,14 +25,14 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const onCommunities = url.includes('/communities');
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onCommunities).toBe(true);
@@ -90,7 +90,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const url = page.url();
       expect(

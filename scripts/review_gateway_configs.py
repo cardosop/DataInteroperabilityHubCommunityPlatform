@@ -244,7 +244,7 @@ class DjangoEndpointExtractor:
                                     }
                                 )
                         return normalized
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load endpoint inventory: {e}", file=sys.stderr)
 
         # Try proposed inventory as fallback
@@ -278,7 +278,7 @@ class DjangoEndpointExtractor:
                                     }
                                 )
                         return normalized
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
 
         # Fallback: extract from Django URLs

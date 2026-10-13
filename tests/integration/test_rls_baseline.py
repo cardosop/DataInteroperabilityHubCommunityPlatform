@@ -1,10 +1,8 @@
-import os
 import uuid
 
 import pytest
+from django.db import DatabaseError, connection
 from psycopg2 import sql
-
-from django.db import connection, DatabaseError
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
@@ -39,7 +37,6 @@ def pytest_generate_tests(metafunc):
     metafunc.parametrize("table_name", _tenant_scoped_table_names())
 
 
-
 def _select_count_as_role(table_name: str, role_name: str) -> int:
     with connection.cursor() as cursor:
         try:
@@ -50,29 +47,41 @@ def _select_count_as_role(table_name: str, role_name: str) -> int:
                 "Create the role with 'CREATE ROLE meshant_app WITH LOGIN' in the test database, "
                 "then grant USAGE on the schema and re-run."
             )
-        # Set a synthetic tenant UUID so that RLS policies comparing
-        # tenant_id::text = current_setting(...) evaluate safely (a
-        # UUID that will never match a real tenant).  Use is_local=False
-        # (session-level) because Django's autocommit mode means each
-        # cursor.execute() is its own transaction, and is_local=True
-        # would lose the setting between calls.
-        # Empty string causes "invalid input syntax for type uuid" on
-        # tables whose RLS policy lacks the rls_<table>_enabled guard.
-        cursor.execute(
-            "SELECT set_config('app.current_tenant_id', %s, false)",
-            ["00000000-0000-0000-0000-000000000000"],
-        )
         try:
-            cursor.execute(sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name)))
-        except DatabaseError as exc:
-            # --reuse-db may have leftover corrupt data (e.g., empty-string
-            # UUIDs) that prevents SELECT on some tables.  Skip gracefully
-            # rather than failing on pre-existing data issues.
-            pytest.skip(f"Table '{table_name}' has corrupt --reuse-db data: {exc}")
-        row = cursor.fetchone()
-        if row is None:
-            raise AssertionError(f"COUNT(*) returned no row for table {table_name}")
-        return int(row[0])
+            # Set a synthetic tenant UUID so that RLS policies comparing
+            # tenant_id::text = current_setting(...) evaluate safely (a
+            # UUID that will never match a real tenant).  Use is_local=False
+            # (session-level) because Django's autocommit mode means each
+            # cursor.execute() is its own transaction, and is_local=True
+            # would lose the setting between calls.
+            # Empty string causes "invalid input syntax for type uuid" on
+            # tables whose RLS policy lacks the rls_<table>_enabled guard.
+            cursor.execute(
+                "SELECT set_config('app.current_tenant_id', %s, false)",
+                ["00000000-0000-0000-0000-000000000000"],
+            )
+            try:
+                cursor.execute(
+                    sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name))
+                )
+            except DatabaseError as exc:
+                # --reuse-db may have leftover corrupt data (e.g., empty-string
+                # UUIDs) that prevents SELECT on some tables.  Skip gracefully
+                # rather than failing on pre-existing data issues.
+                pytest.skip(f"Table '{table_name}' has corrupt --reuse-db data: {exc}")
+            row = cursor.fetchone()
+            if row is None:
+                raise AssertionError(f"COUNT(*) returned no row for table {table_name}")
+            return int(row[0])
+        finally:
+            # SET ROLE and set_config(..., false) are SESSION-level state
+            # on the shared connection — they survive the cursor (and the
+            # test) into pytest-django's post-test flush, which would
+            # then run as `role_name` and fail with permission errors on
+            # tables that role lacks TRUNCATE on. Reset both before the
+            # teardown flush sees the connection.
+            cursor.execute("RESET ROLE")
+            cursor.execute("RESET app.current_tenant_id")
 
 
 @pytest.fixture

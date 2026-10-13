@@ -54,7 +54,7 @@ class RegistrationPerformanceTest(TestCase):
             start = time.perf_counter()
             response = self.client.post(
                 "/api/v1/auth/register/",
-                {"email": email, "password": "SecurePass123", "name": "Perf User"},
+                {"email": email, "password": "Perf!Pass#42xQ", "name": "Perf User"},
                 format="json",
             )
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -89,12 +89,13 @@ class RegistrationPerformanceTest(TestCase):
                 email = f"concurrent-{index}-{uuid.uuid4().hex[:8]}@example.com"
                 response = client.post(
                     "/api/v1/auth/register/",
-                    {"email": email, "password": "SecurePass123", "name": "Concurrent User"},
+                    {"email": email, "password": "Perf!Pass#42xQ", "name": "Concurrent User"},
                     format="json",
                 )
-                return (index, response.status_code == status.HTTP_201_CREATED, None)
             except Exception as e:
                 return (index, False, str(e))
+            else:
+                return (index, response.status_code == status.HTTP_201_CREATED, None)
             finally:
                 close_old_connections()
 
@@ -132,7 +133,7 @@ class RegistrationPerformanceTest(TestCase):
         with CaptureQueriesContext(connection) as context:
             response = self.client.post(
                 "/api/v1/auth/register/",
-                {"email": email, "password": "SecurePass123", "name": "N+1 Test User"},
+                {"email": email, "password": "Perf!Pass#42xQ", "name": "N+1 Test User"},
                 format="json",
             )
 

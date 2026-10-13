@@ -22,6 +22,9 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.response import (
+    Response,  # no future-annotations in this module; runtime annotations evaluate it
+)
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -1084,9 +1087,8 @@ class ComplianceRunViewSetTest(TestCase):
         # which has `.data` (the parsed body). pyright sees the base Django
         # type on APIClient.get; annotate locally so .data access is typed
         # correctly without scattering `# type: ignore[misc]  # test: edge-case type exercise` comments.
-        from rest_framework.response import Response
 
-        response: Response = self.client.get(  # type: ignore[assignment]  # test: edge-case type exercise
+        response: Response = self.client.get(  # test: edge-case type exercise
             f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)

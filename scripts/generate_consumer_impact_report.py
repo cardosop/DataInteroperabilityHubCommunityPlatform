@@ -46,7 +46,7 @@ class ConsumerImpactAnalyzer:
             try:
                 with open(reverse_lookup_file) as f:
                     data["reverse_lookups"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load reverse lookup analysis: {e}", file=sys.stderr)
 
         # Load API client usage report
@@ -55,7 +55,7 @@ class ConsumerImpactAnalyzer:
             try:
                 with open(api_client_file) as f:
                     data["api_client_usage"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load API client usage report: {e}", file=sys.stderr)
 
         # Load webhook payloads and events report
@@ -66,7 +66,7 @@ class ConsumerImpactAnalyzer:
             try:
                 with open(webhook_file) as f:
                     data["webhook_payloads"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load webhook payloads report: {e}", file=sys.stderr)
 
         # Load endpoint inventory
@@ -75,7 +75,7 @@ class ConsumerImpactAnalyzer:
             try:
                 with open(endpoint_file) as f:
                     data["endpoint_inventory"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load endpoint inventory: {e}", file=sys.stderr)
 
         # Load hardcoded endpoints impact matrix
@@ -86,7 +86,7 @@ class ConsumerImpactAnalyzer:
             try:
                 with open(hardcoded_file) as f:
                     data["hardcoded_endpoints"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load hardcoded endpoints matrix: {e}", file=sys.stderr)
 
         # Load OpenAPI spec discrepancies
@@ -95,7 +95,7 @@ class ConsumerImpactAnalyzer:
             try:
                 with open(openapi_file) as f:
                     data["openapi_discrepancies"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load OpenAPI discrepancies: {e}", file=sys.stderr)
 
         return data
@@ -122,7 +122,7 @@ class ConsumerImpactAnalyzer:
         endpoint = re.sub(r"^https?://", "", endpoint)
 
         # Skip regex patterns that aren't valid endpoints
-        if endpoint.startswith("^") or endpoint.startswith("(?P<") or "regex" in endpoint.lower():
+        if endpoint.startswith(("^", "(?P<")) or "regex" in endpoint.lower():
             # Try to extract the base path from regex
             # Pattern: ^api/v1/path/(?P<id>...)
             match = re.match(r"[\^/]*api/v1/([^\(]+)", endpoint)
@@ -401,7 +401,7 @@ class ConsumerImpactAnalyzer:
 
     def generate_impact_matrix(self) -> None:
         """Generate impact matrix for all endpoints"""
-        for endpoint in self.endpoint_consumers.keys():
+        for endpoint in self.endpoint_consumers:
             impact = self.calculate_impact_score(endpoint)
             consumers = list(self.endpoint_consumers[endpoint])
 
@@ -463,7 +463,7 @@ class ConsumerImpactAnalyzer:
         total_consumers = sum(len(consumers) for consumers in self.endpoint_consumers.values())
 
         priority_counts = defaultdict(int)
-        for endpoint, info in self.impact_matrix.items():
+        for _endpoint, info in self.impact_matrix.items():
             priority_counts[info["priority"]] += 1
 
         report.append("## Summary Statistics")

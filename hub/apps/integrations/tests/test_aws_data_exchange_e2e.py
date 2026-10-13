@@ -119,7 +119,7 @@ class TestAWSDataExchangeConnectorE2E(TransactionTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if hasattr(cls, '_aws_patcher'):
+        if hasattr(cls, "_aws_patcher"):
             cls._aws_patcher.stop()
         super().tearDownClass()
 

@@ -111,10 +111,15 @@ export async function createAssetViaUi(
       'teardown re-logs-in as the owner before issuing DELETE.',
     );
   }
-  await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });
+  // Phase 250.6.B — /assets/create opens on the type-picker step; the
+  // `?skip=picker` deep-link bypass renders the form directly (picker and
+  // skip-CTA coverage lives in journeys/dpo/asset-type-picker.spec.ts).
+  await page.goto('/assets/create?skip=picker', { waitUntil: 'domcontentloaded' });
   await page.fill('input[id="asset-name"]', options.name);
   await page.fill('input[id="asset-key"]', options.key);
-  await page.getByRole('button', { name: /^Create$/i }).click();
+  // Phase 250.3.B.5 (D250.4) — visibility is derived server-side from
+  // `status`; the form no longer has a visibility select, so none is set.
+  await page.locator('[data-testid="asset-create-submit"]').click();
 
   const timeout = options.timeoutMs ?? REDIRECT_TIMEOUT_MS_DEFAULT;
   // Wait for the redirect to a detail page. We pin via a regex so a

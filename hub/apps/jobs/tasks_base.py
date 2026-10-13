@@ -11,11 +11,13 @@ import traceback as tb_module
 from datetime import timedelta
 
 import structlog
-from django.db import transaction
+from botocore.exceptions import BotoCoreError
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 from django_rq import job
 
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.files.storage import StorageError
 
 
 class JobExecutionError(Exception):
@@ -28,6 +30,7 @@ class JobExecutionError(Exception):
 
     def __init__(self, message: str = "Job execution failed"):
         super().__init__(message)
+
 
 from .models import FailedJobDLQ, Job, JobStatus, JobType
 from .utils import (
@@ -45,6 +48,16 @@ from .utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# W4.6 (oss-release-remediation, G1) — the provider-estate job types.
+# Their executors live in databricks_admin and dispatch through the
+# estate-handler seam (registered at app-ready); the dispatcher never
+# imports estate code.
+_ESTATE_JOB_TYPES = {
+    JobType.DATABRICKS_UC_METADATA_SYNC.value,
+    JobType.DATABRICKS_COST_SYNC.value,
+    JobType.DATABRICKS_UC_CHANGE_REAPER.value,
+}
 
 
 def _write_to_dlq(job_obj: Job, job_type: str, exception: Exception):
@@ -138,7 +151,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     current_status=_status,
                 )
         except Job.DoesNotExist:
-            logger.error("job_not_found", job_id=job_id)
+            logger.exception("job_not_found", job_id=job_id)
         return
 
     # Slot type determined after claim; also captures tenant_id for
@@ -155,14 +168,16 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
         # try_acquire_*_slot() performs the check-and-increment atomically via
         # a Lua script, eliminating the TOCTOU race of the old
         # can_use_*_slot() + increment_*_slots_usage() two-step pattern.
-        if queue_name == "job_critical" or (queue_name == "job_default" and is_elevated):
+        if queue_name == "job_critical" or (
+            queue_name == "job_default" and is_elevated
+        ):
             # HIGH priority or elevated: reserved slot first, shared as fallback
             if try_acquire_reserved_slot():
                 slot_type = "reserved"
             elif try_acquire_shared_slot():
                 slot_type = "shared"
             else:
-                # No slots – django-rq already pulled the job so we must run it
+                # No slots - django-rq already pulled the job so we must run it
                 logger.warning(
                     "job_no_slots_available",
                     job_id=job_id,
@@ -185,8 +200,14 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             slot_type = "shared"
             increment_shared_slots_usage()
 
-        # Increment tenant job counter
-        increment_tenant_job_counter(job_obj.tenant_id)
+        # Tenant job counter transition: queued -> running.  The enqueue
+        # path already incremented "queued"; this used to increment
+        # "queued" AGAIN (the default counter type), so the queued counter
+        # monotonically grew by 2 per job and the final decrement below
+        # (defaulting to "running", which was never incremented) floored
+        # at zero — tenants hit max_queued_jobs purely from completed jobs.
+        decrement_tenant_job_counter(job_obj.tenant_id, "queued")
+        increment_tenant_job_counter(job_obj.tenant_id, "running")
 
         # Execute job logic
         start_time = time.time()
@@ -282,7 +303,11 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 actor_user=job_obj.created_by,
                 tenant=job_obj.tenant,
                 resource_id=str(job_obj.id),
-                details={"job_type": job_type, "error": str(e), "error_type": "ValidationError"},
+                details={
+                    "job_type": job_type,
+                    "error": str(e),
+                    "error_type": "ValidationError",
+                },
             )
 
             # Non-transient — write to DLQ immediately
@@ -294,7 +319,10 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             job_obj.status = JobStatus.FAILED
             job_obj.completed_at = timezone.now()
             job_obj.error_message = f"Job timeout after {timeout} seconds"
-            job_obj.result_json = {"error": job_obj.error_message, "error_code": "TIMEOUT"}
+            job_obj.result_json = {
+                "error": job_obj.error_message,
+                "error_code": "TIMEOUT",
+            }
             # Store execution time in details_json
             if job_obj.details_json is None:
                 job_obj.details_json = {}
@@ -309,7 +337,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 ]
             )
 
-            logger.error(
+            logger.exception(
                 "job_failed_timeout",
                 job_id=job_id,
                 job_type=job_type,
@@ -356,7 +384,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 ]
             )
 
-            logger.error(
+            logger.exception(
                 "job_failed_connection",
                 job_id=job_id,
                 job_type=job_type,
@@ -455,7 +483,9 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             )
 
     except Job.DoesNotExist:
-        logger.error("job_not_found", job_id=job_id, message=f"Job {job_id} not found")
+        logger.exception(
+            "job_not_found", job_id=job_id, message=f"Job {job_id} not found"
+        )
     except Exception as e:
         logger.error(
             "job_processing_error",
@@ -497,6 +527,16 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
         ConnectionError: For service connection errors
         Exception: For other errors (will be caught and logged)
     """
+    # Normalize to the JobType enum: the production path (process_job)
+    # passes the raw string, while several callers pass the enum or its
+    # .value — the comparisons below work for either, but the paid-layer
+    # handler registry lookup needs job_type.value (enum only).
+    if isinstance(job_type, str):
+        try:
+            job_type = JobType(job_type)
+        except ValueError:
+            raise ValueError(f"Unknown job type: {job_type}") from None
+
     # Import job handlers dynamically to avoid circular imports
     if job_type == JobType.DQ_RUN:
         from .tasks_dq import _execute_dq_run_job
@@ -529,7 +569,9 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
         return {
             "executed_by_prefect": True,
             "message": "SCHEDULED_INGESTION executed by Prefect only; RQ worker no-op.",
-            "prefect_flow_run_id": (job_obj.details_json or {}).get("prefect_flow_run_id"),
+            "prefect_flow_run_id": (job_obj.details_json or {}).get(
+                "prefect_flow_run_id"
+            ),
         }
 
     elif job_type == JobType.RETENTION_POLICY_ENFORCEMENT:
@@ -541,6 +583,27 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
         from .tasks_governance import _execute_retention_enforcement_sweep_job
 
         return _execute_retention_enforcement_sweep_job(job_obj)
+
+    elif job_type in _ESTATE_JOB_TYPES:
+        # W4.6 (oss-release-remediation, G1) — provider estate job types
+        # (UC metadata sync / cost sync / UC-change reaper) dispatch
+        # through the estate-handler seam: the handlers live in
+        # databricks_admin (estate models and clients stay inside the
+        # provider app) and register at app-ready; the dispatcher never
+        # imports estate code. An unregistered type refuses classified —
+        # never a silent no-op (a core-only process cannot enqueue these
+        # types by construction: the enqueueing commands live in the
+        # estate).
+        from .estate_handlers import get_estate_job_handler
+
+        handler = get_estate_job_handler(str(job_type))
+        if handler is None:
+            raise JobExecutionError(
+                f"no estate job handler registered for {job_type} "
+                "(the provider estate app is not installed or its "
+                "ready() registration is missing)"
+            )
+        return handler(job_obj)
 
     elif job_type == JobType.SEARCH_INDEX_UPDATE:
         from .tasks_search import _execute_search_index_update_job
@@ -629,7 +692,7 @@ def _execute_audit_merkle_snapshot_job(job_obj: Job) -> dict:
             )
             if result is not None:
                 snapshots_produced += 1
-        except Exception:
+        except (DatabaseError, StorageError, BotoCoreError, RuntimeError):
             _log.exception("audit_merkle_snapshot_job failed for tenant %s", tenant.id)
 
     return {
@@ -679,7 +742,9 @@ def check_job_timeouts():
             "error_code": "TIMEOUT",
             "timeout": timeout_seconds,
         }
-        job_obj.save(update_fields=["status", "completed_at", "error_message", "result_json"])
+        job_obj.save(
+            update_fields=["status", "completed_at", "error_message", "result_json"]
+        )
 
         logger.warning(
             "job_timeout",

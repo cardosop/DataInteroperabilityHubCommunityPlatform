@@ -51,36 +51,52 @@ class FileModelTest(FilesTestBase):
     def test_can_download_active_clean(self):
         """ACTIVE + CLEAN → True."""
         f = File.objects.create(
-            tenant=self.tenant, name=f"dl-{uuid.uuid4().hex[:8]}.csv",
-            size=1, content_type="text/csv", status=FileStatus.ACTIVE,
-            scan_status=FileScanStatus.CLEAN, created_by=self.user,
+            tenant=self.tenant,
+            name=f"dl-{uuid.uuid4().hex[:8]}.csv",
+            size=1,
+            content_type="text/csv",
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
+            created_by=self.user,
         )
         self.assertTrue(f.can_download())
 
     def test_can_download_active_pending_scan(self):
         """ACTIVE + PENDING_SCAN → False."""
         f = File.objects.create(
-            tenant=self.tenant, name=f"dl-{uuid.uuid4().hex[:8]}.csv",
-            size=1, content_type="text/csv", status=FileStatus.ACTIVE,
-            scan_status=FileScanStatus.PENDING_SCAN, created_by=self.user,
+            tenant=self.tenant,
+            name=f"dl-{uuid.uuid4().hex[:8]}.csv",
+            size=1,
+            content_type="text/csv",
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.PENDING_SCAN,
+            created_by=self.user,
         )
         self.assertFalse(f.can_download())
 
     def test_can_download_active_infected(self):
         """ACTIVE + INFECTED → False."""
         f = File.objects.create(
-            tenant=self.tenant, name=f"dl-{uuid.uuid4().hex[:8]}.csv",
-            size=1, content_type="text/csv", status=FileStatus.ACTIVE,
-            scan_status=FileScanStatus.INFECTED, created_by=self.user,
+            tenant=self.tenant,
+            name=f"dl-{uuid.uuid4().hex[:8]}.csv",
+            size=1,
+            content_type="text/csv",
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.INFECTED,
+            created_by=self.user,
         )
         self.assertFalse(f.can_download())
 
     def test_can_download_pending(self):
         """PENDING status → False regardless of scan."""
         f = File.objects.create(
-            tenant=self.tenant, name=f"dl-{uuid.uuid4().hex[:8]}.csv",
-            size=1, content_type="text/csv", status=FileStatus.PENDING,
-            scan_status=FileScanStatus.CLEAN, created_by=self.user,
+            tenant=self.tenant,
+            name=f"dl-{uuid.uuid4().hex[:8]}.csv",
+            size=1,
+            content_type="text/csv",
+            status=FileStatus.PENDING,
+            scan_status=FileScanStatus.CLEAN,
+            created_by=self.user,
         )
         self.assertFalse(f.can_download())
 
@@ -88,16 +104,22 @@ class FileModelTest(FilesTestBase):
 
     def test_is_uploading_true(self):
         f = File.objects.create(
-            tenant=self.tenant, name=f"up-{uuid.uuid4().hex[:8]}.csv",
-            size=1, content_type="text/csv", status=FileStatus.UPLOADING,
+            tenant=self.tenant,
+            name=f"up-{uuid.uuid4().hex[:8]}.csv",
+            size=1,
+            content_type="text/csv",
+            status=FileStatus.UPLOADING,
             created_by=self.user,
         )
         self.assertTrue(f.is_uploading())
 
     def test_is_uploading_false(self):
         f = File.objects.create(
-            tenant=self.tenant, name=f"up-{uuid.uuid4().hex[:8]}.csv",
-            size=1, content_type="text/csv", status=FileStatus.ACTIVE,
+            tenant=self.tenant,
+            name=f"up-{uuid.uuid4().hex[:8]}.csv",
+            size=1,
+            content_type="text/csv",
+            status=FileStatus.ACTIVE,
             created_by=self.user,
         )
         self.assertFalse(f.is_uploading())
@@ -106,10 +128,7 @@ class FileModelTest(FilesTestBase):
 
     def test_calculate_sha256_known_content(self):
         content = b"hello world"
-        expected = (
-            "b94d27b9934d3e08a52e52d7da7dabfa"
-            "c484efe37a5380ee9088f7ace2efcde9"
-        )
+        expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         result = File.calculate_sha256(BytesIO(content))
         self.assertEqual(result, expected)
         # Verify file pointer was reset

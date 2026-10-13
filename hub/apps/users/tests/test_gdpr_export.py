@@ -20,7 +20,12 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.models import AuditEvent
 from hub.apps.contracts.models import Contract
 from hub.apps.gdpr.models import DataExportJob
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+# marketplace is the paid layer — guarded for both core-only absence
+# forms (W7.1).
+try:
+    from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+except (RuntimeError, ModuleNotFoundError):
+    Listing = ListingStatus = PricingModel = None  # type: ignore[assignment]
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 

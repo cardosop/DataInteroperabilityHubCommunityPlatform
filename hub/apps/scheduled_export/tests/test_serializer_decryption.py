@@ -64,17 +64,17 @@ class ScheduledExportSerializerDecryptionTest(TestCase):
         """Encrypted destination_config should be decrypted in API response."""
         export = self._create_export(self.plaintext_config)
         export.refresh_from_db()
-        self.assertIn("_encrypted", export.destination_config)
+        assert "_encrypted" in export.destination_config
 
         serializer = ScheduledExportSerializer(export)
         data = serializer.data
 
         dc = data["destination_config"]
-        self.assertNotIn("_encrypted", dc)
-        self.assertEqual(dc["bucket"], "export-bucket")
-        self.assertEqual(dc["region"], "us-west-2")
+        assert "_encrypted" not in dc
+        assert dc["bucket"] == "export-bucket"
+        assert dc["region"] == "us-west-2"
         # Sensitive fields should be masked
-        self.assertEqual(dc["secret_key"], "***masked***")
+        assert dc["secret_key"] == "***masked***"
 
     def test_to_representation_handles_legacy_plaintext(self):
         """Legacy plaintext destination_config should pass through."""
@@ -86,7 +86,7 @@ class ScheduledExportSerializerDecryptionTest(TestCase):
 
         serializer = ScheduledExportSerializer(export)
         dc = serializer.data["destination_config"]
-        self.assertEqual(dc["bucket"], "legacy-bucket")
+        assert dc["bucket"] == "legacy-bucket"
 
     def test_to_representation_handles_empty_config(self):
         """Empty destination_config should return empty dict."""
@@ -97,7 +97,7 @@ class ScheduledExportSerializerDecryptionTest(TestCase):
         export.refresh_from_db()
 
         serializer = ScheduledExportSerializer(export)
-        self.assertEqual(serializer.data["destination_config"], {})
+        assert serializer.data["destination_config"] == {}
 
     def test_to_representation_masks_sensitive_fields(self):
         """Sensitive fields should be masked."""
@@ -114,8 +114,8 @@ class ScheduledExportSerializerDecryptionTest(TestCase):
         serializer = ScheduledExportSerializer(export)
         dc = serializer.data["destination_config"]
 
-        self.assertEqual(dc["bucket"], "out-bucket")
-        self.assertEqual(dc["password"], "***masked***")
-        self.assertEqual(dc["api_key"], "***masked***")
-        self.assertEqual(dc["token"], "***masked***")
-        self.assertEqual(dc["connection_string"], "***masked***")
+        assert dc["bucket"] == "out-bucket"
+        assert dc["password"] == "***masked***"
+        assert dc["api_key"] == "***masked***"
+        assert dc["token"] == "***masked***"
+        assert dc["connection_string"] == "***masked***"

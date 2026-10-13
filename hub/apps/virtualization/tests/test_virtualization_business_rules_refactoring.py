@@ -246,7 +246,9 @@ class VirtualizationBusinessRulesRefactoringTest(TestCase):
             self.virtual_dataset, raise_on_error=False
         )
         self.assertIsInstance(result, ValidationResult)
-        self.assertTrue(result.is_valid, f"Source config validation should pass; errors: {result.errors}")
+        self.assertTrue(
+            result.is_valid, f"Source config validation should pass; errors: {result.errors}"
+        )
 
     def test_validate_query_mapping(self):
         """Test validate_query_mapping() method."""
@@ -424,8 +426,9 @@ class QueryExecutionBusinessRulesRefactoringTest(TestCase):
             virtual_dataset=virtual_dataset, raise_on_error=False
         )
         self.assertEqual(
-            mode, QueryExecutionMode.SYNC,
-            f"Simple single-source SQL query should select SYNC; got {mode}"
+            mode,
+            QueryExecutionMode.SYNC,
+            f"Simple single-source SQL query should select SYNC; got {mode}",
         )
         """Test select_execution_mode() returns ASYNC for complex queries."""
         # Complex query with JOIN
@@ -441,8 +444,9 @@ class QueryExecutionBusinessRulesRefactoringTest(TestCase):
             virtual_dataset=virtual_dataset, raise_on_error=False
         )
         self.assertEqual(
-            mode, QueryExecutionMode.ASYNC,
-            f"Complex multi-JOIN query should select ASYNC; got {mode}"
+            mode,
+            QueryExecutionMode.ASYNC,
+            f"Complex multi-JOIN query should select ASYNC; got {mode}",
         )
 
     def test_select_execution_mode_force_async(self):
@@ -460,8 +464,9 @@ class QueryExecutionBusinessRulesRefactoringTest(TestCase):
             raise_on_error=False,
         )
         self.assertEqual(
-            mode, QueryExecutionMode.ASYNC,
-            f"100MB estimated result should select ASYNC; got {mode}"
+            mode,
+            QueryExecutionMode.ASYNC,
+            f"100MB estimated result should select ASYNC; got {mode}",
         )
 
     def test_validate_timeout_success(self):

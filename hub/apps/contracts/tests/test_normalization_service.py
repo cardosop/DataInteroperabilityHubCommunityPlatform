@@ -426,7 +426,7 @@ schema:
         raw_contract = json.dumps(large_contract)
         format = "JSON"
 
-        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
+        _hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
             )

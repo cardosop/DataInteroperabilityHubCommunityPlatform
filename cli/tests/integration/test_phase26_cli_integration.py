@@ -37,14 +37,12 @@ def cli_config():
         ["datahub", "config", "set", "api_base_url", HUB_BASE_URL], check=True, capture_output=True
     )
 
-    yield
-
     # Cleanup (optional)
 
 
 def run_cli_command(cmd: list) -> tuple[int, str, str]:
     """Run CLI command and return exit code, stdout, stderr"""
-    result = subprocess.run(["datahub"] + cmd, check=False, capture_output=True, text=True)
+    result = subprocess.run(["datahub", *cmd], check=False, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
 
 

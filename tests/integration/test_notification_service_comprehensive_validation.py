@@ -17,6 +17,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.template import TemplateDoesNotExist
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.utils.translation import deactivate
@@ -47,7 +48,7 @@ from hub.apps.notifications.templates import (
     render_email_template,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -501,7 +502,9 @@ class NotificationTemplateTest(TestCase):
             self.assertIsInstance(e, (KeyError, AttributeError, TypeError))
 
         # Test with invalid template name
-        with self.assertRaises(Exception):
+        with self.assertRaises(
+            TemplateDoesNotExist
+        ):  # render_to_string raises for a missing template
             render_email_template("notifications/emails/nonexistent_template.html", context_missing)
 
     def test_notification_template_validation(self):
@@ -641,11 +644,13 @@ class NotificationChannelTest(TestCase):
                 email_type=EmailType.ODPS_CREATION_COMPLETION, to_email=self.user.email
             ).first()
 
-            if delivery:
-                # Verify failure is tracked
-                if delivery.status in [EmailDeliveryStatus.FAILED, EmailDeliveryStatus.DEFERRED]:
-                    self.assertIsNotNone(delivery.error_message)
-                    self.assertGreater(delivery.retry_count, 0)
+            # Verify failure is tracked
+            if delivery and delivery.status in [
+                EmailDeliveryStatus.FAILED,
+                EmailDeliveryStatus.DEFERRED,
+            ]:
+                self.assertIsNotNone(delivery.error_message)
+                self.assertGreater(delivery.retry_count, 0)
 
         except (EmailServiceError, ConnectionError, OSError):
             # Email service error or network issue is acceptable in test environment

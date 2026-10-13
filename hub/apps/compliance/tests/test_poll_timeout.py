@@ -111,11 +111,12 @@ class CompliancePollTimeoutTest(TestCase):
     @override_settings(COMPLIANCE_POLL_MAX_SECONDS=1)
     @patch("hub.apps.compliance.service_client.ComplianceServiceClient")
     def test_timeout_falls_back_to_created_at_when_started_at_none(
-        self, MockClient,
+        self,
+        MockClient,
     ):
         """When started_at is None, the timeout check uses created_at."""
-        from hub.apps.compliance.tasks import poll_compliance_job
         from hub.apps.compliance.models import ComplianceRun
+        from hub.apps.compliance.tasks import poll_compliance_job
 
         run = self._create_run(started_minutes_ago=2)
         # ``created_at`` is auto_now_add so we must bypass the ORM
@@ -123,7 +124,8 @@ class CompliancePollTimeoutTest(TestCase):
         # never filled in but whose row was created long ago.
         old = timezone.now() - timedelta(minutes=2)
         ComplianceRun.objects.filter(pk=run.pk).update(
-            started_at=None, created_at=old,
+            started_at=None,
+            created_at=old,
         )
         run.refresh_from_db()
         self.assertIsNone(run.started_at)

@@ -14,15 +14,16 @@ All validation methods follow engineering best practices:
 - Follow DRY, SOLID, and clean code principles
 """
 
+import importlib.util
 import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from croniter import croniter
+from croniter import croniter  # type: ignore[import-untyped]
 from django.utils import timezone as django_timezone
-from pytz.exceptions import UnknownTimeZoneError
+from pytz.exceptions import UnknownTimeZoneError  # type: ignore[import-untyped]
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -107,7 +108,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         return "ScheduledIngestionBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -550,7 +551,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             )
 
         try:
-            from pytz import timezone as pytz_timezone
+            from pytz import timezone as pytz_timezone  # type: ignore[import-untyped]
 
             pytz_timezone(timezone_str)
             details["timezone_valid"] = True
@@ -825,7 +826,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     next_run = next_run.replace(year=next_run.year + 1, month=1)
                 else:
                     next_run = next_run.replace(month=next_run.month + 1)
-            for i in range(count):
+            for _i in range(count):
                 runs.append(next_run)
                 # Move to next month
                 if next_run.month == 12:
@@ -860,7 +861,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         self,
         ingestion_run: ScheduledIngestionRun,
         tenant: Any | None = None,
-        user: User | None = None,
+        _user: User | None = None,
     ) -> ValidationResult:
         """
         Comprehensive ingestion run validation including:
@@ -995,7 +996,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         )
 
     def _validate_run_eligibility(
-        self, ingestion_run: ScheduledIngestionRun, schedule: ScheduledIngestion
+        self, _ingestion_run: ScheduledIngestionRun, schedule: ScheduledIngestion
     ) -> ValidationResult:
         """
         Validate run eligibility: schedule must be active and source must be accessible.
@@ -1175,12 +1176,15 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         elif status == ScheduledIngestionRunStatus.CANCELLED:
             # CANCELLED runs may have started_at but not completed_at (or may have both)
             timestamp_errors_before = len(errors)
-            if ingestion_run.completed_at and ingestion_run.started_at:
-                if ingestion_run.completed_at < ingestion_run.started_at:
-                    errors.append(
-                        f"Run completed_at ({ingestion_run.completed_at}) is before started_at "
-                        f"({ingestion_run.started_at})"
-                    )
+            if (
+                ingestion_run.completed_at
+                and ingestion_run.started_at
+                and ingestion_run.completed_at < ingestion_run.started_at
+            ):
+                errors.append(
+                    f"Run completed_at ({ingestion_run.completed_at}) is before started_at "
+                    f"({ingestion_run.started_at})"
+                )
             # Set timestamps_consistent based on whether errors were added
             details["timestamps_consistent"] = len(errors) == timestamp_errors_before
             if details["timestamps_consistent"]:
@@ -1196,7 +1200,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         )
 
     def _validate_incremental_ingestion(
-        self, ingestion_run: ScheduledIngestionRun, schedule: ScheduledIngestion
+        self, _ingestion_run: ScheduledIngestionRun, schedule: ScheduledIngestion
     ) -> ValidationResult:
         """
         Validate incremental ingestion state management.
@@ -1216,10 +1220,17 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             "state_consistency_valid": False,
         }
 
-        # Import IncrementalStateManager
+        # Availability probe: the incremental-state module may be absent in
+        # deployments without the incremental ingestion surface. An explicit
+        # spec lookup expresses the intent — the name itself is never used.
         try:
-            from hub.apps.scheduled_ingestion.incremental_state import IncrementalStateManager
+            available = (
+                importlib.util.find_spec("hub.apps.scheduled_ingestion.incremental_state")
+                is not None
+            )
         except ImportError:
+            available = False
+        if not available:
             warnings.append(
                 "IncrementalStateManager not available - incremental validation skipped"
             )
@@ -1406,10 +1417,9 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     f"Run with status {ingestion_run.status} has retry_count > 0. "
                     f"Retries should only be tracked for FAILED runs."
                 )
-        elif ingestion_run.status == ScheduledIngestionRunStatus.RUNNING:
-            if retry_count > 0:
-                details["is_retry"] = True
-                details["retry_attempt"] = retry_count
+        elif ingestion_run.status == ScheduledIngestionRunStatus.RUNNING and retry_count > 0:
+            details["is_retry"] = True
+            details["retry_attempt"] = retry_count
 
         return ValidationResult(
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
@@ -1425,7 +1435,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         self,
         source: dict[str, Any] | ScheduledIngestion,
         tenant: Any | None = None,
-        user: User | None = None,
+        _user: User | None = None,
         target_asset: Any | None = None,
     ) -> ValidationResult:
         """
@@ -1687,6 +1697,11 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             )
 
         # Test actual connection using connector factory
+        connection_timeout = 10  # seconds
+
+        def timeout_handler(_signum, _frame):
+            raise TimeoutError(f"Connection test timed out after {connection_timeout} seconds")
+
         try:
             # Import connector factory
             import os
@@ -1740,12 +1755,8 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             import signal
             import time
 
-            connection_timeout = 10  # seconds
             connection_successful = False
             connection_error = None
-
-            def timeout_handler(signum, frame):
-                raise TimeoutError(f"Connection test timed out after {connection_timeout} seconds")
 
             # Set timeout (Unix only)
             timeout_set = False
@@ -2070,7 +2081,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
     # Save checkpoint for large file management (business_rules.py > 2100 lines).
     # ====================================================================
     def _validate_source_schema_compatibility(
-        self, source_type: str, source_config: dict[str, Any], target_asset: Any
+        self, _source_type: str, _source_config: dict[str, Any], target_asset: Any
     ) -> ValidationResult:
         """
         Validate source schema is compatible with target asset schema.
@@ -2250,7 +2261,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
     def _validate_user_permissions(
         self,
         schedule: ScheduledIngestion | None,
-        ingestion_run: ScheduledIngestionRun | None,
+        _ingestion_run: ScheduledIngestionRun | None,
         tenant: Any | None,
         user: User,
     ) -> ValidationResult:

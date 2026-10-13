@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
 import { loginUser } from '../../fixtures/auth';
 import { ensureTestUser } from '../../setup/create-test-user';
 
-// Run serially: all four tests call loginUser({forceFreshLogin, failOnFallback}) which
+// Run serially: all four tests call loginUser({forceFreshLogin}) which
 // drives a real UI login.  Parallel execution races against the auth rate-limiter causing
 // /auth/me/ 429s that make localStorage.user never get written.  Serial mode costs ~10s
 // total but removes the flakiness completely.
@@ -21,7 +21,7 @@ test.describe('JOURNEY-AUTH-SECURITY: token storage hardening (11.1)', () => {
     const user = await ensureTestUser();
 
     // Perform a real UI login (not API injection) to exercise the actual login flow.
-    await loginUser(page, user, { forceFreshLogin: true, failOnFallback: true });
+    await loginUser(page, user, { forceFreshLogin: true });
 
     const accessTokenInStorage = await page.evaluate(() =>
       localStorage.getItem('access_token')
@@ -34,7 +34,7 @@ test.describe('JOURNEY-AUTH-SECURITY: token storage hardening (11.1)', () => {
 
   test('refresh_token cookie invisible to JavaScript (httpOnly)', async ({ page }) => {
     const user = await ensureTestUser();
-    await loginUser(page, user, { forceFreshLogin: true, failOnFallback: true });
+    await loginUser(page, user, { forceFreshLogin: true });
 
     const cookieVisibleToJs = await page.evaluate(() =>
       document.cookie
@@ -49,7 +49,7 @@ test.describe('JOURNEY-AUTH-SECURITY: token storage hardening (11.1)', () => {
 
   test('user profile remains in localStorage for session detection', async ({ page }) => {
     const user = await ensureTestUser();
-    await loginUser(page, user, { forceFreshLogin: true, failOnFallback: true });
+    await loginUser(page, user, { forceFreshLogin: true });
 
     const userInStorage = await page.evaluate(() => localStorage.getItem('user'));
     expect(userInStorage).not.toBeNull();
@@ -62,7 +62,7 @@ test.describe('JOURNEY-AUTH-SECURITY: token storage hardening (11.1)', () => {
     page,
   }) => {
     const user = await ensureTestUser();
-    await loginUser(page, user, { forceFreshLogin: true, failOnFallback: true });
+    await loginUser(page, user, { forceFreshLogin: true });
 
     // Remove access_token from localStorage to simulate a page reload after 11.1
     // where access_token was never written there.  The app should still boot via

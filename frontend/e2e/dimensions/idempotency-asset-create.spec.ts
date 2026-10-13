@@ -80,7 +80,7 @@ async function attemptCreate(
   try {
     body = (await res.json()) as AssetCreateResult['body'];
   } catch {
-    // some 5xx return non-JSON; leave body empty
+    // intentional: some 5xx responses are non-JSON — the empty body is asserted downstream — some 5xx return non-JSON; leave body empty
   }
   // The middleware emits ``Idempotency-Replayed: true`` (header name
   // normalised to lowercase by Playwright's headers() accessor).
@@ -133,7 +133,7 @@ test.describe('Dimension: Asset-create idempotency', () => {
     const first = await attemptCreate(page, token, payload, idemKey);
     if (first.status === 404) {
       test.skip(
-        true,
+        first.status === 404,
         'POST /api/v1/assets/ returned 404 — endpoint not enabled on this environment',
       );
     }
@@ -171,7 +171,7 @@ test.describe('Dimension: Asset-create idempotency', () => {
     };
     const first = await attemptCreate(page, token, original, idemKey);
     if (first.status === 404) {
-      test.skip(true, 'POST /api/v1/assets/ unavailable in this environment');
+      test.skip(first.status === 404, 'POST /api/v1/assets/ unavailable in this environment');
     }
     expect(first.status).toBe(201);
 
@@ -206,7 +206,7 @@ test.describe('Dimension: Asset-create idempotency', () => {
     };
     const a = await attemptCreate(page, token, payloadA);
     if (a.status === 404) {
-      test.skip(true, 'POST /api/v1/assets/ unavailable in this environment');
+      test.skip(a.status === 404, 'POST /api/v1/assets/ unavailable in this environment');
     }
     const b = await attemptCreate(page, token, payloadB);
     expect(a.status).toBe(201);
@@ -230,7 +230,7 @@ test.describe('Dimension: Asset-create idempotency', () => {
     // "abc" is 3 chars and not a UUID.
     const res = await attemptCreate(page, token, payload, 'abc');
     if (res.status === 404) {
-      test.skip(true, 'POST /api/v1/assets/ unavailable in this environment');
+      test.skip(res.status === 404, 'POST /api/v1/assets/ unavailable in this environment');
     }
     expect(res.status).toBe(400);
     expect(readErrorCode(res.body), JSON.stringify(res.body)).toBe(

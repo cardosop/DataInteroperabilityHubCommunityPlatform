@@ -179,10 +179,10 @@ class BreachTenantTemplateOverride(models.Model):
 
     class Meta:
         db_table = "breach_tenant_template_override"
-        constraints = [
+        constraints = (
             models.UniqueConstraint(
                 fields=["tenant", "regime"],
                 # Django/Oracle E034: constraint names must be ≤30 characters.
                 name="br_tt_ovr_tnt_reg_uniq",
             ),
-        ]
+        )

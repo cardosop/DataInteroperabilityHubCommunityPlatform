@@ -72,30 +72,28 @@ def find_jsonfield_fields(filepath: Path) -> list[dict]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        # Check if this is a JSONField assignment
-                        if isinstance(node.value, ast.Call):
-                            if isinstance(node.value.func, ast.Attribute):
-                                if node.value.func.attr == "JSONField":
-                                    field_name = target.id
-                                    # Extract field arguments
-                                    field_info = {
-                                        "name": field_name,
-                                        "file": str(
-                                            filepath.relative_to(filepath.parent.parent.parent)
-                                        ),
-                                        "line": node.lineno,
-                                        "args": {},
-                                    }
+                    # Check if this is a JSONField assignment
+                    if (
+                        isinstance(target, ast.Name)
+                        and isinstance(node.value, ast.Call)
+                        and isinstance(node.value.func, ast.Attribute)
+                        and node.value.func.attr == "JSONField"
+                    ):
+                        field_name = target.id
+                        # Extract field arguments
+                        field_info = {
+                            "name": field_name,
+                            "file": str(filepath.relative_to(filepath.parent.parent.parent)),
+                            "line": node.lineno,
+                            "args": {},
+                        }
 
-                                    # Extract keyword arguments
-                                    for kw in node.value.keywords:
-                                        if isinstance(kw.value, ast.Constant) or isinstance(
-                                            kw.value, ast.NameConstant
-                                        ):
-                                            field_info["args"][kw.arg] = kw.value.value
+                        # Extract keyword arguments
+                        for kw in node.value.keywords:
+                            if isinstance(kw.value, (ast.Constant, ast.NameConstant)):
+                                field_info["args"][kw.arg] = kw.value.value
 
-                                    fields.append(field_info)
+                        fields.append(field_info)
     except Exception:
         # Skip files that can't be parsed
         pass
@@ -133,7 +131,7 @@ def find_jsonfield_queries(filepath: Path) -> list[dict]:
                         }
                     )
                     break
-    except Exception:
+    except (OSError, ValueError):
         pass
 
     return queries

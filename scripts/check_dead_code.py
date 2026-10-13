@@ -31,7 +31,7 @@ def _last_modified(filename: str) -> datetime | None:
         )
         if result.returncode == 0 and result.stdout.strip():
             return datetime.fromisoformat(result.stdout.strip())
-    except Exception:
+    except (OSError, subprocess.SubprocessError, ValueError):
         pass
     return None
 
@@ -54,9 +54,9 @@ def _is_referenced(filename: str) -> bool:
             timeout=30,
         )
         # If any file other than itself imports it, it's referenced
-        lines = [l for l in result.stdout.split("\n") if l and l != filename]
+        lines = [result for result in result.stdout.split("\n") if result and result != filename]
         return len(lines) > 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return True  # Assume referenced if we can't check
 
 
@@ -82,16 +82,15 @@ def main() -> int:
                 continue
 
             last_mod = _last_modified(str(py_file))
-            if last_mod and last_mod < cutoff:
+            if last_mod and last_mod < cutoff and not _is_referenced(str(py_file)):
                 # Only flag if unreferenced by other files
-                if not _is_referenced(str(py_file)):
-                    dead.append(
-                        {
-                            "file": str(py_file),
-                            "last_modified": last_mod.isoformat(),
-                            "days_since_modification": (datetime.now(UTC) - last_mod).days,
-                        }
-                    )
+                dead.append(
+                    {
+                        "file": str(py_file),
+                        "last_modified": last_mod.isoformat(),
+                        "days_since_modification": (datetime.now(UTC) - last_mod).days,
+                    }
+                )
 
     if args.json:
         import json

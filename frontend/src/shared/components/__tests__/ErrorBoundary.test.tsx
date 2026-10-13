@@ -78,3 +78,79 @@ describe('ErrorBoundary', () => {
     );
   });
 });
+
+describe('ErrorBoundary chunk-load recovery', () => {
+  function setOnline(online: boolean) {
+    Object.defineProperty(window.navigator, 'onLine', {
+      value: online,
+      configurable: true,
+    });
+  }
+
+  // jsdom's `location.reload` is a non-configurable own property, so it
+  // cannot be spyOn'd directly — replace the whole location object with a
+  // stub that only implements reload (the only member the boundary touches).
+  function stubLocationReload() {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'location');
+    const reload = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { reload },
+    });
+    return {
+      reload,
+      restore: () => {
+        Object.defineProperty(window, 'location', descriptor as PropertyDescriptor);
+      },
+    };
+  }
+
+  afterEach(() => {
+    // Drop the own property so the prototype getter is restored.
+    Reflect.deleteProperty(window.navigator, 'onLine');
+    window.sessionStorage.clear();
+  });
+
+  it('reloads once on a chunk-load error while online', () => {
+    setOnline(true);
+    const { reload, restore } = stubLocationReload();
+    try {
+      render(
+        <ErrorBoundary>
+          <ThrowingChild msg="Failed to fetch dynamically imported module" />
+        </ErrorBoundary>,
+      );
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it('does not reload on a chunk-load error while offline — surfaces the error UI instead', () => {
+    // The same failure message covers a genuine connectivity error; a
+    // reload here would land on the browser's network-error page.
+    setOnline(false);
+    const { reload, restore } = stubLocationReload();
+    try {
+      render(
+        <ErrorBoundary>
+          <ThrowingChild msg="Failed to fetch dynamically imported module" />
+        </ErrorBoundary>,
+      );
+      expect(reload).not.toHaveBeenCalled();
+      expect(screen.getByText('Something went wrong')).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it('fallback ErrorDisplay offers a Retry button', () => {
+    render(
+      <ErrorBoundary>
+        <ThrowingChild msg="Plain render error" />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+});

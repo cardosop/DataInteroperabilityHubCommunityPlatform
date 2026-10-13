@@ -21,7 +21,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .base import AlertDeliveryError, BaseAlertClient, DeliveryResult
+from .base import (
+    AlertDeliveryError,
+    BaseAlertClient,
+    DeliveryResult,
+    _audit_ssrf_block,
+    _ssrf_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,20 @@ class SlackAlertClient(BaseAlertClient):
         webhook_url = config.get("webhook_url")
         if not webhook_url:
             raise AlertDeliveryError(f"SLACK channel config has no webhook_url (rule {rule.id})")
+
+        # W1.13 — deliver-time SSRF re-check: blocks PROVEN-private
+        # targets (rebinding between rule save and delivery is closed);
+        # DNS-resolution failure passes (see resolve_private_or_none).
+        # W1.19 — convention 8: the block emits its audit event.
+        if _ssrf_enabled():
+            from hub.apps.webhooks.ssrf_guard import resolve_private_or_none
+
+            violation = resolve_private_or_none(webhook_url)
+            if violation:
+                _audit_ssrf_block(rule, violation)
+                raise AlertDeliveryError(
+                    f"SSRF protection blocked SLACK delivery: {violation}"
+                )
 
         body = _build_block_kit_message(rule, payload)
 

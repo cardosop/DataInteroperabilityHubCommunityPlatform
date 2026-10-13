@@ -45,19 +45,20 @@ test.describe('Marketplace Stripe checkout', () => {
     });
 
     const notConfigured = page.getByText(/Stripe is not configured/i);
-    if ((await notConfigured.count()) > 0) {
-      test.skip(
-        true,
-        'Frontend bundle has no VITE_STRIPE_PUBLISHABLE_KEY — rebuild with pk_test for this journey.',
-      );
-      return;
-    }
+    const stripeNotConfigured = (await notConfigured.count()) > 0;
+    test.skip(
+      stripeNotConfigured,
+      'Frontend bundle has no VITE_STRIPE_PUBLISHABLE_KEY — rebuild with pk_test for this journey.',
+    );
+    if (stripeNotConfigured) return;
 
     const noPrice = page.getByText(/does not require payment/i);
-    if ((await noPrice.count()) > 0) {
-      test.skip(true, 'Listing has no positive price in API/UI — metadata or listing fetch issue');
-      return;
-    }
+    const listingNotPriced = (await noPrice.count()) > 0;
+    test.skip(
+      listingNotPriced,
+      'Listing has no positive price in API/UI — metadata or listing fetch issue',
+    );
+    if (listingNotPriced) return;
 
     await expect(page.locator('h1:has-text("Checkout")')).toBeVisible({ timeout: 60000 });
     await expect(page.locator('.marketplace-checkout-summary')).toBeVisible();
@@ -91,15 +92,30 @@ test.describe('Marketplace Stripe checkout', () => {
       await cvcInput.fill('123');
     }
 
+    // Stripe's CardElement shows a ZIP field for US merchant accounts and
+    // treats it as REQUIRED on submit — the page stays on checkout with
+    // "Your postal code is incomplete." otherwise (2026-10-02: the purchase
+    // timed out on waitForURL because no order was ever created).
+    const zipInput = frame
+      .locator('input[name="postal"], input[autocomplete="postal-code"], input[placeholder="ZIP"]')
+      .first();
+    if ((await zipInput.count()) > 0 && (await zipInput.isVisible())) {
+      await zipInput.fill('94103');
+    }
+
     await page.getByRole('button', { name: /Complete purchase/i }).click();
 
     await page.waitForURL(/\/marketplace\/orders\/[^/]+/i, { timeout: 120000 });
     expect(page.url()).toMatch(/\/marketplace\/orders\//);
     const orderId = page.url().split('/').pop()?.split('?')[0] ?? '';
     if (orderId.length > 20) {
-      // Phase 226 G8 — audit-trail guarantee.
+      // Phase 226 G8 — audit-trail guarantee. The PAID purchase path emits
+      // ORDER_PURCHASED (hub/apps/marketplace/order_views.py purchase view);
+      // ORDER_CREATED belongs to the non-purchase order-request path, so
+      // expecting it here made the check fail after the purchase itself had
+      // succeeded (2026-10-03).
       await verifyAuditEvent(page, {
-        action: 'ORDER_CREATED',
+        action: 'ORDER_PURCHASED',
         resourceType: 'ORDER',
         resourceId: orderId,
       });

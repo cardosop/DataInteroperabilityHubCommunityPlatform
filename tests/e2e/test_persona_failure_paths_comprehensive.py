@@ -291,7 +291,6 @@ class ServiceUnavailableTests(FailurePathTestBase):
         # 201 = run created (compliance runs asynchronously, so creation may succeed even with service down)
         # 400 = validation; 503 = service unavailable. Must NOT be 500.
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_201_CREATED,
@@ -325,7 +324,6 @@ class ServiceUnavailableTests(FailurePathTestBase):
         # 201 = run created (DQ runs asynchronously, so creation may succeed even with service down)
         # 400 = validation; 503 = service unavailable. Must NOT be 500.
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_201_CREATED,

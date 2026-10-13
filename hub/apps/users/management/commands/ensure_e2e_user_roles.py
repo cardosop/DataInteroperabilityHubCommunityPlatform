@@ -15,8 +15,10 @@ Personas:
 - Data Mesh Domain Owner (DMO): e2e_dmo@example.com (TENANT_ADMIN + DATA_PROVIDER)
 """
 
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
@@ -143,11 +145,13 @@ class Command(BaseCommand):
             help="Show what would be done without creating/updating users or roles",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         single_email = options.get("email")
         users_to_ensure = (
-            [u for u in E2E_USERS if u["email"] == single_email] if single_email else E2E_USERS
+            [u for u in E2E_USERS if u["email"] == single_email]
+            if single_email
+            else E2E_USERS
         )
         if single_email and not users_to_ensure:
             self.stdout.write(
@@ -166,16 +170,123 @@ class Command(BaseCommand):
             )
             if created and not dry_run:
                 self.stdout.write(self.style.SUCCESS("Created default tenant."))
+            # E2E personas represent ESTABLISHED tenants: the asset-creation
+            # gate (Phase 250.6.D.3) blocks the create form with
+            # ONBOARDING_INCOMPLETE while ``onboarding_completed_at IS NULL``
+            # (hub/apps/tenants/models.py capability snapshot). Mark the
+            # default tenant onboarded so the persona-driven create flows
+            # (DPO asset-creation journey) are not gated by a seed gap.
+            if not dry_run and default_tenant.onboarding_completed_at is None:
+                default_tenant.onboarding_completed_at = timezone.now()
+                default_tenant.save(
+                    update_fields=["onboarding_completed_at", "updated_at"]
+                )
             # Ensure ml_enabled is True on the default tenant (idempotent update for pre-existing tenants).
             if not dry_run and not default_tenant.ml_enabled:
                 default_tenant.ml_enabled = True
                 default_tenant.save(update_fields=["ml_enabled"])
-                self.stdout.write(self.style.SUCCESS("Enabled ml_enabled on default tenant."))
+                self.stdout.write(
+                    self.style.SUCCESS("Enabled ml_enabled on default tenant.")
+                )
+            # E2E personas exercise the full marketplace surface against the
+            # default tenant; the marketplace viewsets gate on this flag
+            # (403 MARKETPLACE_INTEGRATIONS_DISABLED when False — measured
+            # 2026-08-28 across the use_cases marketplace suites).
+            if not dry_run and not default_tenant.marketplace_integrations_enabled:
+                default_tenant.marketplace_integrations_enabled = True
+                default_tenant.save(update_fields=["marketplace_integrations_enabled"])
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "Enabled marketplace_integrations_enabled on default tenant."
+                    )
+                )
+            # BaaS feature gate — the BaaS CLI e2e workflows run against the
+            # default persona tenant (403 BAAS_DISABLED when False; measured
+            # 2026-08-28 in test_baas_api_keys_workflows).
+            if not dry_run and not default_tenant.baas_enabled:
+                default_tenant.baas_enabled = True
+                default_tenant.save(update_fields=["baas_enabled"])
+                self.stdout.write(
+                    self.style.SUCCESS("Enabled baas_enabled on default tenant.")
+                )
+            # Advanced-DQ surface (Phase 240.4.B) — Tenant.data_quality_advanced_enabled
+            # defaults False ("flip to True per-tenant after the basic DQ
+            # feature is stable", hub/apps/tenants/models.py). The E2E
+            # data-quality-advanced suite (frontend/e2e/features/
+            # data-quality-advanced.spec.ts) exercises the real dashboards
+            # against the default persona tenant; conjunctive with
+            # data_quality_enabled (already True here).
+            if not dry_run and not default_tenant.data_quality_advanced_enabled:
+                default_tenant.data_quality_advanced_enabled = True
+                default_tenant.save(update_fields=["data_quality_advanced_enabled"])
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "Enabled data_quality_advanced_enabled on default tenant."
+                    )
+                )
+            # Databricks control plane gate (openspec add-databricks-control-plane,
+            # task 0.12) — defaults OFF for every tenant. JOURNEY-DB-001/002 E2E
+            # run the real workspace-registry wizard against the default persona
+            # tenant (403 DATABRICKS_CONTROL_PLANE_DISABLED when False).
+            if not dry_run and not default_tenant.databricks_control_plane_enabled:
+                default_tenant.databricks_control_plane_enabled = True
+                default_tenant.save(update_fields=["databricks_control_plane_enabled"])
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "Enabled databricks_control_plane_enabled on default tenant."
+                    )
+                )
+
+            # UC browse seed (openspec add-databricks-uc-read task 1.11) —
+            # JOURNEY-DB-005/006 E2E browse the REAL mirror rows of a
+            # deterministic workspace (the mirror is normally populated by
+            # the UC metadata sync, which needs live Databricks; the seed
+            # gives the e2e tenant a stable catalog → schema → table chain).
+            # W4.6 (oss-release-remediation, G1): the seed writes estate
+            # models, so it lives in databricks_admin's
+            # ``seed_e2e_uc_mirror`` command — invoked by NAME through
+            # Django's command registry (no estate import here).
+            if not dry_run and default_tenant.databricks_control_plane_enabled:
+                # The tenant id is a POSITIONAL argument — Django's
+                # call_command cannot pass positional args through
+                # **options (min() on the empty option_strings tuple
+                # crashes) — pinned RED-first by the W4.6 test.
+                call_command(
+                    "seed_e2e_uc_mirror",
+                    str(default_tenant.id),
+                    dry_run=dry_run,
+                    stdout=self.stdout,
+                )
 
             consumer_tenant, _ = Tenant.objects.get_or_create(
                 slug="consumer",
-                defaults={"name": "Consumer Tenant", "status": TenantStatus.ACTIVE},
+                defaults={
+                    "name": "Consumer Tenant",
+                    "status": TenantStatus.ACTIVE,
+                    "onboarding_completed_at": timezone.now(),
+                },
             )
+            if not dry_run and consumer_tenant.onboarding_completed_at is None:
+                consumer_tenant.onboarding_completed_at = timezone.now()
+                consumer_tenant.save(
+                    update_fields=["onboarding_completed_at", "updated_at"]
+                )
+            # The DC persona lives in the CONSUMER tenant and the marketplace
+            # IS its primary surface (orders/entitlements — JOURNEY-DC-004,
+            # marketplace order/entitlement journeys). The marketplace
+            # viewsets 403 MARKETPLACE_INTEGRATIONS_DISABLED when this flag
+            # is False, and the SPA's 313.H.4 marketplace capability probe
+            # then fails → /marketplace/* renders /unavailable before any
+            # page assertion can run (measured: DC-004 "non-existent id"
+            # landed on /unavailable). Mirror the default-tenant enablement.
+            if not dry_run and not consumer_tenant.marketplace_integrations_enabled:
+                consumer_tenant.marketplace_integrations_enabled = True
+                consumer_tenant.save(update_fields=["marketplace_integrations_enabled"])
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "Enabled marketplace_integrations_enabled on consumer tenant."
+                    )
+                )
 
             # Secondary tenants for cross-tenant isolation and tenant-switching tests
             _tenant_cache = {
@@ -188,11 +299,20 @@ class Command(BaseCommand):
             ]:
                 t, t_created = Tenant.objects.get_or_create(
                     slug=extra_slug,
-                    defaults={"name": extra_name, "status": TenantStatus.ACTIVE},
+                    defaults={
+                        "name": extra_name,
+                        "status": TenantStatus.ACTIVE,
+                        "onboarding_completed_at": timezone.now(),
+                    },
                 )
                 _tenant_cache[extra_slug] = t
                 if t_created and not dry_run:
-                    self.stdout.write(self.style.SUCCESS(f"Created tenant: {extra_slug}"))
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Created tenant: {extra_slug}")
+                    )
+                if not dry_run and t.onboarding_completed_at is None:
+                    t.onboarding_completed_at = timezone.now()
+                    t.save(update_fields=["onboarding_completed_at", "updated_at"])
 
             for spec in users_to_ensure:
                 email = spec["email"]
@@ -247,7 +367,9 @@ class Command(BaseCommand):
                         user.set_password(password)
                         user.save(update_fields=["password"])
                         self.stdout.write(
-                            self.style.SUCCESS(f"Synced password for existing user: {email}")
+                            self.style.SUCCESS(
+                                f"Synced password for existing user: {email}"
+                            )
                         )
 
                 # Phase 204: mark all E2E users as email-verified so the
@@ -260,7 +382,9 @@ class Command(BaseCommand):
 
                     user.email_verified_at = _tz.now()
                     user.save(update_fields=["email_verified", "email_verified_at"])
-                    self.stdout.write(self.style.SUCCESS(f"Marked {email} as email-verified"))
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Marked {email} as email-verified")
+                    )
 
                 # Update is_platform_admin if changed
                 if not dry_run and user.is_platform_admin != is_platform_admin:
@@ -283,7 +407,9 @@ class Command(BaseCommand):
                     role, role_created = Role.objects.get_or_create(
                         tenant=user_tenant,
                         name=role_name,
-                        defaults={"description": ROLE_DESCRIPTIONS.get(role_name, role_name)},
+                        defaults={
+                            "description": ROLE_DESCRIPTIONS.get(role_name, role_name)
+                        },
                     )
                     if role_created and not dry_run:
                         self.stdout.write(
@@ -300,26 +426,40 @@ class Command(BaseCommand):
                                 self.style.SUCCESS(f"Assigned {role_name} to {email}")
                             )
                     elif not UserRole.objects.filter(user=user, role=role).exists():
-                        self.stdout.write(f"[dry-run] Would assign {role_name} to {email}")
+                        self.stdout.write(
+                            f"[dry-run] Would assign {role_name} to {email}"
+                        )
 
-                # Ensure tenant has a plan assigned (required for plan limit checks)
+                # Ensure tenant has a plan assigned (required for plan limit checks).
+                # E2E personas exercise full-mode workflows that create well over
+                # the canonical free plan's max_assets (3 — see
+                # tenants/plan_defaults.py, the single seeder source) during
+                # a single suite run; the use_cases/security batches then
+                # failed every create with 403 plan_limit_exceeded (found
+                # 2026-08-28: persona tenant 'default' carried the free plan
+                # and saturated it).  Assign the pro plan (canonical
+                # max_assets=200) instead.  Plan-enforcement tests seed
+                # their own dedicated tenants, so they are unaffected by
+                # the persona provisioning default.
                 if not dry_run and user_tenant:
                     from hub.apps.tenants.models import TenantPlan
 
                     if not user_tenant.plan:
-                        free_plan = TenantPlan.objects.filter(slug="free", is_active=True).first()
-                        if free_plan:
-                            user_tenant.plan = free_plan
+                        pro_plan = TenantPlan.objects.filter(
+                            slug="pro", is_active=True
+                        ).first()
+                        if pro_plan:
+                            user_tenant.plan = pro_plan
                             user_tenant.save(update_fields=["plan"])
                             self.stdout.write(
                                 self.style.SUCCESS(
-                                    f"Assigned free plan to tenant {user_tenant.name}"
+                                    f"Assigned pro plan to tenant {user_tenant.name}"
                                 )
                             )
                         else:
                             self.stdout.write(
                                 self.style.WARNING(
-                                    f"No free plan found for tenant {user_tenant.name}. "
+                                    f"No pro plan found for tenant {user_tenant.name}. "
                                     "Run 'python manage.py seed_default_plans' first."
                                 )
                             )

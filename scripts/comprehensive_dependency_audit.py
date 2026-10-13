@@ -192,7 +192,7 @@ def test_dependency_installation(
                 return False, error_msg, False
     except subprocess.TimeoutExpired:
         return False, "Installation check timed out", False
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return False, str(e), False
 
 
@@ -225,9 +225,10 @@ def test_dependency_import(package_name: str, python_exec: str) -> bool:
             text=True,
             timeout=10,
         )
-        return result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
+    else:
+        return result.returncode == 0
 
 
 def parse_requirements_file(filepath: Path) -> list[tuple[str, str]]:
@@ -238,8 +239,8 @@ def parse_requirements_file(filepath: Path) -> list[tuple[str, str]]:
         return dependencies
 
     with open(filepath) as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             # Skip comments and empty lines
             if not line or line.startswith("#"):
                 continue
@@ -347,7 +348,7 @@ def audit_dependency(
 
 
 def audit_requirements_file(
-    requirements_file: Path, python_exec: str, critical_deps: set[str] = None
+    requirements_file: Path, python_exec: str, critical_deps: set[str] | None = None
 ) -> list[DependencyInfo]:
     """Audit dependencies in a requirements file."""
     if critical_deps is None:

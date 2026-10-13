@@ -14,15 +14,45 @@ import './ValidationResultPanel.css';
 interface Props {
   result: DraftValidationResult | null;
   isLoading: boolean;
+  /** The validation REQUEST failed (network/service) — distinct from an
+   *  invalid payload, which arrives as `result.valid === false`. */
+  isError?: boolean;
+  /** Re-run the validation request (wired to the mutation in the page). */
+  onRetry?: () => void;
 }
 
-export function ValidationResultPanel({ result, isLoading }: Props) {
+export function ValidationResultPanel({ result, isLoading, isError = false, onRetry }: Props) {
   const [warningsExpanded, setWarningsExpanded] = useState(false);
 
   if (isLoading) {
     return (
       <div className="validation-result-panel validation-result-panel--loading" role="status">
         <LoadingSpinner message="Validating..." />
+      </div>
+    );
+  }
+
+  // Failed-request terminal: without this branch the panel renders NOTHING
+  // when the validation POST dies (b7 churn: NETWORK_ERROR left the create
+  // page silently blank — the E2E waited 30s for a panel that can't render).
+  // Same .validation-result-panel--error surface as an invalid payload so
+  // the E2E terminal-state selector keeps working.
+  if (isError && !result) {
+    return (
+      <div className="validation-result-panel validation-result-panel--error" role="alert">
+        <div className="validation-result-panel__header">
+          <span className="validation-result-panel__icon">&#9888;&#65039;</span>
+          <strong>Validation unavailable</strong>
+        </div>
+        <p>The validation service could not be reached. Retry before creating the contract.</p>
+        <button
+          type="button"
+          className="validation-result-panel__retry"
+          data-testid="validation-result-retry"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
       </div>
     );
   }

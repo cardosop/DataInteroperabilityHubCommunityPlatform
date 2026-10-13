@@ -68,7 +68,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const hasEdit = (await editBtn.count()) > 0;
 
     if (!hasLinkToAsset && !hasEdit) {
-      test.skip(true, 'No asset link or edit button found — dataset detail precondition not met');
+      test.skip(!hasLinkToAsset && !hasEdit, 'No asset link or edit button found — dataset detail precondition not met');
       return;
     }
 

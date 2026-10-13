@@ -267,6 +267,7 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
             # Re-raise anything unexpected as a real bug.
             from hub.apps.contracts.models import Contract
             from hub.apps.core.services.base import ValidationError as SvcValidationError
+
             if not isinstance(e, (Contract.DoesNotExist, SvcValidationError)):
                 raise
 

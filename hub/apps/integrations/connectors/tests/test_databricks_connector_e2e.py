@@ -165,11 +165,11 @@ class TestDatabricksConnectorE2E(TestCase):
             host=self.host, token=self.token, cluster_id=self.cluster_id
         )
         connection_test = connector.test_connection()
-        self.assertTrue(connection_test, "Connection test should succeed")
+        assert connection_test, "Connection test should succeed"
 
         # Step 3: Discover listings
         listings = connector.list_listings(limit=5)
-        self.assertIsInstance(listings, list, "list_listings should return a list")
+        assert isinstance(listings, list), "list_listings should return a list"
 
         # Step 4: If we have listings, test pull sync
         if listings:
@@ -178,11 +178,11 @@ class TestDatabricksConnectorE2E(TestCase):
 
             # Test get_listing
             retrieved_listing = connector.get_listing(listing_id)
-            self.assertEqual(retrieved_listing.marketplace_id, listing_id)
+            assert retrieved_listing.marketplace_id == listing_id
 
             # Test list_resources
             resources = connector.list_resources(listing_id)
-            self.assertIsInstance(resources, list)
+            assert isinstance(resources, list)
 
             # Step 5: Create sync job and perform pull sync
             sync_job = MarketplaceSyncJob.objects.create(
@@ -199,17 +199,17 @@ class TestDatabricksConnectorE2E(TestCase):
                 listing_ids=[listing_id], options={"include_resources": True}
             )
 
-            self.assertIsInstance(sync_result, SyncResult)
-            self.assertIn(sync_result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
+            assert isinstance(sync_result, SyncResult)
+            assert sync_result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
 
             # Step 6: Map to hub asset
             if sync_result.status == SyncStatus.COMPLETED:
                 mapping = connector.map_to_hub_asset(listing, sync_job_id=str(sync_job.id))
-                self.assertIsNotNone(mapping)
-                self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
-                self.assertEqual(
-                    mapping.source_metadata["marketplace_type"],
-                    MarketplaceType.DATABRICKS_MARKETPLACE.value,
+                assert mapping is not None
+                assert mapping.source_type == AssetSourceType.FEDERATED
+                assert (
+                    mapping.source_metadata["marketplace_type"]
+                    == MarketplaceType.DATABRICKS_MARKETPLACE.value
                 )
 
         # Test passes if we can complete the workflow up to the point where we have listings
@@ -255,19 +255,19 @@ class TestDatabricksConnectorE2E(TestCase):
         )
 
         # Verify sync result
-        self.assertIsInstance(sync_result, SyncResult)
-        self.assertIn(sync_result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
-        self.assertIsNotNone(sync_result.metadata)
-        self.assertIn("mappings", sync_result.metadata)
+        assert isinstance(sync_result, SyncResult)
+        assert sync_result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
+        assert sync_result.metadata is not None
+        assert "mappings" in sync_result.metadata
 
         # Verify mappings were created
         if sync_result.metadata.get("mappings"):
             mapping_data = sync_result.metadata["mappings"][0]
-            self.assertIn("asset_data", mapping_data)
-            self.assertIn("source_metadata", mapping_data)
-            self.assertEqual(
-                mapping_data["source_metadata"]["marketplace_type"],
-                MarketplaceType.DATABRICKS_MARKETPLACE.value,
+            assert "asset_data" in mapping_data
+            assert "source_metadata" in mapping_data
+            assert (
+                mapping_data["source_metadata"]["marketplace_type"]
+                == MarketplaceType.DATABRICKS_MARKETPLACE.value
             )
 
     def test_metadata_extraction_and_mapping(self):
@@ -287,32 +287,32 @@ class TestDatabricksConnectorE2E(TestCase):
         mapping = connector.map_to_hub_asset(listing)
 
         # Verify mapping structure
-        self.assertIsNotNone(mapping)
-        self.assertIsNotNone(mapping.asset_data)
-        self.assertIsNotNone(mapping.source_metadata)
-        self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
+        assert mapping is not None
+        assert mapping.asset_data is not None
+        assert mapping.source_metadata is not None
+        assert mapping.source_type == AssetSourceType.FEDERATED
 
         # Verify asset data
-        self.assertIn("name", mapping.asset_data)
-        self.assertIn("description", mapping.asset_data)
-        self.assertIn("status", mapping.asset_data)
-        self.assertEqual(mapping.asset_data["status"], AssetStatus.ACTIVE.value)
+        assert "name" in mapping.asset_data
+        assert "description" in mapping.asset_data
+        assert "status" in mapping.asset_data
+        assert mapping.asset_data["status"] == AssetStatus.ACTIVE.value
 
         # Verify source metadata
-        self.assertEqual(
-            mapping.source_metadata["marketplace_type"],
-            MarketplaceType.DATABRICKS_MARKETPLACE.value,
+        assert (
+            mapping.source_metadata["marketplace_type"]
+            == MarketplaceType.DATABRICKS_MARKETPLACE.value
         )
-        self.assertIn("listing_id", mapping.source_metadata)
-        self.assertIn("listing_url", mapping.source_metadata)
+        assert "listing_id" in mapping.source_metadata
+        assert "listing_url" in mapping.source_metadata
 
         # Verify ODPS metadata if available
         if mapping.odps_metadata:
-            self.assertIsInstance(mapping.odps_metadata, dict)
+            assert isinstance(mapping.odps_metadata, dict)
 
         # Verify ODCS metadata if available
         if mapping.odcs_metadata:
-            self.assertIsInstance(mapping.odcs_metadata, dict)
+            assert isinstance(mapping.odcs_metadata, dict)
 
     def test_schema_extraction_and_type_mapping(self):
         """Test schema extraction and type mapping from Databricks tables"""
@@ -340,16 +340,15 @@ class TestDatabricksConnectorE2E(TestCase):
 
         # Get resources using marketplace_id (Databricks share name)
         resources = connector.list_resources(listing_with_resources.marketplace_id)
-        self.assertGreater(len(resources), 0, "Should have at least one resource")
+        assert len(resources) > 0, "Should have at least one resource"
 
         # Test schema extraction for first resource (if it's a table)
         resource = resources[0]
         table_name = resource.metadata.get("table_name") if resource.metadata else None
         if table_name:
             # Verify the connector exposes the schema extraction hook
-            self.assertTrue(
-                hasattr(connector, "_extract_schema_from_table"),
-                "Connector must expose _extract_schema_from_table",
+            assert hasattr(connector, "_extract_schema_from_table"), (
+                "Connector must expose _extract_schema_from_table"
             )
 
     def test_error_scenarios(self):
@@ -393,17 +392,17 @@ class TestDatabricksConnectorE2E(TestCase):
         # Verify mapping has ODPS and ODCS metadata
         # Note: Actual contract creation would be done by the service layer
         # Here we verify the mapping contains the necessary metadata for contract creation
-        self.assertIsNotNone(mapping)
+        assert mapping is not None
 
         # ODPS metadata should be available if present in share
         if mapping.odps_metadata:
-            self.assertIsInstance(mapping.odps_metadata, dict)
+            assert isinstance(mapping.odps_metadata, dict)
             # Verify ODPS structure (pricing, access methods, etc.)
             # These would be used to create ODPS contract
 
         # ODCS metadata should be available if present in share
         if mapping.odcs_metadata:
-            self.assertIsInstance(mapping.odcs_metadata, dict)
+            assert isinstance(mapping.odcs_metadata, dict)
             # Verify ODCS structure (schema hints, quality hints, SLA hints)
             # These would be used to create ODCS contract
 

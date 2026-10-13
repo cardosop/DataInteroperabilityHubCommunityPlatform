@@ -54,8 +54,12 @@ def _assert_cli_exit_ok(result):
         assert any(
             kw in _output
             for kw in [
-                "connection", "refused", "timeout", "could not",
-                "unreachable", "error",
+                "connection",
+                "refused",
+                "timeout",
+                "could not",
+                "unreachable",
+                "error",
             ]
         ), (
             f"Expected connection/network error when server is unavailable, "

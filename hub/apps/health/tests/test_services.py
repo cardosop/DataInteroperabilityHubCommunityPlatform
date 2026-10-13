@@ -120,14 +120,20 @@ class HealthServiceTest(TestCase):
 
         self.assertIsInstance(result["unhealthy_instances"], list)
         if not result["all_healthy"]:
-            self.assertGreater(len(result["unhealthy_instances"]), 0,
-                               "all_healthy=False but unhealthy_instances is empty")
+            self.assertGreater(
+                len(result["unhealthy_instances"]),
+                0,
+                "all_healthy=False but unhealthy_instances is empty",
+            )
             for instance_name in result["unhealthy_instances"]:
                 self.assertIn(instance_name, result["instances"])
                 self.assertIn("error:", result["instances"][instance_name])
         else:
-            self.assertEqual(len(result["unhealthy_instances"]), 0,
-                             "all_healthy=True but unhealthy_instances is non-empty")
+            self.assertEqual(
+                len(result["unhealthy_instances"]),
+                0,
+                "all_healthy=True but unhealthy_instances is non-empty",
+            )
 
     # ========== GET OVERALL HEALTH STATUS TESTS ==========
 
@@ -139,7 +145,9 @@ class HealthServiceTest(TestCase):
         self.assertIn("database", result)
         self.assertIn("redis", result)
         self.assertIn("http_status", result)
-        self.assertIn(result["status"], ["healthy", "unhealthy"])
+        # Three-state contract — 'degraded' when optional services
+        # (ClamAV by default) are unreachable.
+        self.assertIn(result["status"], ["healthy", "degraded", "unhealthy"])
         self.assertIn(result["http_status"], [200, 503])
 
     def test_get_overall_health_status_includes_database(self):
@@ -178,8 +186,12 @@ class HealthServiceTest(TestCase):
         all_redis_healthy = all(not str(s).startswith("error:") for s in result["redis"].values())
 
         if db_healthy and all_redis_healthy:
-            self.assertEqual(result["status"], "healthy")
-            self.assertEqual(result["http_status"], 200)
+            # 'degraded' is a legitimate third state: ClamAV (enabled by
+            # default) unreachable degrades the status even when DB/Redis
+            # are fine — see get_overall_health_status's ClamAV branch
+            # and the sibling assertions in this module.
+            self.assertIn(result["status"], ("healthy", "degraded"))
+            self.assertIn(result["http_status"], (200, 503))
         else:
             # If infrastructure is down, verify the unhealthy path works correctly
             self.assertEqual(result["status"], "unhealthy")
@@ -212,18 +224,22 @@ class HealthServiceTest(TestCase):
             self.assertEqual(result["status"], "unhealthy")
             self.assertEqual(result["http_status"], 503)
         else:
-            # All Redis instances are connected — verify consistency
-            self.assertEqual(result["status"], "healthy")
-            self.assertEqual(result["http_status"], 200)
+            # All Redis instances are connected — the status may still
+            # be 'degraded' when ClamAV (enabled by default) is
+            # unreachable; verify consistency with the three-state
+            # contract.
+            self.assertIn(result["status"], ("healthy", "degraded"))
+            self.assertIn(result["http_status"], (200, 503))
 
     def test_get_overall_health_status_http_status_matches_health(self):
         """Test that HTTP status code matches health status"""
         result = self.service.get_overall_health_status()
 
-        if result["status"] == "healthy":
-            self.assertEqual(result["http_status"], 200)
-        else:
+        if result["status"] == "unhealthy":
             self.assertEqual(result["http_status"], 503)
+        else:
+            # Liveness contract: healthy AND degraded return 200.
+            self.assertEqual(result["http_status"], 200)
 
     # ========== GET CIRCUIT BREAKER STATUS TESTS ==========
 

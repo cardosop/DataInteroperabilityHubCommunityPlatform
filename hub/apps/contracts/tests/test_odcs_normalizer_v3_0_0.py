@@ -152,10 +152,7 @@ class ODCSNormalizerV3_0_0NormalizeTest(TestCase):
 
         self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(
-            "does not support" in result.errors[0].lower()
-
-        )
+        self.assertTrue("does not support" in result.errors[0].lower())
 
     def test_normalize_validates_contract_data_is_dict(self):
         """Test that normalize() validates contract_data is a dictionary."""

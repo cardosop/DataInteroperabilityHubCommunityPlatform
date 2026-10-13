@@ -48,8 +48,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import redis
 from django.conf import settings
 from django.core.cache import cache
+from django.http.request import RawPostDataException
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import (
     api_view,
@@ -186,7 +188,7 @@ def _record(cache_key: str, request: Any, *, status_returned: int) -> None:
     raw_body: bytes
     try:
         raw_body = request.body if hasattr(request, "body") else b""
-    except Exception:
+    except (RawPostDataException, OSError):
         raw_body = b""
     truncated = len(raw_body) > SINK_BODY_TRUNCATE_BYTES
     body_bytes = raw_body[:SINK_BODY_TRUNCATE_BYTES]
@@ -200,7 +202,7 @@ def _record(cache_key: str, request: Any, *, status_returned: int) -> None:
             import json
 
             body_parsed = json.loads(body_text)
-        except Exception:
+        except (ValueError, TypeError):
             body_parsed = None
 
     headers: dict[str, str] = {}
@@ -227,5 +229,5 @@ def _record(cache_key: str, request: Any, *, status_returned: int) -> None:
         deliveries = deliveries[-SINK_MAX_DELIVERIES:]
     try:
         cache.set(cache_key, deliveries, SINK_CACHE_TTL_SECONDS)
-    except Exception as exc:
+    except (redis.exceptions.RedisError, OSError) as exc:
         logger.warning("webhook_sink_cache_set_failed key=%s err=%s", cache_key, exc)

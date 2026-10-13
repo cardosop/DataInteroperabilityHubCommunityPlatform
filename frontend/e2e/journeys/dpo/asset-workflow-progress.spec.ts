@@ -52,7 +52,7 @@ test.describe('Asset Workflow Progress Widget', () => {
     page,
   }) => {
     const testUser = await getTestUser();
-    await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+    await loginAndNavigateToRoute(page, testUser, '/assets/create?skip=picker', {
       timeout: 60_000,
       contentSelector:
         '.asset-create-page, [data-testid="asset-create-page"], h1, .error-display',
@@ -107,6 +107,7 @@ test.describe('Asset Workflow Progress Widget', () => {
       const progressBar = page.locator(
         '[data-testid="workflow-progress-widget-bar"]',
       );
+      // intentional: the a11y bar is genuinely optional — the widget can render without it when the workflow has no progress state; its presence contract is pinned by the unit tests.
       if ((await progressBar.count()) > 0) {
         await expect(progressBar.first()).toHaveAttribute(
           'aria-valuemin',

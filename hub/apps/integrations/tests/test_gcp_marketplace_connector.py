@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 # Optional Google Cloud imports - skip tests if not available
 try:
-    from google.api_core import exceptions as google_exceptions
+    from google.api_core import exceptions as google_exceptions  # type: ignore[import-untyped]
     from google.auth.exceptions import GoogleAuthError
 
     # Use GoogleAPIError from google.api_core.exceptions
@@ -702,7 +702,7 @@ class TestGCPMarketplaceConnectorPushOperations(TestCase):
     def test_create_listing_with_none(self):
         """Test create_listing() error handling with None"""
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.create_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+            self.connector.create_listing(None)  # test: edge-case type exercise
 
     def test_update_listing_with_empty_id(self):
         """Test update_listing() error handling with empty ID"""

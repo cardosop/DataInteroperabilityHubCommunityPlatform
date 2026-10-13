@@ -33,15 +33,21 @@ def _backend_available() -> bool:
         return False
     import urllib.request
 
+    # The health endpoint lives at the API ROOT (/health/), not under
+    # /api/v1 — probing {base}/health/ 404s against the real backend and
+    # silently disabled the whole suite.  Mirror the e2e conftest
+    # convention: strip /api/v1 and probe the root.
+    api_root = DATAHUB_BASE_URL.rsplit("/api/v1", 1)[0] or DATAHUB_BASE_URL
     try:
         req = urllib.request.Request(
-            f"{DATAHUB_BASE_URL.rstrip('/')}/health/",
+            f"{api_root.rstrip('/')}/health/",
             headers={"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {},
         )
         resp = urllib.request.urlopen(req, timeout=5)
-        return resp.status == 200
     except Exception:
         return False
+    else:
+        return resp.status == 200
 
 
 BACKEND_AVAILABLE = _backend_available()
@@ -82,7 +88,7 @@ def strip_volatile(obj: Any) -> Any:
 
 def cli_json(*args: str) -> dict[str, Any]:
     """Run ``datahub <args> --format json`` and return parsed stdout."""
-    cmd = [DATAHUB_CLI] + list(args) + ["--format", "json"]
+    cmd = [DATAHUB_CLI, *list(args), "--format", "json"]
     env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
     if API_TOKEN:
         env["DATAHUB_API_TOKEN"] = API_TOKEN
@@ -164,12 +170,12 @@ class TestCLISDKConsistency:
             assert len(sdk_stripped) == len(cli_stripped)
 
     async def test_contracts_list_consistency(self):
-        """CLI ``contracts list`` matches SDK ``contracts.list_contracts()``."""
+        """CLI ``contracts list`` matches SDK ``contracts.list()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
 
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
-            sdk_result = await client.contracts.list_contracts()
+            sdk_result = await client.contracts.list()
             cli_result = cli_json("contracts", "list")
             sdk_stripped = strip_volatile(sdk_result.get("results", sdk_result))
             cli_stripped = strip_volatile(cli_result)
@@ -193,7 +199,7 @@ class TestCLISDKConsistency:
 
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
-            sdk_result = await client.observability.get_freshness_dashboard()
+            sdk_result = await client.observability.get_freshness()
             cli_result = cli_json("observability", "freshness")
             assert strip_volatile(sdk_result) == strip_volatile(cli_result)
 

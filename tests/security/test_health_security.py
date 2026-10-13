@@ -41,7 +41,10 @@ SENSITIVE_PATTERNS = [
 ]
 
 # Allowed keys in health check response (operational status only)
-HEALTH_ALLOWED_KEYS = {"status", "database", "redis", "baas", "http_status"}
+# "clamav" is deliberate operational status (Phase 277.B.079 — the check
+# runs and affects the 503 outcome when CLAMAV_ENABLED is set); it carries
+# no sensitive data, same class as database/redis/baas.
+HEALTH_ALLOWED_KEYS = {"status", "database", "redis", "baas", "clamav", "http_status"}
 LIVE_ALLOWED_KEYS = {"status"}
 # Phase 221.3.2: response sanitized — only aggregate counts, no service names.
 CIRCUIT_BREAKER_ALLOWED_KEYS = {
@@ -175,7 +178,7 @@ class HealthCircuitBreakerSecurityTest(HealthSecurityTestBase):
         )
         try:
             data = response.json()
-        except Exception:
+        except ValueError:
             return
         for key in data:
             self.assertIn(

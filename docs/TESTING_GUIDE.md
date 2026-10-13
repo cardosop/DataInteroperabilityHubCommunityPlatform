@@ -1827,7 +1827,7 @@ pytest tests/regression/test_api_endpoints.py -v
 
 #### Coverage Requirements
 
-- **Authentication**: 100% coverage (login, logout, token refresh, session management, password reset, MFA)
+- **Authentication**: 100% coverage (login, logout, token refresh, session management, password reset)
 - **Authorization**: 100% coverage (RBAC, ABAC, permission checks, resource-level authorization)
 - **Data Protection**: 100% coverage (encryption, masking, PII detection, GDPR compliance)
 - **Vulnerabilities**: 100% coverage (SQL injection, XSS, CSRF, SSRF, path traversal, command injection)
@@ -2275,7 +2275,7 @@ pytest tests/integration/test_monitoring_*.py -v
 - **Token Refresh**: Success, failure, edge cases, error handling
 - **Session Management**: Success, failure, edge cases, error handling
 - **Password Reset**: Success, failure, edge cases, error handling
-- **MFA**: Success, failure, edge cases, error handling
+- **MFA**: not shipped — dead TOTP library removed (oss-release-remediation W1.7); no coverage target
 
 #### Test Execution
 

@@ -185,7 +185,7 @@ class TestCacheTTL:
 
         # Wait for expiration (Django's in-memory cache doesn't expire
         # until accessed, but Redis-based cache does)
-        time.sleep(1.5)  # noqa: sleep-needed — test timing requirement
+        time.sleep(1.5)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         # After TTL, cache should miss
         value = cache.get(key)
@@ -211,19 +211,42 @@ class TestCacheTTL:
 
     @pytest.mark.django_db(transaction=True)
     def test_cache_delete_pattern_clears_multiple_keys(self):
-        """delete_pattern removes all matching keys."""
-        cache = caches["default"]
-        if not hasattr(cache, "delete_pattern"):
-            pytest.skip("cache backend does not support delete_pattern")  # noqa: skip-in-body — runtime service dependency
+        """delete_pattern removes all matching keys.
+
+        The test-suite default is LocMemCache, which does not implement
+        ``delete_pattern`` — run this test against the real Redis cache
+        backend (the same one the app uses outside the test runner).
+        """
+        from django.conf import settings
+        from django.test import override_settings
+
+        redis_caches = {
+            "default": {
+                "BACKEND": "django_redis.cache.RedisCache",
+                "LOCATION": settings.REDIS_CACHE_URL,
+                "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+            }
+        }
         prefix = f"batch-{uuid.uuid4().hex[:4]}"
+        with override_settings(CACHES=redis_caches):
+            cache = caches["default"]
 
-        # Set multiple keys with same prefix
-        for i in range(10):
-            cache.set(f"{prefix}:key:{i}", f"value-{i}", timeout=60)
+            # Set multiple keys with same prefix
+            for i in range(10):
+                cache.set(f"{prefix}:key:{i}", f"value-{i}", timeout=60)
 
-        # Verify all exist
-        for i in range(10):
-            assert cache.get(f"{prefix}:key:{i}") == f"value-{i}"
+            # Verify all exist
+            for i in range(10):
+                assert cache.get(f"{prefix}:key:{i}") == f"value-{i}"
 
-        # Delete all keys with the prefix
-        cache.delete_pattern(f"{prefix}:*")
+            # Delete all keys with the prefix
+            cache.delete_pattern(f"{prefix}:*")
+
+            # Verify all matching keys are gone
+            for i in range(10):
+                assert cache.get(f"{prefix}:key:{i}") is None, (
+                    f"Key {prefix}:key:{i} should have been deleted"
+                )
+
+            # Cleanup (idempotent)
+            cache.delete_pattern(f"{prefix}:*")

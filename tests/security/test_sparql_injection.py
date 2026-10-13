@@ -1,6 +1,7 @@
 """Phase 98: SPARQL injection prevention tests via API."""
 
 import pytest
+from rest_framework.test import APIClient
 
 from tests.security.base_injection import InjectionTestBase
 

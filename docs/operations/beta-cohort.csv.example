@@ -1,0 +1,4 @@
+tenant_slug,email,display_name,role_names
+acme-corp,beta.user1@example.com,Beta User One,"TENANT_ADMIN"
+acme-corp,beta.user2@example.com,Beta User Two,"DATA_PROVIDER,CONSUMER"
+acme-corp,beta.user3@example.com,Beta User Three,""

@@ -53,7 +53,9 @@ class DBBackedLockoutTest(TestCase):
             format="json",
         )
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_cache_eviction_mid_window_still_enforces_lockout_from_db(self):
         for _ in range(3):
             response = self._post_login("wrong-password")
@@ -71,7 +73,9 @@ class DBBackedLockoutTest(TestCase):
             str(getattr(locked_response, "data", {}).get("detail", "")),
         )
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=1)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=1
+    )
     def test_successful_login_after_window_expiry_clears_lockout(self):
         for _ in range(3):
             response = self._post_login("wrong-password")
@@ -108,7 +112,9 @@ class DBBackedLockoutTest(TestCase):
             status.HTTP_400_BAD_REQUEST,
         )
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_db_query_executes_only_on_cache_miss(self):
         LoginAttempt.objects.create(
             email=self.user.email,
@@ -160,7 +166,9 @@ class ProgressiveBackoffStateMachineTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_first_failed_login_increments_counter(self):
         _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
         self.user.refresh_from_db()
@@ -168,7 +176,9 @@ class ProgressiveBackoffStateMachineTest(TestCase):
         self.assertEqual(self.user.lockout_level, 0)
         self.assertIsNone(self.user.locked_until)
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_third_failed_login_triggers_lockout(self):
         for _ in range(3):
             _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
@@ -177,14 +187,16 @@ class ProgressiveBackoffStateMachineTest(TestCase):
         self.assertIsNotNone(self.user.locked_until)
         self.assertGreater(self.user.locked_until, timezone.now())
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_second_lockout_doubles_window(self):
         # First lockout
         for _ in range(3):
             _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
         self.user.refresh_from_db()
         self.assertEqual(self.user.lockout_level, 1)
-        first_lockout = self.user.locked_until
+        _first_lockout = self.user.locked_until
 
         # Clear lockout to simulate expiry
         self.user.locked_until = None
@@ -200,7 +212,9 @@ class ProgressiveBackoffStateMachineTest(TestCase):
         actual_window_s = (self.user.locked_until - timezone.now()).total_seconds()
         self.assertAlmostEqual(actual_window_s, expected_window_s, delta=5)
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_successful_login_resets_state(self):
         # Trigger some failures
         for _ in range(2):
@@ -215,7 +229,9 @@ class ProgressiveBackoffStateMachineTest(TestCase):
         self.assertEqual(self.user.lockout_level, 0)
         self.assertIsNone(self.user.locked_until)
 
-    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_failed_counter_resets_after_lockout_triggered(self):
         for _ in range(3):
             _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)

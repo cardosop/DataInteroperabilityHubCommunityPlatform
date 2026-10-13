@@ -543,18 +543,18 @@ class WorkflowExecutionValidator:
                             details["step_compensation_valid"] = "true"
 
                             # Validate compensation task/script is specified
-                            if compensation_type == "task":
-                                if "task" not in step_compensation:
-                                    errors.append(
-                                        "Compensation type 'task' requires 'task' field to be specified"
-                                    )
-                                    details["step_compensation_valid"] = "false"
-                            elif compensation_type == "script":
-                                if "script" not in step_compensation:
-                                    errors.append(
-                                        "Compensation type 'script' requires 'script' field to be specified"
-                                    )
-                                    details["step_compensation_valid"] = "false"
+                            if compensation_type == "task" and "task" not in step_compensation:
+                                errors.append(
+                                    "Compensation type 'task' requires 'task' field to be specified"
+                                )
+                                details["step_compensation_valid"] = "false"
+                            elif (
+                                compensation_type == "script" and "script" not in step_compensation
+                            ):
+                                errors.append(
+                                    "Compensation type 'script' requires 'script' field to be specified"
+                                )
+                                details["step_compensation_valid"] = "false"
                 else:
                     details["step_has_compensation"] = "false"
                     if compensation_enabled:

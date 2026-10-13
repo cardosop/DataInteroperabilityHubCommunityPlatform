@@ -42,7 +42,7 @@ class Command(BaseCommand):
             help="Report stale deps without modifying them.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run: bool = options["dry_run"]
         target_tenant_id = options.get("tenant_id")
 

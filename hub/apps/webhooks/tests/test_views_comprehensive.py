@@ -14,7 +14,6 @@ URL structure (verified against live routing):
 import uuid
 
 import pytest
-
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -30,7 +29,11 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.slow, pytest.mark.uc("UC-WH-001")]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.slow,
+    pytest.mark.uc("UC-WH-001"),
+]
 User = get_user_model()
 
 # Canonical URL prefix — the webhooks app is included at ``webhooks/``

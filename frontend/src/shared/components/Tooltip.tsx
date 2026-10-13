@@ -62,12 +62,7 @@ type TriggerProps = {
   'aria-describedby'?: string;
 } & Record<string, unknown>;
 
-export function Tooltip({
-  content,
-  children,
-  placement = 'top',
-  openDelay = 150,
-}: TooltipProps) {
+export function Tooltip({ content, children, placement = 'top', openDelay = 150 }: TooltipProps) {
   const [isOpen, setIsOpen] = useState(false);
   const arrowRef = useRef<SVGSVGElement>(null);
   const tooltipId = useId();
@@ -81,6 +76,10 @@ export function Tooltip({
       offset(ARROW_SIZE + 2),
       flip({ fallbackAxisSideDirection: 'start' }),
       shift({ padding: 8 }),
+      // floating-ui's arrow middleware REQUIRES the ref object at config
+      // time (its documented integration pattern); this component never
+      // reads `arrowRef.current` during render.
+      // eslint-disable-next-line react-hooks/refs
       arrow({ element: arrowRef }),
     ],
   });
@@ -93,12 +92,7 @@ export function Tooltip({
   const dismiss = useDismiss(context, { escapeKey: true });
   const role = useRole(context, { role: 'tooltip' });
 
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    hover,
-    focus,
-    dismiss,
-    role,
-  ]);
+  const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus, dismiss, role]);
 
   const { isMounted, styles: transitionStyles } = useTransitionStyles(context, {
     duration: 120,
@@ -110,9 +104,7 @@ export function Tooltip({
   }
 
   const childProps = child.props as TriggerProps;
-  const existingDescribedBy = childProps['aria-describedby'] as
-    | string
-    | undefined;
+  const existingDescribedBy = childProps['aria-describedby'] as string | undefined;
   const mergedDescribedBy = isOpen
     ? [existingDescribedBy, tooltipId].filter(Boolean).join(' ')
     : existingDescribedBy;
@@ -138,10 +130,14 @@ export function Tooltip({
         <FloatingPortal>
           <div
             ref={refs.setFloating}
+            // getFloatingProps() spreads floating-ui's OWN useId — placing it
+            // after `id` let it OVERRIDE the bubble id, breaking the trigger's
+            // aria-describedby linkage (the a11y bug the test pinned). Spread
+            // it FIRST so `id={tooltipId}` wins.
+            {...getFloatingProps()}
             id={tooltipId}
             className="tooltip-bubble"
             style={{ ...floatingStyles, ...transitionStyles }}
-            {...getFloatingProps()}
           >
             {content}
             <FloatingArrow

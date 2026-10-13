@@ -3,6 +3,7 @@ Lock mechanism tests: transaction isolation, no deadlocks under load.
 Uses real DB; no mocks.
 """
 
+import contextlib
 import threading
 
 from django.db import connection, transaction
@@ -51,10 +52,10 @@ class LockMechanismsTest(ConcurrencyTestBase):
                     errors.append(str(e))
                     results.append(False)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=run_transaction, args=(i,)) for i in range(5)]
         for t in threads:
@@ -90,10 +91,10 @@ class LockMechanismsTest(ConcurrencyTestBase):
                     with lock:
                         counts.append(n)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=read_count) for _ in range(4)]
         for t in threads:
@@ -115,7 +116,7 @@ class LockMechanismsTest(ConcurrencyTestBase):
                 original_spec_type=OriginalSpecType.ODPS,
                 original_spec_version="4.1",
                 status=ContractStatus.ACTIVE,
-                version=1,
+                version=_i + 1,  # unique_contract_version_per_asset: distinct per row
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
         results: list[int] = []
@@ -128,10 +129,10 @@ class LockMechanismsTest(ConcurrencyTestBase):
                 with lock:
                     results.append(n)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=read_all) for _ in range(8)]
         for t in threads:

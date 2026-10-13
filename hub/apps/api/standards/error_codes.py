@@ -4,6 +4,8 @@ Standardized Error Codes
 Provides consistent error code definitions and mappings.
 """
 
+from typing import ClassVar
+
 from rest_framework import status
 
 
@@ -92,7 +94,7 @@ class StandardErrorCodes:
     UNSUPPORTED_RDF_MEDIA_TYPE = "UNSUPPORTED_RDF_MEDIA_TYPE"
 
     # Mapping from HTTP status to default error code
-    STATUS_TO_CODE: dict[int, str] = {
+    STATUS_TO_CODE: ClassVar[dict[int, str]] = {
         status.HTTP_400_BAD_REQUEST: VALIDATION_ERROR,
         status.HTTP_401_UNAUTHORIZED: AUTH_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: AUTH_FORBIDDEN,
@@ -119,9 +121,22 @@ def get_error_code(
     Returns:
         Error code string
     """
-    # Check if exception has a code attribute
-    if exception and hasattr(exception, "code") and exception.code:
-        return exception.code
+    # Exception-derived codes delegate to the CANONICAL implementation in
+    # hub/apps/api/exceptions.py (the module wired as the DRF
+    # EXCEPTION_HANDLER). This module previously duplicated that logic and
+    # drifted — the copy lost the dict-form ValidationError nested-code
+    # extraction (task 0.15), collapsing domain codes like
+    # DATABRICKS_HOST_NOT_ALLOWED to VALIDATION_ERROR.
+    if exception:
+        from hub.apps.api.exceptions import get_error_code as _canonical
+
+        code = _canonical(exception, http_status)
+        # The canonical fallback for unmapped statuses is UNKNOWN_ERROR;
+        # this module's documented contract is INTERNAL_ERROR (pinned by
+        # test_get_error_code_unknown_status).
+        if code == "UNKNOWN_ERROR":
+            return StandardErrorCodes.INTERNAL_ERROR
+        return code
 
     # Map HTTP status to error code
     return StandardErrorCodes.STATUS_TO_CODE.get(
@@ -146,32 +161,19 @@ def get_error_message(
     Returns:
         Error message string
     """
-    # Check if exception has a message attribute
-    if exception and hasattr(exception, "message") and exception.message:
-        return exception.message
-
-    # Use exception string representation
+    # Exception-derived messages delegate to the CANONICAL implementation in
+    # hub/apps/api/exceptions.py — the duplicate that lived here drifted
+    # (task 0.15): it rendered DRF ValidationErrors as the Python repr
+    # ``[ErrorDetail(string=..., code=...)]`` instead of the human strings.
     if exception:
-        message = str(exception)
-        # Remove stack traces and internal details
-        if "Traceback" in message:
-            message = message.split("Traceback")[0].strip()
-        if message and message != "None":
-            return message
+        from hub.apps.api.exceptions import get_error_message as _canonical
+
+        return _canonical(exception, http_status)
 
     # Use default message if provided
     if default_message:
         return default_message
 
-    # Default messages for common status codes
-    default_messages = {
-        status.HTTP_400_BAD_REQUEST: "Invalid request",
-        status.HTTP_401_UNAUTHORIZED: "Authentication required",
-        status.HTTP_403_FORBIDDEN: "Permission denied",
-        status.HTTP_404_NOT_FOUND: "Resource not found",
-        status.HTTP_409_CONFLICT: "Resource conflict",
-        status.HTTP_429_TOO_MANY_REQUESTS: "Rate limit exceeded",
-        status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal server error",
-    }
+    from hub.apps.api.exceptions import get_error_message as _canonical
 
-    return default_messages.get(http_status, "An error occurred")
+    return _canonical(None, http_status)

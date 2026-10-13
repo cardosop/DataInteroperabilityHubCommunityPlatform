@@ -73,7 +73,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
             # At least some ODPS endpoints should be documented
             # Check if any path matches our patterns
             found_paths = []
-            for path_key in paths.keys():
+            for path_key in paths:
                 for pattern in odps_path_patterns:
                     # Remove trailing slashes for comparison
                     path_normalized = path_key.rstrip("/")
@@ -139,11 +139,8 @@ class APIContractDocumentationTest(ContractsAPITestBase):
                         # Check for 4xx or 5xx status codes
                         error_codes = [
                             code
-                            for code in responses.keys()
-                            if (
-                                isinstance(code, str)
-                                and (code.startswith("4") or code.startswith("5"))
-                            )
+                            for code in responses
+                            if (isinstance(code, str) and (code.startswith(("4", "5"))))
                             or (isinstance(code, int) and (400 <= code < 600))
                         ]
                         if error_codes:

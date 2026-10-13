@@ -67,13 +67,14 @@ class TenantConfigDQIntegrationTest(TestCase):
 
         # Test that get_tenant_config service returns a platform default value
         config_dict = get_tenant_config(self.tenant)
-        self.assertIsNotNone(config_dict.get("default_dq_profile"),
-            "Should return a platform default DQ profile when tenant has no config")
+        self.assertIsNotNone(
+            config_dict.get("default_dq_profile"),
+            "Should return a platform default DQ profile when tenant has no config",
+        )
 
         # Test that get_tenant_dq_profile service function returns a platform default
         dq_profile = get_tenant_dq_profile(str(self.tenant.id))
-        self.assertIsNotNone(dq_profile,
-            "Should return a platform default DQ profile")
+        self.assertIsNotNone(dq_profile, "Should return a platform default DQ profile")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -127,10 +128,8 @@ class TenantConfigComplianceIntegrationTest(TestCase):
         config_dict = get_tenant_config(self.tenant)
         allowed = config_dict.get("allowed_compliance_regimes")
         default = config_dict.get("default_compliance_regimes")
-        self.assertIsNotNone(allowed,
-            "Should return platform default allowed_compliance_regimes")
-        self.assertIsNotNone(default,
-            "Should return platform default default_compliance_regimes")
+        self.assertIsNotNone(allowed, "Should return platform default allowed_compliance_regimes")
+        self.assertIsNotNone(default, "Should return platform default default_compliance_regimes")
         self.assertIsInstance(allowed, list)
         self.assertIsInstance(default, list)
         self.assertGreater(len(allowed), 0)
@@ -303,9 +302,11 @@ class ContractDQIntegrationTest(TestCase):
             ]
         )
         # Explicitly remove default_profile_key
-        if "quality" in hub_contract_no_profile:
-            if "default_profile_key" in hub_contract_no_profile["quality"]:
-                del hub_contract_no_profile["quality"]["default_profile_key"]
+        if (
+            "quality" in hub_contract_no_profile
+            and "default_profile_key" in hub_contract_no_profile["quality"]
+        ):
+            del hub_contract_no_profile["quality"]["default_profile_key"]
 
         contract_no_profile = ContractFactoryEnhanced.create_contract(
             tenant=self.tenant, created_by=self.user, hub_contract_json=hub_contract_no_profile

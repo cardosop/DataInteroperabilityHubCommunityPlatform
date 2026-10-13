@@ -35,7 +35,7 @@ class _MalformedJsonHandler(BaseHTTPRequestHandler):
         pass
 
 
-@pytest.fixture()
+@pytest.fixture
 def malformed_server():
     port = unique_port()
     server = HTTPServer(("127.0.0.1", port), _MalformedJsonHandler)

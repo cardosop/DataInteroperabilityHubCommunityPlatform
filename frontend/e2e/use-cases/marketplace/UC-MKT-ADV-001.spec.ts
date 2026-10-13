@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
@@ -21,8 +22,18 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
+      // Gate-off terminal state (MP-001 convention, W16-guarded).
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'marketplace gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'marketplace gate bounced to /unavailable — transient snapshot failure'
+      );
       await waitForLoadingComplete(page, { timeout: 15000 });
 
       // D86: skip on login redirect instead of silent return
@@ -32,7 +43,7 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing @critical', () => {
       const hasErrorOnList = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasErrorOnList).toBe(false);
 
-      const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      const listingLink = page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').first();
       // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
@@ -93,14 +104,24 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
+      // Gate-off terminal state (MP-001 convention, W16-guarded).
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'marketplace gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'marketplace gate bounced to /unavailable — transient snapshot failure'
+      );
       await waitForLoadingComplete(page, { timeout: 15000 });
 
       // D86: skip on login redirect
       test.skip(page.url().includes('/login'), 'Auth redirect — infrastructure issue');
 
-      const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      const listingLink = page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').first();
       // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();

@@ -5,6 +5,7 @@
 import pytest
 
 from hub.apps.compliance.warehouse_sql_compiler import ComplianceWarehouseSQLCompiler
+from hub.apps.dq.sql_safety import SQLSafetyError
 
 # ── PII detection tests ────────────────────────────────────────────────
 
@@ -156,12 +157,8 @@ class TestMultipleScans:
         assert len(result) == 1
         # Both regulations MUST be reflected in the check name
         check_lower = result[0].check_name.lower()
-        assert "gdpr" in check_lower, (
-            f"Expected 'gdpr' in check name, got: {result[0].check_name}"
-        )
-        assert "ccpa" in check_lower, (
-            f"Expected 'ccpa' in check name, got: {result[0].check_name}"
-        )
+        assert "gdpr" in check_lower, f"Expected 'gdpr' in check name, got: {result[0].check_name}"
+        assert "ccpa" in check_lower, f"Expected 'ccpa' in check name, got: {result[0].check_name}"
 
     @pytest.mark.unit
     def test_unknown_type_skipped(self):
@@ -181,3 +178,64 @@ class TestMultipleScans:
         assert len(result) == 2
         assert result[0].check_type == "pii_email"
         assert result[1].check_type == "pii_ssn"
+
+
+# ── W1.11 (R2-S4) — SQL-injection safety ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestSqlInjectionSafety:
+    """Client-influenced identifiers/params must compile to safe SQL
+    or be rejected (W1.11)."""
+
+    @pytest.mark.unit
+    def test_malicious_column_rejected(self):
+        scans = [{"type": "pii_email", "column": "email; DROP TABLE t;--"}]
+        with pytest.raises(SQLSafetyError):
+            ComplianceWarehouseSQLCompiler.compile(scans, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_quote_breakout_column_rejected(self):
+        scans = [{"type": "pii_email", "column": "email' OR '1'='1"}]
+        with pytest.raises(SQLSafetyError):
+            ComplianceWarehouseSQLCompiler.compile(scans, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_malicious_table_fqn_rejected(self):
+        scans = [{"type": "pii_email", "column": "email"}]
+        with pytest.raises(SQLSafetyError):
+            ComplianceWarehouseSQLCompiler.compile(
+                scans, "snowflake", "DB.S.T; DROP TABLE x;--"
+            )
+
+    @pytest.mark.unit
+    def test_empty_column_rejected(self):
+        scans = [{"type": "pii_email", "column": ""}]
+        with pytest.raises(SQLSafetyError):
+            ComplianceWarehouseSQLCompiler.compile(scans, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_retention_days_string_rejected(self):
+        scans = [
+            {
+                "type": "retention_breach",
+                "column": "created_at",
+                "retention_days": "90; DROP TABLE x;--",
+            }
+        ]
+        with pytest.raises(SQLSafetyError):
+            ComplianceWarehouseSQLCompiler.compile(scans, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_valid_scan_still_compiles(self):
+        scans = [{"type": "pii_email", "column": "contact"}]
+        result = ComplianceWarehouseSQLCompiler.compile(scans, "snowflake", "DB.S.T")
+        assert result[0].check_type == "pii_email"
+        assert "contact" in result[0].sql
+
+    @pytest.mark.unit
+    def test_pii_bigquery_backslashes_escaped(self):
+        """BigQuery raw-string escape contract for the PII constants."""
+        scans = [{"type": "pii_phone", "column": "tel"}]
+        result = ComplianceWarehouseSQLCompiler.compile(scans, "bigquery", "p.d.t")
+        assert r"\\d" in result[0].sql

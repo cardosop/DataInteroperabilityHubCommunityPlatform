@@ -4,20 +4,20 @@
  * Background — partial-surface reality
  * ------------------------------------
  * `Tenant.sso_config` is a `JSONField` that the model encrypts on save
- * (`hub/apps/tenants/models.py:425-518`). The platform exposes SSO LOGIN
- * endpoints (`/api/v1/auth/sso/saml/login-url/` and `/api/v1/auth/sso/oidc/
- * login-url/` — `hub/apps/auth/sso_views.py:66-90,171-194`) but **no public
- * REST endpoint to PATCH `sso_config` directly**. Today, tenant admins
- * configure SSO via Django admin or a backend operator CLI.
+ * (`hub/apps/tenants/models.py:425-518`). The platform exposes the OIDC SSO
+ * LOGIN endpoint (`/api/v1/auth/sso/oidc/login-url/`); the SAML endpoints
+ * are RETIRED (oss-release-remediation W1.5/D4 — the SAML stub is deleted)
+ * and now 404. There is **no public REST endpoint to PATCH
+ * `sso_config` directly**. Today, tenant admins configure SSO via Django
+ * admin or a backend operator CLI.
  *
  * Guarantee chain (what's testable today):
- *   1. With no SSO config persisted, the SAML login-url endpoint returns
- *      400 "SAML SSO not configured for this tenant" — proving the endpoint
+ *   1. The SAML login-url endpoint is retired — 404 for every request.
+ *   2. With no SSO config persisted, the OIDC login-url endpoint returns
+ *      400 "OIDC SSO not configured for this tenant" — proving the endpoint
  *      reads from real tenant state (not a hardcoded stub).
- *   2. The OIDC login-url endpoint returns the equivalent 400 for the
- *      same reason.
- *   3. POST without required params (tenant_id, redirect_uri) returns
- *      400 ValidationError — input-validation guard intact.
+ *   3. The OIDC missing-input guard (no redirect_uri) returns 400
+ *      ValidationError — input-validation guard intact.
  *
  * Gap (annotated, not failed):
  *   • There is no PATCH /tenants/{id}/sso-config/ endpoint. The "save +
@@ -43,7 +43,7 @@ const API_BASE =
 test.describe('226.G3 — SSO config + login-url admin surface @critical @admin', () => {
   test.setTimeout(120_000);
 
-  test('SAML/OIDC login-url endpoints reject when no SSO config is persisted; PATCH-config gap recorded', async ({
+  test('OIDC login-url rejects when no SSO config is persisted; SAML endpoints retired (404); PATCH-config gap recorded', async ({
     page,
   }) => {
     const dpo = await getTestUser();
@@ -64,28 +64,19 @@ test.describe('226.G3 — SSO config + login-url admin surface @critical @admin'
       (user as unknown as { tenant?: { id?: string } }).tenant?.id ??
       null;
     if (!tenantId) {
-      test.skip(true, 'Test user has no tenant_id in JWT — cannot exercise SSO endpoints');
+      test.skip(!tenantId, 'Test user has no tenant_id in JWT — cannot exercise SSO endpoints');
       return;
     }
 
-    // ── Step 1 — SAML login-url with no config persisted: must return 400.
+    // ── Step 1 — the SAML login-url endpoint is RETIRED (W1.5/D4): 404.
     const samlRes = await page.request.get(
       `${API_BASE}/auth/sso/saml/login-url/?tenant_id=${tenantId}&redirect_uri=${encodeURIComponent('https://localhost:5173/sso-callback')}`,
       { headers },
     );
-    // Either 400 (not configured — the expected case) or 200 (already configured —
-    // unusual for the seeded test tenant, but acceptable). 5xx is the bug class.
     expect(
-      [200, 400].includes(samlRes.status()),
-      `SAML login-url expected 200 (configured) or 400 (not configured); got ${samlRes.status()}`,
-    ).toBe(true);
-    if (samlRes.status() === 400) {
-      const samlBody = (await samlRes.json()) as { error?: string };
-      expect(
-        /not configured|sso/i.test(samlBody.error ?? ''),
-        `Expected 'not configured' message; got ${JSON.stringify(samlBody)}`,
-      ).toBe(true);
-    }
+      samlRes.status(),
+      `SAML login-url is retired and must 404; got ${samlRes.status()}`,
+    ).toBe(404);
 
     // ── Step 2 — OIDC login-url: same guard.
     const oidcRes = await page.request.get(
@@ -94,9 +85,9 @@ test.describe('226.G3 — SSO config + login-url admin surface @critical @admin'
     );
     expect([200, 400].includes(oidcRes.status())).toBe(true);
 
-    // ── Step 3 — Missing-input guard: omit redirect_uri.
+    // ── Step 3 — Missing-input guard: omit redirect_uri on the OIDC endpoint.
     const missingParamRes = await page.request.get(
-      `${API_BASE}/auth/sso/saml/login-url/?tenant_id=${tenantId}`,
+      `${API_BASE}/auth/sso/oidc/login-url/?tenant_id=${tenantId}`,
       { headers },
     );
     expect(
@@ -115,7 +106,7 @@ test.describe('226.G3 — SSO config + login-url admin surface @critical @admin'
       description:
         'No REST endpoint exists today to PATCH Tenant.sso_config. When that endpoint ' +
         'lands, this spec must be extended to: PATCH config → re-GET via /tenants/me/ → ' +
-        'verify shape persists (with sensitive values masked) → re-call /sso/saml/login-url/ ' +
+        'verify shape persists (with sensitive values masked) → re-call /sso/oidc/login-url/ ' +
         '→ assert it now returns 200 with a real URL.',
     });
   });

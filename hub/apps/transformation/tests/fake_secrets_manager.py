@@ -8,7 +8,7 @@ credential resolver → executor pipeline.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 
 class FakeSecretsManager:
@@ -39,7 +39,7 @@ class FakeSecretsManager:
     GIT_ARN = "arn:aws:secretsmanager:us-east-1:123456789012:secret:git-test"
 
     # Sensible Snowflake test defaults.
-    _DEFAULT_WAREHOUSE: dict[str, Any] = {
+    _DEFAULT_WAREHOUSE: ClassVar[dict[str, Any]] = {
         "type": "snowflake",
         "account": "test_account.us-east-1",
         "user": "dbt_test_user",
@@ -50,7 +50,7 @@ class FakeSecretsManager:
         "schema": "public",
     }
 
-    _DEFAULT_GIT: dict[str, str] = {
+    _DEFAULT_GIT: ClassVar[dict[str, str]] = {
         "provider": "github",
         "token": "ghp_fake_test_token_12345",
         "username": "meshant-bot",

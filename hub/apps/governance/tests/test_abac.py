@@ -293,16 +293,15 @@ class ABACEngineTest(TestCase):
         self.assertTrue(result2.allowed)
 
         # Verify cache was populated after evaluate_access
-        cache_key = ABACEngine._get_cache_key(
-            str(self.tenant.id), "DATASET", str(self.dataset.id)
-        )
+        cache_key = ABACEngine._get_cache_key(str(self.tenant.id), "DATASET", str(self.dataset.id))
         cached_data = cache.get(cache_key)
         self.assertIsNotNone(
             cached_data,
             "Cache should be populated after evaluate_access",
         )
         self.assertGreater(
-            len(cached_data), 0,
+            len(cached_data),
+            0,
             "Cache should contain at least one policy ID",
         )
 

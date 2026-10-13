@@ -94,7 +94,62 @@ check_all_dbs_ready() {
   return 0
 }
 
+# Seed the E2E personas + plans + subscriptions into the shared DB. The
+# smoke suite's authenticated tests (SMOKE_ADMIN_*) and the E2E suites need
+# these accounts; without this step every template clone wipes them and
+# requires the manual "run ensure_e2e_subscription after DB resets" recipe.
+# All three commands are idempotent — safe on warm and cold paths alike.
+seed_shared_db() {
+  echo "== Seeding E2E personas + plans into hub_test_test_shared..."
+  POSTGRES_DB=hub_test_test_shared TEST_DB_SUFFIX=shared python hub/manage.py seed_default_plans
+  POSTGRES_DB=hub_test_test_shared TEST_DB_SUFFIX=shared python hub/manage.py ensure_e2e_user_roles
+  POSTGRES_DB=hub_test_test_shared TEST_DB_SUFFIX=shared python hub/manage.py ensure_e2e_subscription
+  POSTGRES_DB=hub_test_test_shared TEST_DB_SUFFIX=shared python hub/manage.py seed_smoke_fixtures
+}
+
+# RLS test roles: meshant_app (subject to RLS) + meshant_admin (BYPASSRLS).
+#
+# init-db.sql provisions these roles and their grants ONLY on the first
+# volume init, and only for the databases that existed at that moment.
+# Template DBs recreated later by this script — or by a session running
+# createdb + migrate directly — get NO grants, and the RLS pilot tests
+# fail with "permission denied for table assets" (batch 10-2g incident).
+# Idempotent; runs on BOTH the warm and cold paths so a live shared DB
+# is repaired in place without a stack restart.
+grant_rls_roles() {
+  local db="$1"
+  echo "== Granting RLS test roles on $db..."
+  _psql -d "$db" -v ON_ERROR_STOP=1 <<'SQL' || echo "WARNING: RLS role grants failed on $db" >&2
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'meshant_app') THEN
+        CREATE ROLE meshant_app WITH LOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'meshant_admin') THEN
+        CREATE ROLE meshant_admin WITH LOGIN BYPASSRLS;
+    END IF;
+END
+$$;
+GRANT USAGE ON SCHEMA public TO meshant_app;
+GRANT USAGE ON SCHEMA public TO meshant_admin;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO meshant_app;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO meshant_admin;
+-- meshant_admin is the BYPASSRLS role the settings' `admin` DB alias writes
+-- through — full DML (mirrors init-db.sql Phase U.6).
+GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO meshant_admin;
+-- Default privileges: future tables are created by hub_test during migrate,
+-- so the FOR ROLE clause is required for new tables to inherit the grants.
+ALTER DEFAULT PRIVILEGES FOR ROLE hub_test IN SCHEMA public GRANT SELECT ON TABLES TO meshant_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE hub_test IN SCHEMA public GRANT SELECT ON TABLES TO meshant_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE hub_test IN SCHEMA public GRANT INSERT, UPDATE, DELETE ON TABLES TO meshant_admin;
+SQL
+}
+
 if check_all_dbs_ready; then
+  grant_rls_roles hub_test
+  grant_rls_roles hub_test_test_shared
+  grant_rls_roles hub_test_test_phase13
+  seed_shared_db
   exit 0
 fi
 
@@ -210,47 +265,35 @@ create_from_template() {
   done
 }
 
+# ── migrate-in-place-or-clone helper ─────────────────────────────────────────
+# A template DB that EXISTS and is structurally sound (has its migration
+# history + core tables) is brought forward INCREMENTALLY with `migrate`.
+# Drop+recreate (template clone) is reserved for genuinely missing or
+# broken DBs — a FORCE drop here would terminate any live test session
+# using the DB (pytest --reuse-db batches, E2E suites) mid-run, which
+# historically produced mass UndefinedTable / "database does not exist"
+# failures when the stack restarted during a batch.
+migrate_db_in_place_or_clone() {
+  local db="$1"
+  if _db_exists "$db" && _table_exists "$db" django_migrations && _table_exists "$db" tenants; then
+    echo "== $db exists — applying migrations incrementally (no drop)..."
+    for m_attempt in 1 2 3; do
+      if POSTGRES_DB=$db python hub/manage.py migrate --noinput 2>&1; then
+        return 0
+      fi
+      if [ $m_attempt -lt 3 ]; then
+        echo "  $db migrate attempt $m_attempt failed (possibly deadlock), retrying in 10s..."
+        sleep 10
+      fi
+    done
+    echo "ERROR: $db incremental migrate failed after 3 attempts." >&2
+    exit 1
+  fi
+  create_from_template "$db"
+}
+
 # ── hub_test_test_shared ──────────────────────────────────────────────────────
-echo "== Creating hub_test_test_shared from hub_test..."
-drain_connections hub_test_test_shared
-if ! drop_db_force hub_test_test_shared; then
-  echo "ERROR: failed to drop hub_test_test_shared before template clone." >&2
-  exit 1
-fi
-
-drain_connections hub_test
-
-CREATE_OK=false
-for attempt in 1 2 3; do
-  if _psql -d postgres -c "CREATE DATABASE hub_test_test_shared WITH TEMPLATE hub_test ENCODING 'UTF8'" 2>&1; then
-    CREATE_OK=true
-    break
-  fi
-  echo "CREATE hub_test_test_shared attempt $attempt failed, retrying..."
-  drain_connections hub_test_test_shared
-  drain_connections hub_test
-  if ! drop_db_force hub_test_test_shared; then
-    echo "ERROR: failed to drop hub_test_test_shared during retry." >&2
-    exit 1
-  fi
-done
-
-if [ "$CREATE_OK" != "true" ]; then
-  echo "WARNING: CREATE DATABASE hub_test_test_shared FROM TEMPLATE hub_test failed after 3 attempts."
-  echo "Falling back: creating empty DB and running migrate..."
-  drain_connections hub_test_test_shared
-  if ! drop_db_force hub_test_test_shared; then
-    echo "ERROR: failed to drop hub_test_test_shared for fallback migrate." >&2
-    exit 1
-  fi
-  _psql -d postgres -c "CREATE DATABASE hub_test_test_shared ENCODING 'UTF8'"
-  for m_attempt in 1 2 3; do
-    if POSTGRES_DB=hub_test_test_shared python hub/manage.py migrate --noinput 2>&1; then
-      break
-    fi
-    [ $m_attempt -lt 3 ] && echo "Fallback migrate attempt $m_attempt failed, retrying in 10s..." && sleep 10 || exit 1
-  done
-fi
+migrate_db_in_place_or_clone hub_test_test_shared
 
 # Verify critical tables in hub_test_test_shared.
 for table in django_admin_log security_audit_logs; do
@@ -260,12 +303,21 @@ for table in django_admin_log security_audit_logs; do
   fi
 done
 echo "hub_test_test_shared ready."
+seed_shared_db
 
 # ── hub_test_test_phase13 (isolation DB) ─────────────────────────────────────
 # Used by:
 #   TEST_DB_SUFFIX=phase13 — compliance/security/E2E/platform tests
 #   TEST_DB_SUFFIX=phase68 — dataset creation flow tests (aliased to this DB)
 # Do NOT run phase13 and dataset-creation tests concurrently.
-create_from_template hub_test_test_phase13
+migrate_db_in_place_or_clone hub_test_test_phase13
+
+# ── RLS test roles ──────────────────────────────────────────────────────────
+# Apply on the cold path too: freshly cloned/created template DBs start with
+# no grants for meshant_app/meshant_admin (init-db.sql only covers the first
+# volume init).
+grant_rls_roles hub_test
+grant_rls_roles hub_test_test_shared
+grant_rls_roles hub_test_test_phase13
 
 echo "== All test DB migrations complete."

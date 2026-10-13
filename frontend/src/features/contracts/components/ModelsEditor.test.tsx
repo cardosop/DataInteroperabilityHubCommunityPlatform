@@ -12,8 +12,20 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 
-import { ModelsEditor, validateEditorState, deriveAllowedDataTypes } from './ModelsEditor';
+// Telemetry emission is not under test here. The real metrics client
+// posts through the real apiClient, whose fetch adapter rejects in
+// jsdom with a cross-realm AbortSignal error — mock the module so the
+// editor tests stay free of real HTTP attempts (and stderr noise).
+vi.mock('../lib/schemaEditorMetrics', () => ({
+  recordSchemaEditorOpened: vi.fn(),
+  recordSchemaEditorSave: vi.fn(),
+}));
+
+import { ModelsEditor } from './ModelsEditor';
+import { deriveAllowedDataTypes, validateEditorState } from './modelsEditorValidation';
 import type { SchemaEditorState } from '../../../shared/types/contracts';
 
 function makeInitialState(): SchemaEditorState {
@@ -148,10 +160,17 @@ describe('deriveAllowedDataTypes', () => {
   });
 });
 
+// The editor's schema fallback (`useContractJsonSchema`) is a react-query
+// hook — renders need the provider (the DatasetPicker convention).
+function renderEditor(ui: ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
 describe('<ModelsEditor />', () => {
   it('renders a model and its fields', () => {
     const onSave = vi.fn().mockResolvedValue({ etag: 'W/"new"' });
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     expect(screen.getByTestId('model-0')).toBeTruthy();
     expect(screen.getByTestId('field-0-0')).toBeTruthy();
     expect(screen.getByTestId('field-0-1')).toBeTruthy();
@@ -161,14 +180,14 @@ describe('<ModelsEditor />', () => {
     const state = makeInitialState();
     state.models[0].fields = [];
     const onSave = vi.fn().mockResolvedValue({ etag: null });
-    render(<ModelsEditor initialState={state} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={state} onSave={onSave} />);
     const save = screen.getByTestId('save-models') as HTMLButtonElement;
     expect(save.disabled).toBe(true);
   });
 
   it('Save fires onSave with compiled raw + initial etag', async () => {
     const onSave = vi.fn().mockResolvedValue({ etag: 'W/"new"' });
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     fireEvent.click(screen.getByTestId('save-models'));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     const arg = onSave.mock.calls[0][0];
@@ -185,7 +204,7 @@ describe('<ModelsEditor />', () => {
       message: 'Contract has been modified since you read it',
       details: { current_etag: 'W/"server"' },
     });
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     fireEvent.click(screen.getByTestId('save-models'));
     await waitFor(() => expect(screen.queryByTestId('conflict-dialog')).toBeTruthy());
     expect(screen.getByTestId('conflict-refresh')).toBeTruthy();
@@ -202,7 +221,7 @@ describe('<ModelsEditor />', () => {
         remediation_url: 'https://example.com/contracts/abc/edit?tab=schema',
       },
     });
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     fireEvent.click(screen.getByTestId('save-models'));
     await waitFor(() => expect(screen.queryByTestId('save-error')).toBeTruthy());
     expect(screen.getByTestId('save-error-cta')).toBeTruthy();
@@ -210,7 +229,7 @@ describe('<ModelsEditor />', () => {
 
   it('add-model adds a new row', () => {
     const onSave = vi.fn();
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     expect(screen.queryByTestId('model-1')).toBeNull();
     fireEvent.click(screen.getByTestId('add-model'));
     expect(screen.getByTestId('model-1')).toBeTruthy();
@@ -218,7 +237,7 @@ describe('<ModelsEditor />', () => {
 
   it('add-field appends a row to the existing model', () => {
     const onSave = vi.fn();
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     expect(screen.queryByTestId('field-0-2')).toBeNull();
     fireEvent.click(screen.getByTestId('model-0-add-field'));
     expect(screen.getByTestId('field-0-2')).toBeTruthy();
@@ -226,7 +245,7 @@ describe('<ModelsEditor />', () => {
 
   it('remove-field deletes the row', () => {
     const onSave = vi.fn();
-    render(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
+    renderEditor(<ModelsEditor initialState={makeInitialState()} onSave={onSave} />);
     fireEvent.click(screen.getByTestId('field-0-1-remove'));
     expect(screen.queryByTestId('field-0-1')).toBeNull();
   });

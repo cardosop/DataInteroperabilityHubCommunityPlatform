@@ -64,16 +64,9 @@ def _stripe_customer_id_for_tenant(tenant) -> str | None:
     bootstrap-not-complete condition and surfaces a structured
     error rather than calling Stripe with a None customer.
     """
-    from hub.apps.billing.models import Subscription
+    from hub.apps.core.commercial_hooks import get_stripe_customer_id
 
-    sub = (
-        Subscription.objects.filter(tenant=tenant)
-        .exclude(stripe_customer_id__isnull=True)
-        .exclude(stripe_customer_id="")
-        .order_by("-created_at")
-        .first()
-    )
-    return sub.stripe_customer_id if sub else None
+    return get_stripe_customer_id(tenant)
 
 
 def submit_tax_id_to_stripe(

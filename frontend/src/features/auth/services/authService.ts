@@ -26,6 +26,22 @@ import type {
 
 const TOKEN_STORAGE_KEY = 'access_token';
 const USER_STORAGE_KEY = 'user';
+// Phase 220.4 — persists the auth-mode of the LAST login response
+// ('cookie' when the backend keeps tokens in httpOnly cookies, 'body'
+// when the body carries access_token). initializeAuth() restores the
+// mode from this marker on full page reloads — storage presence is NOT
+// a reliable discriminator anymore (11.1 leaves no stored token after
+// a body-mode login by design).
+const AUTH_MODE_KEY = 'auth_mode';
+
+// Monotonic write sequence: bumped by every setUser. Async fetch paths
+// (authStore.initialize's direct /auth/me/ fetch, refreshUser's fetch)
+// capture the sequence BEFORE the request and skip their apply when a
+// newer write (e.g. a profile PATCH) landed while the request was in
+// flight — otherwise a slow pre-PATCH response clobbers the edited
+// name in the store (E2E JOURNEY-AUTH-PROFILE intermittent header
+// staleness, 2026-10-03).
+let _userWriteSeq = 0;
 
 class AuthService {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
@@ -44,6 +60,13 @@ class AuthService {
       // Cookie mode: tokens are in httpOnly cookies, not in JS-accessible body.
       // Don't store anything in memory or localStorage.
       apiClient._cookieAuthMode = true;
+    }
+    // Persist the mode so a full page reload restores the SAME mode —
+    // see AUTH_MODE_KEY + initializeAuth()'s restore logic.
+    try {
+      localStorage.setItem(AUTH_MODE_KEY, apiClient._cookieAuthMode ? 'cookie' : 'body');
+    } catch {
+      // localStorage unavailable — the reload heuristic falls back to the legacy shape
     }
 
     // Fetch and store user info. If this fails, roll back tokens to prevent
@@ -124,9 +147,9 @@ class AuthService {
       });
 
       if (!fetchResponse.ok) {
-        const error = new Error(
-          `Refresh failed with status ${fetchResponse.status}`,
-        ) as Error & { response?: { status: number } };
+        const error = new Error(`Refresh failed with status ${fetchResponse.status}`) as Error & {
+          response?: { status: number };
+        };
         error.response = { status: fetchResponse.status };
         throw error;
       }
@@ -156,6 +179,11 @@ class AuthService {
     if (payload.display_name !== undefined) body.display_name = payload.display_name;
     if (payload.avatar !== undefined) body.avatar = payload.avatar;
     if (payload.preferences !== undefined) body.preferences = payload.preferences;
+    // Phase 278.R.6 (close-test-coverage-gaps 3.2) — product-tour
+    // cross-device persistence. The type declared this field but the
+    // body builder dropped it, so ProductTourGate's PATCH always sent
+    // an empty payload and the backend never learned the tour was seen.
+    if (payload.has_seen_tour !== undefined) body.has_seen_tour = payload.has_seen_tour;
 
     const response = await apiClient.getClient().patch<User>('/auth/me/', body);
     const user = response.data;
@@ -172,7 +200,10 @@ class AuthService {
   /** List active sessions (refresh tokens) — GET /auth/sessions/ */
   async listSessions(): Promise<Session[]> {
     const response = await apiClient.getClient().get<Session[]>('/auth/sessions/');
-    return response.data;
+    // Phase 1.5 — normalize at the service boundary: SessionListPage calls
+    // ``sessions.map`` and a non-array 200 (proxy error envelope, drift)
+    // used to crash the render with "sessions.map is not a function".
+    return Array.isArray(response.data) ? response.data : [];
   }
 
   /** Revoke a session — POST /auth/sessions/{id}/revoke/ */
@@ -228,16 +259,20 @@ class AuthService {
   }
 
   setAccessToken(token: string): void {
-    // Phase 11.1: store in apiClient memory (primary).
-    // Phase 277.B.067: also persist to localStorage so cross-tab
-    // sync via `storage` event can propagate login across tabs.
+    // Phase 11.1: store in apiClient memory (primary) — localStorage
+    // must NEVER retain the access_token after a UI login (XSS surface).
+    // Phase 277.B.067: cross-tab sync piggybacks on the `storage` event
+    // instead — write the token so sibling tabs receive an access_token
+    // event carrying the value as the EVENT PAYLOAD (e.newValue), then
+    // remove it in the same tick. The event fires on the setItem even
+    // though the key is gone before the next paint, so login AND refresh
+    // rotation propagate across tabs while the 11.1 hardening contract
+    // (token absent from localStorage) holds.
     apiClient.setAccessToken(token);
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(TOKEN_STORAGE_KEY, token);
-        // Bump sync timestamp so other tabs pick up the change even
-        // when the token value is identical (e.g. refresh rotation).
-        localStorage.setItem('_auth_sync_ts', String(Date.now()));
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
       }
     } catch {
       // localStorage unavailable — cross-tab sync not possible
@@ -256,8 +291,14 @@ class AuthService {
   }
 
   setUser(user: User): void {
+    _userWriteSeq += 1;
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
     // Tenant ID getter is managed by authStore (active_tenant_id || user.tenant_id)
+  }
+
+  /** Monotonic counter for every user write (profile PATCH, fetches, login). */
+  getUserWriteSeq(): number {
+    return _userWriteSeq;
   }
 
   // Clear all auth data
@@ -267,15 +308,22 @@ class AuthService {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem('refresh_token');
     localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(AUTH_MODE_KEY);
     // G4.4 (glittery-herding-graham): also clear active_tenant_id so direct
     // callers of clearAuth() don't leave stale tenant context.
-    try { localStorage.removeItem('active_tenant_id'); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem('active_tenant_id');
+    } catch {
+      /* ignore */
+    }
     // Phase 277.B.067 — bump sync timestamp so other tabs detect logout
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('_auth_sync_ts', String(Date.now()));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     apiClient.clearTokens();
   }
 
@@ -314,9 +362,7 @@ class AuthService {
         // throws InvalidCharacterError, the catch block removes the token
         // from localStorage, and the fallback cookie-mode path triggers
         // _cookieAuthMode → no Bearer header → 401 → redirect to /login.
-        const base64 = storedToken.split('.')[1]
-          .replace(/-/g, '+')
-          .replace(/_/g, '/');
+        const base64 = storedToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
         const payload = JSON.parse(atob(base64));
         if (payload.exp && payload.exp * 1000 < Date.now()) {
           localStorage.removeItem(TOKEN_STORAGE_KEY);
@@ -333,13 +379,26 @@ class AuthService {
       apiClient.setAccessToken(storedToken);
     }
 
-    // Phase 220.4: detect cookie-based auth mode on page reload.
-    // If we have a stored user profile but NO tokens in JS-accessible storage,
-    // the session is carried by httpOnly cookies. Set cookie mode so that
-    // isAuthenticated() returns true and API calls don't send Bearer headers.
+    // Phase 220.4: restore the cookie-based auth mode on page reload from
+    // the LAST-KNOWN login response shape — NOT from "no token in
+    // storage". The old heuristic (hasUser && !hasAnyToken → cookie mode)
+    // misfires on legacy deployments after the 11.1 hardening: a full
+    // reload has user but no stored access_token BY DESIGN, the SPA then
+    // flipped to cookie mode on a legacy backend, dropped the Bearer
+    // header, and every call 401'd with AUTH_UNAUTHORIZED (measured:
+    // AUD-004 non-existent-id rendered "Unauthorized" instead of the
+    // 404 boundary). The login response is the reliable discriminator:
+    // cookie-mode backends return no access_token in the body.
     const hasUser = !!localStorage.getItem(USER_STORAGE_KEY);
-    const hasAnyToken = !!storedToken;
-    if (hasUser && !hasAnyToken) {
+    const persistedMode = localStorage.getItem(AUTH_MODE_KEY);
+    if (persistedMode === 'cookie' && hasUser) {
+      apiClient._cookieAuthMode = true;
+    } else if (persistedMode === 'body') {
+      apiClient._cookieAuthMode = false;
+    } else if (hasUser && !storedToken) {
+      // Pre-marker sessions (no AUTH_MODE_KEY written yet): keep the old
+      // heuristic so cookie-mode deployments that predate the marker
+      // still boot correctly.
       apiClient._cookieAuthMode = true;
     }
 
@@ -348,3 +407,15 @@ class AuthService {
 }
 
 export const authService = new AuthService();
+
+// P.7 root fix — seed the in-memory access token SYNCHRONOUSLY at module
+// load.  On a cold page load the store hydrates `user` from localStorage
+// and the app shell mounts BEFORE initialize()'s first await; components
+// that fire requests on mount (Header → GET /auth/me/tenants/) then sent
+// a bearer-less request, got a 401, and the interceptor's refresh path
+// (no httpOnly cookie in the E2E storageState) cleared the session and
+// bounced authenticated users to /login (measured 2026-08-29 in the
+// ml-model-lifecycle E2E).  Seeding here closes the race for every
+// caller: the token is in the client before any component can render.
+// The method is idempotent and SSR-safe (guards on typeof window).
+authService.initializeAuth();

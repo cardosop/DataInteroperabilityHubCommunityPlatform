@@ -1,0 +1,53 @@
+# Phase 277.B.088 — Prometheus alert rules for breach notification SLA
+#
+# GDPR Art. 33 requires supervisory notification within 72 hours of
+# breach discovery.  Two alert rules provide escalating warning:
+#
+#   1. BreachSLAWarning — any unresolved breach >48h old.
+#      Signals the 72h clock is approaching; severity: warning.
+#   2. BreachSLACritical — any unresolved breach >60h old.
+#      12h buffer before the 72h deadline; severity: critical.
+#
+# References:
+#   * metric: hub/apps/observability/otel_metrics.py → breach_hours_since_discovery
+#   * emitter: hub/apps/breach/sla_metrics.py → emit_breach_sla_metrics
+#   * model: hub/apps/breach/models.py → BreachIncident
+#   * spec: specs/compliance-privacy-plumbing/spec.md
+
+groups:
+  - name: breach_sla
+    interval: 60s
+    rules:
+      - alert: BreachSLAWarning
+        expr: |
+          breach_hours_since_discovery > 48
+        for: 5m
+        labels:
+          severity: warning
+          team: compliance
+        annotations:
+          summary: "Breach {{ $labels.breach_id }} has been unresolved for {{ $value }}h"
+          description: >
+            Breach {{ $labels.breach_id }} (tenant {{ $labels.tenant_id }})
+            has been unresolved for {{ $value }} hours.  GDPR Art. 33
+            requires supervisory notification within 72h.  Begin
+            notification preparation immediately.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-COMP-001-breach-notification"
+
+      - alert: BreachSLACritical
+        expr: |
+          breach_hours_since_discovery > 60
+        for: 5m
+        labels:
+          severity: critical
+          team: compliance
+        annotations:
+          summary: "Breach {{ $labels.breach_id }} SLA critical — {{ $value }}h unresolved (12h to 72h deadline)"
+          description: >
+            Breach {{ $labels.breach_id }} (tenant {{ $labels.tenant_id }})
+            has been unresolved for {{ $value }} hours — only
+            {{ 72 - (printf "%.0f" $value) }}h remain before the 72h
+            GDPR Art. 33 deadline.  Escalate immediately.  If the
+            breach has been contained but not formally closed, update
+            the status to CLOSED or set legal_hold=true.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-COMP-002-breach-sla-escalation"

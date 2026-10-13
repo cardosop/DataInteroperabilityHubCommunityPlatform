@@ -1,0 +1,63 @@
+# Phase 231.9 — Compliance intake gate + webhook operational alerts
+#
+# Metrics: ``compliance_intake_gate_events_total{event,tenant_id}`` (see
+# ``hub.apps.observability.otel_metrics``) and companion dashboard
+# ``monitoring/grafana/dashboards/compliance-intake-gate.json``.
+#
+# Runbook: docs/runbooks/compliance-intake-gate.md
+
+groups:
+  - name: compliance_intake_gate
+    interval: 30s
+    rules:
+      - alert: ComplianceIntakeGateBlocksElevated
+        expr: |
+          sum(rate(compliance_intake_gate_events_total{
+            event=~"ACTIVATION_GATE_BLOCK|PUBLISH_GATE_NO_ASSET|PUBLISH_GATE_NO_RUN|PUBLISH_GATE_THRESHOLD"
+          }[10m])) > 2
+        for: 15m
+        labels:
+          severity: warning
+          team: compliance-platform
+          phase: "231.2"
+        annotations:
+          summary: "Elevated compliance gate denials (intake or publish)"
+          description: |
+            Aggregate rate of activation or marketplace publish gate denials
+            exceeded 2 events/sec over a 15m window. Often indicates misconfigured
+            tenant thresholds, missing succeeded runs before publish, or tenants
+            enabling intake gate without scanner capacity.
+          runbook_url: "https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/compliance-intake-gate.md"
+
+      - alert: ComplianceServiceUnavailableSignals
+        expr: |
+          sum(rate(compliance_intake_gate_events_total{event="SERVICE_UNAVAILABLE"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          team: compliance-platform
+          phase: "231.1"
+        annotations:
+          summary: "Compliance-service circuit open degrading assets (metrics)"
+          description: |
+            Sustained emission of SERVICE_UNAVAILABLE gate metrics — compliance
+            microservice circuit breaker is forcing WARN posture on assets.
+            Cross-check with ``compliance_circuit_breaker_state`` and
+            compliance-service health.
+          runbook_url: "https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/compliance-intake-gate.md"
+
+      - alert: ComplianceWebhookFloodAnomaly
+        expr: |
+          sum(rate(compliance_intake_gate_events_total{event="WEBHOOK_FIRED"}[5m])) > 50
+        for: 10m
+        labels:
+          severity: warning
+          team: compliance-platform
+          phase: "231.4"
+        annotations:
+          summary: "Unusually high compliance.completed webhook throughput"
+          description: |
+            Terminal compliance webhook stamp rate is very high relative to
+            normal tenant load — investigate webhook fan-out loops, retry storms,
+            or load-test traffic in production.
+          runbook_url: "https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/compliance-intake-gate.md"

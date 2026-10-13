@@ -39,7 +39,7 @@ class Migration(migrations.Migration):
                 'db_table': 'scheduled_marketplace_syncs',
                 'ordering': ['-created_at'],
                 'indexes': [models.Index(fields=['tenant', 'connection'], name='scheduled_m_tenant__18b0b2_idx'), models.Index(fields=['tenant', 'status'], name='scheduled_m_tenant__c6dd2a_idx'), models.Index(fields=['status', 'next_run_at'], name='scheduled_m_status_32fd71_idx'), models.Index(fields=['connection', 'status'], name='scheduled_m_connect_aa32ea_idx')],
-                'constraints': [models.UniqueConstraint(fields=('tenant', 'name'), name='unique_scheduled_sync_name_per_tenant')],
+                'constraints': [models.UniqueConstraint(fields=['tenant', 'name'], name='unique_scheduled_sync_name_per_tenant')],
             },
         ),
     ]

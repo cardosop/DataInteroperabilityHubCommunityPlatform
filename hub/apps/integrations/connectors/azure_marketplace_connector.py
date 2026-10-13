@@ -50,7 +50,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         api_key: str | None = None,
         api_version: str | None = None,
         config: dict[str, Any] | None = None,
-        **kwargs,
+        **_kwargs,
     ):
         """
         Initialize Azure Marketplace connector.
@@ -123,13 +123,14 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
             if r.status_code == 401:
                 raise ConnectionError("Azure Marketplace API key invalid or missing")
             r.raise_for_status()
-            return True
         except httpx.HTTPStatusError as e:
             raise ConnectionError(
                 f"Azure Marketplace connection failed: {e.response.status_code} {e}"
             ) from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Azure Marketplace connection failed: {e}") from e
+        else:
+            return True
 
     def list_listings(
         self,
@@ -167,7 +168,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         for p in value:
             try:
                 listings.append(self._product_to_listing(p))
-            except Exception as e:
+            except (AttributeError, TypeError, ValueError) as e:
                 logger.warning("Skip product %s: %s", p.get("uniqueProductId"), e)
         return listings
 
@@ -186,8 +187,6 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
             r.raise_for_status()
             p = r.json()
             return self._product_to_listing(p)
-        except NotFoundError:
-            raise
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise NotFoundError(f"Product not found: {listing_id}") from e
@@ -459,7 +458,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
                 completed_at=completed_at,
             )
         except Exception as e:
-            logger.exception("Azure sync_pull failed: %s", e)
+            logger.exception("Azure sync_pull failed")
             return SyncResult(
                 status=SyncStatus.FAILED,
                 total_items=0,

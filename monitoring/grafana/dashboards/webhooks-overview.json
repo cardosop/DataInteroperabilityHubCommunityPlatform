@@ -1,0 +1,627 @@
+{
+  "title": "Webhook Delivery Overview (277.B.100)",
+  "uid": "webhooks-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Webhook delivery health: success rate, p95 latency, DLQ size, per-tenant volume, retry rate, alert state. On-call first stop for diagnosing webhook issues.",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Delivery Success Rate & Volume",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Success rate (last 15m)",
+      "description": "Percentage of terminal deliveries that succeeded. Drops below 95% → investigate the Per-tenant failure breakdown below.",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(meshant_webhook_outbound_total{outcome=\"delivered_success\"}[15m])) / clamp_min(sum(rate(meshant_webhook_outbound_total{outcome=~\"delivered_success|delivered_failed|delivered_dead_letter\"}[15m])), 0.001)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Total deliveries (last 15m)",
+      "description": "Absolute delivery volume across all tenants.",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=~\"delivered_success|delivered_failed|delivered_dead_letter\"}[15m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Failed (last 15m)",
+      "description": "Terminal failures (non-recoverable). >10 investigate.",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"delivered_failed\"}[15m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Dead-letter (last 15m)",
+      "description": "Exhausted all retries. Immediately actionable.",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"delivered_dead_letter\"}[15m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Delivery outcomes over time",
+      "description": "Terminal delivery outcomes (success / failed / dead-letter) stacked.",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(meshant_webhook_outbound_total{outcome=~\"delivered_success|delivered_failed|delivered_dead_letter\"}[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Success rate trend",
+      "description": "Moving success-rate percentage. Alert when below 95% for >15m.",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(meshant_webhook_outbound_total{outcome=\"delivered_success\"}[5m])) / clamp_min(sum(rate(meshant_webhook_outbound_total{outcome=~\"delivered_success|delivered_failed|delivered_dead_letter\"}[5m])), 0.001)",
+          "legendFormat": "success rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "line+area" } }
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Per-Tenant Volume & Failure Breakdown",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Per-tenant delivery volume (top 15)",
+      "description": "Top-15 tenants by outbound delivery volume. A rapid jump on a single tenant is a misconfigured automation or runaway event source.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "topk(15, sum by (tenant_id) (rate(meshant_webhook_outbound_total{outcome=~\"delivered_success|delivered_failed|delivered_dead_letter\"}[5m])))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Per-tenant failure rate",
+      "description": "Tenants with sustained failures. Each series is one tenant_id — drill into the WEBHOOK_DELIVERY_FAILED audit events for that tenant to see which webhook URL is failing.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (rate(meshant_webhook_outbound_total{outcome=~\"delivered_failed|delivered_dead_letter\"}[5m]))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "Tenants with failures (last 15m)",
+      "description": "Number of distinct tenants experiencing failures.",
+      "gridPos": { "x": 0, "y": 22, "w": 6, "h": 3 },
+      "targets": [
+        {
+          "expr": "count(sum by (tenant_id) (increase(meshant_webhook_outbound_total{outcome=~\"delivered_failed|delivered_dead_letter\"}[15m])) > 0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rate-limited tenants (last 15m)",
+      "description": "Count of tenants whose outbound webhooks were rate-limited.",
+      "gridPos": { "x": 6, "y": 22, "w": 6, "h": 3 },
+      "targets": [
+        {
+          "expr": "count(sum by (tenant_id) (increase(meshant_webhook_rate_limit_blocks_total[15m])) > 0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rate-limit blocks (last 15m)",
+      "description": "Total rate-limit block events across all tenants.",
+      "gridPos": { "x": 12, "y": 22, "w": 6, "h": 3 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_rate_limit_blocks_total[15m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Duplicate-skipped (last 15m)",
+      "description": "Idempotency hits — the emitter is double-firing events.",
+      "gridPos": { "x": 18, "y": 22, "w": 6, "h": 3 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"duplicate_skipped\"}[15m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 500 }] } } }
+    },
+    {
+      "type": "row",
+      "title": "Dead-Letter Queue (DLQ)",
+      "gridPos": { "x": 0, "y": 25, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "DLQ size (total)",
+      "description": "Total dead-letter deliveries across all tenants. Mirrors WebhookDLQSizeHigh alert (>50 → warning).",
+      "gridPos": { "x": 0, "y": 26, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(webhook_dlq_size)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 25 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tenants with DLQ > 0",
+      "gridPos": { "x": 6, "y": 26, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "count(webhook_dlq_size > 0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "DLQ size by tenant (top 15)",
+      "description": "Per-tenant dead-letter queue size. Each series is a tenant. Spikes indicate a subscriber endpoint that has been unreachable for long enough to exhaust retries.",
+      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "topk(15, webhook_dlq_size)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "DLQ accumulation rate",
+      "description": "Rate at which deliveries enter the dead-letter queue (terminal failure after max retries). Investigate when sustained >0.",
+      "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(meshant_webhook_outbound_total{outcome=\"delivered_dead_letter\"}[5m]))",
+          "legendFormat": "dead-letter rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "Dead-letter (last 1h)",
+      "gridPos": { "x": 12, "y": 26, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"delivered_dead_letter\"}[1h]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "DLQ growth rate",
+      "description": "Change in DLQ size over last hour (positive = growing, negative = draining).",
+      "gridPos": { "x": 18, "y": 26, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(webhook_dlq_size) - (sum(webhook_dlq_size) offset 1h)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Delivery Latency & Signature Performance",
+      "gridPos": { "x": 0, "y": 38, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Signature compute duration percentiles",
+      "description": "P50/P95/P99 of HMAC-SHA256 + decrypt_secret on outbound deliveries. Typical p95 is sub-millisecond; >100ms triggers WebhookSignatureComputeDurationHigh alert.",
+      "gridPos": { "x": 0, "y": 39, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(meshant_webhook_signature_verification_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(meshant_webhook_signature_verification_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(meshant_webhook_signature_verification_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.1 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "line+area" } }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Delivery throughput (success rate vs time)",
+      "description": "Successful deliveries per second. Flat-lining during business hours may indicate a down subscriber.",
+      "gridPos": { "x": 12, "y": 39, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(meshant_webhook_outbound_total{outcome=\"delivered_success\"}[5m]))",
+          "legendFormat": "success/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(meshant_webhook_outbound_total{outcome=~\"delivered_failed|delivered_dead_letter\"}[5m]))",
+          "legendFormat": "failure/sec",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "row",
+      "title": "Trigger Volume & Rate Limits",
+      "gridPos": { "x": 0, "y": 47, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbound trigger rate by outcome",
+      "description": "Trigger-time outbound webhook attempts split by outcome (triggered / rate_limited / duplicate_skipped).",
+      "gridPos": { "x": 0, "y": 48, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(meshant_webhook_outbound_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rate-limit blocks/sec by tenant",
+      "description": "Per-tenant rate-limit blocks. Each spike is a tenant whose subscriber-side behaviour is exhausting the per-minute budget.",
+      "gridPos": { "x": 12, "y": 48, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (rate(meshant_webhook_rate_limit_blocks_total[5m]))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "row",
+      "title": "Alert State (All Webhook Alerts)",
+      "gridPos": { "x": 0, "y": 56, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "WebhookDLQSizeHigh (>50)",
+      "gridPos": { "x": 0, "y": 57, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookDLQSizeHigh\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "WebhookDLQPerTenantHigh (>100)",
+      "gridPos": { "x": 4, "y": 57, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookDLQPerTenantHigh\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "CRITICAL", "color": "red" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "RateLimitedSpike",
+      "gridPos": { "x": 8, "y": 57, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookRateLimitedSpikePerTenant\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "SignatureDurationHigh",
+      "gridPos": { "x": 12, "y": 57, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookSignatureComputeDurationHigh\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "RateLimitBlockedManyTenants",
+      "gridPos": { "x": 16, "y": 57, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookRateLimitBlockedAcrossManyTenants\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "PAGE", "color": "red" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "DuplicateSkipRateHigh",
+      "gridPos": { "x": 20, "y": 57, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookDuplicateSkipRateHigh\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "INFO", "color": "blue" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }] }
+        }
+      }
+    }
+  ]
+}

@@ -292,10 +292,15 @@ class CheckSchemaCompatibilityValidationTest(DQTestBase):
         super().setUp()
         self.rules = DQBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
+        # UUID-suffixed fixtures: (tenant, name) is unique for files and
+        # asset keys are unique per tenant — static names collide when the
+        # shared --reuse-db harness leaves prior rows visible.
+        _suffix = uuid.uuid4().hex[:8]
+
         # Create dataset with schema
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{_suffix}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -304,11 +309,11 @@ class CheckSchemaCompatibilityValidationTest(DQTestBase):
         # Create file for dataset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{_suffix}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
-            storage_path=f"{self.tenant.id}/test.csv",
+            storage_path=f"{self.tenant.id}/test-{_suffix}.csv",
             created_by=self.user,
         )
 
@@ -466,7 +471,7 @@ class CheckResourceValidationTest(DQTestBase):
         # Create asset and dataset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -475,7 +480,7 @@ class CheckResourceValidationTest(DQTestBase):
         # Create file for dataset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -614,7 +619,7 @@ class DQCheckConfigurationValidationIntegrationTest(DQTestBase):
         # Create asset and dataset with schema
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -623,7 +628,7 @@ class DQCheckConfigurationValidationIntegrationTest(DQTestBase):
         # Create file for dataset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -754,7 +759,7 @@ class DQRunExecutionValidationTest(DQTestBase):
         # Create asset and dataset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -1145,7 +1150,7 @@ class DQRunExecutionIntegrationTest(DQTestBase):
         # Create asset, dataset, file, and job
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -1153,7 +1158,7 @@ class DQRunExecutionIntegrationTest(DQTestBase):
 
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             storage_path="s3://bucket/test.csv",
@@ -1227,7 +1232,7 @@ class ScorecardCalculationValidationTest(DQTestBase):
         # Create asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -1432,7 +1437,7 @@ class ScorecardUpdateTriggersValidationTest(DQTestBase):
         # Create asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -1511,7 +1516,7 @@ class ScorecardCalculationValidationIntegrationTest(DQTestBase):
         # Create asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,

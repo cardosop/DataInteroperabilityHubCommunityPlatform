@@ -39,12 +39,12 @@ class TestTokenRefreshRace:
         def fake_refresh():
             refresh_count[0] += 1
             # Simulate network delay
-            time.sleep(0.01)  # noqa: sleep-needed — test timing requirement
+            time.sleep(0.01)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             config.get_access_token.return_value = _make_jwt_token(3600)
             return True
 
         auth = AuthManager(config_instance=config)
-        auth.refresh_access_token = fake_refresh  # type: ignore[method-assign]
+        auth.refresh_access_token = fake_refresh
 
         def worker(results: list[bool]):
             ok = auth.ensure_authenticated()
@@ -76,7 +76,7 @@ class TestTokenRefreshRace:
             return False  # Always fails
 
         auth = AuthManager(config_instance=config)
-        auth.refresh_access_token = fake_refresh  # type: ignore[method-assign]
+        auth.refresh_access_token = fake_refresh
 
         # First call: detects expiry, attempts refresh, fails
         result1 = auth.ensure_authenticated()
@@ -112,12 +112,25 @@ class TestJWTExpiryEdgeCases:
         assert AuthManager._is_token_expired(token, buffer_seconds=10)
 
     @pytest.mark.integration
-    def test_garbage_token(self):
-        assert AuthManager._is_token_expired("not-a-jwt")
+    def test_garbage_token_is_treated_as_opaque(self):
+        """A dotless token is opaque (e.g. an API key), not an expired JWT.
+
+        ``_is_token_expired`` is a client-side freshness hint, not a
+        security boundary: anything it cannot inspect is passed through
+        for the server to reject.  Reporting "expired" here would make the
+        CLI attempt a refresh on every API-key call.  Matches
+        ``test_auth.py::test_opaque_token_not_expired``.
+        """
+        assert AuthManager._is_token_expired("not-a-jwt") is False
 
     @pytest.mark.integration
-    def test_no_exp_claim(self):
+    def test_no_exp_claim_never_expires(self):
+        """A JWT carrying no ``exp`` claim has no expiry to be past.
+
+        Matches ``test_auth.py``, which asserts ``is False`` for payloads
+        with no ``exp``.
+        """
         payload = {"sub": "user1"}
         encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
         token = f"h.{encoded}.sig"
-        assert AuthManager._is_token_expired(token)
+        assert AuthManager._is_token_expired(token) is False

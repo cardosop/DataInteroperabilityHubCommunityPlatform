@@ -10,6 +10,8 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useState } from 'react';
+import { DatasetVersionDiffView } from './DatasetVersionDiffView';
+import type { DatasetVersionCompareResult } from '../../../shared/types/datasets';
 import './DatasetVersionsPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -21,9 +23,7 @@ export function DatasetVersionsPage() {
   const [compareMode, setCompareMode] = useState(false);
   const [version1, setVersion1] = useState<string>('');
   const [version2, setVersion2] = useState<string>('');
-  const [comparison, setComparison] = useState<{
-    differences: Array<{ field: string; version1_value: unknown; version2_value: unknown }>;
-  } | null>(null);
+  const [comparison, setComparison] = useState<DatasetVersionCompareResult | null>(null);
   const [isComparing, setIsComparing] = useState(false);
 
   const handleCompare = async () => {
@@ -80,7 +80,8 @@ export function DatasetVersionsPage() {
         <h1>Dataset Versions</h1>
         <Button
  onClick={() => setCompareMode(!compareMode)}
- variant="secondary">
+ variant="secondary"
+ data-testid="dataset-version-compare-toggle">
           {compareMode ? 'View All' : 'Compare Versions'}
         </Button>
       </div>
@@ -89,19 +90,27 @@ export function DatasetVersionsPage() {
         <div className="version-compare">
           <h2>Compare Versions</h2>
           <div className="compare-controls">
-            <select value={version1} onChange={(e) => setVersion1(e.target.value)}>
+            <select
+              value={version1}
+              onChange={(e) => setVersion1(e.target.value)}
+              data-testid="dataset-version-compare-select-1"
+            >
               <option value="">Select version 1</option>
               {versions.map((v) => (
-                <option key={v.version} value={v.version}>
+                <option key={v.id} value={v.id}>
                   {v.version}
                 </option>
               ))}
             </select>
             <span>vs</span>
-            <select value={version2} onChange={(e) => setVersion2(e.target.value)}>
+            <select
+              value={version2}
+              onChange={(e) => setVersion2(e.target.value)}
+              data-testid="dataset-version-compare-select-2"
+            >
               <option value="">Select version 2</option>
               {versions.map((v) => (
-                <option key={v.version} value={v.version}>
+                <option key={v.id} value={v.id}>
                   {v.version}
                 </option>
               ))}
@@ -109,37 +118,20 @@ export function DatasetVersionsPage() {
             <Button
  onClick={handleCompare}
  disabled={!version1 || !version2 || isComparing}
- variant="primary">
+ variant="primary"
+ data-testid="dataset-version-compare-submit">
               {isComparing ? 'Comparing...' : 'Compare'}
             </Button>
           </div>
 
           {comparison && (
-            <div className="comparison-results">
-              <h3>Differences</h3>
-              {comparison.differences.length === 0 ? (
-                <p>No differences found.</p>
-              ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Field</th>
-                      <th>Version 1</th>
-                      <th>Version 2</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {comparison.differences.map((diff: { field: string; version1_value: unknown; version2_value: unknown }, idx: number) => (
-                      <tr key={idx}>
-                        <td>{diff.field}</td>
-                        <td>{String(diff.version1_value)}</td>
-                        <td>{String(diff.version2_value)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            <DatasetVersionDiffView
+              compatibilityLevel={comparison.compatibility_level}
+              summary={comparison.summary}
+              changes={comparison.changes}
+              version1Label={comparison.version1.version}
+              version2Label={comparison.version2.version}
+            />
           )}
         </div>
       ) : (

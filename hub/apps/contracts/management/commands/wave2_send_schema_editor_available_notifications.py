@@ -200,7 +200,7 @@ class Command(BaseCommand):
                 )
                 skipped_no_admin += 1
                 continue
-            except Exception as exc:  # pragma: no cover — operator visibility
+            except Exception as exc:
                 self.stdout.write(
                     self.style.ERROR(f"  [failed] {tenant_label}: {type(exc).__name__}: {exc}")
                 )
@@ -333,7 +333,7 @@ class Command(BaseCommand):
                 resource_id=str(tenant.id),
                 details={"phase": "227.W2.3"},
             )
-        except Exception as exc:  # pragma: no cover — audit best-effort
+        except Exception as exc:
             self.stdout.write(
                 self.style.WARNING(
                     f"  [warn] failed to record audit row for "

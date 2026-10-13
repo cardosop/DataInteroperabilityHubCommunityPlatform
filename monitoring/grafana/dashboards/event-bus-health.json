@@ -1,0 +1,341 @@
+{
+  "title": "Event Bus Health",
+  "tags": [
+    "hub",
+    "event-bus",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Event Bus Health Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "event_bus_health_status",
+          "legendFormat": "Health Status"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "Healthy",
+                  "color": "green"
+                },
+                "0": {
+                  "text": "Unhealthy",
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Redis Connection Pool Utilization",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "event_bus_redis_pool_utilization_percent",
+          "legendFormat": "Pool Utilization"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 70,
+                "color": "yellow"
+              },
+              {
+                "value": 90,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Redis Latency",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "event_bus_redis_latency_ms",
+          "legendFormat": "Latency (ms)"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 4,
+      "title": "Event Publish Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(event_published_total[5m])) by (event_type, status)",
+          "legendFormat": "{{event_type}} {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      }
+    },
+    {
+      "id": 5,
+      "title": "Event Publish Failure Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(event_publish_failed_total[5m])) by (event_type, error_type)",
+          "legendFormat": "{{event_type}} {{error_type}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      }
+    },
+    {
+      "id": 6,
+      "title": "Event Publish Latency (P95)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(event_publish_duration_seconds_bucket[5m])) by (event_type, le))",
+          "legendFormat": "{{event_type}} P95"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      }
+    },
+    {
+      "id": 7,
+      "title": "Event Consumption Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(event_consumed_total[5m])) by (event_type, subscriber_name, status)",
+          "legendFormat": "{{event_type}} {{subscriber_name}} {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      }
+    },
+    {
+      "id": 8,
+      "title": "Event Consumption Failure Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(event_consume_failed_total[5m])) by (event_type, subscriber_name, error_type)",
+          "legendFormat": "{{event_type}} {{subscriber_name}} {{error_type}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      }
+    },
+    {
+      "id": 9,
+      "title": "Event Processing Latency (P95)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(event_processing_duration_seconds_bucket[5m])) by (event_type, subscriber_name, le))",
+          "legendFormat": "{{event_type}} {{subscriber_name}} P95"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      }
+    },
+    {
+      "id": 10,
+      "title": "Dead Letter Queue Size",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(event_dlq_size) by (event_type, subscriber_name)",
+          "legendFormat": "{{event_type}} {{subscriber_name}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      }
+    },
+    {
+      "id": 11,
+      "title": "DLQ Growth Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(event_dlq_events_total[5m])) by (event_type, subscriber_name, error_type)",
+          "legendFormat": "{{event_type}} {{subscriber_name}} {{error_type}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      }
+    },
+    {
+      "id": 12,
+      "title": "Active Subscriptions",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(event_subscriptions_active) by (subscriber_name)",
+          "legendFormat": "{{subscriber_name}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      }
+    },
+    {
+      "id": 13,
+      "title": "Redis Connection Errors",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(event_bus_redis_connection_errors_total[5m])) by (error_type)",
+          "legendFormat": "{{error_type}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      }
+    },
+    {
+      "id": 14,
+      "title": "Event Handler Retry Count",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(event_handler_retry_count_bucket[5m])) by (event_type, subscriber_name, le))",
+          "legendFormat": "{{event_type}} {{subscriber_name}} P95"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      }
+    },
+    {
+      "id": 15,
+      "title": "Connection Pool Statistics",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "event_bus_redis_pool_created_connections",
+          "format": "table",
+          "legendFormat": "Created"
+        },
+        {
+          "expr": "event_bus_redis_pool_available_connections",
+          "format": "table",
+          "legendFormat": "Available"
+        },
+        {
+          "expr": "event_bus_redis_pool_in_use_connections",
+          "format": "table",
+          "legendFormat": "In Use"
+        },
+        {
+          "expr": "event_bus_redis_pool_max_connections",
+          "format": "table",
+          "legendFormat": "Max"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      }
+    }
+  ]
+}

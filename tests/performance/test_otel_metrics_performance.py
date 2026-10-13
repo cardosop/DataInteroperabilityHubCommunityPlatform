@@ -14,7 +14,7 @@ import statistics
 import time
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 from hub.apps.observability.otel_metrics import (
     http_requests_total,
@@ -41,8 +41,14 @@ class MetricsOverheadPerformanceTest(TestCase):
             tenant=self.tenant,
         )
 
+    @override_settings(CLAMAV_ENABLED=False)
     def test_metrics_collection_overhead(self):
-        """Test that metrics collection has minimal overhead"""
+        """Test that metrics collection has minimal overhead.
+
+        ClamAV probe disabled: the clamd self-check on slow dev disks
+        adds ~5s of latency per /health/ request, which fails the
+        <100ms P95 target for environmental reasons.
+        """
         # Measure request time with metrics
         latencies = []
         for _i in range(100):
@@ -151,7 +157,7 @@ class MetricsOverheadPerformanceTest(TestCase):
 
         # Query metrics endpoint multiple times
         start_time = time.perf_counter()
-        for i in range(100):
+        for _i in range(100):
             response = self.client.get("/metrics/")
             if response.status_code != 200:
                 break

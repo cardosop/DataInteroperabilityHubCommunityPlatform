@@ -1,7 +1,7 @@
 """
 Event Bus Architecture Decision Documentation Validation Tests
 
-Comprehensive tests to validate that openspec/changes/odps1/design.md Decision 13
+Comprehensive tests to validate that openspec/changes/archive/odps1/design.md Decision 13
 accurately documents the Event Bus Architecture decision with all required sections.
 
 All tests validate against real documentation - no mocks or stubs.
@@ -22,7 +22,7 @@ class EventBusArchitectureDecisionDocumentationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.project_root = Path(__file__).parent.parent.parent
-        self.openspec_path = self.project_root / "openspec" / "changes" / "odps1"
+        self.openspec_path = self.project_root / "openspec" / "changes" / "archive" / "odps1"
         self.design_doc = self.openspec_path / "design.md"
         self.docs_path = self.project_root / "docs"
 
@@ -179,7 +179,8 @@ class EventBusArchitectureDecisionDocumentationTest(TestCase):
             # Find the phase section — fail if missing from the document
             phase_start = content.find(phase)
             self.assertNotEqual(
-                phase_start, -1,
+                phase_start,
+                -1,
                 f"{phase} section not found in design.md",
             )
             # Get next 2000 characters (should contain the phase details)
@@ -194,7 +195,8 @@ class EventBusArchitectureDecisionDocumentationTest(TestCase):
         # Phase 9.7.1.1.4 has Decision instead of Test Results
         phase_4_start = content.find("Phase 9.7.1.1.4")
         self.assertNotEqual(
-            phase_4_start, -1,
+            phase_4_start,
+            -1,
             "Phase 9.7.1.1.4 section not found in design.md",
         )
         if phase_4_start != -1:

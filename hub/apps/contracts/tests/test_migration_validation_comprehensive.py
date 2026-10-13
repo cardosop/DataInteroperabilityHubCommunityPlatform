@@ -14,6 +14,7 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Rollback mechanisms
 """
 
+import contextlib
 import json
 import uuid
 
@@ -519,7 +520,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
     def test_migration_supports_transaction_rollback(self):
         """Test that migration supports transaction rollback."""
 
-        try:
+        def _create_migrate_and_fail():
             with transaction.atomic():
                 # Create contract
                 contract = Contract.objects.create(
@@ -543,9 +544,10 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
 
                 # Simulate error - raise exception to trigger rollback
                 raise ValueError("Simulated error for rollback test")
-        except ValueError:
-            # Transaction should be rolled back
-            pass
+
+        # Transaction should be rolled back
+        with contextlib.suppress(ValueError):
+            _create_migrate_and_fail()
 
         # Verify contract state (should be rolled back or not exist)
         # Depending on when the error occurred

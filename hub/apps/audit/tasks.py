@@ -26,6 +26,19 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
+def _run_with_tenant_context(tenant_id, func):
+    """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
+    names a concrete tenant, else directly.  Phase P.9 — worker code
+    that touches tenant-scoped models must be scoped per the RLS
+    contract (mirrors webhooks/tasks.py)."""
+    if not tenant_id or str(tenant_id) in ("", "__platform__"):
+        return func()
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return func()
+
+
 def _execute_audit_merkle_snapshot_job(job_obj) -> dict:
     """Handler for ``JobType.AUDIT_MERKLE_SNAPSHOT``.
 
@@ -118,10 +131,16 @@ def _execute_audit_permanent_delete_sweep_job(job_obj) -> dict:
     )
 
     try:
-        summary = run_audit_permanent_delete_sweep(
-            dry_run=dry_run,
-            tenant_id=tenant_id,
-            age_threshold_days=age_threshold_days,
+        # Phase P.9 — single-tenant sweeps read/write that tenant's audit
+        # chain, so scope per the RLS contract. Fleet-wide sweeps (tenant
+        # omitted) run unscoped — the sweep functions use the admin alias.
+        summary = _run_with_tenant_context(
+            tenant_id,
+            lambda: run_audit_permanent_delete_sweep(
+                dry_run=dry_run,
+                tenant_id=tenant_id,
+                age_threshold_days=age_threshold_days,
+            ),
         )
     except Exception:
         logger.exception(

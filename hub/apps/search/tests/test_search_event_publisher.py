@@ -7,6 +7,7 @@ All tests use real services and models following engineering best practices.
 
 import uuid
 
+import redis
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -39,15 +40,14 @@ class SearchEventPublisherTest(TestCase):
         # Flush Redis dedup keys so events are persisted fresh each run
         try:
             from hub.apps.core.events.deduplication import (
-                DEDUPLICATION_KEY_PREFIX,
+                clear_all_dedup_namespaces,
                 get_redis_client,
             )
 
             redis_client = get_redis_client()
             if redis_client:
-                for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
-                    redis_client.delete(key)
-        except Exception:
+                clear_all_dedup_namespaces(redis_client)
+        except (ImportError, redis.RedisError):
             pass
 
         self.tenant = Tenant.objects.create(

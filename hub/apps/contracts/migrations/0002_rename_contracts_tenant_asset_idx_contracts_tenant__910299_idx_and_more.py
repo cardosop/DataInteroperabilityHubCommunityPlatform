@@ -31,6 +31,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='contract',
-            constraint=models.UniqueConstraint(condition=models.Q(('asset__isnull', False)), fields=('tenant', 'asset', 'version'), name='unique_contract_version_per_asset'),
+            constraint=models.UniqueConstraint(condition=models.Q(('asset__isnull', False)), fields=['tenant', 'asset', 'version'], name='unique_contract_version_per_asset'),
         ),
     ]

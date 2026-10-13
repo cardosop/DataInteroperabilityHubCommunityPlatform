@@ -12,7 +12,7 @@ class DQRunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DQRun
-        fields = [
+        fields = (
             "id",
             "tenant",
             "asset",
@@ -30,8 +30,8 @@ class DQRunSerializer(serializers.ModelSerializer):
             "completed_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "job",
@@ -44,7 +44,7 @@ class DQRunSerializer(serializers.ModelSerializer):
             "completed_at",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class DQRunCreateSerializer(serializers.Serializer):
@@ -82,7 +82,7 @@ class DQAlertingRuleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DQAlertingRule
-        fields = [
+        fields = (
             "id",
             "tenant",
             "asset_id",
@@ -96,19 +96,28 @@ class DQAlertingRuleSerializer(serializers.ModelSerializer):
             "enabled",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class DQAlertingRuleCreateSerializer(serializers.Serializer):
     """Serializer for creating / updating a DQ alerting rule"""
 
-    asset_id = serializers.UUIDField(required=True, help_text="Asset ID to attach the rule to")
+    asset_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        # Phase 240.4.A contract: a rule without an asset_id is a GLOBAL
+        # rule (DQAlertingRule.asset is nullable; the frontend labels the
+        # field "Asset ID (optional)"). The old required=True contradicted
+        # both and 400'd the alerting-rule CRUD E2E on the create call
+        # (b7 #2: "This field is required.").
+        help_text="Asset ID (optional — global rule when omitted)",
+    )
     name = serializers.CharField(max_length=255, required=False, default="Quality Score Alert")
     description = serializers.CharField(required=False, allow_blank=True, default="")
     metric_type = serializers.CharField(max_length=100, required=False, default="quality_score")
@@ -130,3 +139,23 @@ class DQAlertingRuleCreateSerializer(serializers.Serializer):
     )
     channel_config = serializers.DictField(required=False, default=dict)
     enabled = serializers.BooleanField(required=False, default=True)
+
+    def validate_channel_config(self, value):
+        """W1.13 — SSRF gate on alert-channel URLs at create/update.
+
+        Proven-private targets are rejected; DNS-resolution failure
+        passes (see ssrf_guard.resolve_private_or_none).  The same gate
+        re-runs at deliver time in the alert clients.
+        """
+        from django.conf import settings
+
+        from hub.apps.webhooks.ssrf_guard import resolve_private_or_none
+
+        if not getattr(settings, "DQ_ALERT_SSRF_ENABLED", True):
+            return value
+        url = value.get("url") or value.get("webhook_url")
+        if url and resolve_private_or_none(url):
+            raise serializers.ValidationError(
+                "Alert channel URL targets a private/reserved address (SSRF)."
+            )
+        return value

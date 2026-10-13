@@ -17,7 +17,7 @@ def main():
             for line in f:
                 if "GA" in line and "_enabled" in line:
                     claude_flags += 1
-    except:
+    except (OSError, ValueError):
         claude_flags = 36  # Known count from registry
 
     gap = claude_flags - runbook_count

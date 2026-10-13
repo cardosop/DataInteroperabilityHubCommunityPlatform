@@ -69,7 +69,7 @@ class LineageSubscriptionPagination(CursorPagination):
     cursor_query_param = "cursor"
     ordering = "-created_at"
 
-    def get_page_size(self, request):  # type: ignore[override]  # DRF base signature differs (self, request)
+    def get_page_size(self, request):  # DRF base signature differs (self, request)
         # Accept either "limit" (spec) or "page_size" (alias).
         from rest_framework.pagination import _positive_int
 
@@ -134,7 +134,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
 
     # ----- Create -----
 
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         # Read-permission gate on the source resource — defends against
         # the "subscribe to a contract in another tenant to leak its
         # name" attack.
@@ -185,7 +185,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
 
     # ----- Update -----
 
-    def partial_update(self, request, *args, **kwargs):
+    def partial_update(self, request, *_args, **_kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -215,7 +215,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
             except Contract.DoesNotExist:
                 raise PermissionDenied(
                     "Source contract not visible to this user.",
-                )
+                ) from None
             # Same-tenant: visible.  Cross-tenant: REQ-LIN-F3-003
             # mandates 403.  (Marketplace-entitlement-based cross-tenant
             # read is intentionally NOT a subscription source for v1 —
@@ -235,7 +235,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
             except Asset.DoesNotExist:
                 raise PermissionDenied(
                     "Source asset not visible to this user.",
-                )
+                ) from None
             if str(asset.tenant_id) != str(user_tenant_id):
                 raise PermissionDenied(
                     "Cross-tenant subscription sources are not permitted in F3 v1.",

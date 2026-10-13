@@ -57,7 +57,7 @@ def _prefect_integration_reachable(max_attempts=10, delay_seconds=5) -> bool:
         except requests.exceptions.RequestException:
             pass
         if attempt < max_attempts - 1:
-            time.sleep(delay_seconds)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(delay_seconds)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
     return False
 
 
@@ -214,10 +214,7 @@ class ScheduledExportE2ETest(TestCase):
         response = self.client.get(f"/api/v1/scheduled-exports/{export_id}/runs/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            runs_data = data
-        else:
-            runs_data = data.get("results", [])
+        runs_data = data if isinstance(data, list) else data.get("results", [])
         self.assertGreater(len(runs_data), 0)
         run_data = next((r for r in runs_data if r["id"] == str(run.id)), None)
         self.assertIsNotNone(run_data)

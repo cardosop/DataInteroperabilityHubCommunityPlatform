@@ -6,19 +6,19 @@ Redis-based event bus with PostgreSQL persistence, replay, and dead letter queue
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading as _threading
 import time
 import uuid as _uuid
-from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import redis
 import structlog
 from django.conf import settings
 from django.db import transaction
-from django.db.utils import ProgrammingError
+from django.db.utils import DatabaseError, InterfaceError, ProgrammingError
 from django.utils import timezone
 
 from .acknowledgment import (
@@ -28,6 +28,7 @@ from .acknowledgment import (
     mark_event_processing,
 )
 from .deduplication import (
+    CONSUMER_DEDUP_NAMESPACE,
     check_event_duplicate,
     generate_deduplication_key,
     store_event_id,
@@ -60,6 +61,9 @@ from .persistence_tasks import persist_event_async
 from .retry_policy import get_retry_policy
 from .schema import EventSchema
 from .write_behind import get_write_behind_buffer
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # OpenTelemetry tracing
 try:
@@ -94,6 +98,33 @@ def _validate_optional_uuid(value: str | None, field_name: str) -> None:
         _uuid.UUID(value)
     except (ValueError, AttributeError):
         raise ValueError(f"{field_name} must be a valid UUID or None; got {value!r}") from None
+
+
+def _should_run_after_commit() -> bool:
+    """True when event delivery must defer to ``transaction.on_commit``.
+
+    W4.1 (R2-B4): events must be DELIVERED only after the producing
+    transaction commits — a rollback must not deliver phantom events for
+    data that never existed.  Under the repo's test escape hatch
+    (``EVENT_BUS_FORCE_SYNC_PERSISTENCE``) delivery stays synchronous so
+    TestCase-wrapped suites can observe it (their outer transaction never
+    commits during the test body).  Reads settings at call time so
+    ``override_settings`` in tests works.
+    """
+    from django.conf import settings
+
+    if getattr(settings, "EVENT_BUS_FORCE_SYNC_PERSISTENCE", False):
+        return False
+
+    from django.db import connection
+
+    try:
+        in_atomic_block = connection.in_atomic_block
+    except (DatabaseError, InterfaceError, ProgrammingError):
+        # Broken/teardown connection — deferral is meaningless.
+        return False
+    else:
+        return bool(in_atomic_block)
 
 
 def _run_with_timeout(func, args=(), timeout_seconds=30):
@@ -146,6 +177,15 @@ class EventPublishError(EventBusError):
 
 class EventSubscribeError(EventBusError):
     """Error subscribing to events."""
+
+
+def _raise_validation_error(span, error: str, message: str) -> None:
+    """Record a validation failure on *span* and raise ``EventPublishError``."""
+    if span and _trace_available:
+        span.set_attribute("event.validation_error", error)
+        span.set_status(Status(StatusCode.ERROR, error))
+        span.end()
+    raise EventPublishError(message)
 
 
 class EventBus:
@@ -203,7 +243,7 @@ class EventBus:
 
         try:
             connection.ensure_connection()
-        except Exception:
+        except (DatabaseError, InterfaceError):
             # DB still not ready — re-queue and return
             self._deferred_subscriptions = deferred
             return
@@ -221,7 +261,7 @@ class EventBus:
                     event_type_pattern=sub["event_type_pattern"],
                 )
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "deferred_subscription_flush_failed",
                     subscriber_name=sub["subscriber_name"],
                     event_type_pattern=sub["event_type_pattern"],
@@ -347,11 +387,9 @@ class EventBus:
             if not is_valid:
                 status = "validation_failed"
                 error_type = "validation_error"
-                if span and _trace_available:
-                    span.set_attribute("event.validation_error", error)
-                    span.set_status(Status(StatusCode.ERROR, error))
-                    span.end()
-                raise EventPublishError(f"Invalid event data for {event_type}: {error}")
+                _raise_validation_error(
+                    span, error, f"Invalid event data for {event_type}: {error}"
+                )
 
             # Build event
             event = EventSchema.build_event(
@@ -372,11 +410,7 @@ class EventBus:
             if not is_valid:
                 status = "validation_failed"
                 error_type = "validation_error"
-                if span and _trace_available:
-                    span.set_attribute("event.validation_error", error)
-                    span.set_status(Status(StatusCode.ERROR, error))
-                    span.end()
-                raise EventPublishError(f"Invalid event: {error}")
+                _raise_validation_error(span, error, f"Invalid event: {error}")
 
             event_id = event["event_id"]
 
@@ -387,116 +421,147 @@ class EventBus:
                 if causation_id:
                     span.set_attribute("event.causation_id", causation_id)
 
-            # Check persistence setting dynamically (for test overrides)
-            enable_persistence = getattr(settings, "EVENT_BUS_ENABLE_PERSISTENCE", True)
-            use_async_persistence = getattr(settings, "EVENT_BUS_ASYNC_PERSISTENCE", True)
-            use_write_behind = getattr(settings, "EVENT_BUS_WRITE_BEHIND_ENABLED", False)
+            # W4.1 (R2-B4): inside a transaction, defer delivery to
+            # transaction.on_commit — a rollback must not deliver a phantom
+            # event (no Redis message, no persisted row, no publisher dedup
+            # key) for data that never committed.
+            if _should_run_after_commit():
+                from django.db import transaction
 
-            # Persist event to PostgreSQL (write-behind, async, or sync based on configuration)
-            if enable_persistence:
-                if self.force_sync_persistence:
-                    # Tests: always persist synchronously so Event.objects.get() sees the row
-                    persist_start = time.time()
-                    try:
-                        self._persist_event(event)
-                        persist_duration = time.time() - persist_start
-                        event_persistence_duration_seconds.labels(
-                            event_type=event_type, status="success", tenant_id=tenant_label
-                        ).observe(persist_duration)
-                    except ProgrammingError as persist_error:
-                        persist_duration = time.time() - persist_start
-                        event_persistence_duration_seconds.labels(
-                            event_type=event_type, status="failed", tenant_id=tenant_label
-                        ).observe(persist_duration)
-                        err_str = str(persist_error)
-                        if "does not exist" in err_str or "relation" in err_str.lower():
-                            logger.warning(
-                                "event_persistence_skipped_table_missing",
-                                event_id=event_id,
-                                event_type=event_type,
-                                error=err_str,
-                                message="Events table missing; continuing without persistence",
-                            )
-                        else:
-                            logger.error(
-                                "event_persistence_error",
-                                event_id=event_id,
-                                event_type=event_type,
-                                error=err_str,
-                                exc_info=True,
-                            )
-                            raise
-                    except Exception as persist_error:
-                        persist_duration = time.time() - persist_start
-                        event_persistence_duration_seconds.labels(
-                            event_type=event_type, status="failed", tenant_id=tenant_label
-                        ).observe(persist_duration)
+                transaction.on_commit(lambda: self._deliver_event_deferred(event, event_type))
+                logger.debug(
+                    "event_publish_deferred_to_commit",
+                    event_id=event_id,
+                    event_type=event_type,
+                )
+                if span and _trace_available:
+                    span.set_attribute("event.publish_deferred", True)
+                    span.set_status(Status(StatusCode.OK))
+                    span.end()
+                return event_id
+
+            self._deliver_event(event, event_type, span=span)
+            return event_id
+        except Exception as e:
+            error_type = get_error_type(None, e)
+            status = "failed"
+            publish_duration = time.time() - start_time
+
+            # Record failure metrics
+            event_publish_failed_total.labels(
+                event_type=event_type, error_type=error_type, tenant_id=tenant_label
+            ).inc()
+            event_publish_duration_seconds.labels(
+                event_type=event_type, status=status, tenant_id=tenant_label
+            ).observe(publish_duration)
+
+            if span and _trace_available:
+                span.set_attribute("event.error_type", error_type)
+                span.set_attribute("event.error_message", str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+                span.end()
+
+            logger.error("event_publish_error", event_type=event_type, error=str(e), exc_info=True)
+            raise EventPublishError(f"Failed to publish event: {e}") from e
+        else:
+            return event_id
+
+    def _deliver_event(
+        self,
+        event: dict[str, Any],
+        event_type: str,
+        span=None,
+    ) -> None:
+        """Persist + Redis-publish a built event (the publish() delivery tail).
+
+        W4.1 (R2-B4): runs synchronously on the publish() path, or inside a
+        ``transaction.on_commit`` callback when the publish was deferred.
+        Records the delivery metrics; raises like the pre-refactor publish()
+        on persistence failures (sync mode) so existing callers see them.
+        """
+        event_id = event.get("event_id")
+        tenant_label = get_tenant_id(event.get("source", {}).get("tenant_id"))
+        deliver_start = time.time()
+        status = "success"
+        error_type = None
+        # Check persistence setting dynamically (for test overrides)
+        enable_persistence = getattr(settings, "EVENT_BUS_ENABLE_PERSISTENCE", True)
+        use_async_persistence = getattr(settings, "EVENT_BUS_ASYNC_PERSISTENCE", True)
+        use_write_behind = getattr(settings, "EVENT_BUS_WRITE_BEHIND_ENABLED", False)
+
+        # Persist event to PostgreSQL (write-behind, async, or sync based on configuration)
+        if enable_persistence:
+            if self.force_sync_persistence:
+                # Tests: always persist synchronously so Event.objects.get() sees the row
+                persist_start = time.time()
+                try:
+                    self._persist_event(event)
+                    persist_duration = time.time() - persist_start
+                    event_persistence_duration_seconds.labels(
+                        event_type=event_type, status="success", tenant_id=tenant_label
+                    ).observe(persist_duration)
+                except ProgrammingError as persist_error:
+                    persist_duration = time.time() - persist_start
+                    event_persistence_duration_seconds.labels(
+                        event_type=event_type, status="failed", tenant_id=tenant_label
+                    ).observe(persist_duration)
+                    err_str = str(persist_error)
+                    if "does not exist" in err_str or "relation" in err_str.lower():
+                        logger.warning(
+                            "event_persistence_skipped_table_missing",
+                            event_id=event_id,
+                            event_type=event_type,
+                            error=err_str,
+                            message="Events table missing; continuing without persistence",
+                        )
+                    else:
                         logger.error(
                             "event_persistence_error",
                             event_id=event_id,
                             event_type=event_type,
-                            error=str(persist_error),
+                            error=err_str,
                             exc_info=True,
                         )
                         raise
-                elif use_write_behind:
-                    # Write-behind pattern: buffer events and flush in batches
-                    try:
-                        buffer = get_write_behind_buffer()
-                        buffer.add_event(event)
-                        logger.debug(
-                            "event_persistence_buffered_write_behind",
-                            event_id=event_id,
-                            event_type=event_type,
-                            buffer_size=buffer.get_buffer_size(),
-                        )
-                    except Exception as write_behind_error:
-                        # If write-behind fails, fall back to async persistence
-                        logger.warning(
-                            "event_persistence_write_behind_failed_fallback",
-                            event_id=event_id,
-                            event_type=event_type,
-                            error=str(write_behind_error),
-                            message="Falling back to async persistence",
-                        )
-                        try:
-                            persist_event_async.delay(event)
-                            logger.debug(
-                                "event_persistence_queued_async",
-                                event_id=event_id,
-                                event_type=event_type,
-                            )
-                        except Exception as persist_error:
-                            # If async queue fails, fall back to sync persistence
-                            logger.warning(
-                                "event_persistence_async_failed_fallback",
-                                event_id=event_id,
-                                event_type=event_type,
-                                error=str(persist_error),
-                                message="Falling back to synchronous persistence",
-                            )
-                            persist_start = time.time()
-                            try:
-                                self._persist_event(event)
-                                persist_duration = time.time() - persist_start
-                                event_persistence_duration_seconds.labels(
-                                    event_type=event_type, status="success", tenant_id=tenant_label
-                                ).observe(persist_duration)
-                            except Exception as sync_persist_error:
-                                persist_duration = time.time() - persist_start
-                                event_persistence_duration_seconds.labels(
-                                    event_type=event_type, status="failed", tenant_id=tenant_label
-                                ).observe(persist_duration)
-                                # Don't raise - allow event to be published even if persistence fails
-                                logger.error(
-                                    "event_persistence_sync_failed",
-                                    event_id=event_id,
-                                    event_type=event_type,
-                                    error=str(sync_persist_error),
-                                    exc_info=True,
-                                )
-                elif use_async_persistence:
-                    # Queue async persistence task (non-blocking)
+                except Exception as persist_error:
+                    persist_duration = time.time() - persist_start
+                    event_persistence_duration_seconds.labels(
+                        event_type=event_type, status="failed", tenant_id=tenant_label
+                    ).observe(persist_duration)
+                    logger.error(
+                        "event_persistence_error",
+                        event_id=event_id,
+                        event_type=event_type,
+                        error=str(persist_error),
+                        exc_info=True,
+                    )
+                    raise
+            elif use_write_behind:
+                # Write-behind pattern: buffer events and flush in batches
+                try:
+                    buffer = get_write_behind_buffer()
+                    buffer.add_event(event)
+                    logger.debug(
+                        "event_persistence_buffered_write_behind",
+                        event_id=event_id,
+                        event_type=event_type,
+                        buffer_size=buffer.get_buffer_size(),
+                    )
+                except (
+                    DatabaseError,
+                    InterfaceError,
+                    TypeError,
+                    RuntimeError,
+                ) as write_behind_error:
+                    # If write-behind fails, fall back to async persistence
+                    logger.warning(
+                        "event_persistence_write_behind_failed_fallback",
+                        event_id=event_id,
+                        event_type=event_type,
+                        error=str(write_behind_error),
+                        message="Falling back to async persistence",
+                    )
                     try:
                         persist_event_async.delay(event)
                         logger.debug(
@@ -533,8 +598,24 @@ class EventBus:
                                 error=str(sync_persist_error),
                                 exc_info=True,
                             )
-                else:
-                    # Synchronous persistence (original behavior)
+            elif use_async_persistence:
+                # Queue async persistence task (non-blocking)
+                try:
+                    persist_event_async.delay(event)
+                    logger.debug(
+                        "event_persistence_queued_async",
+                        event_id=event_id,
+                        event_type=event_type,
+                    )
+                except Exception as persist_error:
+                    # If async queue fails, fall back to sync persistence
+                    logger.warning(
+                        "event_persistence_async_failed_fallback",
+                        event_id=event_id,
+                        event_type=event_type,
+                        error=str(persist_error),
+                        message="Falling back to synchronous persistence",
+                    )
                     persist_start = time.time()
                     try:
                         self._persist_event(event)
@@ -542,105 +623,130 @@ class EventBus:
                         event_persistence_duration_seconds.labels(
                             event_type=event_type, status="success", tenant_id=tenant_label
                         ).observe(persist_duration)
-                    except Exception as persist_error:
+                    except Exception as sync_persist_error:
                         persist_duration = time.time() - persist_start
                         event_persistence_duration_seconds.labels(
                             event_type=event_type, status="failed", tenant_id=tenant_label
                         ).observe(persist_duration)
+                        # Don't raise - allow event to be published even if persistence fails
                         logger.error(
-                            "event_persistence_error",
+                            "event_persistence_sync_failed",
                             event_id=event_id,
                             event_type=event_type,
-                            error=str(persist_error),
+                            error=str(sync_persist_error),
                             exc_info=True,
                         )
-                        # Re-raise when persistence is enabled so callers (e.g. tests) see the error
-                        if enable_persistence:
-                            raise
+            else:
+                # Synchronous persistence (original behavior)
+                persist_start = time.time()
+                try:
+                    self._persist_event(event)
+                    persist_duration = time.time() - persist_start
+                    event_persistence_duration_seconds.labels(
+                        event_type=event_type, status="success", tenant_id=tenant_label
+                    ).observe(persist_duration)
+                except Exception as persist_error:
+                    persist_duration = time.time() - persist_start
+                    event_persistence_duration_seconds.labels(
+                        event_type=event_type, status="failed", tenant_id=tenant_label
+                    ).observe(persist_duration)
+                    logger.error(
+                        "event_persistence_error",
+                        event_id=event_id,
+                        event_type=event_type,
+                        error=str(persist_error),
+                        exc_info=True,
+                    )
+                    # Re-raise when persistence is enabled so callers (e.g. tests) see the error
+                    if enable_persistence:
+                        raise
 
-            # Publish to Redis
-            channel = self._get_channel(event_type)
-            event_json = json.dumps(event)
+        # Publish to Redis
+        channel = self._get_channel(event_type)
+        event_json = json.dumps(event)
 
-            redis_start = time.time()
-            try:
-                self.redis_client.publish(channel, event_json)
-                redis_latency = time.time() - redis_start
-                event_publish_redis_latency_seconds.labels(
-                    event_type=event_type, tenant_id=tenant_label
-                ).observe(redis_latency)
+        redis_start = time.time()
+        try:
+            self.redis_client.publish(channel, event_json)
+            redis_latency = time.time() - redis_start
+            event_publish_redis_latency_seconds.labels(
+                event_type=event_type, tenant_id=tenant_label
+            ).observe(redis_latency)
 
-                logger.info(
-                    "event_published",
-                    event_id=event_id,
-                    event_type=event_type,
-                    channel=channel,
-                    tenant_id=tenant_id,
-                )
-            except Exception as e:
-                redis_latency = time.time() - redis_start
-                error_type = get_error_type(None, e)
-                event_bus_redis_publish_errors_total.labels(
-                    event_type=event_type, error_type=error_type, tenant_id=tenant_label
-                ).inc()
-
-                # Redis publish failures are operational events — the system
-                # gracefully falls back to DB persistence.  WARNING keeps CI
-                # output clean while still recording the event.
-                logger.warning(
-                    "event_publish_redis_error",
-                    event_id=event_id,
-                    event_type=event_type,
-                    error=str(e),
-                )
-                # If persistence is enabled, persist event even if Redis publish fails
-                # This ensures events are not lost when Redis is unavailable
-                if enable_persistence:
-                    # Event already persisted above, so we just log the Redis failure
-                    status = "redis_failed_persisted"
-                else:
-                    # If persistence is disabled and Redis fails, we can't recover
-                    status = "redis_failed"
-                    raise EventPublishError(f"Failed to publish event to Redis: {e}")
-
-            # Record success metrics
-            publish_duration = time.time() - start_time
-            event_published_total.labels(
-                event_type=event_type, status=status, tenant_id=tenant_label
-            ).inc()
-            event_publish_duration_seconds.labels(
-                event_type=event_type, status=status, tenant_id=tenant_label
-            ).observe(publish_duration)
-
-            if span and _trace_available:
-                span.set_attribute("event.publish_duration_seconds", publish_duration)
-                span.set_status(Status(StatusCode.OK))
-                span.end()
-
-            return event_id
-
-        except Exception as e:
+            logger.info(
+                "event_published",
+                event_id=event_id,
+                event_type=event_type,
+                channel=channel,
+                tenant_id=tenant_label,
+            )
+        except redis.RedisError as e:
+            redis_latency = time.time() - redis_start
             error_type = get_error_type(None, e)
-            status = "failed"
-            publish_duration = time.time() - start_time
-
-            # Record failure metrics
-            event_publish_failed_total.labels(
+            event_bus_redis_publish_errors_total.labels(
                 event_type=event_type, error_type=error_type, tenant_id=tenant_label
             ).inc()
-            event_publish_duration_seconds.labels(
-                event_type=event_type, status=status, tenant_id=tenant_label
-            ).observe(publish_duration)
 
-            if span and _trace_available:
-                span.set_attribute("event.error_type", error_type)
-                span.set_attribute("event.error_message", str(e))
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                span.end()
+            # Redis publish failures are operational events — the system
+            # gracefully falls back to DB persistence.  WARNING keeps CI
+            # output clean while still recording the event.
+            logger.warning(
+                "event_publish_redis_error",
+                event_id=event_id,
+                event_type=event_type,
+                error=str(e),
+            )
+            # If persistence is enabled, persist event even if Redis publish fails
+            # This ensures events are not lost when Redis is unavailable
+            if enable_persistence:
+                # Event already persisted above, so we just log the Redis failure
+                status = "redis_failed_persisted"
+            else:
+                # If persistence is disabled and Redis fails, we can't recover
+                status = "redis_failed"
+                raise EventPublishError(f"Failed to publish event to Redis: {e}") from None
 
-            logger.error("event_publish_error", event_type=event_type, error=str(e), exc_info=True)
-            raise EventPublishError(f"Failed to publish event: {e}") from e
+        # Record success metrics
+        publish_duration = time.time() - deliver_start
+        event_published_total.labels(
+            event_type=event_type, status=status, tenant_id=tenant_label
+        ).inc()
+        event_publish_duration_seconds.labels(
+            event_type=event_type, status=status, tenant_id=tenant_label
+        ).observe(publish_duration)
+
+        if span and _trace_available:
+            span.set_attribute("event.publish_duration_seconds", publish_duration)
+            span.set_status(Status(StatusCode.OK))
+            span.end()
+
+    def _deliver_event_deferred(self, event: dict[str, Any], event_type: str) -> None:
+        """Run :meth:`_deliver_event` inside an ``on_commit`` callback.
+
+        on_commit callbacks fire AFTER the transaction commits — an
+        exception here must not fail the request that already committed,
+        so failures are logged + metered instead of raised (the delivery
+        contract stays fail-open, same as the synchronous Redis-failure
+        path).
+        """
+        event_id = event.get("event_id")
+        try:
+            self._deliver_event(event, event_type)
+        except Exception as exc:
+            error_type = get_error_type(None, exc)
+            tenant_label = get_tenant_id(event.get("source", {}).get("tenant_id"))
+            event_publish_failed_total.labels(
+                event_type=event_type,
+                error_type=error_type,
+                tenant_id=tenant_label,
+            ).inc()
+            logger.error(
+                "event_publish_deferred_delivery_failed",
+                event_id=event_id,
+                event_type=event_type,
+                error=str(exc),
+                exc_info=True,
+            )
 
     def _persist_event(self, event: dict[str, Any]) -> Event:
         """
@@ -720,26 +826,28 @@ class EventBus:
             else:
                 connection.ensure_connection()
                 db_available = True
-        except Exception:
+        except (DatabaseError, InterfaceError):
             db_available = False
 
         status = "success"
         try:
             # Register subscription in database (skip if database not available)
             if db_available:
-                _subscription, created = EventSubscription.objects.update_or_create(
+                _subscription, _created = EventSubscription.objects.update_or_create(
                     subscriber_name=subscriber_name,
                     event_type_pattern=event_type_pattern,
                     defaults={"is_active": is_active},
                 )
             elif apps_not_ready:
                 # App registry not populated yet — store for later flush
-                self._deferred_subscriptions.append({
-                    "subscriber_name": subscriber_name,
-                    "event_type_pattern": event_type_pattern,
-                    "handler": handler,
-                    "is_active": is_active,
-                })
+                self._deferred_subscriptions.append(
+                    {
+                        "subscriber_name": subscriber_name,
+                        "event_type_pattern": event_type_pattern,
+                        "handler": handler,
+                        "is_active": is_active,
+                    }
+                )
                 logger.debug(
                     "event_subscription_deferred",
                     subscriber_name=subscriber_name,
@@ -912,18 +1020,18 @@ class EventBus:
                             # Increment queue depth when event is marked pending
                             tenant_id = event.get("source", {}).get("tenant_id")
                             tenant_label = get_tenant_id(tenant_id)
-                            try:
+                            with contextlib.suppress(
+                                Exception
+                            ):  # metric update must never break event handling
                                 event_queue_depth.labels(
                                     event_type=event_type,
                                     subscriber_name=subscriber_name,
                                     tenant_id=tenant_label,
                                 ).inc()
-                            except Exception:
-                                pass  # Fail silently if metric update fails
 
                         self._handle_event(subscriber_name, event, handler)
                 except json.JSONDecodeError as e:
-                    logger.error(
+                    logger.exception(
                         "event_decode_error",
                         subscriber_name=subscriber_name,
                         error=str(e),
@@ -956,7 +1064,7 @@ class EventBus:
                     try:
                         event = json.loads(message["data"])
                         self._send_to_dlq(subscriber_name, event, str(e))
-                    except:
+                    except json.JSONDecodeError:
                         pass
 
     def _matches_pattern(self, subscriber_name: str, event_type: str) -> bool:
@@ -985,10 +1093,11 @@ class EventBus:
                 elif pattern == event_type:
                     return True
 
-            return False
-        except Exception:
+        except (DatabaseError, InterfaceError):
             # If database query fails, return False (fail closed)
             return False
+
+        return False
 
     def _handle_event(
         self,
@@ -1015,8 +1124,17 @@ class EventBus:
         if event_id:
             mark_event_processing(event_id, subscriber_name, redis_client=self.redis_client)
 
-        # Check deduplication before processing
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        # Check deduplication before processing.  W4.1 (R2-B3): the
+        # consumer key lives in its OWN namespace
+        # (``event:cons:{subscriber}:{type}:{hash}``) — the publisher's
+        # ``event:sent:*`` key must never trip this check (self-dedup),
+        # and each subscriber tracks its own consumption state.
+        deduplication_key = generate_deduplication_key(
+            event_type,
+            event_data,
+            namespace=CONSUMER_DEDUP_NAMESPACE,
+            subscriber=subscriber_name,
+        )
         is_duplicate, existing_event_id = check_event_duplicate(
             deduplication_key, redis_client=self.redis_client
         )
@@ -1113,7 +1231,7 @@ class EventBus:
                                 subscriber_name=subscriber_name,
                                 tenant_id=tenant_label,
                             ).observe(latency_seconds)
-                    except Exception as e:
+                    except (AttributeError, TypeError, ValueError, OverflowError) as e:
                         logger.debug(
                             "event_latency_calculation_failed", event_id=event_id, error=str(e)
                         )
@@ -1133,14 +1251,14 @@ class EventBus:
                     )
 
                     # Decrement queue depth when event is acknowledged
-                    try:
+                    with contextlib.suppress(
+                        Exception
+                    ):  # metric update must never break event handling
                         event_queue_depth.labels(
                             event_type=event_type,
                             subscriber_name=subscriber_name,
                             tenant_id=tenant_label,
                         ).dec()
-                    except Exception:
-                        pass  # Fail silently if metric update fails
 
                 # Record success metrics
                 event_consumed_total.labels(
@@ -1179,7 +1297,6 @@ class EventBus:
                     event_type=event_type,
                     deduplication_key=deduplication_key,
                 )
-                return  # success — exit loop
             except Exception as e:
                 processing_duration = time.time() - start_time
                 error_type = get_error_type(None, e)
@@ -1201,14 +1318,14 @@ class EventBus:
 
                 # Decrement queue depth on failure (event will be retried or sent to DLQ)
                 if event_id:
-                    try:
+                    with contextlib.suppress(
+                        Exception
+                    ):  # metric update must never break event handling
                         event_queue_depth.labels(
                             event_type=event_type,
                             subscriber_name=subscriber_name,
                             tenant_id=tenant_label,
                         ).dec()
-                    except Exception:
-                        pass  # Fail silently if metric update fails
 
                 logger.error(
                     "event_handler_failed",
@@ -1237,14 +1354,14 @@ class EventBus:
                     ).inc()
 
                     # Increment queue depth for retry
-                    try:
+                    with contextlib.suppress(
+                        Exception
+                    ):  # metric update must never break event handling
                         event_queue_depth.labels(
                             event_type=event_type,
                             subscriber_name=subscriber_name,
                             tenant_id=tenant_label,
                         ).inc()
-                    except Exception:
-                        pass  # Fail silently if metric update fails
 
                     # Calculate delay using retry policy
                     delay = retry_policy.calculate_delay(attempt)
@@ -1276,6 +1393,8 @@ class EventBus:
                     # Send to dead letter queue
                     self._send_to_dlq(subscriber_name, event, str(e), attempt)
                     return
+            else:
+                return  # success — exit loop
 
     def _send_to_dlq(
         self,
@@ -1322,12 +1441,10 @@ class EventBus:
             ).inc()
 
             # Decrement queue depth when event is sent to DLQ
-            try:
+            with contextlib.suppress(Exception):  # metric update must never break event handling
                 event_queue_depth.labels(
                     event_type=event_type, subscriber_name=subscriber_name, tenant_id=tenant_label
                 ).dec()
-            except Exception:
-                pass  # Fail silently if metric update fails
 
             logger.warning(
                 "event_sent_to_dlq",
@@ -1410,11 +1527,11 @@ class EventBus:
                 "events_replayed", count=len(result), event_type=event_type, tenant_id=tenant_id
             )
 
-            return result
-
         except Exception as e:
             logger.error("event_replay_error", error=str(e), exc_info=True)
             raise EventBusError(f"Failed to replay events: {e}") from e
+        else:
+            return result
 
     def cleanup_acknowledgment_timeouts(self, subscriber_name: str) -> int:
         """

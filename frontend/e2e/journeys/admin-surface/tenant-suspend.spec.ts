@@ -55,7 +55,7 @@ test.describe('226.G3 — Tenant suspend / reactivate @critical @admin @e6-depen
       admin = await getPlatformAdminUser();
     } catch (err) {
       test.skip(
-        true,
+        !!err,
         `No platform admin available (${(err as Error).message}). Run ensure_e2e_user_roles.`,
       );
       return;
@@ -78,7 +78,7 @@ test.describe('226.G3 — Tenant suspend / reactivate @critical @admin @e6-depen
     );
     if (!disposableRes.ok()) {
       test.skip(
-        true,
+        !disposableRes.ok(),
         `E6 disposable-tenant endpoint unreachable (${disposableRes.status()}). ` +
           `Per 226.OQ4 / E6 status, this endpoint is not yet on staging. ` +
           `Spec will run end-to-end as soon as the backend stand-up lands.`,

@@ -235,11 +235,13 @@ def _send_completion_or_failure_notification(run: ScheduledIngestionRun, status:
     if not source_config.get("send_notifications", True):
         return
     recipients = source_config.get("notification_recipients", [])
-    if not recipients and scheduled_ingestion.created_by_id:
-        if scheduled_ingestion.created_by and getattr(
-            scheduled_ingestion.created_by, "email", None
-        ):
-            recipients = [scheduled_ingestion.created_by.email]
+    if (
+        not recipients
+        and scheduled_ingestion.created_by_id
+        and scheduled_ingestion.created_by
+        and getattr(scheduled_ingestion.created_by, "email", None)
+    ):
+        recipients = [scheduled_ingestion.created_by.email]
     if not recipients:
         return
 

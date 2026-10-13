@@ -52,7 +52,8 @@ def _run_pytest(out_dir: Path, test_path: Path, extra_args: list[str]) -> int:
         "--no-header",
         "--tb=short",
         str(test_path),
-    ] + list(extra_args)
+        *list(extra_args),
+    ]
     result = subprocess.run(cmd, check=False, env=env, cwd=REPO_ROOT)
     return result.returncode
 

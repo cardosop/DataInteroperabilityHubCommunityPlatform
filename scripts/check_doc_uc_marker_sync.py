@@ -51,20 +51,29 @@ SCAN_DIRS = [
 
 
 def _extract_doc_uc_ids(doc_path: Path) -> set[str]:
-    """Extract all UC-XXX-NNN from the canonical use cases doc."""
+    """Extract all UC IDs from the canonical use cases doc.
+
+    close-test-coverage-gaps 6.1 — the numeric suffix is now OPTIONAL:
+    UC-DS-EDIT and UC-FILE-UPLOAD (multi-segment, no trailing number)
+    were invisible to the old pattern. ``UC-XXX`` (the docs' own "how
+    to add" template token) is excluded — it is not a real UC ID.
+    """
     if not doc_path.exists():
         return set()
     content = doc_path.read_text()
-    # Match: UC-XXX-NNN, UC-XXX-XXX-NNN, UC-XXX-XXX-XXX-NNN
-    return set(re.findall(r"UC-[A-Z]+(?:-[A-Z]+)*-\d+[A-Z]?", content))
+    # Match: UC-XXX, UC-XXX-NNN, UC-XXX-XXX-NNN, UC-XXX-XXX-XXX-NNN…
+    ids = set(re.findall(r"UC-[A-Z]+(?:-[A-Z]+)*(?:-\d+[A-Z]?)?", content))
+    return {ucid for ucid in ids if ucid != "UC-XXX"}
 
 
 def _extract_critical_uc_ids(yaml_path: Path) -> set[str]:
-    """Extract UC-XXX-NNN from the critical YAML registry."""
+    """Extract UC IDs from the critical YAML registry (same widened
+    shape as the doc extractor — see close-test-coverage-gaps 6.1)."""
     if not yaml_path.exists():
         return set()
     content = yaml_path.read_text()
-    return set(re.findall(r"UC-[A-Z]+(?:-[A-Z]+)*-\d+[A-Z]?", content))
+    ids = set(re.findall(r"UC-[A-Z]+(?:-[A-Z]+)*(?:-\d+[A-Z]?)?", content))
+    return {ucid for ucid in ids if ucid != "UC-XXX"}
 
 
 def _extract_marked_uc_ids(scan_dirs: list[Path]) -> set[str]:
@@ -86,10 +95,10 @@ def _extract_marked_uc_ids(scan_dirs: list[Path]) -> set[str]:
                 try:
                     with open(filepath, encoding="utf-8", errors="ignore") as fh:
                         content = fh.read()
-                except Exception:
+                except OSError:
                     continue
                 for match in re.finditer(
-                    r'(?:pytest\.mark\.uc|@pytest\.mark\.uc)\s*\(\s*["\'](UC-[A-Z]+(?:-[A-Z]+)*-\d+[A-Z]?)["\']',
+                    r'(?:pytest\.mark\.uc|@pytest\.mark\.uc)\s*\(\s*["\'](UC-[A-Z]+(?:-[A-Z]+)*(?:-\d+[A-Z]?)?)["\']',
                     content,
                 ):
                     marked.add(match.group(1))
@@ -97,13 +106,16 @@ def _extract_marked_uc_ids(scan_dirs: list[Path]) -> set[str]:
 
 
 def _extract_frontend_uc_ids(uc_dir: Path) -> set[str]:
-    """Extract UC-XXX-NNN from frontend use-case spec filenames."""
+    """Extract UC IDs from frontend use-case spec filenames
+    (close-test-coverage-gaps 6.1 — multi-segment shapes like
+    UC-MKT-LINEAGE-001 and UC-LIN-FIELD-EDIT-001 were invisible to the
+    old single-segment pattern)."""
     ids: set[str] = set()
     if not uc_dir.is_dir():
         return ids
     for _root, _dirs, files in os.walk(uc_dir):
         for f in files:
-            match = re.match(r"(UC-[A-Z]+-\d+[A-Z]?)\.spec\.ts$", f)
+            match = re.match(r"(UC-[A-Z]+(?:-[A-Z]+)*(?:-\d+[A-Z]?)?)\.spec\.ts$", f)
             if match:
                 ids.add(match.group(1))
     return ids

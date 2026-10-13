@@ -1,4 +1,4 @@
-"""Phase 87 – SQL injection prevention tests.
+"""Phase 87 - SQL injection prevention tests.
 
 Verifies that ``VirtualizationService._normalise_query_params()`` and
 ``_normalise_query_params_named()`` correctly parameterise user-supplied

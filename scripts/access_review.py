@@ -41,7 +41,7 @@ def main():
         try:
             with open(prev_path) as f:
                 prev = json.load(f)
-        except:
+        except (OSError, ValueError):  # missing/corrupt previous-run file
             prev = {}
         evidence["diff_from"] = os.path.basename(prev_path)
         evidence["new_users"] = len(evidence["users"]) - len(prev.get("users", []))

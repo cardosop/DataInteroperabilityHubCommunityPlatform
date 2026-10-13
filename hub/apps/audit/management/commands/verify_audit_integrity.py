@@ -91,7 +91,7 @@ def run_integrity_verification(
     # ── Resolve tenant ────────────────────────────────────────────────────
     if tenant_id is None:
         # Find a tenant with audit events, or fall back to creating test data
-        event = AuditEvent.objects.order_by("created_at").first()
+        event = AuditEvent.objects.order_by("timestamp").first()
         if event is not None and event.tenant_id:
             tenant_id = str(event.tenant_id)
         else:
@@ -199,7 +199,7 @@ def _create_ci_smoke_test_events(tenant_id: str, count: int, now) -> None:
         )
 
 
-def _create_ci_snapshot(tenant_id: str, events: list[AuditEvent], now) -> None:
+def _create_ci_snapshot(tenant_id: str, events: list[AuditEvent], _now) -> None:
     """Create a single Merkle snapshot covering all *events*."""
     if not events:
         return
@@ -277,8 +277,15 @@ class Command(BaseCommand):
         self.stdout.write("Creating 10 synthetic events for tamper test...")
         run_integrity_verification(create_test_data=True, include_snapshots=False)
 
-        # 2. Pick the most recent event and tamper its chain_hash
-        event = AuditEvent.objects.order_by("-timestamp").first()
+        # 2. Pick the most recent SMOKE event and tamper its chain_hash
+        # (12.8 root-cause fix: the smoke events carry BACKDATED
+        # timestamps, so the latest event overall was usually a REAL
+        # row — the previous version corrupted real audit rows).
+        event = (
+            AuditEvent.all_objects.filter(action="AUDIT_INTEGRITY_SMOKE_TEST")
+            .order_by("-timestamp")
+            .first()
+        )
         if not event or not event.chain_hash:
             self.stdout.write(
                 self.style.ERROR(
@@ -301,8 +308,13 @@ class Command(BaseCommand):
             create_test_data=False,
         )
 
-        # 4. Clean up test data
-        AuditEvent.all_objects.filter(details_json__icontains="_CI_SMOKE_TEST_EVENT").delete()
+        # 4. Clean up test data — the smoke events the creator actually
+        # writes (action=AUDIT_INTEGRITY_SMOKE_TEST, details
+        # {"smoke_test_index": ...}); the previous filter searched
+        # details_json for a marker string the creator never writes,
+        # so the cleanup was a no-op and the tampered rows persisted,
+        # breaking every subsequent verification (12.8 root-cause fix).
+        AuditEvent.all_objects.filter(action="AUDIT_INTEGRITY_SMOKE_TEST").delete()
 
         tamper_detected = not result["verified"]
         if tamper_detected:
@@ -321,7 +333,7 @@ class Command(BaseCommand):
             )
         return tamper_detected
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         if options["tamper_test"]:
             ok = self._run_tamper_test()
             raise SystemExit(0 if ok else 1)

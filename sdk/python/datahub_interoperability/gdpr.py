@@ -5,7 +5,7 @@ Provides methods for data export and erasure requests.
 Uses real hub API - no mocks/stubs.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from .client import DataHubClient
 
@@ -26,7 +26,7 @@ class GDPRAPI:
         """
         self.client = client
 
-    async def request_export(self) -> Dict[str, Any]:
+    async def request_export(self) -> dict[str, Any]:
         """
         Request data export (GDPR Article 20 - Data Portability).
 
@@ -39,7 +39,7 @@ class GDPRAPI:
         self,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List data export jobs.
 
@@ -56,7 +56,7 @@ class GDPRAPI:
         }
         return await self.client.get("users/me/export-jobs/", params=params)
 
-    async def get_export_job(self, job_id: str) -> Dict[str, Any]:
+    async def get_export_job(self, job_id: str) -> dict[str, Any]:
         """
         Get export job by ID.
 
@@ -68,7 +68,7 @@ class GDPRAPI:
         """
         return await self.client.get(f"users/me/export-jobs/{job_id}/")
 
-    async def request_erasure(self) -> Dict[str, Any]:
+    async def request_erasure(self) -> dict[str, Any]:
         """
         Request data erasure (GDPR Article 17 - Right to be Forgotten).
 
@@ -81,7 +81,7 @@ class GDPRAPI:
         self,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List erasure requests.
 
@@ -98,7 +98,7 @@ class GDPRAPI:
         }
         return await self.client.get("users/me/erasure-requests/", params=params)
 
-    async def get_erasure_request(self, request_id: str) -> Dict[str, Any]:
+    async def get_erasure_request(self, request_id: str) -> dict[str, Any]:
         """
         Get erasure request by ID.
 

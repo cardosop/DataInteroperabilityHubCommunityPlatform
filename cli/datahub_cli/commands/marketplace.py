@@ -115,7 +115,7 @@ def create_connection(
             error_code="CONNECTION_CREATE_FAILED",
             context={"marketplace_type": marketplace_type, "name": name},
             original_error=e,
-        )
+        ) from e
 
 
 @connections.command("list")
@@ -194,7 +194,7 @@ def list_connections(
             error_code="CONNECTION_LIST_FAILED",
             context={},
             original_error=e,
-        )
+        ) from e
 
 
 @connections.command("get")
@@ -238,7 +238,7 @@ def get_connection(connection_id: str, output_format: str):
             error_code="CONNECTION_GET_FAILED",
             context={"connection_id": connection_id},
             original_error=e,
-        )
+        ) from e
 
 
 @connections.command("update")
@@ -263,10 +263,8 @@ def update_connection(
     output_format: str,
 ):
     """Update a marketplace connection"""
-    try:
-        # Validate connection ID
-        validate_connection_id(connection_id)
 
+    def _build_update_data() -> dict:
         # Build update data (only include provided fields)
         data = {}
         if name is not None:
@@ -294,6 +292,13 @@ def update_connection(
                 context={"connection_id": connection_id},
                 suggestion="Provide at least one field to update (--name, --config, or --is-active)",
             )
+        return data
+
+    try:
+        # Validate connection ID
+        validate_connection_id(connection_id)
+
+        data = _build_update_data()
 
         # API endpoint: PATCH /api/v1/integrations/marketplace/connections/{id}/
         result = api_client.patch(
@@ -320,7 +325,7 @@ def update_connection(
             error_code="CONNECTION_UPDATE_FAILED",
             context={"connection_id": connection_id},
             original_error=e,
-        )
+        ) from e
 
 
 @connections.command("delete")
@@ -360,7 +365,7 @@ def delete_connection(connection_id: str, output_format: str):
             error_code="CONNECTION_DELETE_FAILED",
             context={"connection_id": connection_id},
             original_error=e,
-        )
+        ) from e
 
 
 @connections.command("test")
@@ -430,7 +435,7 @@ def test_connection(connection_id: str, config: str | None, output_format: str):
             error_code="CONNECTION_TEST_FAILED",
             context={"connection_id": connection_id},
             original_error=e,
-        )
+        ) from e
 
 
 def _parse_config(config: str) -> dict:
@@ -465,7 +470,7 @@ def _parse_config(config: str) -> dict:
                 context={"file_path": config},
                 suggestion="Check that the file exists and you have read permissions",
                 original_error=e,
-            )
+            ) from e
         except json.JSONDecodeError as e:
             raise MarketplaceValidationError(
                 message=f"Invalid JSON in config file: {e!s}",
@@ -473,7 +478,7 @@ def _parse_config(config: str) -> dict:
                 context={"file_path": config},
                 suggestion="Ensure the config file contains valid JSON",
                 original_error=e,
-            )
+            ) from e
     else:
         # Not a file and not valid JSON
         raise MarketplaceValidationError(
@@ -581,7 +586,7 @@ def sync_start(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to start sync job: {e}")
+        raise click.ClickException(f"Failed to start sync job: {e}") from e
 
 
 @sync.command("list")
@@ -668,10 +673,7 @@ def sync_list(
                 items_synced = job.get("items_synced", 0) or 0
                 items_failed = job.get("items_failed", 0) or 0
                 total_items = items_synced + items_failed
-                if total_items > 0:
-                    progress = f"{(items_synced / total_items * 100):.1f}%"
-                else:
-                    progress = "0.0%"
+                progress = f"{items_synced / total_items * 100:.1f}%" if total_items > 0 else "0.0%"
 
                 created = job.get("created_at", "")[:19] if job.get("created_at") else "N/A"
 
@@ -686,7 +688,7 @@ def sync_list(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list sync jobs: {e}")
+        raise click.ClickException(f"Failed to list sync jobs: {e}") from e
 
 
 @sync.command("get")
@@ -785,7 +787,7 @@ def sync_get(sync_job_id: str, output_format: str, watch: bool):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get sync job: {e}")
+        raise click.ClickException(f"Failed to get sync job: {e}") from e
 
 
 @sync.command("cancel")
@@ -813,7 +815,7 @@ def sync_cancel(sync_job_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to cancel sync job: {e}")
+        raise click.ClickException(f"Failed to cancel sync job: {e}") from e
 
 
 @marketplace.group("connectors")
@@ -866,7 +868,7 @@ def list_connectors(output_format: str):
             error_code="CONNECTOR_LIST_FAILED",
             context={},
             original_error=e,
-        )
+        ) from e
 
 
 @connectors.command("info")
@@ -930,7 +932,7 @@ def get_connector_info(connector_type: str, output_format: str):
                 error_code="CONNECTOR_NOT_FOUND",
                 context={"connector_type": connector_type},
                 suggestion="Use 'datahub marketplace connectors list' to see available connector types",
-            )
+            ) from None
         raise
     except Exception as e:
         # Check if it's a 404 error by examining the error message
@@ -941,13 +943,13 @@ def get_connector_info(connector_type: str, output_format: str):
                 error_code="CONNECTOR_NOT_FOUND",
                 context={"connector_type": connector_type},
                 suggestion="Use 'datahub marketplace connectors list' to see available connector types",
-            )
+            ) from None
         raise MarketplaceConnectionError(
             message=f"Failed to get connector information: {e!s}",
             error_code="CONNECTOR_INFO_FAILED",
             context={"connector_type": connector_type},
             original_error=e,
-        )
+        ) from e
 
 
 @marketplace.group("mappings")
@@ -973,7 +975,8 @@ def list_mappings(
     connection_id: str | None, asset_id: str | None, limit: int, offset: int, output_format: str
 ):
     """List marketplace mappings"""
-    try:
+
+    def _validate_params() -> None:
         # Validate parameters
         if limit <= 0:
             raise MarketplaceValidationError(
@@ -996,6 +999,9 @@ def list_mappings(
                 context={"offset": offset},
                 suggestion="Provide a non-negative offset value",
             )
+
+    try:
+        _validate_params()
 
         # Build query parameters
         params = {"page_size": limit, "page": (offset // limit) + 1 if limit > 0 else 1}
@@ -1063,7 +1069,7 @@ def list_mappings(
             error_code="MAPPING_LIST_FAILED",
             context={},
             original_error=e,
-        )
+        ) from e
 
 
 @mappings.command("get")
@@ -1087,7 +1093,10 @@ def get_mapping(mapping_id: str, output_format: str):
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
-            # Table format
+            # Table format.  The backend serializer is FLAT
+            # (connection_id/connection_name, hub_asset_id/hub_asset_name/
+            # hub_asset_key); read both shapes so the renderer does not
+            # break if a nested envelope ever comes back.
             click.echo(f"ID: {data.get('id')}")
 
             connection = data.get("connection", {})
@@ -1095,12 +1104,18 @@ def get_mapping(mapping_id: str, output_format: str):
                 click.echo(f"Connection ID: {connection.get('id')}")
                 click.echo(f"Connection Name: {connection.get('name')}")
                 click.echo(f"Marketplace Type: {connection.get('marketplace_type')}")
+            elif data.get("connection_name"):
+                click.echo(f"Connection ID: {data.get('connection_id')}")
+                click.echo(f"Connection Name: {data.get('connection_name')}")
 
             hub_asset = data.get("hub_asset", {})
             if hub_asset:
                 click.echo(f"Hub Asset ID: {hub_asset.get('id')}")
                 click.echo(f"Hub Asset Name: {hub_asset.get('name')}")
                 click.echo(f"Hub Asset Status: {hub_asset.get('status')}")
+            elif data.get("hub_asset_name"):
+                click.echo(f"Hub Asset ID: {data.get('hub_asset_id')}")
+                click.echo(f"Hub Asset Name: {data.get('hub_asset_name')}")
 
             click.echo(f"External Listing ID: {data.get('external_listing_id')}")
 
@@ -1138,7 +1153,7 @@ def get_mapping(mapping_id: str, output_format: str):
             error_code="MAPPING_GET_FAILED",
             context={"mapping_id": mapping_id},
             original_error=e,
-        )
+        ) from e
 
 
 @mappings.command("delete")
@@ -1176,4 +1191,4 @@ def delete_mapping(mapping_id: str, output_format: str):
             error_code="MAPPING_DELETE_FAILED",
             context={"mapping_id": mapping_id},
             original_error=e,
-        )
+        ) from e

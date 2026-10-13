@@ -21,18 +21,21 @@ class MigrationDataIntegrityTest(TestCase):
         # The second insert goes through raw SQL to validate the DB-level
         # unique constraint directly.
         Tenant.objects.create(name=f"A {uid}", slug=slug, status="ACTIVE", kyc_status="UNVERIFIED")
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            with connection.cursor() as cursor:
-                # Include NOT NULL JSONField columns that lack DB-level
-                # defaults so the UNIQUE constraint on slug is the one
-                # that fires, not a NOT NULL violation.
-                cursor.execute(
-                    "INSERT INTO tenants (id, name, slug, status, kyc_status, "
-                    "lineage_redact_field_patterns, tenant_dq_warehouse_profile, "
-                    "notification_opt_outs, created_at, updated_at) "
-                    "VALUES (%s, %s, %s, 'ACTIVE', 'UNVERIFIED', %s, %s, %s, NOW(), NOW())",
-                    [str(uuid.uuid4()), f"B {uid}", slug, "[]", "{}", "{}"],
-                )
+        with (
+            self.assertRaises(IntegrityError),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            # Include NOT NULL JSONField columns that lack DB-level
+            # defaults so the UNIQUE constraint on slug is the one
+            # that fires, not a NOT NULL violation.
+            cursor.execute(
+                "INSERT INTO tenants (id, name, slug, status, kyc_status, "
+                "lineage_redact_field_patterns, tenant_dq_warehouse_profile, "
+                "notification_opt_outs, created_at, updated_at) "
+                "VALUES (%s, %s, %s, 'ACTIVE', 'UNVERIFIED', %s, %s, %s, NOW(), NOW())",
+                [str(uuid.uuid4()), f"B {uid}", slug, "[]", "{}", "{}"],
+            )
 
     def test_unique_constraint_on_asset_key_per_tenant(self):
         """Asset key uniqueness per tenant enforced by DB."""
@@ -54,24 +57,29 @@ class MigrationDataIntegrityTest(TestCase):
 
     def test_fk_constraint_on_asset_tenant(self):
         """Asset.tenant FK references existing tenant (raw SQL bypasses ORM)."""
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO assets (id, tenant_id, key, name, status, "
-                    "version, created_at, updated_at) "
-                    "VALUES (%s, %s, 'orphan', 'Orphan', 'DRAFT', 1, NOW(), NOW())",
-                    [str(uuid.uuid4()), str(uuid.uuid4())],
-                )
+        with (
+            self.assertRaises(IntegrityError),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "INSERT INTO assets (id, tenant_id, key, name, status, "
+                "version, created_at, updated_at) "
+                "VALUES (%s, %s, 'orphan', 'Orphan', 'DRAFT', 1, NOW(), NOW())",
+                [str(uuid.uuid4()), str(uuid.uuid4())],
+            )
 
     def test_check_constraint_on_asset_status(self):
         """Asset status check constraint enforced (Phase 92)."""
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(name=f"CC {uid}", slug=f"cc-{uid}")
-        with self.assertRaises((IntegrityError, Exception)):
-            with transaction.atomic():
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "INSERT INTO assets (id, tenant_id, key, name, status, version, created_at, updated_at) "
-                        "VALUES (%s, %s, 'bad', 'Bad', 'INVALID', 1, NOW(), NOW())",
-                        [str(uuid.uuid4()), str(tenant.id)],
-                    )
+        with (
+            self.assertRaises((IntegrityError, Exception)),
+            transaction.atomic(),
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "INSERT INTO assets (id, tenant_id, key, name, status, version, created_at, updated_at) "
+                "VALUES (%s, %s, 'bad', 'Bad', 'INVALID', 1, NOW(), NOW())",
+                [str(uuid.uuid4()), str(tenant.id)],
+            )

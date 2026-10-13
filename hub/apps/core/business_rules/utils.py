@@ -112,9 +112,7 @@ def validate_tenant_context(
             "validate_tenant_context called with no expected_tenant_id "
             "— tenant scoping is not enforced for this check"
         )
-        return ValidationResult(
-            is_valid=True, errors=errors, warnings=warnings, details=details
-        )
+        return ValidationResult(is_valid=True, errors=errors, warnings=warnings, details=details)
 
     expected = str(expected_tenant_id)
 
@@ -127,8 +125,7 @@ def validate_tenant_context(
         actual_str = str(actual)
         if actual_str != expected:
             errors.append(
-                f"{label} tenant ({actual_str}) does not match "
-                f"expected tenant ({expected})"
+                f"{label} tenant ({actual_str}) does not match expected tenant ({expected})"
             )
             details[label] = {"expected": expected, "actual": actual_str}
         else:

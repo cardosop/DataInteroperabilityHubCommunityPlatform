@@ -1,0 +1,155 @@
+{
+  "title": "Contract Normalization \u2014 v3.1.0 Adoption",
+  "uid": "hub-contract-normalization-v310",
+  "tags": [
+    "contracts",
+    "normalization",
+    "odcs",
+    "v3.1.0"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "title": "Normalization Operations by Spec Version",
+      "description": "Rate of ODCS normalization operations grouped by version. Source: odcs_normalization_total (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odcs_normalization_total[5m])) by (version)",
+          "legendFormat": "{{version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "title": "v3.1.0 Contracts \u2014 Normalizations",
+      "description": "Total v3.1.0 normalization operations. Source: odcs_version_distribution_total (otel_metrics.py).",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(odcs_version_distribution_total{version=\"3.1.0\"}) or vector(0)",
+          "legendFormat": "v3.1.0 contracts"
+        }
+      ]
+    },
+    {
+      "title": "Export Downgrade Rate",
+      "description": "Rate of exports where a spec version downgrade occurred. Source: contract_export_total (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "rate(contract_export_total{downgrade=\"true\"}[5m])",
+          "legendFormat": "downgrades/s"
+        }
+      ]
+    },
+    {
+      "title": "Normalization Failures (v3.1.0)",
+      "description": "Failed normalization operations for v3.1.0 contracts. Source: odcs_normalization_total (otel_metrics.py).",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "odcs_normalization_total{version=\"3.1.0\", status=\"failure\"}",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "title": "Backfill Progress",
+      "description": "Remaining contracts in the v3.1.0 re-normalization backfill. 0 = complete. Source: normalization_backfill_remaining (tasks.py).",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "normalization_backfill_remaining",
+          "legendFormat": "remaining"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 100,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Normalizer Fallback Events (v3.1.0 \u2192 v3.0.2)",
+      "description": "v3.1.0 contracts falling back to non-v3.1.0 normalizer. Any value > 0 is critical. Source: odcs_v310_fallback_total (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "increase(odcs_v310_fallback_total[5m])",
+          "legendFormat": "fallback events"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        }
+      }
+    }
+  ]
+}

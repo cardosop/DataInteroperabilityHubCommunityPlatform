@@ -387,4 +387,3 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
                 tenant_id=str(self.tenant.id),
                 changes={"semantic_version": "1.1.0"},
             )
-

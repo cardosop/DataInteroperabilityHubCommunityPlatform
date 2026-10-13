@@ -7,10 +7,10 @@ due to precision loss or varying type representations across warehouses.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class LossyConversionPolicy(str, Enum):
+class LossyConversionPolicy(StrEnum):
     """Per-asset policy for handling lossy type conversions."""
 
     STRICT_ERROR = "STRICT_ERROR"

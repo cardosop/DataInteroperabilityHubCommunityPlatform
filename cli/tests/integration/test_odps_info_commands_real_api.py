@@ -27,6 +27,8 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
+from envpolicy import api_available
+
 
 class TestODPSInfoCommandsRealAPI:
     """Integration tests for ODPS information commands with real API"""
@@ -54,16 +56,6 @@ class TestODPSInfoCommandsRealAPI:
     def runner(self):
         """CLI runner fixture"""
         return CliRunner()
-
-    def _check_api_available(self):
-        """Check if API service is available"""
-        try:
-            response = requests.get(
-                os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=5
-            )
-            return response.status_code in [200, 401, 403]  # Any response means API is up
-        except Exception:
-            return False
 
     def _create_odps_contract_via_django_shell(self):
         """
@@ -214,10 +206,11 @@ print(str(contract.id))
                     if contract_id_match:
                         return contract_id_match.group(0)
 
-            # If we couldn't extract ID, return None
-            return None
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError, Exception):
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
             # If Django shell fails, return None
+            return None
+        else:
+            # If we couldn't extract ID, return None
             return None
 
     def _get_existing_odps_contract_id(self):
@@ -245,8 +238,9 @@ print(str(contract.id))
                     if contract.get("original_spec_type") == "ODPS":
                         return contract.get("id")
 
-            return None
         except Exception:
+            return None
+        else:
             return None
 
     def _get_or_create_test_contract_id(self):
@@ -265,7 +259,7 @@ print(str(contract.id))
     def test_get_contract_show_odps_real_api(self, runner):
         """Test contracts get --show-odps command with real API"""
         # Check if API is available
-        if not self._check_api_available():
+        if not api_available():
             pytest.skip("API service not available. Start with: docker compose up -d api-service")
 
         # Get or create test contract
@@ -286,7 +280,7 @@ print(str(contract.id))
     def test_get_pricing_real_api(self, runner):
         """Test contracts get-pricing command with real API"""
         # Check if API is available
-        if not self._check_api_available():
+        if not api_available():
             pytest.skip("API service not available. Start with: docker compose up -d api-service")
 
         # Get or create test contract
@@ -306,7 +300,7 @@ print(str(contract.id))
     def test_get_access_methods_real_api(self, runner):
         """Test contracts get-access-methods command with real API"""
         # Check if API is available
-        if not self._check_api_available():
+        if not api_available():
             pytest.skip("API service not available. Start with: docker compose up -d api-service")
 
         # Get or create test contract

@@ -5,9 +5,10 @@ Data Quality operations for DataHub SDK.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, FrozenSet, Optional
+from typing import TYPE_CHECKING, Any
 
-from .client import DataHubClient
+if TYPE_CHECKING:
+    from .client import DataHubClient
 
 
 class DQAPI:
@@ -20,7 +21,7 @@ class DQAPI:
     #: variant from the worker-service status field. The helper
     #: accepts both so the contract works against any hub version
     #: regardless of which serializer the deployment uses.
-    TERMINAL_STATUSES: FrozenSet[str] = frozenset(
+    TERMINAL_STATUSES: frozenset[str] = frozenset(
         {
             "PASS",
             "FAIL",
@@ -38,11 +39,11 @@ class DQAPI:
     async def create_run(
         self,
         asset_id: str,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        profile_key: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {"asset_id": asset_id}
+        dataset_id: str | None = None,
+        file_id: str | None = None,
+        profile_key: str | None = None,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"asset_id": asset_id}
         if dataset_id:
             data["dataset_id"] = dataset_id
         if file_id:
@@ -53,13 +54,13 @@ class DQAPI:
 
     async def list_runs(
         self,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        status: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        status: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
         if asset_id:
             params["asset_id"] = asset_id
         if dataset_id:
@@ -68,30 +69,30 @@ class DQAPI:
             params["status"] = status
         return await self.client.get("dq/runs/", params=params)
 
-    async def get_run(self, run_id: str) -> Dict[str, Any]:
+    async def get_run(self, run_id: str) -> dict[str, Any]:
         return await self.client.get(f"dq/runs/{run_id}/")
 
-    async def get_scorecard(self, asset_id: str) -> Dict[str, Any]:
+    async def get_scorecard(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get(f"dq/scorecards/{asset_id}/")
 
-    async def list_alerts(self, asset_id: str) -> Dict[str, Any]:
+    async def list_alerts(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get("dq/alerts/", params={"asset_id": asset_id})
 
     async def create_alert(
         self,
         asset_id: str,
         threshold: float,
-    ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {
             "asset_id": asset_id,
             "threshold": threshold,
         }
         return await self.client.post("dq/alerts/", data=data)
 
-    async def get_anomalies(self, asset_id: str) -> Dict[str, Any]:
+    async def get_anomalies(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get(f"dq/anomalies/{asset_id}/")
 
-    async def get_trends(self, asset_id: str) -> Dict[str, Any]:
+    async def get_trends(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get(f"dq/trends/{asset_id}/")
 
     async def wait_for(
@@ -99,7 +100,7 @@ class DQAPI:
         asset_id: str,
         timeout: float = 180.0,
         interval: float = 2.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Phase 250.4.4 — poll the latest DQ run on an asset
         until it reaches a terminal status.
 
@@ -141,7 +142,7 @@ class DQAPI:
             )
             results = response.get("results") or []
             if results:
-                latest: Dict[str, Any] = results[0]
+                latest: dict[str, Any] = results[0]
                 run_asset_id = latest.get("asset_id") or latest.get("asset")
                 if (
                     run_asset_id

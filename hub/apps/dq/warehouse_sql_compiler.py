@@ -16,7 +16,16 @@ definitions from HubContract JSON.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
+
+from hub.apps.dq.sql_safety import (
+    SQLSafetyError,
+    escape_regex_literal,
+    escape_sql_literal,
+    sql_number,
+    validate_sql_identifier,
+    validate_table_fqn,
+)
 
 # ── 285.10.1.2.1 — CompiledCheck ─────────────────────────────────────
 
@@ -55,7 +64,7 @@ _DATE_SUB_FN: dict[str, str] = {
 class DQWarehouseSQLCompiler:
     """Compile DQ check definitions to per-warehouse SQL."""
 
-    _SUPPORTED_CHECKS = {
+    _SUPPORTED_CHECKS: ClassVar[set[str]] = {
         "not_null",
         "unique",
         "accepted_values",
@@ -84,7 +93,15 @@ class DQWarehouseSQLCompiler:
         Returns:
             List of ``CompiledCheck`` (unknown check types skipped).
         """
+        if not isinstance(warehouse_type, str):
+            # W2.9 — found by the robustness property suite: a non-string
+            # warehouse type crashed on .upper() (AttributeError) instead
+            # of a typed rejection.
+            raise SQLSafetyError("invalid warehouse_type")
         wt = warehouse_type.upper()
+        # W1.11: identifiers are validated (not quoted) so a client-
+        # influenced column or FQN can never splice SQL.
+        table = validate_table_fqn(table_fqn)
         compiled: list[CompiledCheck] = []
 
         for i, check in enumerate(check_definitions):
@@ -92,12 +109,21 @@ class DQWarehouseSQLCompiler:
             if check_type not in DQWarehouseSQLCompiler._SUPPORTED_CHECKS:
                 continue
 
-            check.get("column", "")
+            if check_type != "row_count":
+                if "column" not in check:
+                    # Freshness defaults to ``updated_at`` inside its
+                    # compiler function; every other column-bearing
+                    # check rejects a missing column typed, not KeyError.
+                    if check_type != "freshness":
+                        raise SQLSafetyError(f"column is required for {check_type}")
+                else:
+                    check["column"] = validate_sql_identifier(check["column"], "column")
+
             compiler_fn = _CHECK_COMPILERS.get(check_type)
             if compiler_fn is None:
                 continue
 
-            result = compiler_fn(check, wt, table_fqn, i)
+            result = compiler_fn(check, wt, table, i)
             if result:
                 compiled.append(result)
 
@@ -140,7 +166,8 @@ def _compile_unique(check: dict[str, Any], wt: str, table: str, idx: int) -> Com
 def _compile_accepted_values(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
     values = check.get("values", [])
-    quoted = ", ".join(f"'{v}'" for v in values)
+    # W1.11: literals are quote-escaped, never interpolated raw.
+    quoted = ", ".join(f"'{escape_sql_literal(v)}'" for v in values)
     name = f"accepted_values_{col}_{idx}"
     return CompiledCheck(
         check_name=name,
@@ -160,9 +187,9 @@ def _compile_range(check: dict[str, Any], wt: str, table: str, idx: int) -> Comp
     col = check["column"]
     conditions: list[str] = []
     if "min" in check:
-        conditions.append(f"{col} < {check['min']}")
+        conditions.append(f"{col} < {sql_number(check['min'], 'min')}")
     if "max" in check:
-        conditions.append(f"{col} > {check['max']}")
+        conditions.append(f"{col} > {sql_number(check['max'], 'max')}")
 
     name = f"range_{col}_{idx}"
     where = " OR ".join(conditions) if conditions else "1=0"
@@ -179,7 +206,7 @@ def _compile_range(check: dict[str, Any], wt: str, table: str, idx: int) -> Comp
 
 def _compile_regex(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
-    pattern = check.get("pattern", ".*")
+    pattern = escape_regex_literal(check.get("pattern", ".*"), wt)
     regex_fn = _REGEX_FN.get(wt, _REGEX_FN["SNOWFLAKE"]).format(col=col, pattern=pattern)
     name = f"regex_{col}_{idx}"
     return CompiledCheck(
@@ -197,7 +224,7 @@ def _compile_regex(check: dict[str, Any], wt: str, table: str, idx: int) -> Comp
 
 def _compile_freshness(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check.get("column", "updated_at")
-    hours = check.get("max_age_hours", 24)
+    hours = sql_number(check.get("max_age_hours", 24), "max_age_hours")
     date_fn = _DATE_SUB_FN.get(wt, _DATE_SUB_FN["SNOWFLAKE"]).format(hours=hours)
     name = f"freshness_{col}_{idx}"
     return CompiledCheck(
@@ -212,8 +239,8 @@ def _compile_freshness(check: dict[str, Any], wt: str, table: str, idx: int) -> 
 
 
 def _compile_row_count(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
-    min_rows = check.get("min", 0)
-    max_rows = check.get("max")
+    min_rows = sql_number(check.get("min", 0), "min")
+    max_rows = sql_number(check["max"], "max") if check.get("max") is not None else None
     name = f"row_count_{idx}"
     conditions = [f"cnt < {min_rows}"]
     if max_rows is not None:

@@ -24,8 +24,11 @@ already running), ``SweepLockHeldError`` is raised.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 from collections.abc import Callable
+
+import redis
 
 from hub.apps.core.distributed_lock import (
     distributed_lock_acquire,
@@ -118,15 +121,13 @@ def sweep_lock(
             try:
                 return func(*args, **kwargs)
             finally:
-                try:
+                with contextlib.suppress(redis.RedisError):
+                    # Lock will expire via TTL — best-effort release
                     distributed_lock_release(
                         redis_client,
                         key=lock_key,
                         token=token,
                     )
-                except Exception:
-                    # Lock will expire via TTL — best-effort release
-                    pass
 
         # Attach metadata so introspection tools can discover sweep locks
         wrapper._sweep_lock_key = lock_key  # type: ignore[attr-defined]

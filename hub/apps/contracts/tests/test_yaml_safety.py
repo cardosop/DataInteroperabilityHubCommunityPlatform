@@ -116,7 +116,7 @@ _MALICIOUS_PAYLOADS: tuple[tuple[str, str], ...] = (
 
 
 @pytest.mark.parametrize(
-    "label, body",
+    ("label", "body"),
     _MALICIOUS_PAYLOADS,
     ids=[label for label, _ in _MALICIOUS_PAYLOADS],
 )

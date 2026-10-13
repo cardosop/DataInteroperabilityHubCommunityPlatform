@@ -81,7 +81,7 @@ class APIResponseSizeTest(ContractsAPITestBase):
         )
 
         # Large payload should be accepted or rejected with a client error
-        self.assertIn(
+        self.assertIn(  # noqa: broad-status-codes
             response.status_code,
             [200, 201, 400, 413, 422],
             f"Large payload returned unexpected status {response.status_code}",

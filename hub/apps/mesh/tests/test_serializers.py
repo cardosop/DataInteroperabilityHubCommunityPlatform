@@ -828,8 +828,9 @@ class TopologySerializersTest(TestCase):
     def test_topology_node_serializer(self):
         """Test TopologyNodeSerializer"""
 
-        from django.utils import timezone
         import datetime
+
+        from django.utils import timezone
 
         created_at = timezone.now().replace(microsecond=0)
         serializer = TopologyNodeSerializer(
@@ -877,8 +878,9 @@ class TopologySerializersTest(TestCase):
     def test_topology_metadata_serializer(self):
         """Test TopologyMetadataSerializer"""
 
-        from django.utils import timezone
         import datetime
+
+        from django.utils import timezone
 
         generated_at = timezone.now().replace(microsecond=0)
         serializer = TopologyMetadataSerializer(

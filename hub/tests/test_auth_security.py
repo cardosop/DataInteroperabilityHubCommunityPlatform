@@ -459,7 +459,9 @@ class TestLoginSecurity(TestCase):
         )
         assert resp.status_code == 429
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_account_lockout_after_max_failures(self):
         unique_ip_prefix = "10.5.5."
         for i in range(3):
@@ -652,7 +654,9 @@ class TestPhase14AuthSecurity(TestCase):
 
     # ── 14.9-1  Brute-force lockout ──────────────────────────────────────────
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=10, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=10, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_brute_force_lockout_after_10_failures(self):
         """
         After 10 failed login attempts the account must be locked.
@@ -683,7 +687,9 @@ class TestPhase14AuthSecurity(TestCase):
 
     # ── 14.9-2  Lockout window expiry ────────────────────────────────────────
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=10, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=10, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_account_locked_after_15_min_window_passes(self):
         """
         After the 15-minute window passes the account should no longer be locked.
@@ -1065,7 +1071,9 @@ class TestTenantScopingMiddlewareErrors(TestCase):
 class TestAccountLockout(TestCase):
     """49.5: Account lockout after MAX_LOGIN_ATTEMPTS failures."""
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(
+        RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15
+    )
     def test_lockout_after_n_failures(self):
         """After LOGIN_MAX_ATTEMPTS failures, next attempt is rejected."""
         from hub.apps.tenants.models import Tenant

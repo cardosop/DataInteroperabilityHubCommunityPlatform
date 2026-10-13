@@ -4,7 +4,7 @@ SDK Error Classes
 Typed exceptions for API errors matching the standard error envelope.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class DataHubError(Exception):
@@ -17,9 +17,9 @@ class DataHubError(Exception):
         message: str,
         code: str,
         http_status: int,
-        request_id: Optional[str] = None,
-        timestamp: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        timestamp: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message)
         self.message = message
@@ -29,7 +29,7 @@ class DataHubError(Exception):
         self.timestamp = timestamp
         self.details = details
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert error to dictionary for serialization
         """
@@ -57,8 +57,8 @@ class ValidationError(DataHubError):
     def __init__(
         self,
         message: str,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message, "VALIDATION_ERROR", 400, request_id, None, details)
 
@@ -69,8 +69,8 @@ class UnprocessableEntityError(DataHubError):
     def __init__(
         self,
         message: str,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message, "UNPROCESSABLE_ENTITY", 422, request_id, None, details)
 
@@ -78,21 +78,21 @@ class UnprocessableEntityError(DataHubError):
 class UnauthorizedError(DataHubError):
     """Authentication error (401)"""
 
-    def __init__(self, message: str = "Authentication required", request_id: Optional[str] = None):
+    def __init__(self, message: str = "Authentication required", request_id: str | None = None):
         super().__init__(message, "AUTH_UNAUTHORIZED", 401, request_id)
 
 
 class ForbiddenError(DataHubError):
     """Authorization error (403)"""
 
-    def __init__(self, message: str = "Permission denied", request_id: Optional[str] = None):
+    def __init__(self, message: str = "Permission denied", request_id: str | None = None):
         super().__init__(message, "AUTH_FORBIDDEN", 403, request_id)
 
 
 class NotFoundError(DataHubError):
     """Not found error (404)"""
 
-    def __init__(self, message: str = "Resource not found", request_id: Optional[str] = None):
+    def __init__(self, message: str = "Resource not found", request_id: str | None = None):
         super().__init__(message, "NOT_FOUND", 404, request_id)
 
 
@@ -117,7 +117,7 @@ class MVPGatedFeatureError(NotFoundError):
         prefix: str,
         endpoint: str,
         environment_url: str,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         from ._mvp_gates import MVP_FEATURE_GATED_CODE, MVP_GATED_MESSAGE_TEMPLATE
 
@@ -163,9 +163,9 @@ class FeatureNotEnabledError(NotFoundError):
     def __init__(
         self,
         feature: str,
-        message: Optional[str] = None,
-        reason: Optional[str] = None,
-        request_id: Optional[str] = None,
+        message: str | None = None,
+        reason: str | None = None,
+        request_id: str | None = None,
     ):
         rendered = message or f"Feature '{feature}' is not enabled"
         if reason:
@@ -186,15 +186,22 @@ class FeatureNotEnabledError(NotFoundError):
 
 
 class ConflictError(DataHubError):
-    """Conflict error (409)"""
+    """Conflict error (409).
+
+    Carries the server's classified ``code`` when present (e.g.
+    ``IDEMPOTENCY_REQUEST_IN_PROGRESS`` — the idempotency guard's
+    "retry shortly" state) so callers can branch on it; falls back to
+    ``CONFLICT_ERROR`` for unclassified 409s.
+    """
 
     def __init__(
         self,
         message: str,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        code: str = "CONFLICT_ERROR",
     ):
-        super().__init__(message, "CONFLICT_ERROR", 409, request_id, None, details)
+        super().__init__(message, code, 409, request_id, None, details)
 
 
 class RateLimitError(DataHubError):
@@ -203,8 +210,8 @@ class RateLimitError(DataHubError):
     def __init__(
         self,
         message: str,
-        request_id: Optional[str] = None,
-        retry_after: Optional[int] = None,
+        request_id: str | None = None,
+        retry_after: int | None = None,
     ):
         super().__init__(message, "RATE_LIMIT_EXCEEDED", 429, request_id)
         self.retry_after = retry_after
@@ -218,7 +225,7 @@ class ServerError(DataHubError):
         message: str,
         code: str = "INTERNAL_ERROR",
         http_status: int = 500,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         super().__init__(message, code, http_status, request_id)
 
@@ -243,11 +250,11 @@ class ODPSError(DataHubError):
         message: str,
         error_code: str = "ODPS_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
         recoverable: bool = False,
-        recovery_strategy: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        recovery_strategy: str | None = None,
+        context: dict[str, Any] | None = None,
     ):
         """
         Initialize ODPS error.
@@ -288,11 +295,11 @@ class ODPSValidationError(ODPSError):
         message: str,
         error_code: str = "ODPS_VALIDATION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
     ):
         """
         Initialize ODPS validation error.
@@ -344,10 +351,10 @@ class ODPSRefResolutionError(ODPSError):
         message: str,
         error_code: str = "ODPS_REF_RESOLUTION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        ref_path: Optional[str] = None,
-        ref_type: Optional[str] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        ref_path: str | None = None,
+        ref_type: str | None = None,
     ):
         """
         Initialize ODPS ref resolution error.
@@ -401,9 +408,9 @@ class ODPSExportError(ODPSError):
         message: str,
         error_code: str = "ODPS_EXPORT_ERROR",
         http_status: int = 500,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
     ):
         """
         Initialize ODPS export error.
@@ -445,8 +452,8 @@ class ODPSLinkingError(ODPSError):
         message: str,
         error_code: str = "ODPS_LINKING_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize ODPS linking error.
@@ -482,11 +489,11 @@ class ODCSError(DataHubError):
         message: str,
         error_code: str = "ODCS_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
         recoverable: bool = False,
-        recovery_strategy: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        recovery_strategy: str | None = None,
+        context: dict[str, Any] | None = None,
     ):
         """
         Initialize ODCS error.
@@ -527,11 +534,11 @@ class ODCSValidationError(ODCSError):
         message: str,
         error_code: str = "ODCS_VALIDATION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
     ):
         """
         Initialize ODCS validation error.
@@ -581,9 +588,9 @@ class ODCSExportError(ODCSError):
         message: str,
         error_code: str = "ODCS_EXPORT_ERROR",
         http_status: int = 500,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
     ):
         """
         Initialize ODCS export error.
@@ -615,7 +622,7 @@ class ODCSExportError(ODCSError):
         self.field_path = field_path
 
 
-def _extract_error_detail(obj: Any) -> Dict[str, Any]:
+def _extract_error_detail(obj: Any) -> dict[str, Any]:
     """Extract error info from an object that may be a DRF ErrorDetail.
 
     DRF's ErrorDetail has ``.code`` and ``.string`` attributes but is
@@ -640,10 +647,10 @@ def _error_for_status(
     http_status: int,
     message: str,
     code: str = "UNKNOWN_ERROR",
-    request_id: Optional[str] = None,
-    timestamp: Optional[str] = None,
-    response_data: Optional[Dict[str, Any]] = None,
-    details: Optional[Dict[str, Any]] = None,
+    request_id: str | None = None,
+    timestamp: str | None = None,
+    response_data: dict[str, Any] | None = None,
+    details: dict[str, Any] | None = None,
 ) -> DataHubError:
     """Map an HTTP status code to the appropriate :class:`DataHubError` subclass.
 
@@ -651,19 +658,7 @@ def _error_for_status(
     used by both the string-error and dict-error branches of
     :func:`parse_error`.
     """
-    if http_status == 400:
-        return ValidationError(message, request_id, details)
-    elif http_status == 422:
-        return UnprocessableEntityError(message, request_id, details)
-    elif http_status == 401:
-        return UnauthorizedError(message, request_id)
-    elif http_status == 403:
-        return ForbiddenError(message, request_id)
-    elif http_status == 404:
-        return NotFoundError(message, request_id)
-    elif http_status == 409:
-        return ConflictError(message, request_id, details)
-    elif http_status == 429:
+    if http_status == 429:
         retry_after = None
         if isinstance(details, dict):
             retry_after = details.get("retry_after")
@@ -693,15 +688,28 @@ def _error_for_status(
             except (ValueError, TypeError):
                 retry_after = None
         return RateLimitError(message, request_id, retry_after)
-    elif http_status >= 500:
+
+    if http_status >= 500:
         return ServerError(message, code, http_status, request_id)
-    else:
-        return DataHubError(message, code, http_status, request_id, timestamp, details)
+
+    error_factories = {
+        400: lambda: ValidationError(message, request_id, details),
+        422: lambda: UnprocessableEntityError(message, request_id, details),
+        401: lambda: UnauthorizedError(message, request_id),
+        403: lambda: ForbiddenError(message, request_id),
+        404: lambda: NotFoundError(message, request_id),
+        409: lambda: ConflictError(message, request_id, details, code=code),
+    }
+    factory = error_factories.get(
+        http_status,
+        lambda: DataHubError(message, code, http_status, request_id, timestamp, details),
+    )
+    return factory()
 
 
 def parse_error(
     response_data: Any,
-    http_status: Optional[int] = None,
+    http_status: int | None = None,
 ) -> DataHubError:
     """
     Parse API error response and return appropriate error class.
@@ -908,16 +916,7 @@ def parse_odps_error(response_data: Any) -> ODPSError:
     base_error = parse_error(response_data)
 
     # If not a dict or doesn't have error structure, return base error wrapped as ODPS error
-    if not isinstance(response_data, dict) or "error" not in response_data:
-        return ODPSError(
-            base_error.message,
-            base_error.code,
-            base_error.http_status,
-            base_error.request_id,
-            base_error.details,
-        )
-
-    error = response_data["error"]
+    error = response_data.get("error") if isinstance(response_data, dict) else None
     if not isinstance(error, dict):
         return ODPSError(
             base_error.message,
@@ -1015,8 +1014,8 @@ class MarketplaceError(DataHubError):
         message: str,
         error_code: str = "MARKETPLACE_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize marketplace error.
@@ -1041,11 +1040,11 @@ class MarketplaceValidationError(MarketplaceError):
         message: str,
         error_code: str = "MARKETPLACE_VALIDATION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
     ):
         """
         Initialize marketplace validation error.
@@ -1099,8 +1098,8 @@ class MarketplaceConnectionError(MarketplaceError):
         message: str,
         error_code: str = "MARKETPLACE_CONNECTION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize marketplace connection error.
@@ -1132,8 +1131,8 @@ class BaaSError(DataHubError):
         message: str,
         error_code: str = "BAAS_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize BaaS error.
@@ -1158,11 +1157,11 @@ class BaaSValidationError(BaaSError):
         message: str,
         error_code: str = "BAAS_VALIDATION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
     ):
         """
         Initialize BaaS validation error.
@@ -1217,8 +1216,8 @@ class ODHMLError(DataHubError):
         message: str,
         error_code: str = "ODH_ML_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize ODH ML error.
@@ -1243,11 +1242,11 @@ class ODHMLValidationError(ODHMLError):
         message: str,
         error_code: str = "ODH_ML_VALIDATION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
     ):
         """
         Initialize ODH ML validation error.
@@ -1295,8 +1294,8 @@ class ODHMLNotFoundError(ODHMLError):
         message: str = "ODH ML resource not found",
         error_code: str = "ODH_ML_NOT_FOUND",
         http_status: int = 404,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize ODH ML not found error.
@@ -1321,8 +1320,8 @@ class ODHMLConflictError(ODHMLError):
         message: str,
         error_code: str = "ODH_ML_CONFLICT",
         http_status: int = 409,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize ODH ML conflict error.
@@ -1348,8 +1347,8 @@ class ModelServingError(DataHubError):
         message: str,
         error_code: str = "MODEL_SERVING_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize model serving error.
@@ -1374,11 +1373,11 @@ class ModelServingValidationError(ModelServingError):
         message: str,
         error_code: str = "MODEL_SERVING_VALIDATION_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
     ):
         """
         Initialize model serving validation error.
@@ -1426,8 +1425,8 @@ class ModelServingNotFoundError(ModelServingError):
         message: str = "Model serving resource not found",
         error_code: str = "MODEL_SERVING_NOT_FOUND",
         http_status: int = 404,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize model serving not found error.
@@ -1452,8 +1451,8 @@ class ModelServingDeploymentError(ModelServingError):
         message: str,
         error_code: str = "MODEL_SERVING_DEPLOYMENT_ERROR",
         http_status: int = 500,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize model serving deployment error.
@@ -1478,8 +1477,8 @@ class ABTestError(ModelServingError):
         message: str,
         error_code: str = "AB_TEST_ERROR",
         http_status: int = 400,
-        request_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize A/B test error.

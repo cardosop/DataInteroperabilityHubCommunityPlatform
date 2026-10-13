@@ -41,9 +41,10 @@ def get_real_redis_client_or_none():
             socket_timeout=2,
         )
         client.ping()
-        return client
     except Exception:
         return None
+    else:
+        return client
 
 
 class RefResolverCacheKeyTest(TestCase):
@@ -929,7 +930,7 @@ class RefResolverCacheIntegrationTest(TestCase):
     def test_cache_key_generation_with_none_url(self):
         """None URL argument must raise TypeError or ODPSRefResolutionError."""
         with self.assertRaises((TypeError, ValueError, ODPSRefResolutionError)):
-            self.resolver.resolve_external(None)  # type: ignore[misc]
+            self.resolver.resolve_external(None)
 
     def test_cache_key_generation_with_empty_url(self):
         """Empty URL must raise ValueError or ODPSRefResolutionError."""
@@ -1051,7 +1052,7 @@ class RefResolverCacheIntegrationTest(TestCase):
         url = "https://example.com/schema.json"
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=None, request=request)  # type: ignore[misc]
+            return httpx.Response(200, json=None, request=request)
 
         transport = httpx.MockTransport(handler)
         original_resolve = self.resolver.resolve_external
@@ -1139,7 +1140,7 @@ class RefResolverCacheIntegrationTest(TestCase):
 
     def test_cache_invalidation_with_none_url(self):
         """None URL is handled gracefully: invalidate_cache returns 0 (nothing deleted)."""
-        deleted = self.resolver.invalidate_cache(None)  # type: ignore[misc]
+        deleted = self.resolver.invalidate_cache(None)
         self.assertEqual(
             deleted, 0, "invalidate_cache(None) must return 0 — no cache entries to delete"
         )

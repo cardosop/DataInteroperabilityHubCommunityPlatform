@@ -131,7 +131,9 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
         if isinstance(validate_response, dict) and "validation_status" in validate_response:
             validation_status = validate_response.get("validation_status")
             if validation_status:
-                self.assertIn(validation_status, ["VALID", "INVALID", "WARNING_ONLY", "ERROR", "SKIPPED"])
+                self.assertIn(
+                    validation_status, ["VALID", "INVALID", "WARNING_ONLY", "ERROR", "SKIPPED"]
+                )
             else:
                 # If no validation_status, the service may have returned an error
                 # This is acceptable for YAML format which may not be fully supported

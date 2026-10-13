@@ -207,20 +207,30 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         # Switch to consumer tenant
         self.client.force_authenticate(user=self.other_user)
 
-        # Cross-tenant access with entitlement:
-        # Assets are tenant-scoped (404), but datasets support entitlement fallback.
-        # Verify the entitlement record exists and is ACTIVE, then test dataset access
-        # if a dataset is linked to this asset.
+        # Cross-tenant access with entitlement (Phase 313.1): entitlement
+        # enforcement now covers the asset endpoint, not only datasets. An
+        # ACTIVE entitlement grants cross-tenant asset access.
         self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
         self.assertEqual(entitlement.asset_id, asset.id)
         self.assertEqual(entitlement.tenant_id, self.other_tenant.id)
 
-        # Asset endpoint is strictly tenant-isolated — should return 404
+        # ACTIVE entitlement → 200 (cross-tenant access granted)
         response = self.client.get(f"/api/v1/assets/{asset_id}/")
         self.assertEqual(
             response.status_code,
-            status.HTTP_404_NOT_FOUND,
-            "Asset endpoint should remain tenant-isolated (entitlement grants dataset access, not asset access)",
+            status.HTTP_200_OK,
+            "ACTIVE entitlement must grant cross-tenant asset access (Phase 313.1)",
+        )
+
+        # Revoked entitlement → 403 (consumer previously had access —
+        # surfaced as PermissionDenied, not a silent 404)
+        entitlement.status = EntitlementStatus.REVOKED
+        entitlement.save(update_fields=["status"])
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "Revoked entitlement must return 403, not reveal a silent 404",
         )
 
     def test_tenant_context_enforcement(self):

@@ -36,6 +36,86 @@ except ImportError:
     yaml = None
 
 
+def _map_data_schema(hub_contract: dict[str, Any], odps_doc: dict[str, Any]) -> None:
+    """
+    Map HubContract schema section → ODPS product.dataSchema.
+
+    Previously a documented gap ("Schema section mapping to
+    product.dataSchema is not yet implemented"); the round-trip E2E
+    (contract-round-trip.spec.ts) asserts product.dataSchema.fields
+    survive upload → export, so hub_contract.schema.fields are mapped
+    back into the generated ODPS document.
+
+    Args:
+        hub_contract: HubContract dictionary
+        odps_doc: ODPS document being built (mutated in place)
+
+    Raises:
+        ODPSExportError: If schema/schema.fields/fields entries have
+            invalid types (matching the generator's error-handling
+            contract for malformed hub contracts).
+    """
+    schema = hub_contract.get("schema")
+    if schema is None:
+        return
+
+    if not isinstance(schema, dict):
+        raise ODPSExportError(
+            message=f"HubContract 'schema' must be a dictionary, got {type(schema).__name__}",
+            error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
+            context={
+                "field_path": "/schema",
+                "expected": "dict",
+                "actual": type(schema).__name__,
+            },
+        )
+
+    schema_fields = schema.get("fields")
+    if not schema_fields:
+        return
+
+    if not isinstance(schema_fields, list):
+        raise ODPSExportError(
+            message=f"HubContract 'schema.fields' must be a list, got {type(schema_fields).__name__}",
+            error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
+            context={
+                "field_path": "/schema/fields",
+                "expected": "list",
+                "actual": type(schema_fields).__name__,
+            },
+        )
+
+    odps_fields: list[dict[str, Any]] = []
+    for i, field in enumerate(schema_fields):
+        if not isinstance(field, dict):
+            raise ODPSExportError(
+                message=f"HubContract 'schema.fields[{i}]' must be a dictionary, got {type(field).__name__}",
+                error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
+                context={
+                    "field_path": f"/schema/fields/{i}",
+                    "expected": "dict",
+                    "actual": type(field).__name__,
+                },
+            )
+
+        name = field.get("name")
+        field_type = field.get("type") or field.get("data_type")
+        # Skip fields missing the canonical ODPS dataSchema keys
+        # (name/type) rather than emitting malformed entries.
+        if not name or not field_type:
+            continue
+
+        odps_field: dict[str, Any] = {"name": name, "type": field_type}
+        if field.get("description") is not None:
+            odps_field["description"] = field["description"]
+        odps_fields.append(odps_field)
+
+    if odps_fields:
+        if "product" not in odps_doc:
+            odps_doc["product"] = {}
+        odps_doc["product"]["dataSchema"] = {"fields": odps_fields}
+
+
 def generate_odps_from_hubcontract(
     hub_contract: dict[str, Any],
     target_version: str = "4.1",
@@ -52,6 +132,7 @@ def generate_odps_from_hubcontract(
     - hub_contract.marketplace.x_odps.pricing_plans → product.marketplace.pricingPlans
     - hub_contract.marketplace.x_odps.access_methods → product.marketplace.accessMethods
     - hub_contract.marketplace.x_odps.payment_gateways → product.marketplace.paymentGateways
+    - hub_contract.schema.fields → product.dataSchema.fields (round-trip preservation)
     - hub_contract.marketplace.license_summary → license[lang].definition
     - hub_contract.marketplace.restricted_use → license[lang].restrictions
     - hub_contract.marketplace.intended_use → license[lang].rights
@@ -78,7 +159,8 @@ def generate_odps_from_hubcontract(
           original_odcs_contract takes precedence (inline embedding)
         - If neither is provided, product.contract section is omitted (optional in ODPS)
     """
-    try:
+
+    def _build() -> dict[str, Any]:
         # Validate input
         if not isinstance(hub_contract, dict):
             raise ODPSExportError(
@@ -420,6 +502,9 @@ def generate_odps_from_hubcontract(
 
                 if license_obj:
                     odps_doc["license"] = {language: license_obj}
+
+        # Map schema section → product.dataSchema (ODPS round-trip preservation).
+        _map_data_schema(hub_contract, odps_doc)
 
         # Map contract section (Task 2.1.3)
         # Generate ODCS from HubContract (if original ODCS available)
@@ -918,11 +1003,11 @@ def generate_odps_from_hubcontract(
 
         return odps_doc
 
-    except ODPSExportError:
-        # Re-raise ODPSExportError as-is (already has proper context)
-        raise
+    try:
+        result = _build()
     except Exception as e:
-        # Wrap unexpected errors in ODPSExportError
+        if isinstance(e, ODPSExportError):
+            raise
         raise ODPSExportError(
             message=f"Unexpected error during ODPS generation: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
@@ -932,6 +1017,8 @@ def generate_odps_from_hubcontract(
             },
             cause=e,
         ) from e
+    else:
+        return result
 
 
 def _generate_dimension_from_rule(rule: dict[str, Any]) -> dict[str, Any] | None:
@@ -996,9 +1083,9 @@ def _generate_dimension_from_rule(rule: dict[str, Any]) -> dict[str, Any] | None
             if key in rule:
                 dimension_data[key] = rule[key]
 
-        return dimension_data
-
-    except Exception as e:
+    # Deliberate degrade boundary: rule dicts come from hub contract JSON and
+    # any mapping access failure must yield None, not crash the generation.
+    except Exception as e:  # noqa: BLE001
         logger.warning(
             "failed_to_generate_dimension_from_rule",
             rule=rule,
@@ -1006,6 +1093,8 @@ def _generate_dimension_from_rule(rule: dict[str, Any]) -> dict[str, Any] | None
             message="Failed to generate dimension from rule",
         )
         return None
+    else:
+        return dimension_data
 
 
 def _parse_expression_to_objectives(
@@ -1076,9 +1165,9 @@ def _parse_expression_to_objectives(
                 except (ValueError, AttributeError):
                     pass
 
-        return objectives if objectives else None
-
-    except Exception as e:
+    # Same degrade boundary as _generate_dimension_from_rule: expression
+    # parsing failures must warn + return None, never crash generation.
+    except Exception as e:  # noqa: BLE001
         logger.warning(
             "failed_to_parse_expression_to_objectives",
             expression=expression,
@@ -1087,6 +1176,8 @@ def _parse_expression_to_objectives(
             message="Failed to parse expression to objectives",
         )
         return None
+    else:
+        return objectives if objectives else None
 
 
 def format_odps_as_json(
@@ -1106,7 +1197,8 @@ def format_odps_as_json(
     Raises:
         ODPSExportError: If JSON serialization fails
     """
-    try:
+
+    def _build() -> str:
         if not isinstance(odps_doc, dict):
             raise ODPSExportError(
                 message=f"ODPS document must be a dictionary, got {type(odps_doc).__name__}",
@@ -1120,6 +1212,8 @@ def format_odps_as_json(
 
         return json.dumps(odps_doc, indent=indent, ensure_ascii=ensure_ascii)
 
+    try:
+        result = _build()
     except TypeError as e:
         # Handle non-serializable objects
         raise ODPSExportError(
@@ -1144,6 +1238,8 @@ def format_odps_as_json(
             },
             cause=e,
         ) from e
+    else:
+        return result
 
 
 def format_odps_as_yaml(
@@ -1182,7 +1278,7 @@ def format_odps_as_yaml(
             },
         )
 
-    try:
+    def _build() -> str:
         if not isinstance(odps_doc, dict):
             raise ODPSExportError(
                 message=f"ODPS document must be a dictionary, got {type(odps_doc).__name__}",
@@ -1201,6 +1297,8 @@ def format_odps_as_yaml(
             sort_keys=sort_keys,
         )
 
+    try:
+        result = _build()
     except yaml.YAMLError as e:
         # Handle YAML serialization errors
         raise ODPSExportError(
@@ -1225,3 +1323,5 @@ def format_odps_as_yaml(
             },
             cause=e,
         ) from e
+    else:
+        return result

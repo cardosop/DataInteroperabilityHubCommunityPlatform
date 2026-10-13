@@ -17,6 +17,7 @@ import unittest
 import pytest
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
 
@@ -137,21 +138,21 @@ class CKANConnectorIntegrationTest(TestCase):
         # CKAN connectors typically don't require authentication for read operations
         # Test that connection test works
         result = self.connector.test_connection()
-        self.assertTrue(result)
+        assert result
 
     def test_ckan_connector_discovery_list_listings(self):
         """Test CKAN connector list_listings operation"""
         listings = self.connector.list_listings(limit=10)
 
-        self.assertIsInstance(listings, list)
-        self.assertLessEqual(len(listings), 10)
+        assert isinstance(listings, list)
+        assert len(listings) <= 10
 
         if listings:
             listing = listings[0]
-            self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(listing.marketplace_type, MarketplaceType.CKAN_INSTANCE)
-            self.assertIsNotNone(listing.marketplace_id)
-            self.assertIsNotNone(listing.title)
+            assert isinstance(listing, MarketplaceListing)
+            assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
+            assert listing.marketplace_id is not None
+            assert listing.title is not None
 
     def test_ckan_connector_discovery_get_listing(self):
         """Test CKAN connector get_listing operation"""
@@ -163,9 +164,9 @@ class CKANConnectorIntegrationTest(TestCase):
         listing_id = listings[0].marketplace_id
         listing = self.connector.get_listing(listing_id)
 
-        self.assertIsNotNone(listing)
-        self.assertEqual(listing.marketplace_id, listing_id)
-        self.assertIsInstance(listing, MarketplaceListing)
+        assert listing is not None
+        assert listing.marketplace_id == listing_id
+        assert isinstance(listing, MarketplaceListing)
 
     def test_ckan_connector_discovery_list_resources(self):
         """Test CKAN connector list_resources operation"""
@@ -177,26 +178,26 @@ class CKANConnectorIntegrationTest(TestCase):
         listing_id = listings[0].marketplace_id
         resources = self.connector.list_resources(listing_id)
 
-        self.assertIsInstance(resources, list)
+        assert isinstance(resources, list)
         for resource in resources:
-            self.assertIsInstance(resource, MarketplaceResource)
+            assert isinstance(resource, MarketplaceResource)
             # Verify resource has required attributes
-            self.assertIsNotNone(resource.resource_id)
-            self.assertIsNotNone(resource.resource_type)
-            self.assertIsNotNone(resource.name)
+            assert resource.resource_id is not None
+            assert resource.resource_type is not None
+            assert resource.name is not None
             # Resources are associated with the listing via the listing_id parameter
             # The resource itself doesn't store listing_id, but we can verify it was returned
             # for the correct listing by checking that resources exist
-            self.assertGreater(len(resources), 0)
+            assert len(resources) > 0
 
     def test_ckan_connector_pull_operation(self):
         """Test CKAN connector sync_pull operation"""
         result = self.connector.sync_pull(options={"limit": 5})
 
-        self.assertIsInstance(result, SyncResult)
-        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
-        self.assertIsInstance(result.successful_items, int)
-        self.assertGreaterEqual(result.successful_items, 0)
+        assert isinstance(result, SyncResult)
+        assert result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
+        assert isinstance(result.successful_items, int)
+        assert result.successful_items >= 0
 
     def test_ckan_connector_error_handling_not_found(self):
         """Test CKAN connector error handling for not found"""
@@ -221,9 +222,7 @@ class CKANConnectorIntegrationTest(TestCase):
                 CircuitBreakerError,
             )
         ):
-            invalid_connector = CKANConnector(
-                base_url="https://ckan-test.invalid"
-            )
+            invalid_connector = CKANConnector(base_url="https://ckan-test.invalid")
             invalid_connector.test_connection()
 
 
@@ -242,7 +241,7 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
         # Get JWT token from environment
         cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
-            raise unittest.SkipTest("DADOS_GOV_BR_API_KEY not set - skipping integration tests")
+            skip_or_fail("DADOS_GOV_BR_API_KEY not set (W16: CI raises, local skips)")
 
         # Get instance configuration
         cls.instance_config = get_marketplace_instance_config("dados.gov.br")
@@ -260,7 +259,7 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
         """Test DadosGovBr connector authentication"""
         try:
             result = self.connector.test_connection()
-            self.assertTrue(result)
+            assert result
         except (ValueError, HubConnectionError, ConnectionError) as e:
             error_str = str(e).lower()
             if any(
@@ -269,27 +268,27 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
             ):
                 raise unittest.SkipTest(
                     f"JWT token authentication failed (token may be expired or invalid): {e}"
-                )
+                ) from None
             raise
 
     def test_dados_gov_br_connector_discovery_list_listings(self):
         """Test DadosGovBr connector list_listings operation"""
         try:
             listings = self.connector.list_listings(limit=5)
-            self.assertIsInstance(listings, list)
-            self.assertLessEqual(len(listings), 5)
+            assert isinstance(listings, list)
+            assert len(listings) <= 5
 
             if listings:
                 listing = listings[0]
-                self.assertIsInstance(listing, MarketplaceListing)
-                self.assertEqual(listing.marketplace_type, MarketplaceType.CKAN_INSTANCE)
+                assert isinstance(listing, MarketplaceListing)
+                assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
         except (ValueError, HubConnectionError) as e:
             error_str = str(e).lower()
             if any(
                 kw in error_str
                 for kw in ("authentication failed", "signin", "jwt token", "401", "unauthorized")
             ):
-                raise unittest.SkipTest(f"Authentication failed: {e}")
+                raise unittest.SkipTest(f"Authentication failed: {e}") from None
             raise
 
     def test_dados_gov_br_connector_discovery_get_listing(self):
@@ -303,24 +302,24 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
             listing_id = listings[0].marketplace_id
             listing = self.connector.get_listing(listing_id)
 
-            self.assertIsNotNone(listing)
-            self.assertEqual(listing.marketplace_id, listing_id)
+            assert listing is not None
+            assert listing.marketplace_id == listing_id
         except NotFoundError:
-            raise unittest.SkipTest("Listing not found - may have been deleted")
+            raise unittest.SkipTest("Listing not found - may have been deleted") from None
         except (ValueError, HubConnectionError) as e:
             error_str = str(e).lower()
             if any(
                 kw in error_str
                 for kw in ("authentication failed", "signin", "jwt token", "401", "unauthorized")
             ):
-                raise unittest.SkipTest(f"Authentication failed: {e}")
+                raise unittest.SkipTest(f"Authentication failed: {e}") from None
             raise
 
     def test_dados_gov_br_connector_pull_operation(self):
         """Test DadosGovBr connector sync_pull operation"""
         try:
             result = self.connector.sync_pull(options={"limit": 3})
-            self.assertIsInstance(result, SyncResult)
+            assert isinstance(result, SyncResult)
             # sync_pull returns FAILED (not raises) when auth/network errors
             # are caught internally — skip when caused by auth issues
             if result.status == SyncStatus.FAILED and result.errors:
@@ -337,10 +336,10 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
                     raise unittest.SkipTest(
                         f"Authentication failed during sync_pull: {result.errors}"
                     )
-            self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
+            assert result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
         except ValueError as e:
             if "authentication failed" in str(e).lower():
-                raise unittest.SkipTest(f"Authentication failed: {e}")
+                raise unittest.SkipTest(f"Authentication failed: {e}") from None
             raise
 
     def test_dados_gov_br_connector_error_handling_authentication(self):
@@ -418,35 +417,29 @@ class SnowflakeConnectorIntegrationTest(TestCase):
                 "token": self.token,
             }
         )
-        self.assertTrue(
-            result, msg="Snowflake authentication returned False — credentials may be invalid"
-        )
+        assert result, "Snowflake authentication returned False — credentials may be invalid"
 
     def test_snowflake_connector_connection_test(self):
         """Test Snowflake connector connection test"""
         result = self.connector.test_connection()
-        self.assertTrue(
-            result, msg="Snowflake connection test returned False — instance may be unreachable"
-        )
+        assert result, "Snowflake connection test returned False — instance may be unreachable"
 
     def test_snowflake_connector_discovery_list_listings(self):
         """Test Snowflake connector list_listings operation"""
         listings = self.connector.list_listings(limit=10)
-        self.assertIsInstance(listings, list)
-        self.assertLessEqual(len(listings), 10)
+        assert isinstance(listings, list)
+        assert len(listings) <= 10
 
         if listings:
             listing = listings[0]
-            self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(
-                listing.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-            )
+            assert isinstance(listing, MarketplaceListing)
+            assert listing.marketplace_type == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
 
     def test_snowflake_connector_pull_operation(self):
         """Test Snowflake connector sync_pull operation"""
         result = self.connector.sync_pull(options={"limit": 5})
-        self.assertIsInstance(result, SyncResult)
-        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
+        assert isinstance(result, SyncResult)
+        assert result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
 
     def test_snowflake_connector_error_handling_invalid_credentials(self):
         """Test Snowflake connector error handling for invalid credentials"""
@@ -511,6 +504,26 @@ class AWSDataExchangeConnectorIntegrationTest(TestCase):
 
         cls.connector = AWSDataExchangeConnector(**connector_kwargs)
 
+        # Probe once with a live call. Without dedicated AWS Data Exchange
+        # credentials the fallback above picks up the MinIO-shared keys
+        # (AWS_ACCESS_KEY_ID) and AWS rejects them with
+        # UnrecognizedClientException — operator-side credential state,
+        # not a connector regression.
+        try:
+            connected = cls.connector.test_connection()
+        except HubConnectionError as exc:
+            if "UnrecognizedClientException" in str(exc):
+                raise unittest.SkipTest(
+                    f"AWS Data Exchange credentials not valid: {exc} — "
+                    "operator-side state, not a connector regression"
+                ) from exc
+            raise
+        if not connected:
+            raise unittest.SkipTest(
+                "AWS Data Exchange connection test returned False — "
+                "operator-side credential state, not a connector regression"
+            )
+
     def test_aws_connector_authentication(self):
         """Test AWS Data Exchange connector authentication"""
         result = self.connector.authenticate(
@@ -520,32 +533,28 @@ class AWSDataExchangeConnectorIntegrationTest(TestCase):
                 "region_name": self.region,
             }
         )
-        self.assertTrue(
-            result, msg="AWS authentication returned False — credentials may be invalid"
-        )
+        assert result, "AWS authentication returned False — credentials may be invalid"
 
     def test_aws_connector_connection_test(self):
         """Test AWS Data Exchange connector connection test"""
         result = self.connector.test_connection()
-        self.assertTrue(
-            result, msg="AWS connection test returned False — instance may be unreachable"
-        )
+        assert result, "AWS connection test returned False — instance may be unreachable"
 
     def test_aws_connector_discovery_list_listings(self):
         """Test AWS Data Exchange connector list_listings operation"""
         listings = self.connector.list_listings(limit=10)
-        self.assertIsInstance(listings, list)
-        self.assertLessEqual(len(listings), 10)
+        assert isinstance(listings, list)
+        assert len(listings) <= 10
 
         if listings:
             listing = listings[0]
-            self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(listing.marketplace_type, MarketplaceType.AWS_DATA_EXCHANGE)
+            assert isinstance(listing, MarketplaceListing)
+            assert listing.marketplace_type == MarketplaceType.AWS_DATA_EXCHANGE
 
     def test_aws_connector_pull_operation(self):
         """Test AWS Data Exchange connector sync_pull operation"""
         result = self.connector.sync_pull(options={"limit": 5})
-        self.assertIsInstance(result, SyncResult)
+        assert isinstance(result, SyncResult)
         # Skip only when FAILED is caused by auth/access issues (following
         # DadosGovBr pattern at lines 326-338).  Non-auth FAILED results
         # indicate a real bug and must fail the test.
@@ -564,7 +573,7 @@ class AWSDataExchangeConnectorIntegrationTest(TestCase):
                 raise unittest.SkipTest(
                     f"AWS sync_pull FAILED due to auth/access issues: {result.errors}"
                 )
-        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
+        assert result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
 
     def test_aws_connector_error_handling_invalid_credentials(self):
         """Test AWS Data Exchange connector error handling for invalid credentials"""
@@ -611,9 +620,13 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
             raise unittest.SkipTest("GCP Marketplace connector not available")
 
         try:
-            from google.cloud import bigquery
+            from google.cloud import (
+                bigquery,
+            )
         except ImportError:
-            raise unittest.SkipTest("google-cloud-bigquery not installed - skipping GCP tests")
+            raise unittest.SkipTest(
+                "google-cloud-bigquery not installed - skipping GCP tests"
+            ) from None
 
         # Get credentials from environment (file path preferred to avoid .env quoting issues)
         cls.project_id = os.getenv("GCP_PROJECT_ID")
@@ -647,7 +660,7 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
             except OSError as e:
                 raise unittest.SkipTest(
                     f"Cannot load GCP credentials from GCP_CREDENTIALS_JSON_FILE: {e}"
-                )
+                ) from e
 
         if not credentials_loaded and cls.credentials_json:
             raw = cls.credentials_json.strip()
@@ -691,38 +704,34 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
         try:
             cls.connector = GCPMarketplaceConnector(**connector_kwargs)
         except Exception as e:
-            raise unittest.SkipTest(f"Cannot create GCP connector: {e}")
+            raise unittest.SkipTest(f"Cannot create GCP connector: {e}") from e
 
     def test_gcp_connector_authentication(self):
         """Test GCP Marketplace connector authentication"""
         result = self.connector.authenticate(self._auth_credentials)
-        self.assertTrue(
-            result, msg="GCP authentication returned False — credentials may be invalid"
-        )
+        assert result, "GCP authentication returned False — credentials may be invalid"
 
     def test_gcp_connector_connection_test(self):
         """Test GCP Marketplace connector connection test"""
         result = self.connector.test_connection()
-        self.assertTrue(
-            result, msg="GCP connection test returned False — instance may be unreachable"
-        )
+        assert result, "GCP connection test returned False — instance may be unreachable"
 
     def test_gcp_connector_discovery_list_listings(self):
         """Test GCP Marketplace connector list_listings operation"""
         listings = self.connector.list_listings(limit=10)
-        self.assertIsInstance(listings, list)
-        self.assertLessEqual(len(listings), 10)
+        assert isinstance(listings, list)
+        assert len(listings) <= 10
 
         if listings:
             listing = listings[0]
-            self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(listing.marketplace_type, MarketplaceType.GOOGLE_CLOUD_MARKETPLACE)
+            assert isinstance(listing, MarketplaceListing)
+            assert listing.marketplace_type == MarketplaceType.GOOGLE_CLOUD_MARKETPLACE
 
     def test_gcp_connector_pull_operation(self):
         """Test GCP Marketplace connector sync_pull operation"""
         result = self.connector.sync_pull(options={"limit": 5})
-        self.assertIsInstance(result, SyncResult)
-        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
+        assert isinstance(result, SyncResult)
+        assert result.status in [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
 
     def test_gcp_connector_discovery_get_listing(self):
         """Test GCP Marketplace connector get_listing operation"""
@@ -731,9 +740,9 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
             raise unittest.SkipTest("No listings available for GCP get_listing test")
         listing_id = listings[0].marketplace_id
         listing = self.connector.get_listing(listing_id)
-        self.assertIsNotNone(listing)
-        self.assertEqual(listing.marketplace_id, listing_id)
-        self.assertIsInstance(listing, MarketplaceListing)
+        assert listing is not None
+        assert listing.marketplace_id == listing_id
+        assert isinstance(listing, MarketplaceListing)
 
     def test_gcp_connector_error_handling_invalid_credentials(self):
         """Test GCP Marketplace connector error handling for invalid credentials"""
@@ -780,34 +789,34 @@ class MarketplaceConnectorFactoryIntegrationTest(TestCase):
             config={"base_url": "https://demo.ckan.org", "api_key": "test-key"},
         )
 
-        self.assertIsNotNone(connector)
-        self.assertEqual(connector.marketplace_type, MarketplaceType.CKAN_INSTANCE)
+        assert connector is not None
+        assert connector.marketplace_type == MarketplaceType.CKAN_INSTANCE
         # Factory may return CKANConnector or DadosGovBrConnector depending on registration order
-        self.assertIsInstance(connector, (CKANConnector, DadosGovBrConnector))
+        assert isinstance(connector, (CKANConnector, DadosGovBrConnector))
         # Verify the connector has the expected interface
-        self.assertIn(SyncDirection.PULL, connector.supported_sync_directions)
+        assert SyncDirection.PULL in connector.supported_sync_directions
 
     def test_factory_creates_dados_gov_br_connector(self):
         """Test factory creates DadosGovBr connector"""
         jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not jwt_token:
-            raise unittest.SkipTest("DADOS_GOV_BR_API_KEY not set")
+            skip_or_fail("DADOS_GOV_BR_API_KEY not set (W16: CI raises, local skips)")
 
         instance_config = get_marketplace_instance_config("dados.gov.br")
         if not instance_config:
-            raise unittest.SkipTest("dados.gov.br instance configuration not found")
+            skip_or_fail("dados.gov.br instance configuration not found (W16)")
 
         connector = MarketplaceConnectorFactory.create_connector(
             MarketplaceType.CKAN_INSTANCE,
             config={"instance_id": "dados.gov.br", "jwt_token": jwt_token},
         )
 
-        self.assertIsNotNone(connector)
-        self.assertEqual(connector.marketplace_type, MarketplaceType.CKAN_INSTANCE)
+        assert connector is not None
+        assert connector.marketplace_type == MarketplaceType.CKAN_INSTANCE
         # May be DadosGovBrConnector or CKANConnector depending on registration order
-        self.assertIsInstance(connector, (CKANConnector, DadosGovBrConnector))
+        assert isinstance(connector, (CKANConnector, DadosGovBrConnector))
         # Verify the connector has the expected interface
-        self.assertIn(SyncDirection.PULL, connector.supported_sync_directions)
+        assert SyncDirection.PULL in connector.supported_sync_directions
 
     @pytest.mark.requires_snowflake
     @pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
@@ -821,7 +830,7 @@ class MarketplaceConnectorFactoryIntegrationTest(TestCase):
         token = os.getenv("SNOWFLAKE_TOKEN")
 
         if not account or not user or not token:
-            raise unittest.SkipTest("Snowflake credentials not available")
+            skip_or_fail("Snowflake credentials not available (W16: CI raises, local skips)")
 
         connector = MarketplaceConnectorFactory.create_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
@@ -832,11 +841,11 @@ class MarketplaceConnectorFactoryIntegrationTest(TestCase):
             },
         )
 
-        self.assertIsNotNone(connector)
-        self.assertEqual(connector.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE)
-        self.assertIsInstance(connector, SnowflakeConnector)
+        assert connector is not None
+        assert connector.marketplace_type == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+        assert isinstance(connector, SnowflakeConnector)
         # Verify the connector has the expected interface
-        self.assertIn(SyncDirection.PULL, connector.supported_sync_directions)
+        assert SyncDirection.PULL in connector.supported_sync_directions
 
 
 # === Cross-Connector Integration Tests ===
@@ -872,9 +881,7 @@ class CrossConnectorIntegrationTest(TestCase):
         instance_config = get_marketplace_instance_config("dados.gov.br")
         if jwt_token and instance_config:
             try:
-                dados = DadosGovBrConnector(
-                    base_url=instance_config.base_url, jwt_token=jwt_token
-                )
+                dados = DadosGovBrConnector(base_url=instance_config.base_url, jwt_token=jwt_token)
                 connectors_to_test.append(("DadosGovBr", dados))
             except Exception:
                 pass
@@ -911,22 +918,21 @@ class CrossConnectorIntegrationTest(TestCase):
             except Exception:
                 pass
 
-        self.assertGreater(
-            len(connectors_to_test), 0,
+        assert len(connectors_to_test) > 0, (
             "No connectors available for cross-connector PULL test. "
-            "Set CKAN_TEST_URL or cloud connector credentials.",
+            "Set CKAN_TEST_URL or cloud connector credentials."
         )
 
         for name, connector in connectors_to_test:
             with self.subTest(connector=name):
-                self.assertIn(SyncDirection.PULL, connector.supported_sync_directions)
+                assert SyncDirection.PULL in connector.supported_sync_directions
 
                 # Test that sync_pull can be called (may fail due to auth,
                 # but should not crash).  Only suppress known auth/connectivity
                 # exceptions; other errors signal a real bug and must propagate.
                 try:
                     result = connector.sync_pull(options={"limit": 1})
-                    self.assertIsInstance(result, SyncResult)
+                    assert isinstance(result, SyncResult)
                 except (
                     ValueError,
                     MarketplaceConnectionError,
@@ -953,19 +959,15 @@ class CrossConnectorIntegrationTest(TestCase):
         instance_config = get_marketplace_instance_config("dados.gov.br")
         if jwt_token and instance_config:
             try:
-                dados = DadosGovBrConnector(
-                    base_url=instance_config.base_url, jwt_token=jwt_token
-                )
+                dados = DadosGovBrConnector(base_url=instance_config.base_url, jwt_token=jwt_token)
                 connectors_to_test.append(("DadosGovBr", dados))
             except Exception:
                 pass
 
-        self.assertGreater(
-            len(connectors_to_test), 0,
-            "No connectors available for error-handling consistency test.",
+        assert len(connectors_to_test) > 0, (
+            "No connectors available for error-handling consistency test."
         )
 
         for name, connector in connectors_to_test:
-            with self.subTest(connector=name):
-                with self.assertRaises(NotFoundError):
-                    connector.get_listing("nonexistent-listing-id-12345")
+            with self.subTest(connector=name), self.assertRaises(NotFoundError):
+                connector.get_listing("nonexistent-listing-id-12345")

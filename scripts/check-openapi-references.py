@@ -245,7 +245,7 @@ class URLPatternComparator:
                         type="missing_in_spec",
                         actual_path=actual_path,
                         actual_methods=list(
-                            set(m for e in endpoints for m in e.get("methods", ["GET"]))
+                            {m for e in endpoints for m in e.get("methods", ["GET"])}
                         ),
                         details="Path in actual URLs but not found in OpenAPI spec",
                     )

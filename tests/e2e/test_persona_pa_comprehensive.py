@@ -12,9 +12,9 @@ All tests use REAL services (no mocks/stubs) and follow TDD approach.
 Target: 100% journey coverage for all PA/MPA journeys.
 """
 
-import pytest
 import uuid
 
+import pytest
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -348,7 +348,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
         listings = (get_response_data(response) or {}).get("results", [])
 
         # Should see listings from both tenants
-        listing_ids = [l["id"] for l in listings]
+        listing_ids = [listing["id"] for listing in listings]
         self.assertIn(str(listing1.id), listing_ids)
         self.assertIn(str(listing2.id), listing_ids)
 
@@ -414,13 +414,13 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             listings = (get_response_data(response) or {}).get("results", [])
 
         # Verify we can see both listings
-        listing_ids = [l["id"] for l in listings]
+        listing_ids = [listing["id"] for listing in listings]
         self.assertIn(str(listing1.id), listing_ids)
         self.assertIn(str(listing2.id), listing_ids)
 
         # Verify statuses are correct
-        listing1_data = next(l for l in listings if l["id"] == str(listing1.id))
-        listing2_data = next(l for l in listings if l["id"] == str(listing2.id))
+        listing1_data = next(listing for listing in listings if listing["id"] == str(listing1.id))
+        listing2_data = next(listing for listing in listings if listing["id"] == str(listing2.id))
         self.assertEqual(listing1_data["status"], ListingStatus.PUBLISHED.value)
         self.assertEqual(listing2_data["status"], ListingStatus.DRAFT.value)
 
@@ -688,7 +688,6 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
         response = self.client.get("/health/")
         # Health endpoint may redirect, return 200, or 503 if services are unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,
@@ -1117,14 +1116,20 @@ class JourneyPA003ConfigurePlatformSettingsTests(E2ETestBase):
     def setUp(self):
         super().setUp()
         self.tenant = Tenant.objects.create(
-            name="PA003 Tenant", slug="pa003-tenant", status=TenantStatus.ACTIVE,
+            name="PA003 Tenant",
+            slug="pa003-tenant",
+            status=TenantStatus.ACTIVE,
         )
         self.platform_admin = User.objects.create_user(
-            email="pa003@admin.com", password="testpass123",
-            tenant=self.tenant, status=UserStatus.ACTIVE, is_platform_admin=True,
+            email="pa003@admin.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         # Platform admin still needs TENANT_ADMIN role for me/config endpoint access
         from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+
         ensure_user_has_tenant_admin_role(self.platform_admin)
         self.client.force_authenticate(user=self.platform_admin)
 
@@ -1159,12 +1164,16 @@ class JourneyPA003ConfigurePlatformSettingsTests(E2ETestBase):
         """Non-PA user cannot update platform config."""
         self.client.logout()
         regular = User.objects.create_user(
-            email="regular@test.com", password="testpass123",
-            tenant=self.tenant, status=UserStatus.ACTIVE,
+            email="regular@test.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=regular)
         response = self.client.patch(
-            "/api/v1/tenants/me/config/", {"trust_signals_enabled": True}, format="json",
+            "/api/v1/tenants/me/config/",
+            {"trust_signals_enabled": True},
+            format="json",
         )
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
@@ -1176,8 +1185,11 @@ class JourneyPA004ReviewPlatformAnalyticsTests(E2ETestBase):
     def setUp(self):
         super().setUp()
         self.platform_admin = User.objects.create_user(
-            email="pa004@admin.com", password="testpass123",
-            tenant=None, status=UserStatus.ACTIVE, is_platform_admin=True,
+            email="pa004@admin.com",
+            password="testpass123",
+            tenant=None,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         self.client.force_authenticate(user=self.platform_admin)
 
@@ -1198,8 +1210,10 @@ class JourneyPA004ReviewPlatformAnalyticsTests(E2ETestBase):
         """Non-PA user cannot access dashboard summary."""
         self.client.logout()
         regular = User.objects.create_user(
-            email="regular2@test.com", password="testpass123",
-            tenant=None, status=UserStatus.ACTIVE,
+            email="regular2@test.com",
+            password="testpass123",
+            tenant=None,
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=regular)
         response = self.client.get("/api/v1/admin/dashboard/summary/")
@@ -1213,8 +1227,11 @@ class JourneyPA005MarketplaceConfigTests(E2ETestBase):
     def setUp(self):
         super().setUp()
         self.platform_admin = User.objects.create_user(
-            email="pa005@admin.com", password="testpass123",
-            tenant=None, status=UserStatus.ACTIVE, is_platform_admin=True,
+            email="pa005@admin.com",
+            password="testpass123",
+            tenant=None,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         self.client.force_authenticate(user=self.platform_admin)
 
@@ -1236,11 +1253,16 @@ class JourneyPA006MonitorMarketplaceHealthTests(E2ETestBase):
     def setUp(self):
         super().setUp()
         self.tenant = Tenant.objects.create(
-            name="PA006 Tenant", slug="pa006-tenant", status=TenantStatus.ACTIVE,
+            name="PA006 Tenant",
+            slug="pa006-tenant",
+            status=TenantStatus.ACTIVE,
         )
         self.platform_admin = User.objects.create_user(
-            email="pa006@admin.com", password="testpass123",
-            tenant=self.tenant, status=UserStatus.ACTIVE, is_platform_admin=True,
+            email="pa006@admin.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         self.client.force_authenticate(user=self.platform_admin)
 
@@ -1264,12 +1286,17 @@ class JourneyPA008ExternalConnectionsTests(E2ETestBase):
     def setUp(self):
         super().setUp()
         self.tenant = Tenant.objects.create(
-            name="PA008 Tenant", slug="pa008-tenant", status=TenantStatus.ACTIVE,
+            name="PA008 Tenant",
+            slug="pa008-tenant",
+            status=TenantStatus.ACTIVE,
             marketplace_integrations_enabled=True,
         )
         self.platform_admin = User.objects.create_user(
-            email="pa008@admin.com", password="testpass123",
-            tenant=self.tenant, status=UserStatus.ACTIVE, is_platform_admin=True,
+            email="pa008@admin.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         self.client.force_authenticate(user=self.platform_admin)
 
@@ -1325,12 +1352,17 @@ class JourneyPA009FederatedAssetsTests(E2ETestBase):
     def setUp(self):
         super().setUp()
         self.tenant = Tenant.objects.create(
-            name="PA009 Tenant", slug="pa009-tenant", status=TenantStatus.ACTIVE,
+            name="PA009 Tenant",
+            slug="pa009-tenant",
+            status=TenantStatus.ACTIVE,
             data_mesh_enabled=True,
         )
         self.platform_admin = User.objects.create_user(
-            email="pa009@admin.com", password="testpass123",
-            tenant=self.tenant, status=UserStatus.ACTIVE, is_platform_admin=True,
+            email="pa009@admin.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         self.client.force_authenticate(user=self.platform_admin)
 

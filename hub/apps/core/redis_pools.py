@@ -270,9 +270,10 @@ def parse_redis_url(redis_url: str) -> tuple:
         if not host:
             return ("localhost", 6379)
         port = int(host_port[1]) if len(host_port) > 1 else 6379
-        return (host, port)
     except (ValueError, IndexError):
         return ("localhost", 6379)
+    else:
+        return (host, port)
 
 
 def health_check_all_redis_instances() -> dict:
@@ -294,7 +295,7 @@ def health_check_all_redis_instances() -> dict:
         client = get_redis_cache_client()
         client.ping()
         results["cache"]["status"] = "healthy"
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         results["cache"]["status"] = "unhealthy"
         results["cache"]["error"] = str(e)
 
@@ -303,7 +304,7 @@ def health_check_all_redis_instances() -> dict:
         client = get_redis_queue_client()
         client.ping()
         results["queue"]["status"] = "healthy"
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         results["queue"]["status"] = "unhealthy"
         results["queue"]["error"] = str(e)
 
@@ -312,7 +313,7 @@ def health_check_all_redis_instances() -> dict:
         client = get_redis_events_client()
         client.ping()
         results["events"]["status"] = "healthy"
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         results["events"]["status"] = "unhealthy"
         results["events"]["error"] = str(e)
 
@@ -321,7 +322,7 @@ def health_check_all_redis_instances() -> dict:
         client = get_redis_channels_client()
         client.ping()
         results["channels"]["status"] = "healthy"
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         results["channels"]["status"] = "unhealthy"
         results["channels"]["error"] = str(e)
 

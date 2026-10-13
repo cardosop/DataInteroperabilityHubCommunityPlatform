@@ -4,6 +4,7 @@ Authentication Views
 REST API views for authentication (login, logout, password reset, etc.).
 """
 
+import contextlib
 import os
 import sys
 import time
@@ -11,17 +12,27 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
+import jwt
+import redis
 import structlog
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
-from django.db import transaction
+from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
+from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import DatabaseError, InterfaceError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
@@ -59,6 +70,7 @@ from .serializers import (
     ResendEmailVerificationSerializer,
     TokenResponseSerializer,
 )
+from .throttles import APIKeyThrottle, RegisterThrottle
 from .utils import sha256_hex as _sha256_hex
 
 logger = structlog.get_logger(__name__)
@@ -77,13 +89,13 @@ def _get_client_ip(request) -> str:
 
 
 def _user_lookup_alias() -> str:
-    """
-    Choose the connection alias for *pre-auth* user lookups.
+    """Choose the connection alias for *pre-auth* user lookups.
 
-    Discriminator: does the ``admin`` alias ACTUALLY map to a
-    different DB role than ``default``? That is the only condition
-    under which routing pre-auth lookups through ``admin`` buys
-    anything.
+    The shared implementation (discriminator + pytest MVCC guard +
+    the canonical test escape hatch) lives in
+    ``hub.apps.auth.db_aliases.user_lookup_alias`` (W1.20 / D2) so
+    the tenant-scoping middleware and these views share ONE
+    implementation of this contract.
 
     * **Production:** ``DATABASES["admin"]["USER"] = "meshant_admin"``
       (BYPASSRLS), ``DATABASES["default"]["USER"] = "meshant_app"``
@@ -95,53 +107,18 @@ def _user_lookup_alias() -> str:
       and is required for these to work.
 
     * **Test / dev (default):** the ``admin`` alias falls back to
-      the same USER as ``default`` (see [hub/settings.py:803-816]).
-      It is still a SEPARATE psycopg connection — Django's
-      ``ConnectionHandler`` keys on alias name, not on connection
-      params — so routing through it opens a parallel session
-      whose MVCC snapshot is taken BEFORE the test's atomic-wrapped
-      INSERT. ``User.objects.using("admin").get(email=...)`` then
-      raises ``User.DoesNotExist`` for a user the test JUST
-      created, and the timing-safe path turns that into a 400
-      "Invalid email or password". Same trap previously documented
-      in ``hub.apps.auth.jwt_utils`` and `views.py`'s
-      ``select_for_update`` paths.
-
-      ``RLS_USERS_ENABLED`` is NOT a usable discriminator: it
-      defaults to ``True`` in [hub/settings.py:1852], so testing
-      ``getattr(settings, "RLS_USERS_ENABLED", False)`` would
-      pick ``"admin"`` in test too — and then trip the
-      cross-connection MVCC trap above.
-
-    Tests that need to exercise the production BYPASSRLS path
-    explicitly must inherit from ``TransactionTestCase`` (so the
-    fixture commits and the parallel admin session can see it) AND
-    arrange for the admin alias to actually use a different USER —
-    the codebase's ``RLSBypassPreAuthTransactionTest`` is the
-    canonical pattern.
+      the same USER as ``default``. It is still a SEPARATE psycopg
+      connection whose MVCC snapshot predates a TestCase's
+      atomic-wrapped INSERT — the helper returns ``"default"`` in
+      test runs so the pre-auth lookup sees setUp / setUpTestData
+      rows.  Tests that need the production BYPASSRLS path use
+      ``RLSBypassPreAuthTransactionTest`` (TransactionTestCase + a
+      real second role) — see
+      ``hub.apps.auth.tests.test_rls_middleware_preauth_alias``.
     """
-    # In a test run (pytest is in sys.modules or PYTEST_CURRENT_TEST is
-    # set) the admin alias uses the same DB USER as default, but Django
-    # still routes through a separate psycopg connection whose MVCC
-    # snapshot predates the test's atomic-wrapped INSERT.  Force
-    # "default" so the pre-auth lookup runs inside the test's
-    # transaction and can see setUp / setUpTestData rows.
-    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
-        return "default"
+    from hub.apps.auth.db_aliases import user_lookup_alias
 
-    try:
-        databases = settings.DATABASES
-    except Exception:  # pragma: no cover — settings always loaded
-        return "default"
-    admin_cfg = databases.get("admin")
-    default_cfg = databases.get("default", {})
-    if not admin_cfg:
-        return "default"
-    admin_user = admin_cfg.get("USER")
-    default_user = default_cfg.get("USER")
-    if not admin_user or admin_user == default_user:
-        return "default"
-    return "admin"
+    return user_lookup_alias()
 
 
 def _get_cache_redis_client() -> Any | None:
@@ -190,7 +167,7 @@ def _redis_sliding_window_zset_key(logical_key: str) -> str:
     try:
         conf = settings.CACHES.get("default", {})
         prefix = str(conf.get("KEY_PREFIX") or "").strip()
-    except Exception:
+    except (AttributeError, ImproperlyConfigured):
         prefix = ""
     ns = "ratelimit:ss"
     if prefix:
@@ -236,7 +213,7 @@ def _sliding_window_rate_limit_allow(
             if isinstance(allowed_raw, (bytes, bytearray)):
                 allowed_raw = int(allowed_raw.decode())
             return int(allowed_raw) == 1
-        except Exception:
+        except redis.exceptions.RedisError:
             # Fall through to in-cache fallback if Redis errors.
             pass
 
@@ -357,7 +334,7 @@ def _retry_after_seconds(cache_key: str, fallback_seconds: int) -> int:
     if callable(ttl_fn):
         try:
             ttl_value = ttl_fn(cache_key)
-        except Exception:
+        except redis.exceptions.RedisError:
             ttl_value = None
         if isinstance(ttl_value, int) and ttl_value > 0:
             return ttl_value
@@ -691,7 +668,7 @@ def login(request):
         _chk(password, _DUMMY_HASH)  # consume similar CPU time
         _record_login_attempt(email, client_ip, success=False)
         _inc_auth_login("failure")
-        raise ValidationError({"email": str(_("Invalid email or password"))})
+        raise ValidationError({"email": str(_("Invalid email or password"))}) from None
 
     # ── Account-level lockout (11.5 + 277.B.066 progressive backoff) ────────────
     if not _check_account_lockout(email, user=user):
@@ -779,7 +756,7 @@ def login(request):
                     logger.warning("cache_warm_failed", error=str(exc))
 
             threading.Thread(target=warm_cache_async, daemon=True).start()
-        except Exception as exc:
+        except (ImportError, RuntimeError) as exc:
             logger.warning("cache_warm_start_failed", error=str(exc))
 
     # ── Build response ────────────────────────────────────────────────────────
@@ -852,7 +829,7 @@ def refresh_token(request):
             .get(token_hash=refresh_token_hash)
         )
     except RefreshToken.DoesNotExist:
-        raise ValidationError({"refresh_token": "Invalid refresh token"})
+        raise ValidationError({"refresh_token": "Invalid refresh token"}) from None
 
     # ── Replay detection with grace period (11.2 + B2 glittery-herding-graham) ─
     if refresh_token_obj.is_revoked():
@@ -1193,7 +1170,7 @@ def password_reset_confirm(request):
             password_reset_token_used_at__isnull=True,
         )
     except User.DoesNotExist:
-        raise ValidationError({"token": "Invalid or expired password reset token"})
+        raise ValidationError({"token": "Invalid or expired password reset token"}) from None
 
     # Phase 225.1 — reject reuse of the current password or any of the last
     # PASSWORD_HISTORY_WINDOW historical passwords. Check before mutating any
@@ -1308,7 +1285,7 @@ def verify_email(request):
         # via the email_verification_token unique index regardless).
         user = User.objects.select_for_update().get(email_verification_token=token_hash)
     except User.DoesNotExist:
-        raise ValidationError({"token": "Invalid or expired verification token"})
+        raise ValidationError({"token": "Invalid or expired verification token"}) from None
 
     if not plaintext_valid_for_user(user, token):
         raise ValidationError({"token": "Invalid or expired verification token"})
@@ -1391,6 +1368,7 @@ def resend_verification_email(request):
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
+@authentication_classes([])
 @transaction.atomic
 def accept_invitation(request):
     """
@@ -1423,7 +1401,7 @@ def accept_invitation(request):
             invitation_token_used_at__isnull=True,
         )
     except User.DoesNotExist:
-        raise ValidationError({"token": "Invalid or expired invitation token"})
+        raise ValidationError({"token": "Invalid or expired invitation token"}) from None
 
     # Activate user and set password
     user.status = UserStatus.ACTIVE
@@ -1483,16 +1461,52 @@ def accept_invitation(request):
     return response
 
 
+def _record_registration_join_denied(request) -> None:
+    """Audit a denied tenant-join registration attempt (R2-B1, W1.1).
+
+    System-scoped row (tenant=NULL, infer disabled): the attempt targets
+    a tenant the anonymous caller must not touch, and the row must never
+    pollute the victim tenant's audit scope. ``contextlib.suppress`` — the
+    denial must never fail because the audit store is unavailable.
+    """
+    from hub.apps.audit.event_types import REGISTRATION_JOIN_DENIED
+    from hub.apps.audit.utils import create_audit_event
+
+    with contextlib.suppress(Exception):
+        create_audit_event(
+            resource_type="AUTH",
+            action=REGISTRATION_JOIN_DENIED,
+            actor_user=None,
+            tenant=None,
+            resource_id=None,
+            result="DENIED",
+            details={
+                "attempted_tenant_id": str(
+                    request.data.get("tenant_id")
+                    or request.query_params.get("tenant_id")
+                ),
+                "email": request.data.get("email"),
+            },
+            request=request,
+            infer_tenant_from_actor=False,
+        )
+
+
 @extend_schema(
     request=RegisterSerializer,
     responses={
         201: RegisterResponseSerializer,
         400: OpenApiResponse(description="Validation error or email already exists"),
+        403: OpenApiResponse(
+            description="Tenant joining via public registration is denied "
+            "(REGISTRATION_JOIN_DENIED — use an invitation)"
+        ),
         429: OpenApiResponse(description="Rate limit exceeded"),
     },
     tags=["Authentication"],
 )
 @api_view(["POST"])
+@throttle_classes([RegisterThrottle])
 @permission_classes([permissions.AllowAny])
 @transaction.atomic
 def register(request):
@@ -1500,34 +1514,55 @@ def register(request):
     User registration endpoint.
 
     POST /auth/register
-    Body: {"email": "user@example.com", "password": "SecurePass123", "name": "John Doe", "tenant_id": "uuid (optional)"}
+    Body: {"email": "user@example.com", "password": "SecurePass123", "name": "John Doe"}
 
     Creates a new user account with email, password, and name.
-    Optionally associates user with a tenant.
+    R2-B1 (W1.1): public registration is PERSONAL-tenant-only — the
+    server creates the user's personal tenant (or none under the legacy
+    flag). A payload carrying ``tenant_id`` (the anonymous cross-tenant
+    enrollment vector) is denied BEFORE validation with 403
+    REGISTRATION_JOIN_DENIED, identically for valid/invalid/inactive
+    tenant UUIDs (no tenant-existence oracle), and the attempt is
+    audited (REGISTRATION_JOIN_DENIED). The endpoint is throttled per
+    client IP (RegisterThrottle, 10/min production).
     Publishes user.created event and sends welcome email (async).
     """
     logger = structlog.get_logger(__name__)
+
+    # R2-B1 (W1.1): tenant joining is no longer a public-registration
+    # capability — the client-supplied tenant_id was the anonymous
+    # cross-tenant enrollment BLOCKER (round-2 audit). ANY payload (or
+    # query param) carrying tenant_id is an attempt: deny it identically
+    # for valid, invalid, and inactive tenant UUIDs — the envelope must
+    # never reveal which — and record the attempt for abuse analysis.
+    # The denial runs BEFORE serializer validation so the response shape
+    # cannot be influenced by the rest of the payload.
+    if "tenant_id" in request.data or "tenant_id" in request.query_params:
+        from hub.apps.core.responses import api_error_response
+
+        _record_registration_join_denied(request)
+        return api_error_response(
+            message=(
+                "Registration is for personal accounts only. "
+                "To join a tenant, use an invitation."
+            ),
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="REGISTRATION_JOIN_DENIED",
+            details={},
+        )
+
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     email = serializer.validated_data["email"]
     password = serializer.validated_data["password"]
     name = serializer.validated_data["name"]
-    tenant_id = serializer.validated_data.get("tenant_id")
 
-    # Get tenant: provided tenant_id, or create personal tenant when omitted (useronboardfix 1.2)
+    # R2-B1: the tenant comes from the SERVER, never the client — the
+    # personal tenant (useronboardfix 1.2) or the legacy flag-off None.
     tenant = None
     personal_tenant_created = False
-    if tenant_id:
-        from hub.apps.tenants.models import Tenant
-
-        try:
-            tenant = Tenant.objects.get(id=tenant_id)
-            if not tenant.is_active():
-                raise ValidationError({"tenant_id": "Tenant is not active"})
-        except Tenant.DoesNotExist:
-            raise ValidationError({"tenant_id": "Tenant not found"})
-    elif getattr(settings, "PERSONAL_TENANT_ON_REGISTRATION", True):
+    if getattr(settings, "PERSONAL_TENANT_ON_REGISTRATION", True):
         from hub.apps.core.responses import api_error_response, handle_service_exception
         from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError
         from hub.apps.core.services.base import ValidationError as ServiceValidationError
@@ -1564,22 +1599,6 @@ def register(request):
                     code="SERVICE_UNAVAILABLE",
                     details={},
                 )
-            return handle_service_exception(e)
-
-    if tenant:
-        from django.db import transaction as django_transaction
-
-        from hub.apps.consent.gates import enforce_signup_consent
-        from hub.apps.core.responses import handle_service_exception
-        from hub.apps.core.services.base import ValidationError as ServiceValidationError
-
-        try:
-            enforce_signup_consent(
-                tenant=tenant,
-                signup_consent=bool(serializer.validated_data.get("signup_consent")),
-            )
-        except ServiceValidationError as e:
-            django_transaction.set_rollback(True)
             return handle_service_exception(e)
 
     # Check for duplicate email BEFORE create_user to surface 409 reliably.
@@ -1685,19 +1704,9 @@ def register(request):
         with tenant_context(tenant.id):
             UserTenantMembershipService().add_membership(user, tenant)
 
-    if tenant:
-        from django.db import transaction as django_transaction
-
-        from hub.apps.consent.gates import grant_signup_consent_after_registration
-        from hub.apps.core.responses import handle_service_exception
-        from hub.apps.core.services.base import ValidationError as ServiceValidationError
-
-        try:
-            with tenant_context(tenant.id):
-                grant_signup_consent_after_registration(user=user, tenant=tenant)
-        except ServiceValidationError as e:
-            django_transaction.set_rollback(True)
-            return handle_service_exception(e)
+    # R2-B1 (W1.1): the signup-consent grant existed only for the removed
+    # foreign-tenant join path — the personal tenant is freshly created
+    # (no compliance consent config) and needs no grant.
 
     # Phase 204: verification email (token persisted + async send)
     try:
@@ -1805,9 +1814,12 @@ def _build_me_response(user):
     roles = []
     if hasattr(user, "user_roles"):
         roles = [ur.role.name for ur in user.user_roles.all()]
-    if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-        if "PLATFORM_ADMIN" not in roles:
-            roles = list(roles) + ["PLATFORM_ADMIN"]
+    if (
+        hasattr(user, "is_platform_admin")
+        and user.is_platform_admin
+        and "PLATFORM_ADMIN" not in roles
+    ):
+        roles = [*list(roles), "PLATFORM_ADMIN"]
 
     from .serializers import get_user_permissions
 
@@ -1839,7 +1851,7 @@ def _build_me_response(user):
                 user=user, tenant=user.tenant
             )
             needs_reconsent = len(stale_purposes) > 0
-    except Exception:
+    except (ImportError, DatabaseError, InterfaceError):
         logger.warning("consent_stale_check_failed", exc_info=True)
 
     return {
@@ -1856,6 +1868,9 @@ def _build_me_response(user):
         "feature_tenant_switch_enabled": feature_tenant_switch_enabled,
         "needs_reconsent": needs_reconsent,
         "stale_consent_purposes": stale_purposes,
+        # Phase 278.R.6 (close-test-coverage-gaps 3.2) — the SPA's
+        # ProductTourGate reads it to decide whether to re-show the tour.
+        "has_seen_tour": bool(getattr(user, "has_seen_tour", False)),
     }
 
 
@@ -1884,13 +1899,23 @@ def me(request):
     """
     user = request.user
     cache_key = f"user:me:{user.id}"
+    version_key = f"user:me:version:{user.id}"
 
     if request.method == "GET":
-        cached_response = cache.get(cache_key)
-        if cached_response:
-            return Response(cached_response, status=status.HTTP_200_OK)
+        version = cache.get(version_key) or 0
+        cached = cache.get(cache_key)
+        if isinstance(cached, dict) and cached.get("data") and cached.get("v") == version:
+            return Response(cached["data"], status=status.HTTP_200_OK)
         response_data = _build_me_response(user)
-        cache.set(cache_key, response_data, 300)
+        # Version-tagged write: the entry records the user-version it was
+        # BUILT under. A slow GET whose build straddled a PATCH could
+        # otherwise SET the pre-PATCH payload AFTER the PATCH's
+        # cache.delete, poisoning the cache for the full 300s TTL — every
+        # subsequent GET re-serves the OLD name and the SPA's refresh
+        # paths revert the edited profile (JOURNEY-AUTH-PROFILE
+        # intermittent header staleness under batch load, 2026-10-03).
+        # The PATCH bumps the version, so a stale late SET is never read.
+        cache.set(cache_key, {"v": version, "data": response_data}, 300)
         return Response(response_data, status=status.HTTP_200_OK)
 
     # PATCH
@@ -1911,10 +1936,23 @@ def me(request):
     if "saved_views" in serializer.validated_data:
         user.saved_views = serializer.validated_data["saved_views"]
         update_fields.append("saved_views")
+    # Phase 278.R.6 (close-test-coverage-gaps 3.2) — product-tour
+    # cross-device persistence; the SPA's ProductTourGate PATCHes it on
+    # tour completion.
+    if "has_seen_tour" in serializer.validated_data:
+        user.has_seen_tour = bool(serializer.validated_data["has_seen_tour"])
+        update_fields.append("has_seen_tour")
 
     if update_fields:
-        user.save(update_fields=update_fields + ["updated_at"])
+        user.save(update_fields=[*update_fields, "updated_at"])
         cache.delete(cache_key)
+        # Bump the user-version so any in-flight GET that built its
+        # response BEFORE this save cannot poison the cache with the
+        # pre-PATCH payload via a late SET (see GET branch).
+        try:
+            cache.incr(version_key)
+        except ValueError:
+            cache.set(version_key, 1)
 
         log_auth_operation(
             action="PROFILE_UPDATE",
@@ -2089,12 +2127,77 @@ class APIKeyViewSet(viewsets.ModelViewSet):
 
     Tenant-scoped: users can only manage API keys in their tenant.
     Supports pagination via query parameters: page (default: 1) and page_size (default: 50, max: 100).
+    Supports the single-identity (D2) BaaS filters: ``?tier=NAME`` and
+    ``?active_only=true``.
+
+    R2-B2 (W1.3a): minting restrictions — the scopes a key may carry are
+    the requester's per-role allowlist (``ROLE_SCOPE_MAP`` via
+    ``disallowed_mint_scopes``); ``"*"`` is PLATFORM_ADMIN-only;
+    ``scheduled_ingestion:internal`` is never mintable through the public
+    API; update/destroy are owner-or-admin (another member's key 404s).
     """
 
     serializer_class = APIKeySerializer
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = (APIKeyThrottle,)
     lookup_field = "id"
     pagination_class = StandardPageNumberPagination
+
+    def _get_mutatable_object(self):
+        """The key for update/destroy — owner-or-admin (R2-B2).
+
+        Platform admins resolve against the full (tenant-filtered)
+        queryset; everyone else resolves against THEIR OWN keys only, so
+        another member's key is indistinguishable from nonexistent (404,
+        no existence oracle).
+        """
+        user = self.request.user
+        queryset = self.get_queryset()
+        if getattr(user, "is_platform_admin", False):
+            return get_object_or_404(
+                queryset, **{self.lookup_field: self.kwargs[self.lookup_field]}
+            )
+        return get_object_or_404(
+            queryset.filter(user=user),
+            **{self.lookup_field: self.kwargs[self.lookup_field]},
+        )
+
+    def _enforce_mint_scopes(self, requested_scopes):
+        """R2-B2: 400 + audit when any requested scope is not mintable by
+        the requester's roles. Returns the denial response, or None when
+        the request may proceed."""
+        from hub.apps.auth.permissions import _get_user_scopes, disallowed_mint_scopes
+        from hub.apps.core.responses import api_error_response
+
+        disallowed = disallowed_mint_scopes(
+            list(requested_scopes or []), _get_user_scopes(self.request)
+        )
+        if not disallowed:
+            return None
+        try:
+            from hub.apps.audit.event_types import API_KEY_SCOPE_MINT_DENIED
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="API_KEY",
+                action=API_KEY_SCOPE_MINT_DENIED,
+                actor_user=self.request.user,
+                tenant=getattr(self.request.user, "tenant", None),
+                resource_id=None,
+                result="DENIED",
+                details={
+                    "requested_scopes": list(requested_scopes or []),
+                    "disallowed_scopes": disallowed,
+                },
+            )
+        except Exception:
+            pass
+        return api_error_response(
+            message=f"Scopes not allowed for your roles: {', '.join(sorted(set(disallowed)))}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="API_KEY_SCOPE_MINT_DENIED",
+            details={"scopes": disallowed},
+        )
 
     def get_queryset(self):
         """Filter queryset based on user permissions"""
@@ -2102,13 +2205,30 @@ class APIKeyViewSet(viewsets.ModelViewSet):
 
         # Platform admins can see all API keys
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return APIKey.objects.all()
-
+            queryset = APIKey.objects.all()
         # Regular users can only see API keys in their tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return APIKey.objects.filter(tenant=user.tenant)
+        elif hasattr(user, "tenant") and user.tenant:
+            queryset = APIKey.objects.filter(tenant=user.tenant)
+        else:
+            return APIKey.objects.none()
 
-        return APIKey.objects.none()
+        # Single identity (D2) — tier filter resolves through the
+        # commercial hook (Phase 313 paid-ward FK). Core-only mode has no
+        # tiers, so the filter returns an empty set there.
+        tier_name = self.request.query_params.get("tier")
+        if tier_name:
+            from hub.apps.core.commercial_hooks import filter_api_keys_by_tier
+
+            queryset = filter_api_keys_by_tier(queryset, tier_name)
+
+        # Single identity (D2) — active_only mirrors the BaaS portal filter.
+        active_only = self.request.query_params.get("active_only", "").lower() == "true"
+        if active_only:
+            queryset = queryset.filter(revoked_at__isnull=True).filter(
+                Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+            )
+
+        return queryset
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -2117,7 +2237,7 @@ class APIKeyViewSet(viewsets.ModelViewSet):
         return APIKeySerializer
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new API key.
 
@@ -2135,6 +2255,13 @@ class APIKeyViewSet(viewsets.ModelViewSet):
             },
         )
         serializer.is_valid(raise_exception=True)
+
+        # R2-B2 (W1.3a): minting scope allowlist — the key may only carry
+        # scopes the requester's roles grant (PLATFORM_ADMIN alone mints
+        # "*"; scheduled_ingestion:internal is never mintable here).
+        denied = self._enforce_mint_scopes(serializer.validated_data.get("scopes"))
+        if denied is not None:
+            return denied
 
         # Ensure tenant is set
         tenant = serializer.context["tenant"]
@@ -2159,17 +2286,21 @@ class APIKeyViewSet(viewsets.ModelViewSet):
                 scopes=serializer.validated_data.get("scopes", []),
                 expires_in_days=serializer.validated_data.get("expires_in_days"),
                 rate_limit_per_hour=serializer.validated_data.get("rate_limit_per_hour"),
+                expires_at=serializer.validated_data.get("expires_at"),
+                tier_name=serializer.validated_data.get("tier"),
             )
         except (ServiceValidationError, NotFoundError) as e:
             return handle_service_exception(e)
 
-        # Return response with plaintext key
+        # Return response with plaintext key (tier name resolves through
+        # the paid-ward property; None in core-only mode).
         response_serializer = APIKeyResponseSerializer(
             {
                 "id": api_key.id,
                 "name": api_key.name,
                 "api_key": plaintext_key,
                 "scopes": api_key.scopes,
+                "tier": api_key.tier.name if api_key.tier else None,
                 "expires_at": api_key.expires_at,
                 "created_at": api_key.created_at,
             }
@@ -2188,13 +2319,50 @@ class APIKeyViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
-        """
-        Revoke an API key via service layer (soft delete by setting expires_at to past).
+    def update(self, request, *args, **kwargs):
+        """R2-B2 (W1.3a): owner-or-admin update + the mint allowlist.
 
-        For now, we'll actually delete it. In production, you might want to soft delete.
+        The key resolves against the OWNER-scoped queryset (another
+        member's key 404s — no existence oracle), and a scopes change is
+        re-validated against the requester's role allowlist (PATCH scopes
+        was the mint bypass).
         """
-        api_key = self.get_object()
+        api_key = self._get_mutatable_object()
+        if "scopes" in request.data and isinstance(request.data.get("scopes"), list):
+            denied = self._enforce_mint_scopes(request.data["scopes"])
+            if denied is not None:
+                return denied
+        serializer = self.get_serializer(api_key, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def partial_update(self, request, *args, **kwargs):
+        """R2-B2 (W1.3a): owner-or-admin partial update (same guards)."""
+        api_key = self._get_mutatable_object()
+        if "scopes" in request.data and isinstance(request.data.get("scopes"), list):
+            denied = self._enforce_mint_scopes(request.data["scopes"])
+            if denied is not None:
+                return denied
+        serializer = self.get_serializer(api_key, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def destroy(self, request, *_args, **_kwargs):
+        """
+        Revoke an API key via the service layer (soft delete).
+
+        Single identity (D2) contract: the key row is kept with
+        ``revoked_at`` set so usage/audit FK attribution survives;
+        ``is_active()`` becomes False.
+
+        R2-B2 (W1.3a): owner-or-admin — the key resolves against the
+        owner-scoped queryset, so another member's key 404s.
+        """
+        api_key = self._get_mutatable_object()
         tenant_id = str(api_key.tenant.id) if api_key.tenant else None
         if not tenant_id:
             return Response(
@@ -2265,8 +2433,6 @@ def list_active_sessions(request):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         try:
-            import jwt
-
             token = auth_header.split(" ", 1)[1]
             # Decode without verification to read the refresh_token_jti claim
             payload = jwt.decode(
@@ -2280,7 +2446,15 @@ def list_active_sessions(request):
                     current_token_hash = rt.token_hash
                 except RefreshToken.DoesNotExist:
                     pass
-        except Exception:
+        except (
+            ImportError,
+            jwt.exceptions.PyJWTError,
+            AttributeError,
+            RefreshToken.DoesNotExist,
+            DatabaseError,
+            InterfaceError,
+            DjangoValidationError,
+        ):
             # Graceful fallback — mark the most recent valid token as current
             pass
 
@@ -2350,8 +2524,6 @@ def end_all_other_sessions(request):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         try:
-            import jwt
-
             token = auth_header.split(" ", 1)[1]
             payload = jwt.decode(
                 token,
@@ -2360,7 +2532,15 @@ def end_all_other_sessions(request):
             refresh_token_id = payload.get("refresh_token_id")
             if refresh_token_id:
                 current_token_hash = RefreshToken.objects.get(id=refresh_token_id).token_hash
-        except Exception:
+        except (
+            ImportError,
+            jwt.exceptions.PyJWTError,
+            AttributeError,
+            RefreshToken.DoesNotExist,
+            DatabaseError,
+            InterfaceError,
+            DjangoValidationError,
+        ):
             pass
 
     # Revoke all valid tokens except the current one
@@ -2412,7 +2592,7 @@ def revoke_session(request, session_id):
     try:
         refresh_token = RefreshToken.objects.get(id=session_id, user=request.user)
     except RefreshToken.DoesNotExist:
-        raise NotFound("Session not found")
+        raise NotFound("Session not found") from None
 
     # Revoke the token
     if not refresh_token.revoked_at:

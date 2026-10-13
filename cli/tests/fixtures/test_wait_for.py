@@ -54,14 +54,14 @@ def test_propagates_exceptions_from_predicate_immediately() -> None:
 
 
 def test_rejects_non_positive_timeout() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="timeout must be > 0"):
         wait_for(lambda: True, timeout=0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="timeout must be > 0"):
         wait_for(lambda: True, timeout=-1)
 
 
 def test_rejects_non_positive_interval() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="interval must be > 0"):
         wait_for(lambda: True, timeout=1.0, interval=0)
 
 

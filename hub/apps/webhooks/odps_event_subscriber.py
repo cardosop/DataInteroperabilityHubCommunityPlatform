@@ -220,15 +220,13 @@ class ODPSEventSubscriber(EventSubscriber):
                         webhooks_triggered=count,
                     )
 
-                return  # Success
-
             except Exception as e:
                 last_error = e
                 is_transient = self._is_transient_failure(e)
 
                 if not is_transient:
                     # Non-transient error - don't retry, send to DLQ
-                    logger.error(
+                    logger.exception(
                         "odps_webhook_non_transient_error",
                         event_type=event_type,
                         event_id=event.get("event_id"),
@@ -243,7 +241,7 @@ class ODPSEventSubscriber(EventSubscriber):
                 # Transient error - check if we should retry
                 if retry_count >= max_retries:
                     # Max retries exceeded - send to DLQ
-                    logger.error(
+                    logger.exception(
                         "odps_webhook_retry_exhausted",
                         event_type=event_type,
                         event_id=event.get("event_id"),
@@ -273,6 +271,8 @@ class ODPSEventSubscriber(EventSubscriber):
                 )
                 time.sleep(delay)
                 retry_count += 1
+            else:
+                return  # Success
 
         # Should not reach here, but handle just in case
         if last_error:

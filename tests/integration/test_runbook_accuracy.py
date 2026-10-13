@@ -55,9 +55,10 @@ class TestRunbookEndpointReferences:
 
             # If health endpoints don't work, try a simple API endpoint
             response = requests.get(f"{self.api_base_url}/api/v1/compliance/runs/", timeout=2)
-            return response.status_code != 500  # Any status except 500 means service is up
-        except Exception:
+        except requests.RequestException:
             return False
+        else:
+            return response.status_code != 500  # Any status except 500 means service is up
 
     def test_runbooks_no_old_patterns(self):
         """Test that runbooks don't contain old endpoint patterns (except in deprecated examples)"""
@@ -96,7 +97,7 @@ class TestRunbookEndpointReferences:
                     )
 
                     # Check if it's in a comment
-                    is_comment = line_content.startswith("#") or line_content.startswith("//")
+                    is_comment = line_content.startswith(("#", "//"))
 
                     if not (is_deprecated or is_comment):
                         issues.append(
@@ -187,7 +188,7 @@ class TestRunbookEndpointReferences:
     def test_runbook_endpoints_accessible(self):
         """Test that endpoints referenced in runbooks are accessible (if services running)"""  # noqa: skip-in-body — runtime service dependency
         if not self.services_available:
-            pytest.skip("API services not available")
+            pytest.skip("API services not available")  # noqa: skip-in-body
 
         # Test compliance endpoint
         try:
@@ -208,7 +209,7 @@ class TestRunbookEndpointReferences:
     def test_old_patterns_not_accessible(self):
         """Test that old endpoint patterns are not accessible (if services running)"""  # noqa: skip-in-body — runtime service dependency
         if not self.services_available:
-            pytest.skip("API services not available")
+            pytest.skip("API services not available")  # noqa: skip-in-body
 
         # Test old compliance pattern - should return 404 or be redirected
         try:

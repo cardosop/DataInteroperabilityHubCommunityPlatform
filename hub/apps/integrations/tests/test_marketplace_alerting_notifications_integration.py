@@ -25,6 +25,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.integrations.services import MarketplaceIntegrationService
@@ -35,7 +36,7 @@ from hub.apps.notifications.tasks import (
     send_marketplace_sync_failure_email,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 pytestmark = [
@@ -144,7 +145,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             )
 
         except requests.exceptions.RequestException as e:
-            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}") from e
 
     def test_connection_test_failure_alert_rule(self):
         """Test that connection test failure alert rule is evaluable"""
@@ -180,7 +181,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             # Rule should be evaluable (may return empty results if no data)
 
         except requests.exceptions.RequestException as e:
-            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}") from e
 
     def test_sync_job_failure_alert_rule(self):
         """Test that sync job failure alert rule is evaluable"""
@@ -215,7 +216,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             self.assertEqual(response.status_code, 200, "Prometheus query should succeed")
 
         except requests.exceptions.RequestException as e:
-            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}") from e
 
 
 class MarketplaceNotificationIntegrationTest(TestCase):
@@ -526,7 +527,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
         )
         # Create a connection that doesn't exist (no DB record)
-        with self.assertRaises(Exception):
+        with self.assertRaises(NotFoundError):
             service.sync_from_marketplace(
                 connection_id="00000000-0000-0000-0000-000000000000",
                 tenant_id=str(self.tenant.id),

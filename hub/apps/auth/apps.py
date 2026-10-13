@@ -1,3 +1,5 @@
+import contextlib
+
 from django.apps import AppConfig
 
 
@@ -7,8 +9,10 @@ class AuthConfig(AppConfig):
     label = "hub_auth"  # Avoid conflict with Django's built-in 'auth' app
 
     def ready(self):
-        """Import OpenAPI extensions to register them"""
-        try:
-            from . import openapi_extensions  # noqa: F401
-        except ImportError:
-            pass  # Extensions may not be needed in all environments
+        """Load OpenAPI extensions so their schema hooks register."""
+        from importlib import import_module
+
+        # Side-effect import: the module self-registers its schema
+        # extensions on load — the name itself is never used.
+        with contextlib.suppress(ImportError):
+            import_module("hub.apps.auth.openapi_extensions")

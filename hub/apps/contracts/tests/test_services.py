@@ -91,11 +91,16 @@ class ContractServiceTest(ContractsTestBase):
         self.assertEqual(contract.asset_id, asset.id)
 
     def test_create_contract_asset_not_found(self):
-        """Test contract creation with non-existent asset raises ValidationError (business rules)."""
+        """Test contract creation with non-existent asset raises NotFoundError.
+
+        Existence-leak protection: an asset missing for the tenant is
+        surfaced as NotFoundError (404 at the API), not a 400 validation
+        error that would reveal tenant membership.
+        """
         original_raw = '{"info": {"name": "test-contract"}}'
         original_format = "JSON"
 
-        with self.assertRaises(ValidationError) as cm:
+        with self.assertRaises(NotFoundError) as cm:
             self.service.create_contract(
                 original_raw=original_raw,
                 original_format=original_format,
@@ -104,7 +109,7 @@ class ContractServiceTest(ContractsTestBase):
                 asset_id="00000000-0000-0000-0000-000000000000",
             )
 
-        self.assertEqual(cm.exception.code, "BUSINESS_RULES_VALIDATION")
+        self.assertEqual(cm.exception.code, "NOT_FOUND")
 
     def test_update_contract_success(self):
         """Test successful contract update"""
@@ -318,7 +323,8 @@ class ContractServiceTest(ContractsTestBase):
     # ========== EDGE CASES ==========
 
     def test_create_contract_cross_tenant_asset(self):
-        """Test creating contract with asset from different tenant raises ValidationError (business rules)."""
+        """Test creating contract with asset from another tenant raises
+        NotFoundError (existence-leak protection — 404 at the API)."""
         # Create another tenant and asset
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
@@ -331,7 +337,7 @@ class ContractServiceTest(ContractsTestBase):
         original_raw = '{"info": {"name": "test-contract"}}'
         original_format = "JSON"
 
-        with self.assertRaises(ValidationError) as cm:
+        with self.assertRaises(NotFoundError) as cm:
             self.service.create_contract(
                 original_raw=original_raw,
                 original_format=original_format,
@@ -340,7 +346,7 @@ class ContractServiceTest(ContractsTestBase):
                 asset_id=str(other_asset.id),  # Asset from different tenant
             )
 
-        self.assertEqual(cm.exception.code, "BUSINESS_RULES_VALIDATION")
+        self.assertEqual(cm.exception.code, "NOT_FOUND")
 
     def test_create_contract_empty_original_raw(self):
         """Test creating contract with empty original_raw raises ValidationError"""

@@ -186,8 +186,9 @@ class TestRateLimitingIntegration(TestCase):
         """Test that compliance runs endpoint is accessible."""
         response = self.client.get("/api/v1/compliance/runs/")
         # Endpoint should be accessible (200 or 401 if unauthenticated)
-        self.assertIn(response.status_code, [200, 401],
-            f"Expected 200 or 401, got {response.status_code}")
+        self.assertIn(
+            response.status_code, [200, 401], f"Expected 200 or 401, got {response.status_code}"
+        )
         # Rate-limit headers may or may not be present (middleware is env-dependent)
         # At minimum verify the endpoint is accessible without a 500 error
         self.assertLess(response.status_code, 500)
@@ -195,8 +196,9 @@ class TestRateLimitingIntegration(TestCase):
     def test_dq_runs_endpoint_has_rate_limiting(self):
         """Test that DQ runs endpoint is accessible."""
         response = self.client.get("/api/v1/dq/runs/")
-        self.assertIn(response.status_code, [200, 401],
-            f"Expected 200 or 401, got {response.status_code}")
+        self.assertIn(
+            response.status_code, [200, 401], f"Expected 200 or 401, got {response.status_code}"
+        )
         self.assertLess(response.status_code, 500)
 
     def test_endpoint_category_matches_standardized_patterns(self):

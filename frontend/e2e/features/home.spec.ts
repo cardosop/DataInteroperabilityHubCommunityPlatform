@@ -25,7 +25,7 @@ test.describe('Feature: Home / Dashboard', () => {
       });
       const url = page.url();
       if (url.includes('/login')) {
-        test.skip(true, 'Auth redirect');
+        test.skip(url.includes('/login'), 'Auth redirect');
         return;
       }
       // Home must render the app shell with navigation
@@ -42,7 +42,7 @@ test.describe('Feature: Home / Dashboard', () => {
         contentSelector: '.app-main, [data-testid="app-main"], h1',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect');
+        test.skip(page.url().includes('/login'), 'Auth redirect');
         return;
       }
       // Sidebar must have at least Assets and Contracts navigation links

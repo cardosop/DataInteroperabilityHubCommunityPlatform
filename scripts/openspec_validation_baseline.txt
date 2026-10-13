@@ -1,0 +1,200 @@
+# openspec structural validation baseline — pre-existing violations in the
+# change dir's older specs (135 files). NET-growth ratchet: new violations
+# fail CI; the baseline only shrinks. Seeded 2026-08-21 by the repo-owned
+# validator (scripts/validate_openspec_change.py); the Phase 1 spec files
+# (architecture-split, capability-wire-contract, frontend-response-normalization,
+# core-only-testing) contribute ZERO baselined entries.
+specs/activation-flows/spec.md::no-title
+specs/agent-native-meshant/spec.md::no-title
+specs/activation-flows/spec.md::no-title
+specs/agent-native-meshant/spec.md::no-title
+specs/asset-creation/spec.md::no-title
+specs/asset-creation/spec.md::requirement-no-shall::Cross-Tenant 404 on Federated Asset Read (existence-leak protection)
+specs/asset-creation/spec.md::requirement-no-shall::Federated Import Gating (D250.3)
+specs/auth-email-verification/spec.md::scenario-no-then::Email Verification Flow (REQ-AUTH-VERIFY-001)::Expired token
+specs/auth-email-verification/spec.md::scenario-no-then::Email Verification Flow (REQ-AUTH-VERIFY-001)::Successful verification
+specs/auth-email-verification/spec.md::scenario-no-then::Login Gate with Grace Period (REQ-AUTH-VERIFY-002)::Login after grace period
+specs/auth-email-verification/spec.md::scenario-no-then::Login Gate with Grace Period (REQ-AUTH-VERIFY-002)::Login within grace period
+specs/auth-email-verification/spec.md::scenario-no-when::Email Verification Flow (REQ-AUTH-VERIFY-001)::Expired token
+specs/auth-email-verification/spec.md::scenario-no-when::Email Verification Flow (REQ-AUTH-VERIFY-001)::Successful verification
+specs/auth-email-verification/spec.md::scenario-no-when::Login Gate with Grace Period (REQ-AUTH-VERIFY-002)::Login after grace period
+specs/auth-email-verification/spec.md::scenario-no-when::Login Gate with Grace Period (REQ-AUTH-VERIFY-002)::Login within grace period
+specs/auth-tenancy-hardening/spec.md::no-title
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Error Handling and Normalization (REQ-FETCH-CLIENT-003)::401 triggers refresh and retry
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Error Handling and Normalization (REQ-FETCH-CLIENT-003)::DRF flat error normalized
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Native fetch API Client (REQ-FETCH-CLIENT-001)::Blob download backward compatibility
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Native fetch API Client (REQ-FETCH-CLIENT-001)::Service file backward compatibility
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Remove axios npm dependency (REQ-AXIOS-REMOVE-001)::ESLint blocks re-introduction
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Remove axios npm dependency (REQ-AXIOS-REMOVE-001)::axios not in dependency tree
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Request Middleware (REQ-FETCH-CLIENT-002)::Auth header added to request
+specs/axios-removal-supply-chain/spec.md::scenario-no-then::Timeout via AbortController (REQ-FETCH-CLIENT-004)::Request times out after 30 seconds
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Error Handling and Normalization (REQ-FETCH-CLIENT-003)::401 triggers refresh and retry
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Error Handling and Normalization (REQ-FETCH-CLIENT-003)::DRF flat error normalized
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Native fetch API Client (REQ-FETCH-CLIENT-001)::Blob download backward compatibility
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Native fetch API Client (REQ-FETCH-CLIENT-001)::Service file backward compatibility
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Remove axios npm dependency (REQ-AXIOS-REMOVE-001)::ESLint blocks re-introduction
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Remove axios npm dependency (REQ-AXIOS-REMOVE-001)::axios not in dependency tree
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Request Middleware (REQ-FETCH-CLIENT-002)::Auth header added to request
+specs/axios-removal-supply-chain/spec.md::scenario-no-when::Timeout via AbortController (REQ-FETCH-CLIENT-004)::Request times out after 30 seconds
+specs/b2b2c-api-billing/spec.md::no-title
+specs/billing-system/spec.md::no-title
+specs/business-rules-hardening/spec.md::no-title
+specs/ci-cd-pipeline/spec.md::no-title
+specs/cli-sdk-coverage/spec.md::no-title
+specs/cli-sdk-hardening/spec.md::no-title
+specs/cli-sdk-mvp-awareness/spec.md::no-title
+specs/cli-sdk-mvp-coverage-parity/spec.md::no-title
+specs/cli-sdk-security/spec.md::no-title
+specs/cli-sdk-testing/spec.md::no-title
+specs/compliance-breach-notification/spec.md::requirement-no-shall::Immutable Evidence Chain
+specs/compliance-dpia-tooling/spec.md::requirement-no-shall::DPIA Version Control
+specs/compliance-dq-onboarding-hardening/spec.md::no-title
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::/run-dataframe Endpoint Must Support Custom Checks
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Asset Detail Must Show Multiple Contracts and Datasets
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Contract Detail Must Show Linked Asset
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::DQ Trend Analysis Must Use Correct Model Field Names
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Dataset Attachment Must Invoke Business Rules Validation
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Dataset is_current Flag Must Be Managed on Attachment
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Invalid Custom Check Enums Must Return 400
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::ODPS-ODCS Linking Must Enforce Asset Consistency
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Optimistic Locking Must Be Atomic
+specs/compliance-dq-onboarding-hardening/spec.md::requirement-no-scenario::Quality Score Must Be Clamped to 0-100 Range
+specs/compliance-dsar-workflow/spec.md::requirement-no-shall::Structured Export Packaging
+specs/compliance-processor-agreements/spec.md::requirement-no-shall::Cross-Border Transfer Matrix
+specs/compliance-retention-enforcer/spec.md::requirement-no-shall::Policy-Driven Retention Windows
+specs/compliance-retention-enforcer/spec.md::requirement-no-shall::Safe Deletion Protocol
+specs/compliance-ropa-generator/spec.md::requirement-no-shall::Human Readable Export
+specs/compliance-service/spec.md::no-title
+specs/compliance-suite/spec.md::no-title
+specs/container-orchestration/spec.md::no-title
+specs/continuous-compliance/spec.md::no-title
+specs/cross-cutting-integrations/spec.md::no-title
+specs/cross-service-resilience/spec.md::scenario-no-then::Compliance Service Graceful Degradation (REQ-RESIL-002)::Compliance service down during activation
+specs/cross-service-resilience/spec.md::scenario-no-then::Contract Invalidation Cascade (REQ-RESIL-003)::Contract invalidated cascades to asset
+specs/cross-service-resilience/spec.md::scenario-no-then::DQ Service Graceful Degradation (REQ-RESIL-001)::DQ service down during activation
+specs/cross-service-resilience/spec.md::scenario-no-when::Compliance Service Graceful Degradation (REQ-RESIL-002)::Compliance service down during activation
+specs/cross-service-resilience/spec.md::scenario-no-when::Contract Invalidation Cascade (REQ-RESIL-003)::Contract invalidated cascades to asset
+specs/cross-service-resilience/spec.md::scenario-no-when::DQ Service Graceful Degradation (REQ-RESIL-001)::DQ service down during activation
+specs/data-movement-dlt/spec.md::no-title
+specs/data-quality/spec.md::no-title
+specs/data-transformation/spec.md::no-title
+specs/data-warehouse-connectivity/spec.md::no-title
+specs/database-hardening/spec.md::no-title
+specs/datasets-files/spec.md::no-title
+specs/datasets-files/spec.md::requirement-no-shall::Operational gates protect destructive storage sweeps
+specs/dbt-native-transformation/spec.md::no-title
+specs/documentation-consolidation/spec.md::no-title
+specs/documentation-content-update/spec.md::no-title
+specs/e2e-quality-remediation/spec.md::no-title
+specs/feature-flags/spec.md::no-title
+specs/feature-portfolio-rationalization/spec.md::no-title
+specs/file-virus-scanning/spec.md::scenario-no-then::Async Virus Scanning (REQ-FILE-SCAN-001)::ClamAV unavailable
+specs/file-virus-scanning/spec.md::scenario-no-then::Async Virus Scanning (REQ-FILE-SCAN-001)::Clean file passes scan
+specs/file-virus-scanning/spec.md::scenario-no-then::Async Virus Scanning (REQ-FILE-SCAN-001)::Infected file blocked
+specs/file-virus-scanning/spec.md::scenario-no-then::Download Gating (REQ-FILE-SCAN-002)::Pending scan blocks download
+specs/file-virus-scanning/spec.md::scenario-no-when::Async Virus Scanning (REQ-FILE-SCAN-001)::ClamAV unavailable
+specs/file-virus-scanning/spec.md::scenario-no-when::Async Virus Scanning (REQ-FILE-SCAN-001)::Clean file passes scan
+specs/file-virus-scanning/spec.md::scenario-no-when::Async Virus Scanning (REQ-FILE-SCAN-001)::Infected file blocked
+specs/file-virus-scanning/spec.md::scenario-no-when::Download Gating (REQ-FILE-SCAN-002)::Pending scan blocks download
+specs/form-ergonomics/spec.md::no-title
+specs/frontend-security/spec.md::no-title
+specs/frontend-ui/spec.md::no-title
+specs/ga-maturity-gap-closure/spec.md::no-title
+specs/gap-analysis/spec.md::no-title
+specs/governance-abac-approval/spec.md::no-title
+specs/infrastructure-security/spec.md::no-title
+specs/launch-governance/spec.md::no-title
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::3D Secure Support (REQ-PAY-004)::3DS-required card returns client_secret
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Frontend Payment UI (REQ-PAY-005)::Buyer completes purchase
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Payment Idempotency (REQ-PAY-002)::Retry returns existing result
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Refund Flow (REQ-PAY-003)::Full refund revokes entitlement
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Refund Flow (REQ-PAY-003)::Partial refund preserves entitlement
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Stripe Webhook Handler (REQ-PAY-001)::Duplicate event is idempotent
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Stripe Webhook Handler (REQ-PAY-001)::Invalid signature rejected
+specs/marketplace-payment-gateway/spec.md::scenario-no-then::Stripe Webhook Handler (REQ-PAY-001)::Payment success creates entitlement via webhook
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::3D Secure Support (REQ-PAY-004)::3DS-required card returns client_secret
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Frontend Payment UI (REQ-PAY-005)::Buyer completes purchase
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Payment Idempotency (REQ-PAY-002)::Retry returns existing result
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Refund Flow (REQ-PAY-003)::Full refund revokes entitlement
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Refund Flow (REQ-PAY-003)::Partial refund preserves entitlement
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Stripe Webhook Handler (REQ-PAY-001)::Duplicate event is idempotent
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Stripe Webhook Handler (REQ-PAY-001)::Invalid signature rejected
+specs/marketplace-payment-gateway/spec.md::scenario-no-when::Stripe Webhook Handler (REQ-PAY-001)::Payment success creates entitlement via webhook
+specs/marketplace-tax-compliance-deltas/spec.md::no-title
+specs/marketplace-tax-compliance-deltas/spec.md::scenario-no-when::Per-Tenant Compliance Legal-Basis Strict Mode::Lenient mode preserves current behaviour
+specs/ml-ai-paas/spec.md::no-title
+specs/ml-ai-paas/spec.md::scenario-no-then::ML Limit Registry::Inference count uses model tenant traversal
+specs/ml-ai-paas/spec.md::scenario-no-then::ML Limit Registry::ML model count excludes archived
+specs/ml-paas-business-rules/spec.md::no-title
+specs/mvp-coverage-expansion/spec.md::no-title
+specs/mvp-documentation/spec.md::no-title
+specs/mvp-feature-gating/spec.md::scenario-no-then::Frontend MVP Navigation Gating (REQ-MVP-002)::Gated route shows Coming Soon
+specs/mvp-feature-gating/spec.md::scenario-no-then::Frontend MVP Navigation Gating (REQ-MVP-002)::Sidebar shows only MVP items
+specs/mvp-feature-gating/spec.md::scenario-no-then::MVP Docker Compose Profile (REQ-MVP-003)::MVP compose starts minimal services
+specs/mvp-feature-gating/spec.md::scenario-no-then::MVP_MODE Backend Setting (REQ-MVP-001)::All endpoints accessible when MVP mode disabled
+specs/mvp-feature-gating/spec.md::scenario-no-then::MVP_MODE Backend Setting (REQ-MVP-001)::Gated endpoint returns 404 in MVP mode
+specs/mvp-feature-gating/spec.md::scenario-no-then::MVP_MODE Backend Setting (REQ-MVP-001)::MVP endpoint accessible in MVP mode
+specs/mvp-feature-gating/spec.md::scenario-no-when::Frontend MVP Navigation Gating (REQ-MVP-002)::Gated route shows Coming Soon
+specs/mvp-feature-gating/spec.md::scenario-no-when::Frontend MVP Navigation Gating (REQ-MVP-002)::Sidebar shows only MVP items
+specs/mvp-feature-gating/spec.md::scenario-no-when::MVP Docker Compose Profile (REQ-MVP-003)::MVP compose starts minimal services
+specs/mvp-feature-gating/spec.md::scenario-no-when::MVP_MODE Backend Setting (REQ-MVP-001)::All endpoints accessible when MVP mode disabled
+specs/mvp-feature-gating/spec.md::scenario-no-when::MVP_MODE Backend Setting (REQ-MVP-001)::Gated endpoint returns 404 in MVP mode
+specs/mvp-feature-gating/spec.md::scenario-no-when::MVP_MODE Backend Setting (REQ-MVP-001)::MVP endpoint accessible in MVP mode
+specs/notifications-business-rules/spec.md::no-title
+specs/observability-stack/spec.md::no-title
+specs/pipeline-dependency-graph/spec.md::no-title
+specs/platform-hardening/spec.md::no-title
+specs/platform-wide-hardening/spec.md::no-title
+specs/pre-staging-validation/spec.md::no-title
+specs/pricing-tiers/spec.md::no-title
+specs/production-maturity/spec.md::no-title
+specs/production-readiness/spec.md::no-title
+specs/production-services/spec.md::no-title
+specs/real-time-feedback/spec.md::no-title
+specs/search-business-rules/spec.md::no-title
+specs/secrets-management/spec.md::no-title
+specs/secrets-management/vault-transit-credential-encryption.md::no-requirements-section
+specs/security-backlog/spec.md::no-title
+specs/security-hardening-p0/spec.md::no-title
+specs/security-hardening-p1/spec.md::no-title
+specs/security-hardening-p1/spec.md::scenario-no-when::Circuit Breaker Endpoint Requires Authentication::Circuit breaker endpoint requires auth
+specs/security-hardening-p1/spec.md::scenario-no-when::Circuit Breaker Endpoint Requires Authentication::Health probe remains public
+specs/security-posture/spec.md::requirement-no-shall::REQ-SEC-CVE-001 — .trivyignore Triage
+specs/security-posture/spec.md::requirement-no-shall::REQ-SEC-CVE-002 — CI Gate
+specs/security-posture/spec.md::requirement-no-shall::REQ-SEC-CVE-003 — Monthly Review
+specs/security-posture/spec.md::scenario-no-then::REQ-SEC-CVE-001 — .trivyignore Triage::Unreachable CVE documented
+specs/security-posture/spec.md::scenario-no-then::REQ-SEC-CVE-001 — .trivyignore Triage::Upstream fix pending with expiry
+specs/security-posture/spec.md::scenario-no-then::REQ-SEC-CVE-002 — CI Gate::Reachable CVE blocked at CI
+specs/security-posture/spec.md::scenario-no-then::REQ-SEC-CVE-003 — Monthly Review::Monthly review triggers re-triage
+specs/security-posture/spec.md::scenario-no-when::REQ-SEC-CVE-001 — .trivyignore Triage::Unreachable CVE documented
+specs/security-posture/spec.md::scenario-no-when::REQ-SEC-CVE-001 — .trivyignore Triage::Upstream fix pending with expiry
+specs/security-posture/spec.md::scenario-no-when::REQ-SEC-CVE-002 — CI Gate::Reachable CVE blocked at CI
+specs/security-posture/spec.md::scenario-no-when::REQ-SEC-CVE-003 — Monthly Review::Monthly review triggers re-triage
+specs/semantic-search/spec.md::no-title
+specs/semantic-suite/spec.md::no-title
+specs/social-business-rules/spec.md::no-title
+specs/staging-cost-optimization/spec.md::no-title
+specs/staging-destroy-parity/spec.md::no-title
+specs/stripe-connect-mvp/spec.md::no-title
+specs/tenant-operations/spec.md::no-title
+specs/test-coverage-hardening/spec.md::no-title
+specs/test-journey-uc-remediation/spec.md::no-title
+specs/test-quality-remediation/spec.md::no-title
+specs/transformation-ml-ga-closure/spec.md::no-title
+specs/ux-activation/activation-flows/spec.md::no-requirements-section
+specs/ux-activation/activation-flows/spec.md::no-title
+specs/ux-activation/form-ergonomics/spec.md::no-requirements-section
+specs/ux-activation/form-ergonomics/spec.md::no-title
+specs/ux-activation/real-time-feedback/spec.md::no-requirements-section
+specs/ux-activation/real-time-feedback/spec.md::no-title
+specs/ux-advanced-features/spec.md::no-title
+specs/ux-advanced-features/spec.md::scenario-no-when::Activity Feed on Entity Detail Pages::Activity scoped to resource
+specs/ux-notifications-bulk/spec.md::no-title
+specs/ux-notifications-bulk/spec.md::scenario-no-when::In-App Notification System::Clicking notification navigates to resource
+specs/ux-notifications-bulk/spec.md::scenario-no-when::Search Improvements::Scope selector filters results
+specs/ux-quick-wins/spec.md::no-title
+specs/ux-quick-wins/spec.md::scenario-no-when::Breadcrumbs on All Detail Pages::Breadcrumbs on admin settings
+specs/ux-quick-wins/spec.md::scenario-no-when::Breadcrumbs on All Detail Pages::Breadcrumbs on webhook detail
+specs/ux-quick-wins/spec.md::scenario-no-when::DRAFT Asset Next Steps Guidance::Draft asset shows banner
+specs/ux-unified-creation/spec.md::no-title
+specs/warehouse-native-dq-compliance/spec.md::no-title

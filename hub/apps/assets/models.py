@@ -3,23 +3,25 @@ Assets Models
 
 Asset model for managing data products (contract + dataset).
 """
+
 import logging
 import uuid
 import warnings
+from typing import ClassVar
 
+from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.utils import DatabaseError
-from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.contrib.postgres.search import SearchVectorField
-from django.contrib.postgres.indexes import GinIndex
-
 
 _logger = logging.getLogger(__name__)
 
 
 class AssetStatus(models.TextChoices):
     """Asset lifecycle status enumeration"""
+
     DRAFT = "DRAFT", "Draft"
     ACTIVE = "ACTIVE", "Active"
     PUBLIC = "PUBLIC", "Public"
@@ -28,12 +30,14 @@ class AssetStatus(models.TextChoices):
 
 class AssetVisibility(models.TextChoices):
     """Asset visibility enumeration"""
+
     INTERNAL = "INTERNAL", "Internal"
     PUBLIC = "PUBLIC", "Public"
 
 
 class DQStatus(models.TextChoices):
     """Data Quality status enumeration"""
+
     UNKNOWN = "UNKNOWN", "Unknown"
     PASS = "PASS", "Pass"
     WARN = "WARN", "Warning"
@@ -42,6 +46,7 @@ class DQStatus(models.TextChoices):
 
 class ComplianceStatus(models.TextChoices):
     """Compliance status enumeration"""
+
     UNKNOWN = "UNKNOWN", "Unknown"
     PASS = "PASS", "Pass"
     WARN = "WARN", "Warning"
@@ -62,6 +67,7 @@ class SemanticStatus(models.TextChoices):
     Values mirror the DQ / Compliance enum shape so the FE can use
     the same status-badge component across all three surfaces.
     """
+
     UNKNOWN = "UNKNOWN", "Unknown"
     PASS = "PASS", "Pass"
     WARN = "WARN", "Warning"
@@ -70,12 +76,14 @@ class SemanticStatus(models.TextChoices):
 
 class AssetSourceType(models.TextChoices):
     """Asset source type enumeration"""
+
     HUB_NATIVE = "HUB_NATIVE", "Hub Native"
     FEDERATED = "FEDERATED", "Federated"
 
 
 class DataStrategy(models.TextChoices):
     """Data strategy enumeration for federated assets"""
+
     METADATA_ONLY = "METADATA_ONLY", "Metadata Only"
     DOWNLOAD_SELECTIVE = "DOWNLOAD_SELECTIVE", "Selective Download"
     DOWNLOAD_ALL = "DOWNLOAD_ALL", "Download All"
@@ -89,61 +97,42 @@ class Asset(models.Model):
 
     Assets are the primary entities in the catalog, linking contracts and datasets.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="assets",
-        help_text="Tenant this asset belongs to"
+        help_text="Tenant this asset belongs to",
     )
     key = models.CharField(
-        max_length=255,
-        help_text="Human-friendly identifier, unique per tenant"
+        max_length=255, help_text="Human-friendly identifier, unique per tenant"
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Asset name"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Asset description"
-    )
+    name = models.CharField(max_length=255, help_text="Asset name")
+    description = models.TextField(null=True, blank=True, help_text="Asset description")
     domain = models.CharField(
         max_length=100,
         null=True,
         blank=True,
-        help_text="Domain (e.g., marketing, finance)"
+        help_text="Domain (e.g., marketing, finance)",
     )
     status = models.CharField(
         max_length=20,
         choices=AssetStatus.choices,
         default=AssetStatus.DRAFT,
-        help_text="Asset lifecycle status: DRAFT, ACTIVE, PUBLIC, RETIRED"
-    )
-    # Phase 250.3.B.1 — ``visibility`` is no longer a stored column,
-    # exposed as a @property deriving from ``status`` per D250.4.
-    # The DB column is retained for forensic/rollback safety (phase-2
-    # drop after 3 release cycles).  The model field is declared here
-    # with null=True, blank=True so Django's ORM is aware of the column
-    # during INSERT (the migration removed it from Django state via
-    # SeparateDatabaseAndState, but we restored it to avoid
-    # NotNullViolation on test INSERT paths).
-    visibility = models.CharField(
-        max_length=20, null=True, blank=True,
-        help_text="[DEPRECATED] Derived from status via @property"
+        help_text="Asset lifecycle status: DRAFT, ACTIVE, PUBLIC, RETIRED",
     )
     dq_status = models.CharField(
         max_length=20,
         choices=DQStatus.choices,
         default=DQStatus.UNKNOWN,
-        help_text="Data Quality status: UNKNOWN, PASS, WARN, FAIL"
+        help_text="Data Quality status: UNKNOWN, PASS, WARN, FAIL",
     )
     compliance_status = models.CharField(
         max_length=20,
         choices=ComplianceStatus.choices,
         default=ComplianceStatus.UNKNOWN,
-        help_text="Compliance status: UNKNOWN, PASS, WARN, FAIL"
+        help_text="Compliance status: UNKNOWN, PASS, WARN, FAIL",
     )
     # Phase 250.7.A.1 — semantic-mapping + search-indexing status.
     # Per D250.6, semantic / search failures during activation are
@@ -167,8 +156,7 @@ class Asset(models.Model):
         ),
     )
     version = models.IntegerField(
-        default=1,
-        help_text="Optimistic locking version counter"
+        default=1, help_text="Optimistic locking version counter"
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -176,37 +164,35 @@ class Asset(models.Model):
         related_name="created_assets",
         null=True,
         blank=True,
-        help_text="User who created the asset"
+        help_text="User who created the asset",
     )
     # Popularity and health metrics
     health_score = models.FloatField(
         null=True,
         blank=True,
-        help_text="Overall health score (0-100) combining DQ, compliance, freshness, usage"
+        help_text="Overall health score (0-100) combining DQ, compliance, freshness, usage",
     )
     popularity_score = models.FloatField(
         null=True,
         blank=True,
-        help_text="Popularity score (0-100) based on views, downloads, usage frequency"
+        help_text="Popularity score (0-100) based on views, downloads, usage frequency",
     )
     view_count = models.IntegerField(
-        default=0,
-        help_text="Number of times asset has been viewed"
+        default=0, help_text="Number of times asset has been viewed"
     )
     download_count = models.IntegerField(
-        default=0,
-        help_text="Number of times asset has been downloaded"
+        default=0, help_text="Number of times asset has been downloaded"
     )
     source_type = models.CharField(
         max_length=20,
         choices=AssetSourceType.choices,
         default=AssetSourceType.HUB_NATIVE,
-        help_text="Asset source: HUB_NATIVE (created in Hub) or FEDERATED (imported from marketplace)"
+        help_text="Asset source: HUB_NATIVE (created in Hub) or FEDERATED (imported from marketplace)",
     )
     source_metadata = models.JSONField(
         null=True,
         blank=True,
-        help_text="Source metadata for federated assets: marketplace_type, marketplace_id, listing_id, listing_url, synced_at, sync_job_id"
+        help_text="Source metadata for federated assets: marketplace_type, marketplace_id, listing_id, listing_url, synced_at, sync_job_id",
     )
     metadata_json = models.JSONField(
         null=True,
@@ -242,7 +228,7 @@ class Asset(models.Model):
         max_length=30,
         choices=DataStrategy.choices,
         default=DataStrategy.METADATA_ONLY,
-        help_text="Data strategy: METADATA_ONLY, DOWNLOAD_SELECTIVE, DOWNLOAD_ALL, LIVE_QUERY (Phase 275)"
+        help_text="Data strategy: METADATA_ONLY, DOWNLOAD_SELECTIVE, DOWNLOAD_ALL, LIVE_QUERY (Phase 275)",
     )
     # Phase 275.A.3 — nullable FK to warehouse connection for LIVE_QUERY assets.
     warehouse_connection = models.ForeignKey(
@@ -295,13 +281,10 @@ class Asset(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "key"],
-                name="unique_asset_key_per_tenant"
+                fields=["tenant", "key"], name="unique_asset_key_per_tenant"
             ),
             models.CheckConstraint(
-                condition=models.Q(
-                    status__in=["DRAFT", "ACTIVE", "PUBLIC", "RETIRED"]
-                ),
+                condition=models.Q(status__in=["DRAFT", "ACTIVE", "PUBLIC", "RETIRED"]),
                 name="asset_status_valid",
             ),
         ]
@@ -423,7 +406,7 @@ class Asset(models.Model):
             # Database error during audit emission — still best-effort
             # (don't crash the setter), but log at ERROR so it surfaces
             # in Sentry/DataDog for engineering investigation.
-            _logger.error(
+            _logger.exception(
                 "asset_visibility_deprecation_audit_emit_failed",
                 extra={
                     "asset_id": str(self.pk) if self.pk else None,
@@ -432,7 +415,7 @@ class Asset(models.Model):
             )
 
     # Valid status transitions (state machine)
-    VALID_TRANSITIONS = {
+    VALID_TRANSITIONS: ClassVar[dict] = {
         AssetStatus.DRAFT: [AssetStatus.ACTIVE],
         AssetStatus.ACTIVE: [AssetStatus.PUBLIC, AssetStatus.RETIRED],
         AssetStatus.PUBLIC: [AssetStatus.RETIRED],
@@ -449,9 +432,8 @@ class Asset(models.Model):
                 previous = Asset.objects.only("status").get(pk=self.pk)
                 if (
                     previous.status != self.status
-                    and self.status not in self.VALID_TRANSITIONS.get(
-                        previous.status, []
-                    )
+                    and self.status
+                    not in self.VALID_TRANSITIONS.get(previous.status, [])
                 ):
                     raise ValidationError(
                         f"Invalid status transition: "
@@ -479,7 +461,7 @@ class Asset(models.Model):
 
             if active_contract.normalization_status not in [
                 "NORMALIZED_OK",
-                "NORMALIZED_WITH_WARNINGS"
+                "NORMALIZED_WITH_WARNINGS",
             ]:
                 raise ValidationError(
                     f"Asset cannot be ACTIVE with contract normalization_status={active_contract.normalization_status}. "
@@ -501,6 +483,7 @@ class Asset(models.Model):
             # skipped — the contract can activate before the async
             # normalisation pipeline populates real structure.
             from hub.apps.contracts.structureless import is_payload_structureless
+
             if not is_payload_structureless(active_contract.hub_contract_json):
                 from hub.apps.contracts.structural_floor import (
                     enforce_structural_floor,
@@ -508,6 +491,7 @@ class Asset(models.Model):
                 from hub.apps.core.services.base import (
                     ValidationError as _ServiceValidationError,
                 )
+
                 try:
                     enforce_structural_floor(
                         active_contract.hub_contract_json,
@@ -527,7 +511,7 @@ class Asset(models.Model):
                         f"models or schema fields ({subcode}). "
                         f"Open the Schema editor to add structure before "
                         f"activating."
-                    )
+                    ) from exc
 
             # Check dataset requirements (if dataset exists)
             dataset = self.datasets.first()
@@ -538,7 +522,10 @@ class Asset(models.Model):
                         f"Required: PASS or WARN"
                     )
 
-                if self.compliance_status not in [ComplianceStatus.PASS, ComplianceStatus.WARN]:
+                if self.compliance_status not in [
+                    ComplianceStatus.PASS,
+                    ComplianceStatus.WARN,
+                ]:
                     raise ValidationError(
                         f"Asset cannot be ACTIVE with compliance_status={self.compliance_status}. "
                         f"Required: PASS or WARN"
@@ -576,7 +563,7 @@ class Asset(models.Model):
             # Check contract normalization status
             if active_contract.normalization_status not in [
                 "NORMALIZED_OK",
-                "NORMALIZED_WITH_WARNINGS"
+                "NORMALIZED_WITH_WARNINGS",
             ]:
                 blockers.append(
                     f"Contract normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS "
@@ -596,10 +583,12 @@ class Asset(models.Model):
             # skipped — the contract can activate before the async
             # normalisation pipeline populates real structure.
             from hub.apps.contracts.structureless import is_payload_structureless
+
             if not is_payload_structureless(active_contract.hub_contract_json):
                 from hub.apps.contracts.structural_floor import (
                     collect_structural_floor_errors,
                 )
+
                 floor_errors = collect_structural_floor_errors(
                     active_contract.hub_contract_json,
                     spec_type=active_contract.original_spec_type,
@@ -627,7 +616,10 @@ class Asset(models.Model):
                 )
 
             # Check compliance status
-            if self.compliance_status not in [ComplianceStatus.PASS, ComplianceStatus.WARN]:
+            if self.compliance_status not in [
+                ComplianceStatus.PASS,
+                ComplianceStatus.WARN,
+            ]:
                 blockers.append(
                     f"compliance_status must be PASS or WARN (current: {self.compliance_status})"
                 )
@@ -666,7 +658,7 @@ class Asset(models.Model):
     def increment_version(self):
         """Increment version for optimistic locking"""
         self.version += 1
-        self.save(update_fields=['version', 'updated_at'])
+        self.save(update_fields=["version", "updated_at"])
 
     def is_metadata_only(self):
         """
@@ -745,10 +737,11 @@ class Asset(models.Model):
         except ExternalResourceReference.DoesNotExist:
             raise ValidationError(
                 f"External resource '{resource_id}' not found for asset '{self.id}'"
-            )
+            ) from None
 
         # Get the marketplace connection
         from hub.apps.integrations.models import MarketplaceConnection
+
         try:
             connection = MarketplaceConnection.objects.get(
                 id=external_resource.connection_id
@@ -756,11 +749,11 @@ class Asset(models.Model):
         except MarketplaceConnection.DoesNotExist:
             raise ValidationError(
                 f"Marketplace connection '{external_resource.connection_id}' not found"
-            )
+            ) from None
 
         # Use marketplace connector to download the resource
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.base import MarketplaceType
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
         factory = MarketplaceConnectorFactory()
         marketplace_type_enum = MarketplaceType(connection.marketplace_type)
@@ -769,8 +762,9 @@ class Asset(models.Model):
         )
 
         # Download resource
-        import tempfile
         import os
+        import tempfile
+
         temp_dir = tempfile.gettempdir()
         destination_path = os.path.join(
             temp_dir, f"resource_{resource_id}_{uuid.uuid4().hex[:8]}"
@@ -784,12 +778,30 @@ class Asset(models.Model):
             # Read file content
             with open(downloaded_path, "rb") as f:
                 file_content = f.read()
-
-            return downloaded_path, file_content
         except Exception as e:
             raise ValidationError(
-                f"Failed to download external resource '{resource_id}': {str(e)}"
-            )
+                f"Failed to download external resource '{resource_id}': {e!s}"
+            ) from e
+        else:
+            return downloaded_path, file_content
+
+
+class ActiveExternalResourceReferenceManager(models.Manager):
+    """W4.3 (R2-I3/E6) — default manager that excludes consumer-side
+    soft-deleted rows (``deleted_at`` set).
+
+    Pre-fix, soft deletion was cosmetic: every access path
+    (virtualization source validation, download gates, listing views)
+    still matched the row, so a deleted federated copy kept granting
+    data access. Filtering at the manager level fixes ALL access paths
+    at once — same pattern as ``Tenant``'s ``ActiveTenantManager``.
+    ``all_objects`` remains for audit/history reads and the
+    source-tenant tombstone cascade, which must still match
+    consumer-deleted rows.
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
 
 
 class ExternalResourceReference(models.Model):
@@ -801,37 +813,30 @@ class ExternalResourceReference(models.Model):
     not necessarily downloaded. Resources can be downloaded on-demand using the
     download_external_resource() method on the Asset model.
     """
+
+    objects = ActiveExternalResourceReferenceManager()
+    all_objects = models.Manager()
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     asset = models.ForeignKey(
         Asset,
         on_delete=models.CASCADE,
         related_name="external_resource_references",
-        help_text="Asset this external resource belongs to"
+        help_text="Asset this external resource belongs to",
     )
     resource_id = models.CharField(
-        max_length=255,
-        help_text="External resource identifier from marketplace"
+        max_length=255, help_text="External resource identifier from marketplace"
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Resource name"
-    )
-    url = models.URLField(
-        max_length=2048,
-        help_text="External resource URL"
-    )
+    name = models.CharField(max_length=255, help_text="Resource name")
+    url = models.URLField(max_length=2048, help_text="External resource URL")
     format = models.CharField(
-        max_length=50,
-        help_text="Resource format (CSV, JSON, PARQUET, etc.)"
+        max_length=50, help_text="Resource format (CSV, JSON, PARQUET, etc.)"
     )
     size_bytes = models.BigIntegerField(
-        null=True,
-        blank=True,
-        help_text="Resource size in bytes"
+        null=True, blank=True, help_text="Resource size in bytes"
     )
     marketplace_type = models.CharField(
-        max_length=50,
-        help_text="Marketplace type (e.g., CKAN_INSTANCE, DADOS_GOV_BR)"
+        max_length=50, help_text="Marketplace type (e.g., CKAN_INSTANCE, DADOS_GOV_BR)"
     )
     connection_id = models.UUIDField(
         help_text="Reference to MarketplaceConnection used to access this resource"
@@ -839,7 +844,7 @@ class ExternalResourceReference(models.Model):
     metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Additional metadata about the external resource"
+        help_text="Additional metadata about the external resource",
     )
     # Phase 250.5.A.5 (D250.16) — when the federated source is another
     # Hub tenant, ``source_tenant_id`` carries the producer-side
@@ -916,8 +921,8 @@ class ExternalResourceReference(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["asset", "resource_id"],
-                name="unique_external_resource_per_asset"
-            )
+                name="unique_external_resource_per_asset",
+            ),
         ]
 
     #: Phase 250.5.A.5 (D250.16) — number of days the consumer-side
@@ -941,6 +946,7 @@ class ExternalResourceReference(models.Model):
         if self.source_tenant_deleted_at is None:
             return True
         from datetime import timedelta
+
         from django.utils import timezone
 
         grace_end = self.source_tenant_deleted_at + timedelta(
@@ -969,23 +975,21 @@ class ExternalResourceReference(models.Model):
                 SSRFGuard,
                 SSRFViolationError,
             )
+
             try:
                 SSRFGuard.validate(self.url)
             except SSRFViolationError as exc:
                 raise ValidationError(
-                    f"External resource URL failed SSRF "
-                    f"validation: {exc}"
-                )
+                    f"External resource URL failed SSRF validation: {exc}"
+                ) from exc
 
         # Validate format is one of known formats
         valid_formats = ["CSV", "JSON", "PARQUET", "XML", "XLSX", "PDF", "OTHER"]
         if self.format and self.format.upper() not in valid_formats:
             raise ValidationError(
-                f"Invalid format '{self.format}'. "
-                f"Valid formats: {', '.join(valid_formats)}"
+                f"Invalid format '{self.format}'. Valid formats: {', '.join(valid_formats)}"
             )
 
         # Validate size_bytes is positive if provided
         if self.size_bytes is not None and self.size_bytes < 0:
             raise ValidationError("size_bytes must be non-negative")
-

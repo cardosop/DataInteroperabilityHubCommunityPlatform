@@ -32,7 +32,7 @@ try:
 
         _patched_sql_flush._patched_for_cascade = True
         pg_operations.DatabaseOperations.sql_flush = _patched_sql_flush
-except Exception:
+except (ImportError, AttributeError):
     # Patch failed, but tests should still run
     pass
 
@@ -40,6 +40,7 @@ import contextlib
 import uuid
 
 import pytest
+from botocore.exceptions import BotoCoreError
 from django.contrib.auth import get_user_model
 from django.db.transaction import TransactionManagementError
 from django.test import TestCase, override_settings
@@ -57,10 +58,10 @@ User = get_user_model()
 
 
 @override_settings(
-    AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
+    AWS_STORAGE_BUCKET_NAME="hub-test",
+    AWS_ACCESS_KEY_ID="minio",
     AWS_SECRET_ACCESS_KEY="minio123",
-    AWS_S3_ENDPOINT_URL="http://localhost:9000",
+    AWS_S3_ENDPOINT_URL="http://minio-test:9000",
 )
 # Using TestCase since _fixture_teardown is pass (no flush needed)
 class TenantConfigFileUploadIntegrationTest(TestCase):
@@ -76,6 +77,16 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
     serialized_rollback = False
 
     @classmethod
+    def setUpClass(cls):
+        from django.db import connection as db_conn
+
+        raw = db_conn.connection
+        if raw is not None and getattr(raw, "closed", 0) != 0:
+            db_conn.connection = None
+            db_conn.closed_in_transaction = False
+        super().setUpClass()
+
+    @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests.
 
@@ -84,8 +95,6 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-
-    """Test File Upload integration with tenant configuration"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -154,13 +163,17 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
 
         self.platform_defaults = get_platform_defaults()
 
-        # Initialize real storage client for tests that need it
+        # Initialize real storage client for tests that need it.
         try:
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
+            verify_client = S3StorageClient()
+            verify_client.client.list_objects_v2(
+                Bucket=verify_client.bucket_name,
+                MaxKeys=1,
+            )
             self.storage_available = True
-        except Exception:
-            # MinIO may not be available in all test environments
+        except (BotoCoreError, ValueError, OSError):
             self.storage_available = False
             self.storage_client = None
 

@@ -11,9 +11,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.core.services.base import NotFoundError, PermissionError, ValidationError
-from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,
@@ -27,7 +26,9 @@ from hub.apps.virtualization.services import VirtualizationService
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription as _ensure_tenant_has_active_subscription
+from hub.apps.testing.billing_support import (
+    ensure_tenant_has_active_subscription as _ensure_tenant_has_active_subscription,
+)
 
 # Default sources for SQL queries (sources are required for non-SPARQL query types)
 _DEFAULT_SQL_SOURCES = [{"type": "postgresql", "host": "localhost", "database": "testdb"}]
@@ -1228,13 +1229,14 @@ def compliance_service_available():
 
         client = ComplianceServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception as e:
         import logging
 
         logger = logging.getLogger(__name__)
         logger.debug(f"Compliance service not available: {e}")
         return False
+    else:
+        return is_healthy
 
 
 def storage_service_available():
@@ -1245,13 +1247,14 @@ def storage_service_available():
         client = S3StorageClient()
         # Try to list buckets as a health check
         client.client.list_buckets()
-        return True
     except Exception as e:
         import logging
 
         logger = logging.getLogger(__name__)
         logger.debug(f"Storage service not available: {e}")
         return False
+    else:
+        return True
 
 
 class VirtualizationServiceComplianceIntegrationTest(TestCase):
@@ -2370,7 +2373,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_from_cache_json(self):
         """Test retrieving query result from cache in JSON format"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data
         test_results = [
@@ -2421,7 +2423,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_with_pagination_page(self):
         """Test retrieving query result with page-based pagination"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data with 100 items
         test_results = [{"id": i, "name": f"Test {i}", "value": i * 10} for i in range(1, 101)]
@@ -2484,7 +2485,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_with_pagination_offset(self):
         """Test retrieving query result with offset-based pagination"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data
         test_results = [{"id": i, "name": f"Test {i}", "value": i * 10} for i in range(1, 51)]
@@ -2536,7 +2536,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_csv_format(self):
         """Test retrieving query result in CSV format"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data
         test_results = [
@@ -2586,7 +2585,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         import base64
 
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data
         test_results = [
@@ -2632,7 +2630,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         try:
             decoded = base64.b64decode(result["data"])
             self.assertGreater(len(decoded), 0)
-        except Exception:
+        except ValueError:  # binascii.Error subclasses ValueError
             self.fail("Parquet data is not valid base64")
 
     def test_get_query_result_execution_not_completed(self):
@@ -2655,7 +2653,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
 
     def test_get_query_result_no_results_found(self):
         """Test retrieving result when no results are found"""
-        from django.utils import timezone
 
         # Create completed execution without cache key or storage path
         execution = QueryExecution.objects.create(
@@ -2678,7 +2675,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_invalid_format(self):
         """Test retrieving result with invalid format"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data
         test_results = [{"id": 1, "name": "Test 1"}]
@@ -2718,7 +2714,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_invalid_pagination(self):
         """Test retrieving result with invalid pagination parameters"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data
         test_results = [{"id": 1, "name": "Test 1"}]
@@ -2758,7 +2753,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
     def test_get_query_result_streaming_enabled(self):
         """Test retrieving result with streaming enabled for large datasets"""
         from django.core.cache import cache
-        from django.utils import timezone
 
         # Create test data with more than 1000 items
         test_results = [{"id": i, "name": f"Test {i}", "value": i * 10} for i in range(1, 1501)]

@@ -193,11 +193,29 @@ def _update_parent_export(
     scheduled_export.last_run_status = new_status
     scheduled_export.next_run_at = scheduled_export._calculate_next_run_at()
 
-    if new_status == "COMPLETED" and scheduled_export.status == ScheduledExportStatus.ERROR:
-        scheduled_export.status = ScheduledExportStatus.ACTIVE
-
-    if new_status == "FAILED":
+    # W3.2 (R2-P5) — uniform completion: the parent failure accounting
+    # mirrors the ingestion contract (Phase 71) — the export model has
+    # carried the consecutive_failure_count/last_error_at fields since
+    # Phase 71 but no path ever maintained them.
+    if new_status == "COMPLETED":
+        scheduled_export.consecutive_failure_count = 0
+        scheduled_export.last_error_at = None
+        if scheduled_export.status == ScheduledExportStatus.ERROR:
+            scheduled_export.status = ScheduledExportStatus.ACTIVE
+    elif new_status == "FAILED":
+        scheduled_export.consecutive_failure_count += 1
+        scheduled_export.last_error_at = timezone.now()
         scheduled_export.status = ScheduledExportStatus.ERROR
+        from django.conf import settings
+
+        max_failures = getattr(settings, "MAX_CONSECUTIVE_FAILURES", 5)
+        if scheduled_export.consecutive_failure_count >= max_failures:
+            scheduled_export.status = ScheduledExportStatus.PAUSED
+            logger.warning(
+                "Export auto-paused after %d consecutive failures",
+                scheduled_export.consecutive_failure_count,
+                extra={"id": str(scheduled_export.id)},
+            )
 
     update_fields = [
         "next_run_at",
@@ -206,7 +224,7 @@ def _update_parent_export(
         "updated_at",
     ]
     if new_status in ("COMPLETED", "FAILED"):
-        update_fields.append("status")
+        update_fields.extend(["status", "consecutive_failure_count", "last_error_at"])
     scheduled_export.save(update_fields=update_fields)
 
 

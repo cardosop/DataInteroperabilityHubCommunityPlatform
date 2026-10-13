@@ -220,7 +220,7 @@ class TestComplianceWaitFor:
         )
 
         result = await compliance_api.wait_for(
-            "asset-1",
+            "asset-1",  # noqa: PHASE216-STATIC-ID
             timeout=10.0,  # noqa: PHASE216-STATIC-ID
         )
         assert result["status"] == "completed"
@@ -260,7 +260,7 @@ class TestComplianceWaitFor:
         )
 
         result = await compliance_api.wait_for(
-            "asset-1",
+            "asset-1",  # noqa: PHASE216-STATIC-ID
             timeout=10.0,
             interval=0.1,  # noqa: PHASE216-STATIC-ID
         )
@@ -296,7 +296,7 @@ class TestComplianceWaitFor:
 
         with pytest.raises(TimeoutError) as exc_info:
             await compliance_api.wait_for(
-                "asset-1",
+                "asset-1",  # noqa: PHASE216-STATIC-ID
                 timeout=1.0,
                 interval=0.5,  # noqa: PHASE216-STATIC-ID
             )
@@ -373,14 +373,16 @@ class TestDQWaitFor:
         """RUNNING is non-terminal; helper continues polling."""
         client.get = AsyncMock(
             side_effect=[
-                {"results": [{"id": "run-1", "status": "RUNNING"}]},
-                {"results": [{"id": "run-1", "status": "RUNNING"}]},
-                {"results": [{"id": "run-1", "status": "PASS"}]},
+                # asset_id must be present — wait_for skips non-matching
+                # payloads (Phase 250.4.4 asset-match guard).
+                {"results": [{"id": "run-1", "asset_id": "asset-1", "status": "RUNNING"}]},  # noqa: PHASE216-STATIC-ID
+                {"results": [{"id": "run-1", "asset_id": "asset-1", "status": "RUNNING"}]},  # noqa: PHASE216-STATIC-ID
+                {"results": [{"id": "run-1", "asset_id": "asset-1", "status": "PASS"}]},  # noqa: PHASE216-STATIC-ID
             ]
         )
 
         result = await dq_api.wait_for(
-            "asset-1",
+            "asset-1",  # noqa: PHASE216-STATIC-ID
             timeout=10.0,
             interval=0.1,  # noqa: PHASE216-STATIC-ID
         )
@@ -396,7 +398,7 @@ class TestDQWaitFor:
         )
         with pytest.raises(TimeoutError):
             await dq_api.wait_for(
-                "asset-1",
+                "asset-1",  # noqa: PHASE216-STATIC-ID
                 timeout=1.0,
                 interval=0.5,  # noqa: PHASE216-STATIC-ID
             )

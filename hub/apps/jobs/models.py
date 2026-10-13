@@ -133,6 +133,45 @@ class JobType(models.TextChoices):
         "WAREHOUSE_CACHE_REFRESH",
         "Warehouse Cache Refresh",
     )
+    # Phase 1 UC mirror (add-databricks-uc-read 1.5) — delta-diff sync of
+    # the workspace's Unity Catalog estate into the mirror models. One RQ
+    # job PER TENANT (its ACTIVE workspaces), enqueued by the CronJob
+    # management command after admin-DB discovery.
+    DATABRICKS_UC_METADATA_SYNC = (
+        "DATABRICKS_UC_METADATA_SYNC",
+        "Databricks UC Metadata Sync",
+    )
+    # Phase 7 cost guardrails (add-databricks-cost-guardrails 7.3) — the
+    # hourly system.billing.usage delta. One job PER TENANT (its ACTIVE
+    # workspaces), enqueued by the CronJob management command after
+    # admin-DB discovery.
+    DATABRICKS_COST_SYNC = (
+        "DATABRICKS_COST_SYNC",
+        "Databricks Cost Sync",
+    )
+    # Phase 2 UC write (add-databricks-uc-write 2.5) — resolves
+    # UCChangeRequest rows stuck in EXECUTING beyond the lease. One RQ
+    # job PER TENANT with stuck requests, enqueued by the CronJob
+    # management command after admin-DB discovery.
+    DATABRICKS_UC_CHANGE_REAPER = (
+        "DATABRICKS_UC_CHANGE_REAPER",
+        "Databricks UC Change Reaper",
+    )
+    # Phase 4 jobs (add-databricks-jobs 4.4) — a run-now maps onto the Hub
+    # Job machinery: the row tracks the Databricks run until its terminal
+    # state (the poller in databricks_admin.job_runs).
+    DATABRICKS_JOB_RUN = (
+        "DATABRICKS_JOB_RUN",
+        "Databricks Job Run",
+    )
+    # Phase 5 (add-delta-sharing-server 5.4) — the Parquet snapshot
+    # materialization job (design D4): reads the share table through the
+    # warehouse connector, writes Parquet + delta-log into Hub S3, and
+    # stamps the DeltaShareSnapshot row (additive enum value).
+    DATABRICKS_DELTA_SHARE_SNAPSHOT = (
+        "DATABRICKS_DELTA_SHARE_SNAPSHOT",
+        "Databricks Delta Share Snapshot",
+    )
 
 
 class JobStatus(models.TextChoices):
@@ -216,6 +255,15 @@ class Job(models.Model):
     timeout_seconds = models.IntegerField(
         null=True, blank=True, help_text="Job timeout in seconds (configurable per job type)"
     )
+    # Phase 4 (add-databricks-jobs 4.4) — the Databricks-side run id the
+    # poller follows to a terminal state. Additive column (the design's
+    # "additive column at most" contract); the Databricks JOB id + cost
+    # estimate live in details_json/result_json.
+    databricks_run_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="The Databricks run id for JobType.DATABRICKS_JOB_RUN rows (4.4 poller)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -263,11 +311,24 @@ class Job(models.Model):
 
     def mark_completed(self, result_json=None):
         """Mark job as completed"""
+        was_queued = self.status == JobStatus.PENDING
         self.status = JobStatus.COMPLETED
         self.completed_at = timezone.now()
         if result_json is not None:
             self.result_json = result_json
         self.save(update_fields=["status", "completed_at", "result_json", "updated_at"])
+
+        # Tenant counter protocol: a job that completes while still QUEUED
+        # (synchronous paths that never went through the worker) must
+        # release its queued slot, otherwise the Redis queued counter
+        # leaks and tenants hit max_queued_jobs from finished jobs.
+        if was_queued:
+            try:
+                from hub.apps.jobs.utils import decrement_tenant_job_counter
+
+                decrement_tenant_job_counter(str(self.tenant_id), "queued")
+            except Exception:
+                pass  # Counter maintenance must never break job completion
 
         # Track metrics
         try:
@@ -293,6 +354,7 @@ class Job(models.Model):
 
     def mark_failed(self, error_message: str, result_json=None):
         """Mark job as failed"""
+        was_queued = self.status == JobStatus.PENDING
         self.status = JobStatus.FAILED
         self.completed_at = timezone.now()
         self.error_message = error_message
@@ -301,6 +363,16 @@ class Job(models.Model):
         self.save(
             update_fields=["status", "completed_at", "error_message", "result_json", "updated_at"]
         )
+
+        # Tenant counter protocol: a job that fails while still QUEUED
+        # (never picked up by the worker) must release its queued slot.
+        if was_queued:
+            try:
+                from hub.apps.jobs.utils import decrement_tenant_job_counter
+
+                decrement_tenant_job_counter(str(self.tenant_id), "queued")
+            except Exception:
+                pass  # Counter maintenance must never break job failure handling
 
         # Track metrics
         try:

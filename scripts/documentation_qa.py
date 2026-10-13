@@ -239,7 +239,7 @@ class DocumentationQA:
                 # Check for obvious errors like "ODPS contract" when it should be "ODCS contract"
                 # This is a simplified check - full terminology checking would be more complex
                 # Terminology variations are acceptable
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 issues.append(
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
@@ -289,7 +289,7 @@ class DocumentationQA:
                                             "severity": "warning",
                                         }
                                     )
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 issues.append(
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
@@ -326,7 +326,7 @@ class DocumentationQA:
                                     "severity": "warning",
                                 }
                             )
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 issues.append(
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
@@ -742,7 +742,7 @@ class DocumentationQA:
                                 "severity": "warning",
                             }
                         )
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 issues.append(
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
@@ -775,7 +775,7 @@ class DocumentationQA:
                                 "severity": "warning",
                             }
                         )
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 issues.append(
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
@@ -796,14 +796,14 @@ class DocumentationQA:
             matches = re.findall(link_pattern, content)
             for _text, url in matches:
                 links.append(url)
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             pass
         return links
 
     def _check_link_validity(self, link: str, source_file: Path) -> bool:
         """Check if a link is valid."""
         # Skip external links
-        if link.startswith("http://") or link.startswith("https://"):
+        if link.startswith(("http://", "https://")):
             return True  # Assume external links are valid
 
         # Skip anchor links
@@ -815,11 +815,7 @@ class DocumentationQA:
             return True
 
         # Check relative links
-        if (
-            link.startswith("../")
-            or link.startswith("./")
-            or (not link.startswith("/") and "://" not in link)
-        ):
+        if link.startswith(("../", "./")) or (not link.startswith("/") and "://" not in link):
             # Relative link - resolve from source file
             try:
                 target_path = (source_file.parent / link).resolve()
@@ -827,9 +823,12 @@ class DocumentationQA:
                 if target_path.exists() and target_path.is_file():
                     return True
                 # Check if it's a directory with index
-                if target_path.exists() and target_path.is_dir():
-                    if (target_path / "README.md").exists():
-                        return True
+                if (
+                    target_path.exists()
+                    and target_path.is_dir()
+                    and (target_path / "README.md").exists()
+                ):
+                    return True
                 # Also check with .md extension if no extension
                 if (
                     not target_path.suffix
@@ -857,13 +856,11 @@ class DocumentationQA:
         # Absolute path from docs root
         if link.startswith("/"):
             target_path = self.docs_dir / link.lstrip("/")
-            if target_path.exists():
-                return True
-            return False
+            return bool(target_path.exists())
 
         return True  # Unknown format, assume valid
 
-    def generate_report(self, results: dict[str, Any], output_file: Path = None) -> str:
+    def generate_report(self, results: dict[str, Any], output_file: Path | None = None) -> str:
         """Generate QA report."""
         report_lines = []
         report_lines.append("# Documentation Quality Assurance Report")

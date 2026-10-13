@@ -106,7 +106,7 @@ class TransformationPipelineWorkflow:
         execution_mode: str = "SYNC",
         engine: WorkflowEngine | None = None,
         registry: WorkflowRegistry | None = None,
-        **kwargs,
+        **_kwargs,
     ) -> dict[str, Any]:
         """
         Execute the transformation pipeline workflow.
@@ -134,10 +134,11 @@ class TransformationPipelineWorkflow:
         # SYNC mode was removed; DuckDB/Polars in-worker execution is deprecated.
         mode = ExecutionMode.ASYNC
         if execution_mode and execution_mode != "ASYNC":
+            # stdlib logger: structlog-style kwargs raise TypeError at runtime.
             logger.warning(
-                "transformation_sync_mode_ignored",
-                pipeline_id=str(pipeline_id),
-                requested_mode=execution_mode,
+                "transformation_sync_mode_ignored pipeline_id=%s requested_mode=%s",
+                str(pipeline_id),
+                execution_mode,
             )
 
         execution = PipelineExecution.objects.create(
@@ -286,22 +287,22 @@ class TransformationPipelineWorkflow:
     # ── Task implementations ─────────────────────────────────────
 
     @staticmethod
-    def _validate_pipeline_task(context: dict[str, Any]) -> dict:
+    def _validate_pipeline_task(_context: dict[str, Any]) -> dict:
         return {"valid": True}
 
     @staticmethod
-    def _create_execution_task(context: dict[str, Any]) -> dict:
+    def _create_execution_task(_context: dict[str, Any]) -> dict:
         return {"execution_created": True}
 
     @staticmethod
-    def _run_pipeline_task(context: dict[str, Any]) -> dict:
+    def _run_pipeline_task(_context: dict[str, Any]) -> dict:
         return {"pipeline_executed": True}
 
     @staticmethod
-    def _store_results_task(context: dict[str, Any]) -> dict:
+    def _store_results_task(_context: dict[str, Any]) -> dict:
         return {"results_stored": True}
 
     @staticmethod
-    def _audit_logging_task(context: dict[str, Any]) -> dict:
+    def _audit_logging_task(_context: dict[str, Any]) -> dict:
         logger.info("transformation_audit_logged")
         return {"audit_logged": True}

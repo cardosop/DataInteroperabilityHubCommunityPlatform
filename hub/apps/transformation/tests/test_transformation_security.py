@@ -15,6 +15,8 @@ All tests use real services (no mocks/stubs) to ensure comprehensive security co
 
 import uuid
 
+import pytest
+from django.conf import settings as _settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -43,7 +45,7 @@ from hub.apps.transformation.models import (
     TransformationPipeline,
 )
 from hub.apps.transformation.services import TransformationService
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -507,6 +509,10 @@ class TransformationSecurityTest(TestCase):
             f"Expected valid structure, got errors: {validation_result.errors}",
         )
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="Cross-tenant entitlement access control requires the paid marketplace layer",
+    )
     def test_cross_tenant_access_control_entitlements(self):
         """Test cross-tenant access control with entitlements."""
         # Create pipeline in tenant1

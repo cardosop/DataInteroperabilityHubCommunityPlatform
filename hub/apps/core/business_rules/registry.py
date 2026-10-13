@@ -262,10 +262,7 @@ class BusinessRulesRegistry:
 
         try:
             # Convert package to module if string
-            if isinstance(package, str):
-                module = importlib.import_module(package)
-            else:
-                module = package
+            module = importlib.import_module(package) if isinstance(package, str) else package
 
             # Walk through package modules
             if hasattr(module, "__path__"):
@@ -355,7 +352,7 @@ class BusinessRulesRegistry:
                 try:
                     self.register(rule_name=rule_name)(obj)
                     discovered.append(rule_name)
-                except Exception as e:
+                except (TypeError, ValueError) as e:
                     logger.warning(
                         "Failed to register discovered rule",
                         rule_name=rule_name,
@@ -471,7 +468,7 @@ class BusinessRulesRegistry:
         user_id: str | None = None,
         short_circuit: bool = True,
         use_cache: bool | None = None,
-        **kwargs,
+        **_kwargs,
     ) -> dict[str, ValidationResult]:
         raise NotImplementedError(
             "BusinessRulesRegistry.execute_rules() was removed in Phase 274.6. "

@@ -68,7 +68,15 @@ test.describe('Error Pages UX (312.8.5)', () => {
       await page.goto('/this-route-certainly-does-not-exist-31285', { timeout: 15000 });
       await expect(page.locator('body')).not.toBeEmpty();
       // 404 page should indicate the resource wasn't found.
-      const notFoundText = page.locator('text=not found, text=Not Found, text=404, [data-testid="not-found"]').first();
+      // NB: Playwright does NOT split mixed-engine comma strings as OR —
+      // 'text=404, [data-testid=...]' is parsed as one text= value and
+      // never matches. Use an explicit .or() chain instead.
+      const notFoundText = page
+        .locator('text=not found')
+        .or(page.locator('text=Not Found'))
+        .or(page.locator('text=404'))
+        .or(page.locator('[data-testid="not-found"]'))
+        .first();
       await expect(notFoundText).toBeVisible({ timeout: 10000 });
     });
 
@@ -104,11 +112,38 @@ test.describe('Error Pages UX (312.8.5)', () => {
       if (await refreshButton.count() > 0) {
         await refreshButton.first().click();
       } else {
-        await page.reload();
+        // /assets has no refresh button. A full page.reload() while offline
+        // fails at the network layer (net::ERR_INTERNET_DISCONNECTED) and
+        // never hands control back to the SPA, so trigger an in-app fetch
+        // via a client-side navigation instead — React Router nav needs no
+        // network; the target page's data fetch fails and must surface the
+        // error/retry UI this test asserts.
+        const datasetsLink = page
+          .locator('.app-sidebar .nav-link')
+          .filter({ hasText: 'Datasets' })
+          .first();
+        if ((await datasetsLink.count()) > 0) {
+          await datasetsLink.click();
+        } else {
+          // Fallback when the sidebar link is absent: drive a pure
+          // client-side navigation (pushState + popstate) — the router
+          // itself needs no network, so the target page's data fetch
+          // fails offline and must surface the error/retry UI this test
+          // asserts. A page.reload() while offline would land on the
+          // browser's network-error page and could never render the
+          // app's own error UI.
+          await page.evaluate(() => {
+            window.history.pushState({}, '', '/datasets');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          });
+        }
       }
-      await page.waitForTimeout(3000);
-
-      // Should show an error message or retry element.
+      // Should show an error message or retry element. The offline failure
+      // can take a few seconds to propagate through the Suspense/lazy-import
+      // boundary in dev mode — poll the count instead of relying on a fixed
+      // sleep, which raced the error UI's ~4s appearance. (toBeVisible on a
+      // union locator trips strict mode when both an alert AND a retry
+      // button render, which is the normal case.)
       const retryElement = page.locator(
         '[data-testid="retry-button"], [data-testid="retry-banner"], button:has-text("Retry"), button:has-text("Try Again"), [data-testid="error-display"] [data-testid="retry"], .retry-banner'
       ).first();
@@ -116,9 +151,18 @@ test.describe('Error Pages UX (312.8.5)', () => {
         '[data-testid="error-message"], [data-testid="error-display"], .error-display, [role="alert"]'
       ).first();
 
+      // At minimum, either an error message OR a retry button should appear.
+      await expect
+        .poll(
+          async () => (await retryElement.count()) + (await errorMsg.count()),
+          { timeout: 20000 }
+        )
+        .toBeGreaterThan(0);
+
       const hasRetry = await retryElement.count();
       const hasError = await errorMsg.count();
-      // At minimum, either an error message OR a retry button should appear.
+      // Deterministic re-check at settle time (the poll above already
+      // waited for at least one of the two to appear).
       expect(hasRetry + hasError).toBeGreaterThan(0);
 
       // Bring network back and retry.
@@ -126,8 +170,7 @@ test.describe('Error Pages UX (312.8.5)', () => {
       if (hasRetry > 0) {
         await retryElement.first().click({ timeout: 5000 });
         // After retry, the page should recover (content loads again).
-        await page.waitForTimeout(3000);
-        await expect(page.locator('body')).not.toBeEmpty();
+        await expect(page.locator('main')).toBeVisible({ timeout: 20000 });
       }
     });
   });
@@ -148,16 +191,23 @@ test.describe('Error Pages UX (312.8.5)', () => {
       await page.goto('/search?q=rate-limit-test-31285', { timeout: 15000 });
 
       // The app should show a rate-limit message or retry-after indicator.
-      const rateLimitMsg = page.locator(
-        'text=rate limit, text=Rate Limit, text=too many, text=429, [data-testid="rate-limit-message"], [data-testid="retry-banner"], [role="alert"]'
-      ).first();
+      // NB: same mixed-engine comma-string trap as the 404 locator above —
+      // use an explicit .or() chain.
+      const rateLimitMsg = page
+        .locator('text=rate limit')
+        .or(page.locator('text=Rate Limit'))
+        .or(page.locator('text=too many'))
+        .or(page.locator('text=429'))
+        .or(page.locator('[data-testid="rate-limit-message"]'))
+        .or(page.locator('[data-testid="retry-banner"]'))
+        .or(page.locator('[role="alert"]'))
+        .first();
       const count = await rateLimitMsg.count();
       if (count > 0) {
         await expect(rateLimitMsg).toBeVisible({ timeout: 10000 });
       }
-      // If the app has a retry-after countdown, it should be present.
-      const countdown = page.locator('[data-testid="retry-countdown"], .retry-countdown');
-      // Not asserting presence — optional UX enhancement.
+      // Optional UX enhancement — not asserted: a retry-after countdown
+      // ([data-testid="retry-countdown"], .retry-countdown) may be shown.
     });
 
     test('rate-limited page does not white-screen', async ({ page }) => {

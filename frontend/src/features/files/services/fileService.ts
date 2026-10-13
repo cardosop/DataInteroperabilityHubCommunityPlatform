@@ -293,10 +293,15 @@ export const fileService = {
   },
 
   /**
-   * Rename a file
+   * Rename a file — the backend's dedicated rename action
+   * (``POST /files/{id}/rename/``, Phase 260.4.C): keeps the
+   * storage_path immutable, validates active-filename collisions per
+   * tenant, and emits FILE_RENAMED.
    */
   async rename(id: string, name: string): Promise<File> {
-    const response = await apiClient.getClient().patch<File>(`${FILES_BASE_PATH}/${id}/`, { name });
+    const response = await apiClient.getClient().post<File>(`${FILES_BASE_PATH}/${id}/rename/`, {
+      name,
+    });
     return response.data;
   },
 

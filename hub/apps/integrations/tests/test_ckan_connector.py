@@ -10,11 +10,11 @@ Tests the CKANConnector implementation including:
 - Error handling
 """
 
+import contextlib
 import os
 import tempfile
 import unittest
-from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import httpx
 import pytest
@@ -271,7 +271,7 @@ class TestCKANConnectorListListings(TestCase):
         mock_response.json.return_value = {"success": True, "result": {"results": []}}
         mock_request.return_value = mock_response
 
-        listings = self.connector.list_listings(limit=10, offset=20)
+        _listings = self.connector.list_listings(limit=10, offset=20)
 
         # Verify search endpoint was called with pagination params
         call_args = mock_request.call_args
@@ -802,8 +802,8 @@ class TestCKANConnectorMapping(TestCase):
     def test_map_to_hub_asset_raises_on_none_listing(self):
         """Test that mapping raises ValueError for None listing"""
         with self.assertRaises((ValueError, TypeError, AttributeError)):
-            # type: ignore[misc]  # test: edge-case type exercise - intentionally passing None to test error handling
-            self.connector.map_to_hub_asset(None)  # type: ignore[misc]  # test: edge-case type exercise
+            # test: edge-case type exercise - intentionally passing None to test error handling
+            self.connector.map_to_hub_asset(None)  # test: edge-case type exercise
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.list_resources")
     def test_map_to_hub_asset_organization_extraction(self, mock_list_resources):
@@ -943,7 +943,6 @@ class TestCKANConnectorSyncOperations(TestCase):
         """Set up test fixtures"""
         self.connector = CKANConnector(base_url="https://data.gov")
 
-
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.list_listings")
     def test_sync_pull_success(self, mock_list_listings):
         """Test sync_pull with listings"""
@@ -998,6 +997,7 @@ class TestCKANConnectorCircuitBreaker(TestCase):
         """Set up test fixtures"""
         # Reset circuit breaker so prior test failures don't leave it OPEN
         from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+
         reset_circuit_breaker_by_name("ckan-connector")
         self.connector = CKANConnector(base_url="https://data.gov")
 
@@ -1022,6 +1022,7 @@ class TestCKANConnectorRetryLogic(TestCase):
         """Set up test fixtures"""
         # Reset circuit breaker so prior test failures don't leave it OPEN
         from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+
         reset_circuit_breaker_by_name("ckan-connector")
         self.connector = CKANConnector(base_url="https://data.gov")
 
@@ -1092,7 +1093,9 @@ class TestCKANConnectorIntegration(TestCase):
         if not cls.connector:
             return
         cls.ckan_url = getattr(cls.connector, "base_url", "") or ""
-        cls.ckan_api_key = getattr(cls.connector, "api_key", None) or os.getenv("CKAN_TEST_API_KEY", "")
+        cls.ckan_api_key = getattr(cls.connector, "api_key", None) or os.getenv(
+            "CKAN_TEST_API_KEY", ""
+        )
 
     def setUp(self):
         """Set up test fixtures."""
@@ -1250,7 +1253,7 @@ class TestCKANConnectorErrorHandling(TestCase):
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     @patch("httpx.get")
-    @patch("builtins.open", side_effect=IOError("Disk write error"))
+    @patch("builtins.open", side_effect=OSError("Disk write error"))
     def test_download_resource_handles_io_error(self, mock_open, mock_get, mock_request):
         """Test download_resource handles IO errors when writing file"""
         mock_response = Mock()
@@ -1272,7 +1275,6 @@ class TestCKANConnectorErrorHandling(TestCase):
         # builtins.open is mocked to raise IOError
         with self.assertRaises(IOError):
             self.connector.download_resource("resource-1", "/tmp/test_io_error.csv")
-
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.list_listings")
     def test_sync_pull_handles_empty_listings(self, mock_list_listings):
@@ -1297,11 +1299,16 @@ class TestCKANConnectorErrorHandling(TestCase):
             title="Test Package",
         )
 
-        with patch.object(self.connector, "list_resources", side_effect=ConnectionError("API Error")):
+        with patch.object(
+            self.connector, "list_resources", side_effect=ConnectionError("API Error")
+        ):
             mapping = self.connector.map_to_hub_asset(listing)
             self.assertIsInstance(mapping, MarketplaceAssetMapping)
-            self.assertEqual(mapping.resources, [],
-                "map_to_hub_asset should return empty resources when list_resources fails")
+            self.assertEqual(
+                mapping.resources,
+                [],
+                "map_to_hub_asset should return empty resources when list_resources fails",
+            )
 
 
 class TestCKANConnectorSecurity(TestCase):
@@ -1372,10 +1379,9 @@ class TestCKANConnectorSecurity(TestCase):
 
                 # The actual path validation happens in the download method
                 # This test ensures we don't blindly accept malicious paths
-                try:
+                with contextlib.suppress(OSError, ValueError, PermissionError):
+                    # Expected - path should be rejected
                     self.connector.download_resource("resource-1", malicious_path)
-                except (IOError, ValueError, PermissionError):
-                    pass  # Expected - path should be rejected
 
     def test_xss_protection_in_listing_data(self):
         """Test that XSS attempts in listing data are handled safely"""
@@ -1709,9 +1715,7 @@ class TestCKANConnectorHelperMethods(TestCase):
             self.assertEqual(len(listings), 2)
 
         # Verify package_list endpoint was used (not package_search)
-        self.assertEqual(
-            mock_request.call_args[0][1], "/api/3/action/package_list"
-        )
+        self.assertEqual(mock_request.call_args[0][1], "/api/3/action/package_list")
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     def test_get_listing_with_empty_id(self, mock_request):

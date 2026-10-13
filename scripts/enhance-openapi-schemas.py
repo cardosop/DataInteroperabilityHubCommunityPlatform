@@ -21,6 +21,24 @@ import yaml
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Static example values keyed by OpenAPI format.
+_FORMAT_EXAMPLES = {
+    "uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "date-time": "2025-01-15T10:30:00Z",
+    "date": "2025-01-15",
+    "uri": "https://example.com",
+}
+
+# Example factories keyed by OpenAPI type (factories keep each generated
+# example a fresh instance).
+_TYPE_EXAMPLE_FACTORIES = {
+    "number": lambda: 0.0,
+    "boolean": lambda: False,
+    "array": list,
+    "object": dict,
+}
+
 
 class SchemaEnhancer:
     """Comprehensive OpenAPI schema enhancer."""
@@ -127,7 +145,7 @@ class SchemaEnhancer:
         enhanced["properties"] = properties
         return enhanced
 
-    def _enhance_request_schema(self, schema: dict[str, Any], schema_name: str) -> dict[str, Any]:
+    def _enhance_request_schema(self, schema: dict[str, Any], _schema_name: str) -> dict[str, Any]:
         """Enhance request schema with validation rules."""
         properties = schema.get("properties", {})
 
@@ -180,7 +198,7 @@ class SchemaEnhancer:
 
         return schema
 
-    def _enhance_response_schema(self, schema: dict[str, Any], schema_name: str) -> dict[str, Any]:
+    def _enhance_response_schema(self, schema: dict[str, Any], _schema_name: str) -> dict[str, Any]:
         """Enhance response schema with examples."""
         properties = schema.get("properties", {})
 
@@ -314,31 +332,15 @@ class SchemaEnhancer:
         if enum_values:
             return enum_values[0]
 
-        if format_type == "uuid":
-            return "550e8400-e29b-41d4-a716-446655440000"
-        elif format_type == "email":
-            return "user@example.com"
-        elif format_type == "date-time":
-            return "2025-01-15T10:30:00Z"
-        elif format_type == "date":
-            return "2025-01-15"
-        elif format_type == "uri":
-            return "https://example.com"
+        if format_type in _FORMAT_EXAMPLES:
+            return _FORMAT_EXAMPLES[format_type]
 
         if prop_type == "string":
-            if "id" in prop_name.lower():
-                return f"{prop_name}_example"
-            return f"example_{prop_name}"
-        elif prop_type == "integer":
+            return f"{prop_name}_example" if "id" in prop_name.lower() else f"example_{prop_name}"
+        if prop_type == "integer":
             return prop_schema.get("minimum", 0) or 1
-        elif prop_type == "number":
-            return 0.0
-        elif prop_type == "boolean":
-            return False
-        elif prop_type == "array":
-            return []
-        elif prop_type == "object":
-            return {}
+        if prop_type in _TYPE_EXAMPLE_FACTORIES:
+            return _TYPE_EXAMPLE_FACTORIES[prop_type]()
 
         return None
 
@@ -387,22 +389,23 @@ class SchemaEnhancer:
         for status_code, response in responses.items():
             if isinstance(response, dict) and "content" in response:
                 for content_type, content_schema in response["content"].items():
-                    if content_type == "application/json":
+                    if content_type == "application/json" and (
+                        "examples" not in content_schema and "example" not in content_schema
+                    ):
                         # Ensure examples are present
-                        if "examples" not in content_schema and "example" not in content_schema:
-                            example = self._generate_response_example(path, method, status_code)
-                            if example:
-                                content_schema["example"] = example
+                        example = self._generate_response_example(path, method, status_code)
+                        if example:
+                            content_schema["example"] = example
 
         return responses
 
-    def _generate_request_example(self, path: str, method: str) -> dict[str, Any] | None:
+    def _generate_request_example(self, _path: str, _method: str) -> dict[str, Any] | None:
         """Generate request example based on path and method."""
         # Examples are already in the specs, so return None to preserve them
         return None
 
     def _generate_response_example(
-        self, path: str, method: str, status_code: str
+        self, _path: str, _method: str, _status_code: str
     ) -> dict[str, Any] | None:
         """Generate response example based on path, method, and status code."""
         # Examples are already in the specs, so return None to preserve them

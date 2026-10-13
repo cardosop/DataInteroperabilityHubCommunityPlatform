@@ -61,7 +61,7 @@ def check_fitness(source_dir: str, violations: list[str]) -> None:
             continue
         try:
             content = py_file.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         lines = content.split("\n")

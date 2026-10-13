@@ -21,7 +21,7 @@ from rest_framework import status
 
 from hub.apps.assets.models import Asset
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 from .conftest import E2ETestBase, get_response_data
 
@@ -175,8 +175,16 @@ class InputValidationE2ETest(E2ETestBase):
         ]
 
         for payload in xss_payloads:
-            # Create asset with XSS payload in name
-            asset_id = self.create_asset(key=f"xss-test-{uuid.uuid4().hex[:8]}", name=payload)
+            # Seed via ORM: the API now rejects markup in names at creation
+            # (input-side hardening), so bypass the API to test the
+            # OUTPUT-escaping path (stored literal + JSON responses).
+            asset = Asset.objects.create(
+                tenant=self.tenant,
+                key=f"xss-test-{uuid.uuid4().hex[:8]}",
+                name=payload,
+                created_by=self.user,
+            )
+            asset_id = str(asset.id)
 
             # Retrieve asset
             response = self.client.get(f"/api/v1/assets/{asset_id}/")
@@ -214,8 +222,15 @@ class InputValidationE2ETest(E2ETestBase):
         # JSON responses should not execute scripts
         xss_payload = "<script>alert('XSS')</script>"
 
-        # Create asset with XSS payload
-        asset_id = self.create_asset(key=f"xss-json-{uuid.uuid4().hex[:8]}", name=xss_payload)
+        # Seed via ORM (API rejects markup in names at creation now) so the
+        # output path — JSON content type and literal storage — is exercised.
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"xss-json-{uuid.uuid4().hex[:8]}",
+            name=xss_payload,
+            created_by=self.user,
+        )
+        asset_id = str(asset.id)
 
         # Get asset
         response = self.client.get(f"/api/v1/assets/{asset_id}/")
@@ -247,10 +262,15 @@ class InputValidationE2ETest(E2ETestBase):
         ]
 
         for payload in xss_payloads:
-            asset_id = self.create_asset(
+            # Seed via ORM (API rejects markup in names at creation now) to
+            # verify the API output path stores/returns the payload literally.
+            asset = Asset.objects.create(
+                tenant=self.tenant,
                 key=f"html-esc-{uuid.uuid4().hex[:8]}",
                 name=payload,
+                created_by=self.user,
             )
+            asset_id = str(asset.id)
 
             response = self.client.get(f"/api/v1/assets/{asset_id}/")
             self.assertEqual(response.status_code, status.HTTP_200_OK)

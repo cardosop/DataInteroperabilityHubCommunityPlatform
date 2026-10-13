@@ -36,8 +36,8 @@ __all__ = [
     "BusinessRulesRegistry",
     "RuleExecutionContext",
     "RuleMetadata",
-    "utils",
     "ValidationResult",
     "get_registry",
     "register_rule",
+    "utils",
 ]

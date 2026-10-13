@@ -11,9 +11,12 @@ deploy workflow for staging (see .github/workflows/deploy.yml smoke job env).
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import pytest
-import requests
+
+if TYPE_CHECKING:
+    import requests
 
 # Shallowest list-style paths that should exist for each MVP area (aligned with hub.apps.api.urls).
 MVP_FEATURE_PATHS: dict[str, str] = {

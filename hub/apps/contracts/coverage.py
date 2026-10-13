@@ -4,11 +4,13 @@ Coverage metrics for ODCS normalization.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import OriginalSpecType
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 @dataclass

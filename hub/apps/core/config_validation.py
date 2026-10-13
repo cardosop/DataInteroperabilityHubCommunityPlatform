@@ -33,6 +33,26 @@ def _requires_redis() -> bool:
     return env in ("production", "staging")
 
 
+def _is_deployed_env() -> bool:
+    """True for the environments where missing paid config must fail loudly."""
+    env = getattr(settings, "ENVIRONMENT", "development").strip().lower()
+    return env in ("production", "staging")
+
+
+def _paid_apps_installed() -> frozenset[str]:
+    """Module names of the paid apps present in INSTALLED_APPS.
+
+    INSTALLED_APPS entries are module paths, occasionally with a trailing
+    ``.apps.XxxConfig`` class (see hub/apps/manifest.py ALL_HUB_APPS) —
+    ``module_name()`` normalizes both forms, so a paid app installed under
+    either spelling is detected.
+    """
+    from hub.apps.manifest import PAID_APPS, module_name
+
+    installed = {module_name(entry) for entry in getattr(settings, "INSTALLED_APPS", [])}
+    return installed & {module_name(entry) for entry in PAID_APPS}
+
+
 def validate_database_config() -> None:
     """Ensure DATABASES['default'] exists and has required keys."""
     db = getattr(settings, "DATABASES", None) or {}
@@ -71,7 +91,7 @@ def validate_redis_config() -> None:
         )
         return
     stripped = url.strip()
-    if not (stripped.startswith("redis://") or stripped.startswith("rediss://")):
+    if not (stripped.startswith(("redis://", "rediss://"))):
         raise ImproperlyConfigured(
             f"Redis URL must start with redis:// or rediss:// "
             f"(got: {url[:50]!r}...). See docs/CONFIG_VALIDATION_DESIGN.md."
@@ -121,6 +141,86 @@ def validate_encryption_key() -> None:
         )
 
 
+def validate_paid_service_config() -> None:
+    """Validate the settings the PAID apps depend on (Phase P.8 D6).
+
+    In core-only mode (``HUB_CORE_ONLY=1``) no paid setting is required —
+    the published OSS tree must boot without payment, triple-store, BaaS or
+    ML configuration. In a deployed full-mode environment, however, each
+    installed paid app's required settings MUST be present: a production
+    deploy missing them previously booted healthy and failed at first use.
+    Every failure names the setting AND the capability it powers, per the
+    paid-runtime-integrity spec.
+
+    Enforced in production AND staging (a missing value there fails just as
+    loudly); development keeps the in-repo defaults.
+    """
+    if getattr(settings, "HUB_CORE_ONLY", False):
+        return
+    if not _is_deployed_env():
+        return
+
+    installed = _paid_apps_installed()
+
+    if ("hub.apps.billing" in installed or "hub.apps.marketplace" in installed) and not getattr(
+        settings, "STRIPE_SECRET_KEY", None
+    ):
+        raise ImproperlyConfigured(
+            "STRIPE_SECRET_KEY is required when the billing/marketplace "
+            "apps are installed (full mode) in production/staging — it "
+            "powers Stripe payment processing. Set it via env. "
+            "See docs/CONFIG_VALIDATION_DESIGN.md and docs/SECURITY.md."
+        )
+
+    if "hub.apps.baas" in installed:
+        if not getattr(settings, "BAAS_DATABASE_URL", None):
+            raise ImproperlyConfigured(
+                "BAAS_DATABASE_URL is required when the baas app is installed "
+                "in production/staging — it powers BaaS usage/quota storage. "
+                "See docs/runbooks/BAAS_INFRASTRUCTURE.md."
+            )
+        if not getattr(settings, "BAAS_REDIS_URL", None):
+            raise ImproperlyConfigured(
+                "BAAS_REDIS_URL is required when the baas app is installed "
+                "in production/staging — it powers BaaS usage/quota caching. "
+                "See docs/runbooks/BAAS_INFRASTRUCTURE.md."
+            )
+
+    if "hub.apps.semantic" in installed:
+        for setting_name in ("FUSEKI_URL", "SEMANTIC_SERVICE_URL"):
+            value = getattr(settings, setting_name, None)
+            if not value:
+                raise ImproperlyConfigured(
+                    f"{setting_name} is required when the semantic app is "
+                    "installed in production/staging — it powers the SPARQL "
+                    "triple store and the semantic service client."
+                )
+            if not value.strip().startswith(("http://", "https://")):
+                raise ImproperlyConfigured(
+                    f"{setting_name} must be an http(s) URL (got "
+                    f"{value[:50]!r}...). See docs/CONFIG_VALIDATION_DESIGN.md."
+                )
+
+    if "hub.apps.ml" in installed:
+        for setting_name in (
+            "ODH_TRAINING_OPERATOR_URL",
+            "ODH_SERVICE_URL",
+            "ODH_INFERENCE_SCHEDULER_URL",
+        ):
+            value = getattr(settings, setting_name, None)
+            if not value:
+                raise ImproperlyConfigured(
+                    f"{setting_name} is required when the ml app is installed "
+                    "in production/staging — it powers ODH model training and "
+                    "inference."
+                )
+            if not value.strip().startswith(("http://", "https://")):
+                raise ImproperlyConfigured(
+                    f"{setting_name} must be an http(s) URL (got "
+                    f"{value[:50]!r}...). See docs/CONFIG_VALIDATION_DESIGN.md."
+                )
+
+
 def validate_all() -> None:
     """
     Run all startup configuration checks.
@@ -132,3 +232,4 @@ def validate_all() -> None:
     validate_allowed_hosts()
     validate_production_secrets()
     validate_encryption_key()
+    validate_paid_service_config()

@@ -33,7 +33,7 @@ class SlidingWindowRedisLuaIntegrationTests(SimpleTestCase):
             self.skipTest("REDIS_CACHE_URL not set")
         try:
             redis_py.Redis.from_url(url, socket_connect_timeout=2).ping()
-        except Exception as exc:
+        except (redis_py.ConnectionError, redis_py.TimeoutError, ValueError) as exc:
             self.skipTest(f"Redis not reachable: {exc}")
         self.redis_url = url
         self._redis_direct = redis_py.Redis.from_url(

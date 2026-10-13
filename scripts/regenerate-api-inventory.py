@@ -67,10 +67,11 @@ class EndpointExtractor:
         for pattern in resolver.url_patterns:
             if hasattr(pattern, "pattern"):
                 pattern_str = str(pattern.pattern)
-                if "api/v1" in pattern_str or pattern_str == "api/v1/":
-                    if hasattr(pattern, "url_patterns"):
-                        api_resolver = pattern
-                        break
+                if ("api/v1" in pattern_str or pattern_str == "api/v1/") and hasattr(
+                    pattern, "url_patterns"
+                ):
+                    api_resolver = pattern
+                    break
 
         if api_resolver:
             self._parse_resolver(api_resolver, api_v1_prefix)
@@ -247,13 +248,14 @@ class EndpointExtractor:
                 tree = ast.parse(content)
 
                 for node in ast.walk(tree):
-                    if isinstance(node, ast.ClassDef):
-                        if "ViewSet" in node.name:
-                            self._extract_actions_from_class(node, views_file, content)
-            except Exception as e:
+                    if isinstance(node, ast.ClassDef) and "ViewSet" in node.name:
+                        self._extract_actions_from_class(node, views_file, content)
+            except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as e:
                 print(f"Warning: Failed to parse {views_file}: {e}", file=sys.stderr)
 
-    def _extract_actions_from_class(self, class_node: ast.ClassDef, views_file: Path, content: str):
+    def _extract_actions_from_class(
+        self, class_node: ast.ClassDef, views_file: Path, _content: str
+    ):
         """Extract @action decorators from a ViewSet class"""
         viewset_name = class_node.name
 
@@ -267,56 +269,60 @@ class EndpointExtractor:
             if isinstance(node, ast.FunctionDef):
                 # Check for @action decorator
                 for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
-                        if decorator.func.id == "action":
-                            # Extract action details
-                            detail = True  # Default
-                            methods = ["GET"]  # Default
-                            url_path = node.name  # Default
+                    if (
+                        isinstance(decorator, ast.Call)
+                        and isinstance(decorator.func, ast.Name)
+                        and decorator.func.id == "action"
+                    ):
+                        # Extract action details
+                        detail = True  # Default
+                        methods = ["GET"]  # Default
+                        url_path = node.name  # Default
 
-                            # Parse decorator arguments
-                            for keyword in decorator.keywords:
-                                if keyword.arg == "detail":
-                                    if isinstance(keyword.value, ast.Constant):
-                                        detail = keyword.value.value
-                                elif keyword.arg == "methods":
-                                    if isinstance(keyword.value, ast.List):
-                                        methods = [
-                                            m.value.upper()
-                                            if isinstance(m, ast.Constant)
-                                            else str(m).upper()
-                                            for m in keyword.value.elts
-                                        ]
-                                elif keyword.arg == "url_path":
-                                    if isinstance(keyword.value, ast.Constant):
-                                        url_path = keyword.value.value
+                        # Parse decorator arguments
+                        for keyword in decorator.keywords:
+                            if keyword.arg == "detail":
+                                if isinstance(keyword.value, ast.Constant):
+                                    detail = keyword.value.value
+                            elif keyword.arg == "methods":
+                                if isinstance(keyword.value, ast.List):
+                                    methods = [
+                                        m.value.upper()
+                                        if isinstance(m, ast.Constant)
+                                        else str(m).upper()
+                                        for m in keyword.value.elts
+                                    ]
+                            elif keyword.arg == "url_path" and isinstance(
+                                keyword.value, ast.Constant
+                            ):
+                                url_path = keyword.value.value
 
-                            # Build endpoint path
-                            if detail:
-                                action_path = f"{base_path}/{{id}}/{url_path}/"
-                                parameters = ["id"]
-                            else:
-                                action_path = f"{base_path}/{url_path}/"
-                                parameters = []
+                        # Build endpoint path
+                        if detail:
+                            action_path = f"{base_path}/{{id}}/{url_path}/"
+                            parameters = ["id"]
+                        else:
+                            action_path = f"{base_path}/{url_path}/"
+                            parameters = []
 
-                            # Create endpoints for each method
-                            for method in methods:
-                                endpoint = APIEndpoint(
-                                    method=method,
-                                    path=action_path,
-                                    view_class=viewset_name,
-                                    view_method=node.name,
-                                    action_type="Custom",
-                                    app_name=self._extract_app_name(base_path),
-                                    parameters=parameters,
-                                    description=f"Custom action: {node.name}",
-                                )
-                                # Check if endpoint already exists
-                                if not any(
-                                    e.path == endpoint.path and e.method == endpoint.method
-                                    for e in self.endpoints
-                                ):
-                                    self.endpoints.append(endpoint)
+                        # Create endpoints for each method
+                        for method in methods:
+                            endpoint = APIEndpoint(
+                                method=method,
+                                path=action_path,
+                                view_class=viewset_name,
+                                view_method=node.name,
+                                action_type="Custom",
+                                app_name=self._extract_app_name(base_path),
+                                parameters=parameters,
+                                description=f"Custom action: {node.name}",
+                            )
+                            # Check if endpoint already exists
+                            if not any(
+                                e.path == endpoint.path and e.method == endpoint.method
+                                for e in self.endpoints
+                            ):
+                                self.endpoints.append(endpoint)
 
     def _find_viewset_base_path(self, viewset_name: str, views_file: Path) -> str | None:
         """Find the base URL path for a ViewSet by checking router registrations"""
@@ -330,37 +336,38 @@ class EndpointExtractor:
 
             # Find router.register calls
             for node in ast.walk(tree):
-                if isinstance(node, ast.Call) and (
-                    isinstance(node.func, ast.Attribute)
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
                     and node.func.attr == "register"
+                    and len(node.args) >= 2
                 ):
                     # Check if this registers our ViewSet
-                    if len(node.args) >= 2:
-                        prefix_arg = node.args[0]
-                        viewset_arg = node.args[1]
+                    prefix_arg = node.args[0]
+                    viewset_arg = node.args[1]
 
-                        # Check if viewset matches
-                        viewset_match = False
-                        if isinstance(viewset_arg, ast.Name):
-                            viewset_match = viewset_arg.id == viewset_name
-                        elif isinstance(viewset_arg, ast.Attribute):
-                            viewset_match = viewset_arg.attr == viewset_name
+                    # Check if viewset matches
+                    viewset_match = False
+                    if isinstance(viewset_arg, ast.Name):
+                        viewset_match = viewset_arg.id == viewset_name
+                    elif isinstance(viewset_arg, ast.Attribute):
+                        viewset_match = viewset_arg.attr == viewset_name
 
-                        if viewset_match:
-                            # Extract prefix
-                            if isinstance(prefix_arg, ast.Constant):
-                                prefix = prefix_arg.value
-                            elif isinstance(prefix_arg, ast.Str):  # Python < 3.8
-                                prefix = prefix_arg.s
-                            else:
-                                continue
+                    if viewset_match:
+                        # Extract prefix
+                        if isinstance(prefix_arg, ast.Constant):
+                            prefix = prefix_arg.value
+                        elif isinstance(prefix_arg, ast.Str):  # Python < 3.8
+                            prefix = prefix_arg.s
+                        else:
+                            continue
 
-                            # Build full path
-                            app_name = views_file.parent.name
-                            base_path = f"/api/v1/{app_name}/{prefix}"
-                            return base_path.rstrip("/")
-        except Exception as e:
+                        # Build full path
+                        app_name = views_file.parent.name
+                        base_path = f"/api/v1/{app_name}/{prefix}"
+                        return base_path.rstrip("/")
+        except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as e:
             print(f"Warning: Failed to parse {urls_file}: {e}", file=sys.stderr)
 
         return None

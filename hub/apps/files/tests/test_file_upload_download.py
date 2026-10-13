@@ -89,8 +89,12 @@ class FileUploadDownloadTest(FilesAPITestBase):
         self.assertEqual(file_obj.status, FileStatus.UPLOADING)
         self.assertIn("multipart_upload_id", file_obj.metadata_json)
 
-    def test_init_file_upload_over_browser_size_limit_rejected(self):
-        """Test that browser upload exceeding size limit is rejected."""
+    def test_init_file_upload_over_browser_size_limit_routes_to_multipart(self):
+        """Phase 260.3.F — a browser upload above the multipart threshold is
+        NOT rejected by the single-PUT-era browser cap; it initialises a
+        multipart upload instead (the platform/tenant effective limit
+        governs). The cap-rejection contract is covered at the rules level
+        in test_file_size_limits.py via a raised-threshold override."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         from django.conf import settings
@@ -105,8 +109,8 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         response = self.client.post("/api/v1/files/init/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("size", str(response.data).lower())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["requires_multipart"])
 
     def test_init_file_upload_under_browser_size_limit_succeeds(self):
         """Test that browser upload under size limit succeeds as simple upload."""
@@ -167,12 +171,14 @@ class FileUploadDownloadTest(FilesAPITestBase):
             created_by=self.user,
         )
 
-        # Upload file content to storage (key must match storage_path)
+        # Upload file content to storage (key must match storage_path:
+        # the row declares ``.../test.csv`` so the object must be saved
+        # under that exact name).
         self.storage_client.save_file(
             tenant_id=str(self.tenant.id),
             file_id=str(file_obj.id),
             file_content=ContentFile(test_content),
-            file_name=file_obj.name,
+            file_name="test.csv",
         )
 
         # Calculate SHA-256 hash

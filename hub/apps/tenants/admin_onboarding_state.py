@@ -10,7 +10,8 @@ approving KYC or activating features.
 
 from __future__ import annotations
 
-from django.http import HttpRequest
+from typing import TYPE_CHECKING
+
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,11 +22,14 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.onboarding import compute_onboarding_state
 from hub.apps.tenants.permissions import IsPlatformAdmin
 
+if TYPE_CHECKING:
+    from django.http import HttpRequest
+
 
 class AdminTenantOnboardingStateView(APIView):
     """Return the onboarding checklist for a tenant (PLATFORM_ADMIN only)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     def get(self, request: HttpRequest, tenant_id: str) -> Response:
         tenant = self._get_tenant(tenant_id)
@@ -60,4 +64,4 @@ class AdminTenantOnboardingStateView(APIView):
         except Tenant.DoesNotExist:
             from django.http import Http404
 
-            raise Http404("Tenant not found")
+            raise Http404("Tenant not found") from None

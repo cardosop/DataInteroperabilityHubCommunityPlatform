@@ -10,7 +10,7 @@ class RopaGenerationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RopaGeneration
-        fields = [
+        fields = (
             "id",
             "regulation",
             "output_format",
@@ -23,8 +23,8 @@ class RopaGenerationSerializer(serializers.ModelSerializer):
             "created_at",
             "completed_at",
             "error_message",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "regulation",
             "output_format",
@@ -35,4 +35,4 @@ class RopaGenerationSerializer(serializers.ModelSerializer):
             "created_at",
             "completed_at",
             "error_message",
-        ]
+        )

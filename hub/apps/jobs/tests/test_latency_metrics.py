@@ -103,7 +103,7 @@ class TestRecordWorkerUptime:
 class TestTaskLatencyTracker:
     def test_records_latency_on_success(self):
         with task_latency_tracker("job_default", "TRACKER_TEST"):
-            time.sleep(0.01)  # noqa: sleep-needed — test timing requirement
+            time.sleep(0.01)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         labeled = job_queue_latency_seconds.labels(
             queue_name="job_default", job_type="TRACKER_TEST", status="COMPLETED"
@@ -111,9 +111,11 @@ class TestTaskLatencyTracker:
         assert labeled._value.get() > 0
 
     def test_records_latency_on_failure_and_re_raises(self):
-        with pytest.raises(ValueError, match="tracker boom"):
-            with task_latency_tracker("job_default", "FAIL_TRACKER"):
-                raise ValueError("tracker boom")
+        with (
+            pytest.raises(ValueError, match="tracker boom"),
+            task_latency_tracker("job_default", "FAIL_TRACKER"),
+        ):
+            raise ValueError("tracker boom")
 
         labeled = job_queue_latency_seconds.labels(
             queue_name="job_default", job_type="FAIL_TRACKER", status="FAILED"

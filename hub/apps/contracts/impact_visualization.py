@@ -252,7 +252,7 @@ class ImpactVisualizer:
                 "severity": node_data.get("severity", "LOW"),
             }
 
-            new_path = current_path + [path_entry]
+            new_path = [*current_path, path_entry]
 
             # If no children, this is a complete path
             if not node_data.get("children"):
@@ -262,7 +262,7 @@ class ImpactVisualizer:
                         "length": len(new_path),
                         "max_severity": max(
                             (entry["severity"] for entry in new_path),
-                            key=lambda s: ["LOW", "MEDIUM", "HIGH", "CRITICAL"].index(s),
+                            key=["LOW", "MEDIUM", "HIGH", "CRITICAL"].index,
                         ),
                         "total_impact_score": sum(entry["impact_score"] for entry in new_path),
                     }

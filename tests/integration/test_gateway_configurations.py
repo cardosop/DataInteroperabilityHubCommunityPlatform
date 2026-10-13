@@ -79,12 +79,10 @@ class TestTraefikConfiguration:
 
         # Should have services section
         assert "services:" in content, "Should have services section"
-        assert "compliance-service:" in content and "loadBalancer:" in content, (
-            "Should have compliance service definition"
-        )
-        assert "dq-service:" in content and "loadBalancer:" in content, (
-            "Should have DQ service definition"
-        )
+        assert "compliance-service:" in content, "Should have compliance service definition"
+        assert "loadBalancer:" in content, "Should have compliance service definition"
+        assert "dq-service:" in content, "Should have DQ service definition"
+        assert "loadBalancer:" in content, "Should have DQ service definition"
 
     def test_k8s_configmap_configured(self):
         """Test that Kubernetes ConfigMap is configured correctly (API Gateway architecture)"""
@@ -166,9 +164,10 @@ class TestGatewayRouting:
         """Check if service is available"""
         try:
             response = requests.get(url, timeout=timeout)
-            return response.status_code in [200, 401, 403, 404]
         except Exception:
             return False
+        else:
+            return response.status_code in [200, 401, 403, 404]
 
     def test_compliance_endpoint_routing(self):
         """Test that compliance endpoints are routable"""

@@ -2,12 +2,13 @@
 File Storage Serializers
 """
 
+from typing import ClassVar
+
 from rest_framework import serializers
 
+from .metadata_validators import validate_metadata_json_size
 from .models import File
 from .validators import validate_filename
-
-from .metadata_validators import validate_metadata_json_size
 
 
 class FileInitSerializer(serializers.Serializer):
@@ -28,7 +29,7 @@ class FileInitSerializer(serializers.Serializer):
 
     def validate(self, data):
         """Structural validation only; domain rules run in FileService."""
-        # 14.7: path traversal prevention – sanitise and validate the filename.
+        # 14.7: path traversal prevention - sanitise and validate the filename.
         if "name" in data:
             data["name"] = validate_filename(data["name"])
         return data
@@ -70,7 +71,7 @@ class FileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = File
-        fields = [
+        fields = (
             "id",
             "name",
             "content_type",
@@ -83,8 +84,8 @@ class FileSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "content_sha256",
             "status",
@@ -94,15 +95,15 @@ class FileSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
-        extra_kwargs = {
+        )
+        extra_kwargs: ClassVar[dict[str, dict[str, object]]] = {
             "metadata_json": {
                 "validators": [validate_metadata_json_size],
             },
         }
 
     def validate(self, data):
-        # 14.7: path traversal prevention – sanitise and validate the filename.
+        # 14.7: path traversal prevention - sanitise and validate the filename.
         if "name" in data:
             data["name"] = validate_filename(data["name"])
         return data

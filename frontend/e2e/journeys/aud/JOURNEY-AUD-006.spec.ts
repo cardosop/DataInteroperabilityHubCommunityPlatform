@@ -53,9 +53,22 @@ test.describe('JOURNEY-AUD-006: Review Social Feature Activity / Analyze Audit T
 
   test.describe('Failure', () => {
     test('audit event detail with non-existent id shows error', async ({ page }) => {
-      await loginAsPersona(page, getAuditorUser);
-      await page.goto('/audit/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      // loginAndNavigateToRoute (not loginAsPersona + bare page.goto):
+      // the reload after a UI login has no persisted access_token (Phase
+      // 11.1 localStorage hardening) and the detail query can fire before
+      // the boot refresh recovers — surfacing AUTH_UNAUTHORIZED instead
+      // of the 404 boundary (same fix as JOURNEY-AUD-001).
+      const auditorUser = await getAuditorUser();
+      await loginAndNavigateToRoute(
+        page,
+        auditorUser,
+        '/audit/00000000-0000-0000-0000-000000000000',
+        {
+          timeout: 60000,
+          contentSelector:
+            '.error-display, [data-testid="error-display"], [data-testid="audit-event-detail-page"], h1',
+        }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '[data-testid="audit-event-detail-page"]',
         waitAfterLoad: 8000,

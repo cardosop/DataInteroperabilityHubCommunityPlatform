@@ -5,7 +5,7 @@ Provides secure credential masking for destination configurations.
 """
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class CredentialManager:
     """
 
     # Fields that should be masked in credentials
-    SENSITIVE_FIELDS = [
+    SENSITIVE_FIELDS: ClassVar[list[str]] = [
         "password",
         "secret",
         "secret_key",

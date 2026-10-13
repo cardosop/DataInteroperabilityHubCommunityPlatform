@@ -7,15 +7,16 @@ attempts produce a consistent signal across logging, audit, and metrics.
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
-from django.http import HttpRequest
+if TYPE_CHECKING:
+    from django.http import HttpRequest
 
 logger = logging.getLogger(__name__)
 
 
 class _DeniedCounter(Protocol):
-    def labels(self, **kwargs) -> _DeniedCounter: ...
+    def labels(self, **_kwargs) -> _DeniedCounter: ...
 
     def inc(self) -> None: ...
 
@@ -28,10 +29,10 @@ try:
         "Cross-tenant requests denied",
         ["endpoint", "reason"],
     )
-except Exception:  # pragma: no cover - defensive fallback
+except ImportError:  # pragma: no cover - defensive fallback
 
     class _CounterStub:
-        def labels(self, **kwargs):  # noqa: ARG002
+        def labels(self, **_kwargs):
             return self
 
         def inc(self):
@@ -84,7 +85,7 @@ def cross_tenant_denied(
             },
             request=request,
         )
-    except Exception as exc:  # pragma: no cover - best effort
+    except Exception as exc:
         logger.warning(
             "cross_tenant_denied_audit_failed endpoint=%s reason=%s error=%s",
             endpoint,
@@ -94,7 +95,7 @@ def cross_tenant_denied(
 
     try:
         cross_tenant_denied_total.labels(endpoint=endpoint, reason=reason).inc()
-    except Exception as exc:  # pragma: no cover - best effort
+    except Exception as exc:
         logger.warning(
             "cross_tenant_denied_metric_failed endpoint=%s reason=%s error=%s",
             endpoint,

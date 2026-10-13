@@ -119,6 +119,25 @@ class DeadLetterQueueManager:
         state_manager = IncrementalStateManager(dlq_item.scheduled_ingestion)
         state_manager.clear_failed_file(dlq_item.file_path)
 
+        # W3.9 (F17) — the retry must reach the LIVE movement state too:
+        # for a data_movement tenant the dlt processed-key state is what
+        # the incremental filter reads.  Removing the key re-queues the
+        # file so the NEXT scheduled run re-dispatches it (the design's
+        # sanctioned "requeue on next run" semantics).  Best-effort —
+        # the dlt state lives in a pipeline the legacy flow may never
+        # have touched.
+        try:
+            from hub.data_movement.dlt_incremental import clear_processed_keys
+
+            pipeline_name = f"ingestion-{dlq_item.scheduled_ingestion_id}"
+            clear_processed_keys(pipeline_name, [dlq_item.file_path])
+        except Exception:
+            logger.exception(
+                "dlq_retry_dlt_state_clear_failed",
+                dlq_item_id=dlq_item_id,
+                file_path=dlq_item.file_path,
+            )
+
         # Update DLQ item
         dlq_item.resolution_status = "RETRYING"
         dlq_item.retry_count += 1

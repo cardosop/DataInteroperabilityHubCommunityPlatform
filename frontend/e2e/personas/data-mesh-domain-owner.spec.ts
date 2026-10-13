@@ -5,11 +5,16 @@
  * Reference: E2E_FULL_COVERAGE_PLAN.md
  */
 
-import '../journeys/dmo/JOURNEY-DMO-001.spec';
-import '../journeys/dmo/JOURNEY-DMO-002.spec';
-import '../journeys/dmo/JOURNEY-DMO-003.spec';
-import '../journeys/dmo/JOURNEY-DMO-004.spec';
-import '../journeys/dmo/JOURNEY-DMO-005.spec';
+// Core-only mode (E2E_CORE_ONLY=1): the imported journey specs are FULL-mode
+// journeys; the core subset runs the persona's own RBAC tests below instead.
+if (process.env.E2E_CORE_ONLY !== '1') {
+  await import('../journeys/dmo/JOURNEY-DMO-001.spec');
+  await import('../journeys/dmo/JOURNEY-DMO-002.spec');
+  await import('../journeys/dmo/JOURNEY-DMO-003.spec');
+  await import('../journeys/dmo/JOURNEY-DMO-004.spec');
+  await import('../journeys/dmo/JOURNEY-DMO-005.spec');
+
+}
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getDataMeshDomainOwnerUser } from '../fixtures/auth';
@@ -40,7 +45,7 @@ test.describe('Persona RBAC: Data Mesh Domain Owner', () => {
     await page.waitForLoadState('domcontentloaded');
     const resolved = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
     if (resolved.includes('/login')) {
-      test.skip(true, 'Auth session expired — not an RBAC result');
+      test.skip(resolved.includes('/login'), 'Auth session expired — not an RBAC result');
       return;
     }
     expect(resolved.includes('/403') || !resolved.includes('/admin')).toBe(true);

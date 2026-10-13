@@ -18,6 +18,7 @@ are added at logical boundaries (every ~500-700 lines per project rule).
 import structlog
 from django.db import transaction
 from django.utils import timezone
+from redis.exceptions import RedisError
 
 from .models import Job
 
@@ -57,7 +58,7 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
     if not contract_id:
         raise ValueError("Contract ID is required for ODPS_NORMALIZATION job")
 
-    try:
+    def _run() -> dict:
         # Import here to avoid circular imports
         from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
         from hub.apps.contracts.normalization_service import NormalizationService
@@ -68,7 +69,7 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
         try:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
-            raise ValueError(f"Contract {contract_id} not found")
+            raise ValueError(f"Contract {contract_id} not found") from None
 
         # Validate contract is ODPS
         if contract.original_spec_type != OriginalSpecType.ODPS:
@@ -374,6 +375,8 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
             "errors_count": len(norm_errors),
         }
 
+    try:
+        result = _run()
     except (ValueError, ConnectionError):
         raise  # Re-raise specific errors
     except Exception as e:
@@ -387,6 +390,8 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
             message=f"ODPS normalization job failed: {e!s}",
         )
         raise Exception(f"ODPS normalization failed: {e!s}") from e
+    else:
+        return result
 
 
 # SAVING CHECKPOINT: Start of ref_resolution handler
@@ -420,7 +425,7 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
     if not contract_id:
         raise ValueError("Contract ID is required for ODPS_REF_RESOLUTION job")
 
-    try:
+    def _run() -> dict:
         # Import here to avoid circular imports
         import json
 
@@ -435,7 +440,7 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
         try:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
-            raise ValueError(f"Contract {contract_id} not found")
+            raise ValueError(f"Contract {contract_id} not found") from None
 
         # Validate contract is ODPS
         if contract.original_spec_type != OriginalSpecType.ODPS:
@@ -590,7 +595,7 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
 
         # Resolve all refs
         try:
-            original_doc, resolved_doc = resolver.resolve_all_refs(
+            _original_doc, resolved_doc = resolver.resolve_all_refs(
                 document=odps_doc,
                 preserve_original=True,
                 external_ref_handling=external_ref_handling,
@@ -620,7 +625,7 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                     contract_id=str(contract_id),
                     extra={"error_type": type(event_err).__name__, "error": str(event_err)},
                 )
-            raise ValueError(f"ODPS $ref resolution failed: {e!s}")
+            raise ValueError(f"ODPS $ref resolution failed: {e!s}") from None
 
         # Update progress: Saving results (90%)
         job_obj.details_json["progress_percentage"] = 90.0
@@ -734,6 +739,10 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
             "format": format_str,
         }
 
+    from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+
+    try:
+        result = _run()
     except (ValueError, ODPSRefResolutionError):
         raise  # Re-raise specific errors
     except Exception as e:
@@ -747,6 +756,8 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
             message=f"ODPS $ref resolution job failed: {e!s}",
         )
         raise Exception(f"ODPS $ref resolution failed: {e!s}") from e
+    else:
+        return result
 
 
 # SAVING CHECKPOINT: Start of export handler
@@ -779,7 +790,9 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
     if not contract_id:
         raise ValueError("Contract ID is required for ODPS_EXPORT job")
 
-    try:
+    contract_holder: list = []
+
+    def _run() -> dict:
         # Import here to avoid circular imports
 
         from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
@@ -796,7 +809,8 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
         try:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
-            raise ValueError(f"Contract {contract_id} not found")
+            raise ValueError(f"Contract {contract_id} not found") from None
+        contract_holder.append(contract)
 
         # Validate contract has hub_contract_json
         if not contract.hub_contract_json:
@@ -882,7 +896,7 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 original_odcs_contract = parse_contract(
                     contract.original_raw, contract.original_format
                 )
-            except Exception as parse_err:
+            except ValueError as parse_err:
                 logger.debug(
                     "odps_export_parse_original_odcs_failed",
                     job_id=str(job_obj.id),
@@ -1073,13 +1087,17 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             "bytes_total": bytes_total,
         }
 
+    try:
+        result = _run()
     except (ValueError, ConnectionError):
         # Record export failure metric (Task 6.6.4)
         try:
             from hub.apps.observability.otel_metrics import odps_export_total
 
             tenant_id = (
-                str(contract.tenant.id) if "contract" in locals() and contract.tenant else "unknown"
+                str(contract_holder[0].tenant.id)
+                if contract_holder and contract_holder[0].tenant
+                else "unknown"
             )
             export_format = (
                 job_obj.details_json.get("export_format", "unknown")
@@ -1112,7 +1130,9 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             from hub.apps.observability.otel_metrics import odps_export_total
 
             tenant_id = (
-                str(contract.tenant.id) if "contract" in locals() and contract.tenant else "unknown"
+                str(contract_holder[0].tenant.id)
+                if contract_holder and contract_holder[0].tenant
+                else "unknown"
             )
             export_format = (
                 job_obj.details_json.get("export_format", "unknown")
@@ -1130,6 +1150,8 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             )
 
         raise Exception(f"ODPS export failed: {e!s}") from e
+    else:
+        return result
 
 
 # SAVING CHECKPOINT: Start of semantic_mapping handler
@@ -1167,18 +1189,22 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
     if not contract_id:
         raise ValueError("Contract ID is required for ODPS_SEMANTIC_MAPPING job")
 
-    try:
-        # Import here to avoid circular imports
+    def _run() -> dict:
+        # Import here to avoid circular imports.  Semantic is the paid
+        # layer — guarded for both core-only absence forms (W7.1).
         from hub.apps.contracts.models import Contract, OriginalSpecType
         from hub.apps.core.events.publisher import EventPublisher
         from hub.apps.core.events.service_publishers import ODPSEventPublisher
-        from hub.apps.semantic.utils import map_odps_to_semantic
+        try:
+            from hub.apps.semantic.utils import map_odps_to_semantic
+        except (RuntimeError, ModuleNotFoundError):
+            map_odps_to_semantic = None
 
         # Get contract
         try:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
-            raise ValueError(f"Contract {contract_id} not found")
+            raise ValueError(f"Contract {contract_id} not found") from None
 
         # Validate contract is ODPS
         if contract.original_spec_type != OriginalSpecType.ODPS:
@@ -1279,10 +1305,14 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
                 extra={"error_type": type(e).__name__, "error": str(e)},
             )
 
-        # Map ODPS to semantic (RDF)
-        semantic_resource = map_odps_to_semantic(
-            contract=contract, tenant=contract.tenant, use_cache=False
-        )
+        # Map ODPS to semantic (RDF).  When semantic (the paid layer)
+        # is absent there is nothing to map against (W7.1).
+        if map_odps_to_semantic is None:
+            semantic_resource = None
+        else:
+            semantic_resource = map_odps_to_semantic(
+                contract=contract, tenant=contract.tenant, use_cache=False
+            )
 
         # Update progress: Saving semantic resource (75%)
         job_obj.details_json["progress_percentage"] = 75.0
@@ -1377,6 +1407,8 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
             "duration_ms": duration_ms,
         }
 
+    try:
+        result = _run()
     except (ValueError, ConnectionError):
         raise  # Re-raise specific errors
     except Exception as e:
@@ -1390,6 +1422,8 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
             message=f"ODPS semantic mapping job failed: {e!s}",
         )
         raise Exception(f"ODPS semantic mapping failed: {e!s}") from e
+    else:
+        return result
 
 
 # SAVING CHECKPOINT: Start of linking handler
@@ -1435,7 +1469,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
     if not odcs_contract_id:
         raise ValueError("ODCS contract ID is required for ODPS_LINKING job")
 
-    try:
+    def _run() -> dict:
         # Import here to avoid circular imports
         from hub.apps.contracts.linking_validation import LinkingValidationError, validate_linking
         from hub.apps.contracts.models import Contract
@@ -1447,12 +1481,12 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
         try:
             odps_contract = Contract.objects.get(id=odps_contract_id)
         except Contract.DoesNotExist:
-            raise ValueError(f"ODPS contract {odps_contract_id} not found")
+            raise ValueError(f"ODPS contract {odps_contract_id} not found") from None
 
         try:
-            odcs_contract = Contract.objects.get(id=odcs_contract_id)
+            _odcs_contract = Contract.objects.get(id=odcs_contract_id)
         except Contract.DoesNotExist:
-            raise ValueError(f"ODCS contract {odcs_contract_id} not found")
+            raise ValueError(f"ODCS contract {odcs_contract_id} not found") from None
 
         # Get tenant and user IDs
         tenant_id = str(odps_contract.tenant.id) if odps_contract.tenant else None
@@ -1516,7 +1550,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             logger.warning(
                 "odps_job_event_publish_failed",
                 job_id=str(job_obj.id),
-                contract_id=str(contract_id) if contract_id else None,
+                contract_id=str(odps_contract_id) if odps_contract_id else None,
                 extra={"error_type": type(e).__name__, "error": str(e)},
             )
 
@@ -1552,10 +1586,10 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 logger.warning(
                     "odps_job_event_publish_failed",
                     job_id=str(job_obj.id),
-                    contract_id=str(contract_id),
+                    contract_id=str(odps_contract_id),
                     extra={"error_type": type(event_err).__name__, "error": str(event_err)},
                 )
-            raise ValueError(f"ODPS linking validation failed: {e!s}")
+            raise ValueError(f"ODPS linking validation failed: {e!s}") from None
 
         # Update progress: Validation passed (40%)
         job_obj.details_json["progress_percentage"] = 40.0
@@ -1579,7 +1613,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             logger.warning(
                 "odps_job_event_publish_failed",
                 job_id=str(job_obj.id),
-                contract_id=str(contract_id) if contract_id else None,
+                contract_id=str(odps_contract_id) if odps_contract_id else None,
                 extra={"error_type": type(e).__name__, "error": str(e)},
             )
 
@@ -1604,7 +1638,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             logger.warning(
                 "odps_job_event_publish_failed",
                 job_id=str(job_obj.id),
-                contract_id=str(contract_id) if contract_id else None,
+                contract_id=str(odps_contract_id) if odps_contract_id else None,
                 extra={"error_type": type(e).__name__, "error": str(e)},
             )
 
@@ -1612,7 +1646,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
         contract_service = ContractService(tenant_id=tenant_id, user_id=user_id)
 
         # Use the service method to link contracts (this handles the actual linking logic)
-        linked_odps_contract = contract_service.link_odps_to_odcs(
+        _linked_odps_contract = contract_service.link_odps_to_odcs(
             odcs_contract_id=odcs_contract_id,
             odps_contract_id=odps_contract_id,
             tenant_id=tenant_id,
@@ -1667,7 +1701,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             logger.warning(
                 "odps_job_event_publish_failed",
                 job_id=str(job_obj.id),
-                contract_id=str(contract_id) if contract_id else None,
+                contract_id=str(odps_contract_id) if odps_contract_id else None,
                 extra={"error_type": type(e).__name__, "error": str(e)},
             )
 
@@ -1728,7 +1762,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 user_id=user_id,
                 tenant_id=tenant_id,
             )
-        except Exception as e:
+        except RedisError as e:
             # Log but don't fail job if notification fails
             logger.warning(
                 "odps_linking_notification_failed",
@@ -1756,6 +1790,10 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             "duration_ms": duration_ms,
         }
 
+    from hub.apps.contracts.linking_validation import LinkingValidationError
+
+    try:
+        result = _run()
     except (ValueError, LinkingValidationError):
         raise  # Re-raise specific errors
     except Exception as e:
@@ -1770,3 +1808,5 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             message=f"ODPS linking job failed: {e!s}",
         )
         raise Exception(f"ODPS linking failed: {e!s}") from e
+    else:
+        return result

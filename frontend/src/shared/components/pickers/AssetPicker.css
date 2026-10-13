@@ -97,9 +97,10 @@
 
 .asset-picker-browse-link {
   color: var(--color-primary);
-  text-decoration: none;
-}
-
-.asset-picker-browse-link:hover {
+  /* WCAG 1.4.1 (link-in-text-block): the link must be distinguishable
+     from the surrounding muted hint text WITHOUT relying on color or
+     hover — the persistent underline satisfies the rule's style branch
+     (axe flagged 2.62:1 contrast + hover-only styling on the picker
+     a11y spec). */
   text-decoration: underline;
 }

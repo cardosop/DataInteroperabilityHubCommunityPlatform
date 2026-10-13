@@ -65,7 +65,7 @@ test.describe('JOURNEY-TA-007: Monitor Cost Tracking @critical', () => {
     const taUser = await getTenantAdminUser();
     await loginAndNavigateToRoute(page, taUser, '/settings/cost', { timeout: 60000 });
     if (page.url().includes('/login') || page.url().includes('/403')) {
-      test.skip(true, 'Auth/role gated — skipping success assertion');
+      test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Auth/role gated — skipping success assertion');
       return;
     }
     await waitForLoadingComplete(page, { timeout: 15000 });

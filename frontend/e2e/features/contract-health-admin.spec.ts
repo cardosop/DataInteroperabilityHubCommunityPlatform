@@ -13,28 +13,30 @@
  */
 import { expect, test } from '@playwright/test';
 
-import { getTestUser, loginUser } from '../fixtures/auth';
+import { getTenantAdminUser } from '../fixtures/auth';
+import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Feature: Contract health admin (Phase 227 L5)', () => {
   test('admin can reach the contract-health page and follow a row link', async ({ page }) => {
-    const testUser = await getTestUser();
-    await loginUser(page, testUser);
-    await page.goto('/admin/contract-health', { waitUntil: 'domcontentloaded' });
+    // The /admin/contract-health route is TENANT_ADMIN-gated — logging in
+    // as the plain test user made the page unreachable and the spec always
+    // took the "role not granted" skip (b7: counted among the 26 skips).
+    // Use the admin persona so the happy path actually runs. The persona
+    // provably carries TENANT_ADMIN (verified against /auth/me/), so the
+    // route gate redirecting would be a REAL regression — assert strictly
+    // instead of skipping. The churn-hardened navigation absorbs the
+    // auth-init stalls that made the old raw-goto + 10s probe skip under
+    // batch load (b7: the SPA sat on "Checking authentication…" >30s).
+    const testUser = await getTenantAdminUser();
+    await loginAndNavigateToRoute(page, testUser, '/admin/contract-health', {
+      timeout: 90000,
+      contentSelector:
+        '.contract-health-page, [data-testid="contract-health-page"], .error-display, [data-testid="error-display"], main',
+      acceptRedirectToLogin: false,
+    });
 
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to /login — auth token expired');
-      return;
-    }
-
-    // Either the page mounts (with rows or empty state) OR the user
-    // lacks the TENANT_ADMIN role and gets a 403/redirect — both are
-    // valid backend states. We only assert the happy path here.
     const root = page.getByTestId('contract-health-page');
-    const reachable = await root.isVisible({ timeout: 10000 }).catch(() => false);
-    if (!reachable) {
-      test.skip(true, 'TENANT_ADMIN role not granted in this tenant');
-      return;
-    }
+    await expect(root).toBeVisible({ timeout: 30000 });
 
     // Empty or populated — the table OR the empty state is present.
     const empty = page.getByTestId('contract-health-empty');

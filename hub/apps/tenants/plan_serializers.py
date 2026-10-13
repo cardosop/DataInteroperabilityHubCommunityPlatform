@@ -10,6 +10,7 @@ from rest_framework import serializers
 
 from .models import TenantPlan
 
+
 class TenantPlanAdminSerializer(serializers.ModelSerializer):
     """Serializer for admin CRUD on TenantPlan.
 
@@ -18,7 +19,7 @@ class TenantPlanAdminSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TenantPlan
-        fields = [
+        fields = (
             "id",
             "name",
             "slug",
@@ -34,8 +35,8 @@ class TenantPlanAdminSerializer(serializers.ModelSerializer):
             "stripe_price_id",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
 
     def validate_limits_json(self, value):
         """Validate limits_json keys against KNOWN_LIMIT_KEYS."""
@@ -59,5 +60,3 @@ class TenantPlanAdminSerializer(serializers.ModelSerializer):
                         f"Limit '{key}' must be non-negative, got {val}."
                     )
         return value
-
-

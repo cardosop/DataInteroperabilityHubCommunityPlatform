@@ -104,6 +104,7 @@ class AdoptionReportTests(TestCase):
         """Purge contracts left by a previous --reuse-db run so
         adoption counts reflect only this test's data."""
         from hub.apps.contracts.models import Contract
+
         Contract.objects.all().delete()
 
     def test_empty_population_returns_zero_ratio(self):
@@ -228,6 +229,7 @@ class AdoptionReportGateExitCodeTests(TestCase):
     def setUp(self):
         """Purge contracts left by a previous --reuse-db run."""
         from hub.apps.contracts.models import Contract
+
         Contract.objects.all().delete()
 
     def test_gate_threshold_exits_nonzero_on_underadoption(self):

@@ -7,11 +7,12 @@ single-sourced (Phase 231.8).
 
 from __future__ import annotations
 
-from typing import Any
-
-from hub.apps.compliance.models import ComplianceRun
+from typing import TYPE_CHECKING, Any
 
 from .results_wire import alert_dict_wire, legal_basis_violations_wire, regulation_summaries_wire
+
+if TYPE_CHECKING:
+    from hub.apps.compliance.models import ComplianceRun
 
 
 def build_compliance_run_results_payload(compliance_run: ComplianceRun) -> dict[str, Any]:

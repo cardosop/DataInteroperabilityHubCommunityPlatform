@@ -89,9 +89,7 @@ class TestPlatformTenantViewSetPermissions(TestCase):
     def test_platform_tenant_usage_filter_by_tenant_id(self):
         """GET .../usage/?tenant_id=<uuid> returns only the requested tenant."""
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.get(
-            f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}"
-        )
+        response = self.client.get(f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", [])
         tenant_ids = [r["tenant_id"] for r in results]
@@ -100,9 +98,7 @@ class TestPlatformTenantViewSetPermissions(TestCase):
     def test_platform_tenant_usage_invalid_tenant_id_returns_400(self):
         """GET .../usage/?tenant_id=not-a-uuid returns 400."""
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.get(
-            "/api/v1/platform/tenants/usage/?tenant_id=not-a-uuid"
-        )
+        response = self.client.get("/api/v1/platform/tenants/usage/?tenant_id=not-a-uuid")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_platform_tenant_suspend_returns_200_and_sets_suspended(self):

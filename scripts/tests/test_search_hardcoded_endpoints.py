@@ -77,7 +77,7 @@ url = "https://api.example.com/api/v1/auth/login/"
             references = searcher.search_directory(Path(tmpdir))
 
             # Verify categorization
-            categories = set(ref.category for ref in references)
+            categories = {ref.category for ref in references}
             assert "test" in categories, "Should categorize test files"
             assert "cli" in categories, "Should categorize CLI files"
             assert "docs" in categories, "Should categorize docs files"

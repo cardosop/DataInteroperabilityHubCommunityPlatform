@@ -67,7 +67,6 @@ class ODPSExportMetricsTestBase(ContractsAPITestBase):
             name="Test Asset for Export Metrics",
             description="Asset for testing export metrics",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user,
         )
 
@@ -596,7 +595,6 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
             name="Test Asset for Export Failure",
             description="Asset for testing export failure metrics",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user,
         )
 

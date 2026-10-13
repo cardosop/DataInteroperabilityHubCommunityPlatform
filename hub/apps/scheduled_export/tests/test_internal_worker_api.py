@@ -174,19 +174,19 @@ class InternalWorkerAPITest(TestCase):
             {"scheduled_export_id": str(self.scheduled_export.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("id", response.data)
-        self.assertEqual(response.data["status"], "RUNNING")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert "id" in response.data
+        assert response.data["status"] == "RUNNING"
         run = ScheduledExportRun.objects.get(id=response.data["id"])
-        self.assertEqual(run.scheduled_export_id, self.scheduled_export.id)
-        self.assertEqual(run.tenant_id, self.tenant.id)
-        self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
+        assert run.scheduled_export_id == self.scheduled_export.id
+        assert run.tenant_id == self.tenant.id
+        assert run.status == ScheduledExportRunStatus.RUNNING
         audit = AuditEvent.objects.filter(
             resource_type="SCHEDULED_EXPORT_RUN",
             action="CREATED",
             resource_id=str(run.id),
         ).first()
-        self.assertIsNotNone(audit)
+        assert audit is not None
 
     def test_create_run_idempotency_prefect_flow_run_id(self):
         """Same prefect_flow_run_id returns 200 with existing run."""
@@ -196,14 +196,13 @@ class InternalWorkerAPITest(TestCase):
             "prefect_flow_run_id": "pf-run-123",
         }
         r1 = self.client.post("/api/v1/scheduled-exports/internal/runs/", payload, format="json")
-        self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+        assert r1.status_code == status.HTTP_201_CREATED
         run_id = r1.data["id"]
         r2 = self.client.post("/api/v1/scheduled-exports/internal/runs/", payload, format="json")
-        self.assertEqual(r2.status_code, status.HTTP_200_OK)
-        self.assertEqual(r2.data["id"], run_id)
-        self.assertEqual(
-            ScheduledExportRun.objects.filter(scheduled_export=self.scheduled_export).count(),
-            1,
+        assert r2.status_code == status.HTTP_200_OK
+        assert r2.data["id"] == run_id
+        assert (
+            ScheduledExportRun.objects.filter(scheduled_export=self.scheduled_export).count() == 1
         )
 
     def test_create_run_idempotency_key(self):
@@ -214,17 +213,15 @@ class InternalWorkerAPITest(TestCase):
             "idempotency_key": "idempotent-key-123",
         }
         r1 = self.client.post("/api/v1/scheduled-exports/internal/runs/", payload, format="json")
-        self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+        assert r1.status_code == status.HTTP_201_CREATED
         run_id = r1.data["id"]
         r2 = self.client.post("/api/v1/scheduled-exports/internal/runs/", payload, format="json")
-        self.assertEqual(r2.status_code, status.HTTP_200_OK)
-        self.assertEqual(r2.data["id"], run_id)
+        assert r2.status_code == status.HTTP_200_OK
+        assert r2.data["id"] == run_id
         # Idempotency: exactly one run exists, not two
-        self.assertEqual(
-            ScheduledExportRun.objects.filter(scheduled_export=self.scheduled_export).count(),
-            1,
-            "Idempotency key replay must not create a second run",
-        )
+        assert (
+            ScheduledExportRun.objects.filter(scheduled_export=self.scheduled_export).count() == 1
+        ), "Idempotency key replay must not create a second run"
 
     def test_patch_run_completed(self):
         """PATCH run to COMPLETED updates last_run_at and last_run_status."""
@@ -234,7 +231,7 @@ class InternalWorkerAPITest(TestCase):
             {"scheduled_export_id": str(self.scheduled_export.id)},
             format="json",
         )
-        self.assertEqual(r_create.status_code, status.HTTP_201_CREATED)
+        assert r_create.status_code == status.HTTP_201_CREATED
         run_id = r_create.data["id"]
         run = ScheduledExportRun.objects.get(id=run_id)
         run.items_found = 10
@@ -250,17 +247,17 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         self.scheduled_export.refresh_from_db()
-        self.assertIsNotNone(self.scheduled_export.last_run_at)
-        self.assertEqual(self.scheduled_export.last_run_status, ScheduledExportRunStatus.COMPLETED)
+        assert self.scheduled_export.last_run_at is not None
+        assert self.scheduled_export.last_run_status == ScheduledExportRunStatus.COMPLETED
 
         audit = AuditEvent.objects.filter(
             resource_type="SCHEDULED_EXPORT_RUN",
             action="UPDATED",
             resource_id=str(run_id),
         ).first()
-        self.assertIsNotNone(audit)
+        assert audit is not None
 
     def test_patch_run_update_items(self):
         """PATCH run updates items_found, items_exported, items_failed."""
@@ -281,11 +278,11 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         run = ScheduledExportRun.objects.get(id=run_id)
-        self.assertEqual(run.items_found, 100)
-        self.assertEqual(run.items_exported, 95)
-        self.assertEqual(run.items_failed, 5)
+        assert run.items_found == 100
+        assert run.items_exported == 95
+        assert run.items_failed == 5
 
     # --- Auth ---
 
@@ -295,8 +292,8 @@ class InternalWorkerAPITest(TestCase):
             {"scheduled_export_id": str(self.scheduled_export.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_reject_invalid_token(self):
         self.client.credentials(HTTP_AUTHORIZATION="ApiKey invalid-key-12345")
@@ -305,8 +302,8 @@ class InternalWorkerAPITest(TestCase):
             {"scheduled_export_id": str(self.scheduled_export.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_reject_token_without_scope(self):
         plaintext = APIKey.generate_key()
@@ -323,8 +320,8 @@ class InternalWorkerAPITest(TestCase):
             {"scheduled_export_id": str(self.scheduled_export.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_reject_wrong_tenant(self):
         import uuid
@@ -350,7 +347,7 @@ class InternalWorkerAPITest(TestCase):
             {"scheduled_export_id": str(other_export.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     # --- Config endpoint ---
 
@@ -360,15 +357,15 @@ class InternalWorkerAPITest(TestCase):
         response = self.client.get(
             f"/api/v1/scheduled-exports/internal/config/{self.config_export.id}/"
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["destination_type"], "S3")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["destination_type"] == "S3"
         dest_config = response.data["destination_config"]
         # Credentials should be masked
-        self.assertIn("secret_access_key", dest_config)
-        self.assertTrue(dest_config["secret_access_key"].endswith("***"))
-        self.assertNotEqual(dest_config["secret_access_key"], "very-secret-key-value")
+        assert "secret_access_key" in dest_config
+        assert dest_config["secret_access_key"].endswith("***")
+        assert dest_config["secret_access_key"] != "very-secret-key-value"
         # Non-sensitive fields should be present
-        self.assertEqual(dest_config["bucket"], "secret-bucket")
+        assert dest_config["bucket"] == "secret-bucket"
 
     def test_get_config_includes_source_scope(self):
         """GET config/{id}/ includes source_scope."""
@@ -376,11 +373,11 @@ class InternalWorkerAPITest(TestCase):
         response = self.client.get(
             f"/api/v1/scheduled-exports/internal/config/{self.scheduled_export.id}/"
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("source_scope", response.data)
-        self.assertIn("asset_ids", response.data["source_scope"])
-        self.assertIn("dataset_ids", response.data["source_scope"])
-        self.assertIn("file_ids", response.data["source_scope"])
+        assert response.status_code == status.HTTP_200_OK
+        assert "source_scope" in response.data
+        assert "asset_ids" in response.data["source_scope"]
+        assert "dataset_ids" in response.data["source_scope"]
+        assert "file_ids" in response.data["source_scope"]
 
     # --- Process-export endpoint ---
 
@@ -404,12 +401,12 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data["success"])
-        self.assertEqual(response.data["item_type"], "dataset")
-        self.assertEqual(response.data["item_id"], str(self.dataset.id))
-        self.assertIn("upload_url", response.data)
-        self.assertIn("upload_method", response.data)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["success"]
+        assert response.data["item_type"] == "dataset"
+        assert response.data["item_id"] == str(self.dataset.id)
+        assert "upload_url" in response.data
+        assert "upload_method" in response.data
 
         # Check audit event
         audit = AuditEvent.objects.filter(
@@ -417,7 +414,7 @@ class InternalWorkerAPITest(TestCase):
             action="PROCESSED",
             resource_id=str(self.dataset.id),
         ).first()
-        self.assertIsNotNone(audit)
+        assert audit is not None
 
     def test_process_export_file_success(self):
         """POST process-export/ with file_id returns upload instructions."""
@@ -439,11 +436,11 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data["success"])
-        self.assertEqual(response.data["item_type"], "file")
-        self.assertEqual(response.data["item_id"], str(self.file.id))
-        self.assertIn("upload_url", response.data)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["success"]
+        assert response.data["item_type"] == "file"
+        assert response.data["item_id"] == str(self.file.id)
+        assert "upload_url" in response.data
 
     def test_process_export_item_not_in_scope(self):
         """POST process-export/ rejects item not in source_scope."""
@@ -476,8 +473,8 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "ITEM_NOT_IN_SCOPE")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "ITEM_NOT_IN_SCOPE"
 
     def test_process_export_requires_item(self):
         """POST process-export/ requires either dataset_id or file_id."""
@@ -494,7 +491,7 @@ class InternalWorkerAPITest(TestCase):
             {"run_id": run_id},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_process_export_rejects_both_items(self):
         """POST process-export/ rejects when both dataset_id and file_id provided."""
@@ -515,8 +512,8 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "MULTIPLE_ITEMS")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "MULTIPLE_ITEMS"
 
     def test_process_export_invalid_run(self):
         """POST process-export/ rejects invalid run_id."""
@@ -529,7 +526,7 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_process_export_inactive_export(self):
         """POST process-export/ rejects when scheduled export is not ACTIVE."""
@@ -559,8 +556,8 @@ class InternalWorkerAPITest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "EXPORT_NOT_ACTIVE")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "EXPORT_NOT_ACTIVE"
 
     # --- Edge cases and error handling ---
 
@@ -569,8 +566,8 @@ class InternalWorkerAPITest(TestCase):
         self._auth()
         url = f"/api/v1/scheduled-exports/internal/config/{uuid.uuid4()}/"
         response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_patch_run_nonexistent_run_returns_404(self):
         """PATCH run with non-existent run_id returns 404."""
@@ -580,8 +577,8 @@ class InternalWorkerAPITest(TestCase):
             {"status": "COMPLETED"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_create_run_missing_scheduled_export_id_returns_400(self):
         """POST internal/runs/ without scheduled_export_id returns 400."""
@@ -591,7 +588,7 @@ class InternalWorkerAPITest(TestCase):
             {},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_patch_run_invalid_completed_at_rejected_by_serializer(self):
         """PATCH run with invalid completed_at returns 400 (serializer DateTimeField rejects it)."""
@@ -609,10 +606,10 @@ class InternalWorkerAPITest(TestCase):
         )
         # Serializer DateTimeField rejects "not-a-date" before it reaches
         # the service-layer parse_datetime guard
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         # Verify completed_at was NOT updated on the run
         run = ScheduledExportRun.objects.get(id=run_id)
-        self.assertIsNone(run.completed_at)
+        assert run.completed_at is None
 
 
 class InternalWorkerAPIIntegrationTest(TestCase):
@@ -700,7 +697,7 @@ class InternalWorkerAPIIntegrationTest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        assert create_response.status_code == status.HTTP_201_CREATED
         run_id = create_response.data["id"]
 
         # 2. Process export for dataset
@@ -713,9 +710,9 @@ class InternalWorkerAPIIntegrationTest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(process_response.status_code, status.HTTP_200_OK)
-        self.assertTrue(process_response.data["success"])
-        self.assertIn("upload_url", process_response.data)
+        assert process_response.status_code == status.HTTP_200_OK
+        assert process_response.data["success"]
+        assert "upload_url" in process_response.data
 
         # 3. Update run with results
         update_response = self.client.patch(
@@ -738,21 +735,21 @@ class InternalWorkerAPIIntegrationTest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(update_response.data["status"], "COMPLETED")
-        self.assertEqual(update_response.data["items_exported"], 1)
+        assert update_response.status_code == status.HTTP_200_OK
+        assert update_response.data["status"] == "COMPLETED"
+        assert update_response.data["items_exported"] == 1
 
         # 4. Verify scheduled export was updated
         self.scheduled_export.refresh_from_db()
-        self.assertIsNotNone(self.scheduled_export.last_run_at)
-        self.assertEqual(self.scheduled_export.last_run_status, ScheduledExportRunStatus.COMPLETED)
+        assert self.scheduled_export.last_run_at is not None
+        assert self.scheduled_export.last_run_status == ScheduledExportRunStatus.COMPLETED
 
         # 5. Verify audit events
         audit_events = AuditEvent.objects.filter(
             tenant_id=self.tenant.id,
             resource_type__in=["SCHEDULED_EXPORT_RUN", "SCHEDULED_EXPORT_ITEM"],
         )
-        self.assertGreaterEqual(audit_events.count(), 3)  # CREATED, PROCESSED, UPDATED
+        assert audit_events.count() >= 3  # CREATED, PROCESSED, UPDATED
 
     def test_config_endpoint_no_credentials(self):
         """Integration test: config endpoint does not expose raw credentials."""
@@ -776,16 +773,14 @@ class InternalWorkerAPIIntegrationTest(TestCase):
         response = self.client.get(
             f"/api/v1/scheduled-exports/internal/config/{export_with_creds.id}/"
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
 
         # Verify credentials are masked
         dest_config = response.data["destination_config"]
-        self.assertIn("secret_access_key", dest_config)
-        self.assertTrue(dest_config["secret_access_key"].endswith("***"))
-        self.assertNotEqual(dest_config["secret_access_key"], "AKIAIOSFODNN7EXAMPLE")
-        self.assertNotEqual(
-            dest_config["access_key_id"], "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-        )
+        assert "secret_access_key" in dest_config
+        assert dest_config["secret_access_key"].endswith("***")
+        assert dest_config["secret_access_key"] != "AKIAIOSFODNN7EXAMPLE"
+        assert dest_config["access_key_id"] != "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
         # Verify non-sensitive fields are present
-        self.assertEqual(dest_config["bucket"], "secret-bucket")
+        assert dest_config["bucket"] == "secret-bucket"

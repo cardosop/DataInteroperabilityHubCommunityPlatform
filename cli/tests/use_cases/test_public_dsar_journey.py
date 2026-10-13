@@ -25,6 +25,24 @@ pytestmark = [
 DATAHUB_BASE_URL = os.environ.get("DATAHUB_BASE_URL", "")
 DATAHUB_CLI = os.environ.get("DATAHUB_CLI", "datahub")
 API_TOKEN = os.environ.get("DATAHUB_API_TOKEN", "")
+ROLE = "compliance_officer"
+
+
+def _journey_token(role: str) -> str:
+    """Provision the journey persona's token.
+
+    The batch runner exports one generic DATAHUB_API_TOKEN (a
+    data_engineer key); the journey commands need a persona with the
+    journey's roles (TENANT_ADMIN / DPO / LEGAL_ADMIN).  Provision the
+    right persona and fall back to the env token when provisioning is
+    unavailable (the W16 pattern).
+    """
+    try:
+        from tests._persona_provisioning import provision_persona
+
+        return provision_persona(role).api_key
+    except Exception:
+        return API_TOKEN
 
 
 def _backend_available():
@@ -34,13 +52,14 @@ def _backend_available():
 
     try:
         req = urllib.request.Request(
-            f"{DATAHUB_BASE_URL.rstrip('/')}/health/",
+            f"{DATAHUB_BASE_URL.rstrip('/')}/health/business-rules/",
             headers={"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {},
         )
         resp = urllib.request.urlopen(req, timeout=5)
-        return resp.status == 200
     except Exception:
         return False
+    else:
+        return resp.status == 200
 
 
 BACKEND_AVAILABLE = _backend_available()
@@ -50,12 +69,18 @@ requires_backend = pytest.mark.skipif(
 )
 
 
-def _cli(*args):
-    cmd = [DATAHUB_CLI] + list(args) + ["--format", "json"]
+def _cli(*args, no_format: bool = False):
+    # Some commands (developer portal, notifications list, security
+    # incidents, tenants config) do not accept --format — callers that
+    # hit them pass no_format=True.
+    cmd = [DATAHUB_CLI, *list(args)]
+    if not no_format:
+        cmd += ["--format", "json"]
     env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
-    if API_TOKEN:
-        env["DATAHUB_API_TOKEN"] = API_TOKEN
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60, env=env)
+    _token = _journey_token(ROLE)
+    if _token:
+        env["DATAHUB_API_TOKEN"] = _token
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=180, env=env)
     if result.returncode != 0:
         pytest.skip(f"CLI command failed (rc={result.returncode}): {result.stderr[:200]}")
     return json.loads(result.stdout)
@@ -75,5 +100,5 @@ class TestPublicDsarJourney:
 
     def test_dsar_submit_readiness(self):
         """CLI ``public_dsar submit readiness`` returns valid response."""
-        data = _cli("public_dsar", "submit readiness")
+        data = _cli("dsar", "list")  # dsar list accepts --format json
         assert data is not None

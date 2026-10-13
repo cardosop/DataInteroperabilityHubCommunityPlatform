@@ -248,9 +248,10 @@ class MigrationValidator:
                 original_spec_type=OriginalSpecType.ODPS,
                 tenant_id=odcs_contract.tenant_id,
             )
-            return odps_contract
         except Contract.DoesNotExist:
             return None
+        else:
+            return odps_contract
 
     def _validate_links(
         self, odcs_contract: Contract, odps_contract: Contract
@@ -560,17 +561,14 @@ class MigrationValidator:
             return False
 
         # Handle different types
-        if type(value1) != type(value2):
+        if type(value1) is not type(value2):
             return False
 
         # Handle dictionaries
         if isinstance(value1, dict):
             if set(value1.keys()) != set(value2.keys()):
                 return False
-            for key in value1.keys():
-                if not self._deep_compare(value1[key], value2[key]):
-                    return False
-            return True
+            return all(self._deep_compare(value1[key], value2[key]) for key in value1)
 
         # Handle lists
         if isinstance(value1, list):

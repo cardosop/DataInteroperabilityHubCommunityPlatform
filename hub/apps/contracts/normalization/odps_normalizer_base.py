@@ -14,7 +14,7 @@ import structlog
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
+from hub.apps.contracts.odps_errors import ODPSNormalizationError, ODPSRefResolutionError
 from hub.apps.contracts.odps_version_detection import detect_odps_version
 
 if TYPE_CHECKING:
@@ -108,7 +108,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         Raises:
             ODPSNormalizationError: For normalization errors with context
         """
-        from hub.apps.contracts.normalization_engine import NormalizationResult  # noqa: F811
+        from hub.apps.contracts.normalization_engine import NormalizationResult
 
         errors: list[str] = []
         warnings: list[str] = []
@@ -120,7 +120,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 try:
                     detected_version = detect_odps_version(contract_data)
                     spec_version = detected_version or "4.1"  # Default to 4.1
-                except Exception as e:
+                except (AttributeError, TypeError, ValueError) as e:
                     error_msg = f"Failed to detect ODPS version: {e!s}"
                     logger.warning("odps_version_detection_failed", error=str(e), message=error_msg)
                     warnings.append(error_msg)
@@ -151,7 +151,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
 
             # Validate contract_data is a dict
             if not isinstance(contract_data, dict):
-                raise ODPSNormalizationError(
+                self._raise_normalization_error(
                     message=f"Contract data must be a dictionary, got {type(contract_data).__name__}",
                     error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
                     field_path="/",
@@ -207,7 +207,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                             "overall": coverage_result.overall,
                             "sections": coverage_result.sections,
                         }
-                except Exception as e:
+                except (AttributeError, TypeError, ValueError) as e:
                     logger.debug(
                         "odps_coverage_calculation_failed",
                         error=str(e),
@@ -251,7 +251,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 cause=e,
             )
             errors.append(str(error))
-            logger.error(
+            logger.exception(
                 "odps_normalization_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
@@ -323,9 +323,6 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 "original_spec_version": spec_version,
                 "normalized_at": None,  # Will be set by service layer
             }
-
-            return hub_contract
-
         except Exception as e:
             raise ODPSNormalizationError(
                 message=f"Failed to initialize HubContract structure: {e!s}",
@@ -333,6 +330,8 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 field_path="/",
                 cause=e,
             ) from e
+        else:
+            return hub_contract
 
     def _determine_status(
         self, hub_contract: dict[str, Any] | None, errors: list[str], warnings: list[str]
@@ -527,7 +526,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
 
             if not available_languages:
                 # No languages available - this is a critical error
-                raise ODPSNormalizationError(
+                self._raise_normalization_error(
                     message="No language details found in product.details",
                     error_code=ODPSNormalizationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                     field_path="/product/details",
@@ -541,7 +540,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             preferred_lang = self._get_preferred_language(available_languages, preferred="en")
 
             if not preferred_lang:
-                raise ODPSNormalizationError(
+                self._raise_normalization_error(
                     message="Could not determine preferred language",
                     error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
                     field_path="/product/details",
@@ -553,7 +552,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             lang_details = details.get(preferred_lang, {})
 
             if not isinstance(lang_details, dict):
-                raise ODPSNormalizationError(
+                self._raise_normalization_error(
                     message=f"Product details for language '{preferred_lang}' must be a dictionary",
                     error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
                     field_path=f"/product/details/{preferred_lang}",
@@ -567,7 +566,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             product_id = lang_details.get("productID")
             if product_id:
                 if not isinstance(product_id, str):
-                    raise ODPSNormalizationError(
+                    self._raise_normalization_error(
                         message=f"productID must be a string, got {type(product_id).__name__}",
                         error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
                         field_path=f"/product/details/{preferred_lang}/productID",
@@ -587,7 +586,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             name = lang_details.get("name")
             if name:
                 if not isinstance(name, str):
-                    raise ODPSNormalizationError(
+                    self._raise_normalization_error(
                         message=f"name must be a string, got {type(name).__name__}",
                         error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
                         field_path=f"/product/details/{preferred_lang}/name",
@@ -599,7 +598,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 hub_contract["info"]["name"] = name
             else:
                 # Name is required - this will cause normalization to fail
-                raise ODPSNormalizationError(
+                self._raise_normalization_error(
                     message=f"name is required in product.details.{preferred_lang}",
                     error_code=ODPSNormalizationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                     field_path=f"/product/details/{preferred_lang}/name",
@@ -696,8 +695,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 if isinstance(data_holder, dict):
                     # Check if it's keyed by language codes
                     is_language_keyed = all(
-                        isinstance(k, str) and len(k) == 2 and k.islower()
-                        for k in data_holder.keys()
+                        isinstance(k, str) and len(k) == 2 and k.islower() for k in data_holder
                     )
 
                     if is_language_keyed:
@@ -950,12 +948,11 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             ]:
                 if key in dimension_data:
                     rule[key] = dimension_data[key]
-
-            return rule
-
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             warnings.append(f"Failed to generate rule from dimension '{dimension_name}': {e!s}")
             return None
+        else:
+            return rule
 
     def _generate_expression_from_objectives(
         self, objectives: Any, unit: str | None, warnings: list[str]
@@ -971,53 +968,63 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         Returns:
             Expression string or None if generation fails
         """
+
+        def _expression_from_dict(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is a dictionary with keys like "min", "max", "target"
+            parts = []
+            if "min" in objectives_data:
+                parts.append(f">= {objectives_data['min']}")
+            if "max" in objectives_data:
+                parts.append(f"<= {objectives_data['max']}")
+            if "target" in objectives_data:
+                parts.append(f"== {objectives_data['target']}")
+            if "range" in objectives_data:
+                range_val = objectives_data["range"]
+                if isinstance(range_val, (list, tuple)) and len(range_val) == 2:
+                    parts.append(f"BETWEEN {range_val[0]} AND {range_val[1]}")
+
+            expression = " AND ".join(parts) if parts else None
+            if expression and unit:
+                expression = f"{expression} {unit}"
+            return expression
+
+        def _expression_from_sequence(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is a list of values
+            if unit:
+                return f"IN {objectives_data} {unit}"
+            return f"IN {objectives_data}"
+
+        def _expression_from_number(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is a numeric value
+            if unit:
+                return f"== {objectives_data} {unit}"
+            return f"== {objectives_data}"
+
+        def _expression_from_string(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is already an expression string
+            if unit:
+                return f"{objectives_data} {unit}"
+            return objectives_data
+
+        handlers = (
+            (dict, _expression_from_dict),
+            ((list, tuple), _expression_from_sequence),
+            ((int, float), _expression_from_number),
+            (str, _expression_from_string),
+        )
+
         try:
-            if isinstance(objectives, dict):
-                # Objectives is a dictionary with keys like "min", "max", "target"
-                parts = []
-                if "min" in objectives:
-                    parts.append(f">= {objectives['min']}")
-                if "max" in objectives:
-                    parts.append(f"<= {objectives['max']}")
-                if "target" in objectives:
-                    parts.append(f"== {objectives['target']}")
-                if "range" in objectives:
-                    range_val = objectives["range"]
-                    if isinstance(range_val, (list, tuple)) and len(range_val) == 2:
-                        parts.append(f"BETWEEN {range_val[0]} AND {range_val[1]}")
-
-                expression = " AND ".join(parts) if parts else None
-                if expression and unit:
-                    expression = f"{expression} {unit}"
-                return expression
-
-            elif isinstance(objectives, (list, tuple)):
-                # Objectives is a list of values
-                if unit:
-                    return f"IN {objectives} {unit}"
-                return f"IN {objectives}"
-
-            elif isinstance(objectives, (int, float)):
-                # Objectives is a numeric value
-                if unit:
-                    return f"== {objectives} {unit}"
-                return f"== {objectives}"
-
-            elif isinstance(objectives, str):
-                # Objectives is already an expression string
-                if unit:
-                    return f"{objectives} {unit}"
-                return objectives
-
-            else:
-                warnings.append(
-                    f"Unsupported objectives type: {type(objectives).__name__}, "
-                    f"expected dict, list, scalar, or str"
-                )
-                return None
-
-        except Exception as e:
+            for objective_type, handler in handlers:
+                if isinstance(objectives, objective_type):
+                    return handler(objectives, unit)
+            warnings.append(
+                f"Unsupported objectives type: {type(objectives).__name__}, "
+                f"expected dict, list, scalar, or str"
+            )
+        except (AttributeError, TypeError) as e:
             warnings.append(f"Failed to generate expression from objectives: {e!s}")
+            return None
+        else:
             return None
 
     def _normalize_lifecycle(
@@ -1192,7 +1199,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                                 hub_contract["schema"]["fields"] = converted_fields
                                 return  # Found fields, done
 
-        except Exception as e:
+        except (AttributeError, TypeError, KeyError) as e:
             # Don't fail normalization if schema extraction fails
             warnings.append(f"Failed to extract schema: {e!s}")
 
@@ -1234,7 +1241,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         """
         try:
             from hub.apps.contracts.normalization import _ports_helper
-        except Exception as exc:  # pragma: no cover — defensive
+        except ImportError as exc:  # pragma: no cover — defensive
             warnings.append(
                 f"Failed to import ports helper: {exc}. Ports → models mapping skipped."
             )
@@ -1246,7 +1253,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 hub_contract=hub_contract,
                 warnings=warnings,
             )
-        except Exception as exc:
+        except (ODPSRefResolutionError, ValueError, TypeError, AttributeError) as exc:
             # Fail-soft: a port-mapping failure must not break the rest
             # of normalisation. The warning surfaces in the dry-run /
             # live audit trail so ops can locate the offending contract.

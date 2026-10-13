@@ -226,17 +226,20 @@ class TestImpactReportGenerator:
         utility_files_seen = set()
         for util in self.utilities_data.get("utility_modules", []):
             util_path = util.get("path", "")
-            if util_path and util.get("has_endpoint_urls", False):
-                if util_path not in utility_files_seen:
-                    references["utility_files"].append(
-                        {
-                            "file": util_path,
-                            "type": util.get("type", "utility"),
-                            "functions": util.get("functions", []),
-                            "source": "utilities_audit",
-                        }
-                    )
-                    utility_files_seen.add(util_path)
+            if (
+                util_path
+                and util.get("has_endpoint_urls", False)
+                and util_path not in utility_files_seen
+            ):
+                references["utility_files"].append(
+                    {
+                        "file": util_path,
+                        "type": util.get("type", "utility"),
+                        "functions": util.get("functions", []),
+                        "source": "utilities_audit",
+                    }
+                )
+                utility_files_seen.add(util_path)
 
         # Compile endpoint URLs from utilities
         for endpoint_url in self.utilities_data.get("endpoint_urls", []):

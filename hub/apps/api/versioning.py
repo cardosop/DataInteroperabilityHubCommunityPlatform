@@ -7,11 +7,14 @@ Version management, backward compatibility, and deprecation handling.
 from __future__ import annotations
 
 import datetime
+from typing import TYPE_CHECKING, ClassVar
 
 import structlog
-from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from rest_framework.response import Response
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest, HttpResponse
 
 logger = structlog.get_logger(__name__)
 
@@ -26,6 +29,8 @@ class APIVersion:
 
     def __str__(self) -> str:
         return f"v{self.major}.{self.minor}.{self.patch}"
+
+    __hash__ = None  # mutable value object — equality without hashing
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, APIVersion):
@@ -130,10 +135,10 @@ class APIVersionManager:
     CURRENT_VERSION = APIVersion(1, 0, 0)
 
     # Supported versions
-    SUPPORTED_VERSIONS = [APIVersion(1, 0, 0)]
+    SUPPORTED_VERSIONS: ClassVar[list[APIVersion]] = [APIVersion(1, 0, 0)]
 
     # Deprecated endpoints registry
-    DEPRECATED_ENDPOINTS: dict[str, DeprecatedEndpoint] = {}
+    DEPRECATED_ENDPOINTS: ClassVar[dict[str, DeprecatedEndpoint]] = {}
 
     @classmethod
     def get_version_from_path(cls, path: str) -> APIVersion | None:
@@ -163,8 +168,8 @@ class APIVersionManager:
         # Pattern: application/vnd.idh.v{N}+json or application/vnd.idh.v{N}.{M}+json
         if "application/vnd.idh.v" in accept:
             # Extract version from Accept header
-            for part in accept.split(","):
-                part = part.strip()
+            for raw_part in accept.split(","):
+                part = raw_part.strip()
                 if "application/vnd.idh.v" in part:
                     # Find the 'v' after 'idh.'
                     idh_pos = part.find("idh.v")

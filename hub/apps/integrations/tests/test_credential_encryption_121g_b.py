@@ -68,6 +68,7 @@ class ScheduledIngestionEncryptionTest(TestCase):
         self.assertIsInstance(si.source_config["_encrypted"], str)
         # Verify encryption round-trips correctly
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(si.source_config["_encrypted"])
         self.assertEqual(decrypted, self.source_config)
 
@@ -190,6 +191,7 @@ class ScheduledExportEncryptionTest(TestCase):
         self.assertIn("_encrypted", se.destination_config)
         # Verify encryption round-trips correctly
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(se.destination_config["_encrypted"])
         self.assertEqual(decrypted, self.destination_config)
 
@@ -289,6 +291,7 @@ class TenantConfigSSOEncryptionTest(TestCase):
         self.assertIn("_encrypted", config.sso_config)
         # Verify encryption round-trips correctly
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(config.sso_config["_encrypted"])
         self.assertEqual(decrypted, self.sso_config)
 
@@ -381,6 +384,7 @@ class DQAlertingRuleEncryptionTest(TestCase):
         self.assertIn("_encrypted", rule.channel_config)
         # Verify encryption round-trips correctly
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(rule.channel_config["_encrypted"])
         self.assertEqual(decrypted, self.channel_config)
 
@@ -502,6 +506,7 @@ class VirtualDatasetSourcesEncryptionTest(TestCase):
         self.assertIn("_encrypted", vd.sources)
         # Verify encryption round-trips correctly (model wraps list as {"_items": [...]})
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(vd.sources["_encrypted"])
         self.assertEqual(decrypted, {"_items": self.sources})
 
@@ -631,6 +636,7 @@ class TransformationPipelineEncryptionTest(TestCase):
         self.assertIn("_encrypted", pipeline.pipeline_definition)
         # Verify encryption round-trips correctly
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(pipeline.pipeline_definition["_encrypted"])
         self.assertEqual(decrypted, self.pipeline_definition)
 
@@ -735,6 +741,7 @@ class TransformationNodeEncryptionTest(TestCase):
         self.assertIn("_encrypted", node.node_config)
         # Verify encryption round-trips correctly
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(node.node_config["_encrypted"])
         self.assertEqual(decrypted, self.node_config)
 

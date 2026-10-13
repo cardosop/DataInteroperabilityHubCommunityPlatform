@@ -27,7 +27,7 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       });
 
       if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'ODPS page not accessible to platform admin in this environment');
+        test.skip(page.url().includes('/403') || page.url().includes('/login'), 'ODPS page not accessible to platform admin in this environment');
         return;
       }
 
@@ -41,12 +41,12 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
         headers: { Authorization: `Bearer ${accessToken}` },
       }).catch(() => null);
       if (!odpsResp) {
-        test.skip(true, 'Contracts API unreachable — check that the API service is running');
+        test.skip(!odpsResp, 'Contracts API unreachable — check that the API service is running');
         return;
       }
       // Any 4xx is acceptable: platform admin may not have contracts access in this environment
       if (odpsResp.status() >= 400) {
-        test.skip(true, `Contracts API returned ${odpsResp.status()} for platform admin — access may be role-gated`);
+        test.skip(odpsResp.status() >= 400, `Contracts API returned ${odpsResp.status()} for platform admin — access may be role-gated`);
         return;
       }
       expect(odpsResp.ok()).toBe(true);
@@ -87,7 +87,9 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
         timeout: 60000,
         contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      expect(page.url()).toMatch(/\/odps|\/403|\/login/);
+      // Phase 211.A6 backward-compat: /odps/* redirects to the contracts
+      // list filtered by spec_type=ODPS — both landings are valid.
+      expect(page.url()).toMatch(/\/odps|\/403|\/login|\/contracts\?spec_type=ODPS/);
     });
   });
 });

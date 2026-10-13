@@ -142,7 +142,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset @critical', () => {
           /capability_disabled|CAPABILITY_DISABLED/i.test(errStr);
         if (isCapabilityGated) {
           test.skip(
-            true,
+            isCapabilityGated,
             `Compliance scan UI capability-gated in this env: ${errStr.slice(0, 300)}`
           );
           return;

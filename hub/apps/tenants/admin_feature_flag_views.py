@@ -82,7 +82,11 @@ def _serialize_flag_row(flag, *, current_value: bool) -> dict[str, Any]:
         "name": flag.name,
         "description": flag.description,
         "stage": flag.stage,
-        "sensitive": flag.sensitive,
+        # Sensitivity is a REGISTRY-derived property (is_sensitive:
+        # related_audit_event / DPO / Legal sign-off), not a stored
+        # FeatureFlag field — flag.sensitive never existed and 500'd the
+        # whole surface (close-test-coverage-gaps 4.1).
+        "sensitive": is_sensitive(flag.name),
         "owner_team": flag.owner_team,
         "related_phase": flag.related_phase,
         "default_existing_tenants": flag.default_existing_tenants,
@@ -164,7 +168,7 @@ def _emit_changed_event(
 class AdminTenantFeatureFlagView(APIView):
     """PLATFORM_ADMIN endpoint for reading + flipping one tenant's flags."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     # GET ----------------------------------------------------------------
 
@@ -189,7 +193,7 @@ class AdminTenantFeatureFlagView(APIView):
         },
         tags=["Admin"],
     )
-    def get(self, request, tenant_id):
+    def get(self, _request, tenant_id):
         tenant = get_object_or_404(Tenant.all_objects.using("admin"), pk=tenant_id)
         flags = [
             _serialize_flag_row(f, current_value=bool(getattr(tenant, f.name, False)))
@@ -398,7 +402,7 @@ class AdminTenantFeatureFlagView(APIView):
 
         with transaction.atomic(using="admin"):
             # Non-sensitive: flip + audit in one shot.
-            for name, old, new in immediate_flips:
+            for name, _old, new in immediate_flips:
                 setattr(tenant, name, new)
             if immediate_flips:
                 # ``updated_at`` is part of the Tenant model schema
@@ -421,7 +425,7 @@ class AdminTenantFeatureFlagView(APIView):
 
             # Sensitive: open approval rows + emit REQUESTED audit.
             pending_rows: list[FeatureFlagFlipApproval] = []
-            for name, old, new in sensitive_flips:
+            for name, _old, new in sensitive_flips:
                 approval = FeatureFlagFlipApproval.objects.create(
                     tenant=tenant,
                     flag=name,
@@ -453,10 +457,7 @@ class AdminTenantFeatureFlagView(APIView):
         # * 202 when at least one sensitive flag awaits approval —
         #   the SPA shows the "Requires 2nd approval" pending state.
         # * 200 when only non-sensitive flips happened.
-        if pending_rows:
-            resp_status = status.HTTP_202_ACCEPTED
-        else:
-            resp_status = status.HTTP_200_OK
+        resp_status = status.HTTP_202_ACCEPTED if pending_rows else status.HTTP_200_OK
         return Response(
             {
                 "applied": [
@@ -505,7 +506,7 @@ class FeatureFlagFlipApprovalApproveView(APIView):
        and sensitive flips both produce one).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     @extend_schema(
         operation_id="admin_feature_flag_flip_approval_approve",

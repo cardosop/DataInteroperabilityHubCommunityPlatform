@@ -28,22 +28,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestODPSCommandsRealAPI:
@@ -132,8 +123,8 @@ print(api_key_value)
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     # API keys are typically long (40+ characters), alphanumeric with possible dashes/underscores
                     if line and len(line) > 20:  # API keys are typically long
                         # Additional validation: check if it looks like an API key
@@ -308,17 +299,18 @@ print(api_key_value)
             assert contract_id, "Failed to get contract ID from response."
 
             # Wait for normalization to complete
-            time.sleep(3)  # noqa: sleep-needed — test timing requirement
+            time.sleep(3)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
-            return contract_id
         except Exception as e:
             pytest.skip(f"Failed to create test contract: {e!s}")
+        else:
+            return contract_id
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_table_format(self, setup_config, api_available):
+    def test_get_product_details_table_format(self, setup_config, api_service_available):
         """Test get-product-details command in table format"""
         if not self.api_key:
             pytest.skip(
@@ -342,10 +334,10 @@ print(api_key_value)
         assert "Language: en" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_json_format(self, setup_config, api_available):
+    def test_get_product_details_json_format(self, setup_config, api_service_available):
         """Test get-product-details command in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -369,10 +361,10 @@ print(api_key_value)
         assert "productID" in output_data or "name" in output_data
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_multilingual(self, setup_config, api_available):
+    def test_get_product_details_multilingual(self, setup_config, api_service_available):
         """Test get-product-details command with different languages"""
         if not self.api_key:
             pytest.skip(
@@ -402,10 +394,10 @@ print(api_key_value)
         assert "Kattava Testituote" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_table_format(self, setup_config, api_available):
+    def test_get_product_strategy_table_format(self, setup_config, api_service_available):
         """Test get-product-strategy command in table format"""
         if not self.api_key:
             pytest.skip(
@@ -426,10 +418,10 @@ print(api_key_value)
         assert "Objectives" in result.output or "objectives" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_json_format(self, setup_config, api_available):
+    def test_get_product_strategy_json_format(self, setup_config, api_service_available):
         """Test get-product-strategy command in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -452,10 +444,10 @@ print(api_key_value)
         assert isinstance(output_data, dict)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_pricing_table_format(self, setup_config, api_available):
+    def test_get_pricing_table_format(self, setup_config, api_service_available):
         """Test get-pricing command in table format"""
         if not self.api_key:
             pytest.skip(
@@ -476,10 +468,10 @@ print(api_key_value)
         assert "Basic Plan" in result.output or "Premium Plan" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_pricing_json_format(self, setup_config, api_available):
+    def test_get_pricing_json_format(self, setup_config, api_service_available):
         """Test get-pricing command in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -503,10 +495,10 @@ print(api_key_value)
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_access_methods_table_format(self, setup_config, api_available):
+    def test_get_access_methods_table_format(self, setup_config, api_service_available):
         """Test get-access-methods command in table format"""
         if not self.api_key:
             pytest.skip(
@@ -527,10 +519,10 @@ print(api_key_value)
         assert "REST API" in result.output or "S3" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_access_methods_json_format(self, setup_config, api_available):
+    def test_get_access_methods_json_format(self, setup_config, api_service_available):
         """Test get-access-methods command in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -558,10 +550,10 @@ print(api_key_value)
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_table_format(self, setup_config, api_available):
+    def test_get_payment_gateways_table_format(self, setup_config, api_service_available):
         """Test get-payment-gateways command in table format"""
         if not self.api_key:
             pytest.skip(
@@ -582,10 +574,10 @@ print(api_key_value)
         assert "Stripe" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_json_format(self, setup_config, api_available):
+    def test_get_payment_gateways_json_format(self, setup_config, api_service_available):
         """Test get-payment-gateways command in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -613,11 +605,11 @@ print(api_key_value)
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_all_odps_commands_error_handling_invalid_contract_id(
-        self, setup_config, api_available
+        self, setup_config, api_service_available
     ):
         """Test error handling for all ODPS commands with invalid contract ID"""
         if not self.api_key:
@@ -649,10 +641,12 @@ print(api_key_value)
             )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_all_odps_commands_error_handling_non_odps_contract(self, setup_config, api_available):
+    def test_all_odps_commands_error_handling_non_odps_contract(
+        self, setup_config, api_service_available
+    ):
         """Test error handling for all ODPS commands with non-ODPS contract"""
         if not self.api_key:
             pytest.skip(
@@ -716,10 +710,12 @@ print(api_key_value)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_error_handling_invalid_language(self, setup_config, api_available):
+    def test_get_product_details_error_handling_invalid_language(
+        self, setup_config, api_service_available
+    ):
         """Test error handling for get-product-details with invalid language code"""
         if not self.api_key:
             pytest.skip(
@@ -741,10 +737,10 @@ print(api_key_value)
         assert "language code" in result.output.lower() or "invalid" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_all_commands_output_formatting_consistency(self, setup_config, api_available):
+    def test_all_commands_output_formatting_consistency(self, setup_config, api_service_available):
         """Test that all ODPS commands support both table and JSON output formats consistently"""
         if not self.api_key:
             pytest.skip(
@@ -779,7 +775,7 @@ print(api_key_value)
             )
 
             # Test JSON format
-            cmd_json = cmd + ["--format", "json"]
+            cmd_json = [*cmd, "--format", "json"]
             result_json = runner.invoke(cli, cmd_json)
             assert result_json.exit_code == 0, (
                 f"Command {cmd_json} failed in JSON format: {result_json.output}"
@@ -793,10 +789,10 @@ print(api_key_value)
                 pytest.fail(f"Command {cmd_json} did not produce valid JSON: {result_json.output}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_all_odps_commands_with_empty_data(self, setup_config, api_available):
+    def test_all_odps_commands_with_empty_data(self, setup_config, api_service_available):
         """Test all ODPS commands with contract that has minimal data"""
         if not self.api_key:
             pytest.skip(
@@ -858,7 +854,7 @@ print(api_key_value)
             if not contract_id:
                 pytest.skip("Failed to get contract ID from response.")
 
-            time.sleep(3)  # noqa: sleep-needed — test timing requirement
+            time.sleep(3)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             runner = CliRunner()
 

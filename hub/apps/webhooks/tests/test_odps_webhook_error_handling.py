@@ -28,7 +28,6 @@ from hub.apps.webhooks.models import (
 )
 from hub.apps.webhooks.odps_webhook_errors import (
     ODPSWebhookDeliveryError,
-    ODPSWebhookError,
     ODPSWebhookPayloadError,
     ODPSWebhookValidationError,
 )
@@ -466,8 +465,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             event_type=WebhookEventType.ODPS_CREATED,
             url="https://example.com/webhook",
         )
-        self.assertFalse(error.recoverable,
-                         "SSL errors should not be recoverable")
+        self.assertFalse(error.recoverable, "SSL errors should not be recoverable")
         self.assertEqual(error.recovery_strategy, RecoveryStrategy.FAIL)
 
     def test_trigger_odps_webhook_invalid_payload(self):

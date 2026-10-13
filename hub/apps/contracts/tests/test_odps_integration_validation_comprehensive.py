@@ -455,59 +455,65 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
         self.assertEqual(resolved["product"]["dataQuality"]["qualityScore"], 95)
 
     def test_odps_ref_resolution_local(self):
-        """Test $ref resolution for local references"""
-        # Use an existing allowed directory structure
-        # Check if there's a contracts/refs or odps-refs directory we can use
-        hub_dir = Path(__file__).parent.parent.parent.parent  # hub/
-        project_root = hub_dir.parent  # project root
+        """Test $ref resolution for local references.
 
-        # Try to use an existing allowed directory or create one in the project root
-        # The default allowed_base_dirs are ["./contracts/refs", "./odps-refs"]
-        # These are relative to the base_path, so we'll create one
-        test_refs_dir = project_root / "odps-refs"
-        test_refs_dir.mkdir(parents=True, exist_ok=True)
+        The ``$ref`` path is CWD-relative (``./odps-refs/...``) — the
+        fixture lives in a TemporaryDirectory and the test chdirs into
+        it. The previous implementation created ``<project-root>/odps-refs``,
+        which is root-owned in the CI container (``/app``) and failed with
+        PermissionError in the public core-only run — no repo-root side
+        effects, fully hermetic.
+        """
+        import os
+        import tempfile
 
-        # Create a local file for reference
-        local_file = test_refs_dir / "quality-rules.json"
-        quality_data = {"qualityScore": 90, "completeness": 0.95, "level": "medium"}
-        with open(local_file, "w") as f:
-            json.dump(quality_data, f)
-
+        original_cwd = os.getcwd()
         try:
-            # Create ODPS document with local $ref
-            odps_doc = {
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {"en": {"productID": "test-product", "name": "Test Product"}},
-                    "dataQuality": {"$ref": "./odps-refs/quality-rules.json"},
-                },
-            }
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.chdir(temp_dir)
+                project_root = Path.cwd()
+                test_refs_dir = Path("odps-refs")
+                test_refs_dir.mkdir(parents=True, exist_ok=True)
 
-            # Create resolver with base path set to project_root
-            # This way "./odps-refs" will resolve correctly
-            resolver = RefResolver(
-                tenant_id=str(self.tenant.id), user_id=str(self.user.id), base_path=project_root
-            )
+                # Create a local file for reference
+                local_file = test_refs_dir / "quality-rules.json"
+                quality_data = {"qualityScore": 90, "completeness": 0.95, "level": "medium"}
+                with open(local_file, "w") as f:
+                    json.dump(quality_data, f)
 
-            # Resolve all refs
-            _original, resolved = resolver.resolve_all_refs(
-                odps_doc, preserve_original=True, external_ref_handling=ExternalRefHandling.RESOLVE
-            )
+                # Create ODPS document with local $ref
+                odps_doc = {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                        "dataQuality": {"$ref": "./odps-refs/quality-rules.json"},
+                    },
+                }
 
-            # Verify resolved document has no $ref markers
-            self._assert_no_ref_markers(resolved)
+                # Create resolver with base path set to project_root
+                # This way "./odps-refs" will resolve correctly
+                resolver = RefResolver(
+                    tenant_id=str(self.tenant.id), user_id=str(self.user.id), base_path=project_root
+                )
 
-            # Verify resolved value is correct
-            self.assertIn("product", resolved)
-            self.assertIn("dataQuality", resolved["product"])
-            self.assertIn("qualityScore", resolved["product"]["dataQuality"])
-            self.assertEqual(resolved["product"]["dataQuality"]["qualityScore"], 90)
+                # Resolve all refs
+                _original, resolved = resolver.resolve_all_refs(
+                    odps_doc,
+                    preserve_original=True,
+                    external_ref_handling=ExternalRefHandling.RESOLVE,
+                )
+
+                # Verify resolved document has no $ref markers
+                self._assert_no_ref_markers(resolved)
+
+                # Verify resolved value is correct
+                self.assertIn("product", resolved)
+                self.assertIn("dataQuality", resolved["product"])
+                self.assertIn("qualityScore", resolved["product"]["dataQuality"])
+                self.assertEqual(resolved["product"]["dataQuality"]["qualityScore"], 90)
         finally:
-            # Clean up test file
-            if local_file.exists():
-                local_file.unlink()
-            # Don't remove the directory as it might be used by other tests
+            os.chdir(original_cwd)
 
     def test_odps_ref_resolution_external_disabled(self):
         """Test $ref resolution for external references (disabled mode)"""
@@ -1149,7 +1155,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             )
             # If creation succeeds, verify contract was created
             self.assertIsNotNone(contract)
-        except (ValueError, ODPSValidationError, ValidationError) as e:
+        except (ValueError, ODPSValidationError, ValidationError):
             # If creation fails, it should fail gracefully with expected exception types
             # Assertion is satisfied by the specific exception types in the except clause
             pass
@@ -1243,7 +1249,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
         try:
             self.contract_service.get_contract(contract_id=str(contract2.id))
             self.fail("Tenant1 should not be able to access tenant2 contract")
-        except (ValueError, Contract.DoesNotExist, NotFoundError) as e:
+        except (ValueError, Contract.DoesNotExist, NotFoundError):
             # Expected - tenant isolation should prevent access
             pass
 

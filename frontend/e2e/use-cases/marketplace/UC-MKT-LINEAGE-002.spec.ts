@@ -18,7 +18,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, getTestUser } from '../../fixtures/auth';
+import { getConsumerTestUser, getTestUser, loginViaApi } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import {
@@ -26,6 +26,7 @@ import {
   publishListingViaApi,
   purchaseListingViaApi,
 } from '../../fixtures/api-marketplace';
+import { seedLineageDag } from '../../fixtures/lineage-fixtures';
 
 test.describe('UC-MKT-LINEAGE-002: Post-purchase full lineage', () => {
   test.setTimeout(180_000);
@@ -36,6 +37,13 @@ test.describe('UC-MKT-LINEAGE-002: Post-purchase full lineage', () => {
       forceNew: true,
       ensureActivated: true,
     });
+    // Seed lineage: a contract DAG linked to the asset gives the
+    // listing-level lineage a root to walk — a fresh asset has no
+    // contract, so get_for_asset returns an empty graph and the panel
+    // lands in the `-empty` state (b6 skip: "Fresh asset has no lineage
+    // rows — full-graph contract not exercisable").
+    const providerAuth = await loginViaApi(providerUser.email, providerUser.password);
+    await seedLineageDag(page, 3, { accessToken: providerAuth.access_token, assetId });
     const listingId = await createListingViaApi(providerUser, assetId);
     await publishListingViaApi(providerUser, listingId);
 
@@ -44,6 +52,14 @@ test.describe('UC-MKT-LINEAGE-002: Post-purchase full lineage', () => {
     // the page render — eliminates the post-purchase polling flake
     // common in click-through E2E.
     await purchaseListingViaApi(consumerUser, listingId);
+
+    // Capture the lineage response BEFORE navigation — the fetch fires
+    // during page load and a waitForResponse registered afterwards only
+    // sees FUTURE responses (b6 masked bug — the old skip path never
+    // reached the await).
+    const lineageResponsePromise = page.waitForResponse((res) =>
+      res.url().includes(`/marketplace/listings/${listingId}/lineage/`),
+    );
 
     await loginAndNavigateToRoute(
       page,
@@ -55,14 +71,43 @@ test.describe('UC-MKT-LINEAGE-002: Post-purchase full lineage', () => {
           '.listing-detail-main, [data-testid="listing-detail-main"], .listing-detail-page, .error-display, [data-testid="error-display"], main',
       },
     );
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to login — auth not available');
+    const onLogin = page.url().includes('/login');
+    test.skip(onLogin, 'Redirected to login — auth not available');
+    if (onLogin) {
+      return;
     }
     await waitForLoadingComplete(page, { timeout: 15_000 });
 
+    // Panel states: `-loading` (fetch in flight — waitForLoadingComplete
+    // does not cover the lineage skeleton), `-error` (endpoint 404s when
+    // lineage.cross_tenant_marketplace is off), `-empty` (no lineage
+    // rows — data state, not capability), `-panel` (success). Probe
+    // terminal states only, then skip with the HONEST reason.
+    // intentional: best-effort terminal-state wait — the branch below is
+    // the verdict; absence is a legitimate gated/loading outcome.
+    await page
+      .locator(
+        '[data-testid="listing-lineage-panel"], [data-testid="listing-lineage-panel-error"], [data-testid="listing-lineage-panel-empty"]'
+      )
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .catch(() => null);
+
     const panel = page.getByTestId('listing-lineage-panel');
-    if ((await panel.count()) === 0) {
-      test.skip(true, 'Lineage capability flag off in this environment');
+    const panelMissing = (await panel.count()) === 0;
+    if (panelMissing) {
+      let reason: string;
+      if ((await page.getByTestId('listing-lineage-panel-loading').count()) > 0) {
+        reason = 'Lineage panel still loading — fetch did not settle within 30s';
+      } else if ((await page.getByTestId('listing-lineage-panel-empty').count()) > 0) {
+        reason =
+          'Fresh asset has no lineage rows — full-graph contract not exercisable (data state, not capability)';
+      } else {
+        reason =
+          'Lineage endpoint unavailable — lineage.cross_tenant_marketplace capability off in this environment';
+      }
+      test.skip(panelMissing, reason);
+      return;
     }
 
     // Full tier — the purchase unlocked it.
@@ -73,10 +118,9 @@ test.describe('UC-MKT-LINEAGE-002: Post-purchase full lineage', () => {
       page.getByTestId('listing-lineage-purchase-cta'),
     ).not.toBeVisible();
 
-    // Wait for the response so we can introspect the full-tier shape.
-    const lineageResponse = await page.waitForResponse((res) =>
-      res.url().includes(`/marketplace/listings/${listingId}/lineage/`),
-    );
+    // Await the response captured from page load (see the
+    // lineageResponsePromise registration above).
+    const lineageResponse = await lineageResponsePromise;
     const body = await lineageResponse.json();
     expect(body.detail).toBe('full');
     // Full-tier links carry the transformation-IP fields (even if

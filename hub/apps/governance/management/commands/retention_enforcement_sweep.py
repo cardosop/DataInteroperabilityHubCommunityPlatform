@@ -29,7 +29,7 @@ class Command(BaseCommand):
             help="Do not persist a Job observability row (local smoke tests).",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         skip_job = options["skip_job_row"]
 

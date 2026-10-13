@@ -32,8 +32,7 @@ except ImportError:
     if TYPE_CHECKING:
         from typing import Any
 
-        DataHubClientConfig = Any  # type: ignore[misc]
-
+        DataHubClientConfig = Any
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.auth.models import APIKey
 from hub.apps.contracts.models import Contract
@@ -116,7 +115,7 @@ class SyncSDKClient:
         if resp.status_code >= 400:
             try:
                 ed = resp.json()
-            except Exception:
+            except ValueError:
                 ed = {"detail": resp.text}
             detail_msg = str(ed)
             request_id = ed.get("request_id") if isinstance(ed, dict) else None
@@ -135,7 +134,7 @@ class SyncSDKClient:
                 raise DataHubError(detail_msg, "SERVER_ERROR", resp.status_code, request_id)
         try:
             return resp.json()
-        except Exception:
+        except ValueError:
             return resp.text
 
     def get(self, url, params=None, headers=None, **kw):
@@ -748,14 +747,15 @@ class SDKPythonE2ETest(LiveServerTestCase):
         # Use our user's token (should get 404, not 403, due to tenant isolation)
         config = self.get_sdk_config()
 
-        with SyncSDKClient(config) as client:
+        with (
+            SyncSDKClient(config) as client,
+            pytest.raises(NotFoundError),
+        ):
             # Should get 404 (not revealing existence) due to tenant isolation
-            with pytest.raises(NotFoundError):
-                client.get(f"assets/{other_asset.id}/")
+            client.get(f"assets/{other_asset.id}/")
 
     # Advanced Features Tests
 
-    @pytest.mark.skip(reason="Presigned upload URL host not reachable from test runner (e.g. localhost/port not exposed when tests run in Docker)")
     def test_sdk_file_upload_flow(self):
         """Test SDK file upload flow with MinIO health check"""
         # Check MinIO availability first
@@ -869,10 +869,11 @@ class SDKPythonE2ETest(LiveServerTestCase):
             minio_url = get_s3_endpoint_url()
             # Try basic connectivity (any response means service is reachable)
             response = httpx.get(minio_url, timeout=5.0)
-            return True
         except Exception:
             # Service is not available - this is OK, test will be skipped
             return False
+        else:
+            return True
 
     def test_sdk_query_parameters(self):
         """Test SDK handles query parameters correctly"""

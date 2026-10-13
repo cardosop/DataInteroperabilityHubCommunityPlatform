@@ -48,15 +48,23 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
         contentSelector: '[data-testid="home-page"]',
       });
 
-      const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+      // Phase 11.1: after a UI login the access_token lives in apiClient
+      // MODULE MEMORY only — localStorage is empty BY DESIGN (the
+      // AUTH-SECURITY suite pins that contract). Read the token through
+      // the apiClient's sanctioned read-only probe instead.
+      const accessToken = await page.evaluate(() => {
+        const getter = (window as unknown as { __getAccessToken?: () => string | null })
+          .__getAccessToken;
+        return typeof getter === 'function' ? getter() : localStorage.getItem('access_token');
+      });
       if (!accessToken) {
         // No token after a successful login is an environment problem
         // (cookie/storage policy), not a "feature gated" condition. Surface it
         // as a hard failure with the diagnostic instead of skipping silently.
         throw new Error(
-          'No access_token in localStorage after loginAndNavigateToRoute. ' +
-            'Cookie/storage policy may be blocking persistence — check the ' +
-            'browser context and login flow.',
+          'No access_token after loginAndNavigateToRoute (neither the apiClient ' +
+            'probe nor localStorage). Cookie/storage policy may be blocking the ' +
+            'session — check the browser context and login flow.',
         );
       }
       const headers = { Authorization: `Bearer ${accessToken}` };
@@ -86,6 +94,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       );
       if (!setupRes.ok()) {
         const status = setupRes.status();
+        // intentional: diagnostic extraction — a failed read yields '' for the error message; the throw/assert below is the failure path
         const body = await setupRes.text().catch(() => '');
         const tokenLen = (process.env.E2E_TEST_SECRET ?? '').length;
         throw new Error(
@@ -214,7 +223,13 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
 
       // ── Step 5: Switch back to primary tenant — asset IS visible ──────────
       await page.goto('/');
-      await page.waitForSelector('.app-sidebar, .app-header, [data-testid="app-header"]', { timeout: 15000 });
+      // Reload restores auth via the boot refresh (Phase 11.1: no persisted
+      // access_token) — give it a generous window and wait for the HOME
+      // content marker (step 1's proven selector), not just the shell.
+      await page.waitForSelector(
+        '[data-testid="home-page"], .app-sidebar, .app-header, [data-testid="app-header"]',
+        { timeout: 45000 }
+      );
 
       const { newTenantName: restoredName } = await switchTenantViaUI(
         page,
@@ -244,9 +259,11 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       // would issue a fresh JWT with the user's *default* tenant context
       // and could mask a real isolation bug. Re-writing the captured token
       // preserves the post-switch tenant context end-to-end.
-      const currentAccessToken = await page.evaluate(
-        () => localStorage.getItem('access_token'),
-      );
+      const currentAccessToken = await page.evaluate(() => {
+        const getter = (window as unknown as { __getAccessToken?: () => string | null })
+          .__getAccessToken;
+        return typeof getter === 'function' ? getter() : localStorage.getItem('access_token');
+      });
       const tokenForNav = currentAccessToken ?? accessToken;
       await page.evaluate(
         ({ token, primaryTenantId }) => {
@@ -265,6 +282,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
         { timeout: 30_000 },
       );
       await page.goto(`/assets/${assetId}`);
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       const assetResp = await assetDetailFetch.catch(() => null);
       await page.waitForLoadState('domcontentloaded');
 
@@ -307,6 +325,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       );
 
       if (outcome === 'error') {
+        // intentional: diagnostic extraction — a failed read yields '' for the error message; the throw/assert below is the failure path
         const errText = await errorLocator.first().textContent().catch(() => '');
         throw new Error(
           `JOURNEY-MULTI-TENANCY step 5: AssetDetailPage rendered ErrorDisplay after switch ` +

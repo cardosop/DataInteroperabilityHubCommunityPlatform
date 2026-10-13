@@ -223,6 +223,68 @@ test.describe('Standalone /files lifecycle (260.7.A)', () => {
         //    ``setShowUploadModal(false)``; if the upload errored,
         //    the dropzone would stay mounted with an
         //    ``ErrorDisplay`` block.
+        //
+        // Churn recovery (b7 #23): a mid-batch API/storage stall
+        // during the upload leaves the modal OPEN with the upload
+        // ``ErrorDisplay`` terminal (title "Upload failed") and the
+        // dropzone back to ``idle``. Wait for EITHER terminal first
+        // — a blind happy-path wait here would burn the whole
+        // budget on a failed upload with no recovery. The
+        // ErrorDisplay Retry button only clears the error state
+        // (it does NOT re-issue the upload), so the recovery
+        // gesture is re-picking the file on the dropzone input.
+        const uploadTerminal = await page.waitForFunction(
+          () => {
+            const dropzone = document.querySelector(
+              '[data-testid="file-upload-dropzone"]'
+            );
+            if (!dropzone) return 'closed';
+            const errors = Array.from(
+              document.querySelectorAll<HTMLElement>('[data-testid="error-display"]')
+            );
+            if (
+              errors.some((el) => (el.textContent ?? '').includes('Upload failed'))
+            ) {
+              return 'error';
+            }
+            return null;
+          },
+          { timeout: 60_000 }
+        );
+        const terminalValue = (await uploadTerminal.jsonValue()) as
+          | 'closed'
+          | 'error';
+        // Retry the upload ONCE when the terminal matches a known
+        // transient signature; a real product error must fall
+        // through to the strict modal-close assertion below and
+        // fail loudly on the second pass.
+        if (terminalValue === 'error') {
+          // intentional: the ErrorDisplay may unmount between the
+          // terminal poll and this read — null just skips the retry.
+          const uploadErrorText = await page
+            .getByTestId('error-display')
+            .filter({ hasText: 'Upload failed' })
+            .textContent()
+            .catch(() => null);
+          if (
+            uploadErrorText &&
+            /NETWORK_ERROR|Network Error|Failed to fetch|connection|INTERNAL_ERROR|SERVICE_UNAVAILABLE|ECONNREFUSED|timed out/i.test(
+              uploadErrorText
+            )
+          ) {
+            // intentional: single retry for transient mid-batch churn
+            // (b7 #23) — the second attempt must pass the strict
+            // assertions below or the test fails.
+            await page
+              .getByTestId('file-upload-dropzone')
+              .locator('input[type="file"]')
+              .setInputFiles({
+                name: uploadName,
+                mimeType: 'text/csv',
+                buffer: Buffer.from(CSV_BODY),
+              });
+          }
+        }
         await expect(page.getByTestId('file-upload-dropzone')).toBeHidden({
           timeout: 60_000,
         });

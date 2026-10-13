@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from hub.apps import manifest  # noqa: E402
+from hub.apps import manifest
 
 PAID_SERVICES = (
     "services/semantic-service/",
@@ -41,11 +41,35 @@ EXTRA = (
     # Dev-postgres init script (base compose mounts it); certs/private
     # scripts stay excluded.
     "!infrastructure/postgres/02-pg-hba-host.sh",
+    # S3 bucket-policy terraform (security-contract tests assert it; the
+    # files are policy/config only — internal hostnames are scrubbed).
+    "!infrastructure/terraform/s3/",
+    # Traefik static + dynamic config (base compose bind-mounts them; the
+    # quickstart stack cannot route without them — 313.DoD.5 round 4).
+    "!infrastructure/traefik/traefik.yml",
+    "!infrastructure/traefik/traefik.core.yml",
+    "!infrastructure/traefik/dynamic/",
     "helm/",
     # Community chart ships (negation re-includes it in the publish tree)
     "!helm/community/",
     "k8s/",
     "monitoring/",
+    # Test-stack observability configs (docker-compose.test.yml bind-mounts
+    # them; a fresh public clone must boot the test stack — 313.DoD.3
+    # public-clone parity). loki/tempo/otel/promtail stay excluded.
+    "!monitoring/prometheus/prometheus.yml",
+    "!monitoring/prometheus/prometheus-test.yml",
+    # Phase P.8 — core-safe monitoring variants the core overlay mounts:
+    # no paid-only scrape jobs (no `up == 0` storms for absent services),
+    # no env-placeholder routes. Pinned by
+    # scripts/tests/test_monitoring_core_safety.py.
+    "!monitoring/prometheus/prometheus.core.yml",
+    "!monitoring/prometheus/alerts.yml",
+    "!monitoring/prometheus/alerts/",
+    "!monitoring/grafana/dashboards/",
+    "!monitoring/grafana/datasources/",
+    "!monitoring/alertmanager/alertmanager-test.yml",
+    "!monitoring/alertmanager/alertmanager.core.yml",
     # Pre-split compose files reference paid services — EXCEPT the two bases
     # the core overlays stack on (the overlays are not standalones; the
     # bases ship and their paid service definitions are profiled out).
@@ -58,8 +82,24 @@ EXTRA = (
     "docker-compose.override.test-run.yml",
     "docker-compose.test.marquez.yml",
     "docker-compose.test.mvp.yml",
+    # Private-only dev/ops tooling (313.H.2.3) — these import paid modules
+    # and are never part of the public product surface:
+    #   validate_odps_final_checklist.py   — private PR checklist validator
+    #   provision_smoke_fixtures.py        — staging-QA fixture provisioning
+    #   semantic_memento_capacity_test.py  — capacity benchmark (paid semantic)
+    #   performance/profile_p1_endpoints.py — P1 endpoint profiling
+    "scripts/validate_odps_final_checklist.py",
+    "scripts/provision_smoke_fixtures.py",
+    "scripts/semantic_memento_capacity_test.py",
+    "scripts/performance/profile_p1_endpoints.py",
     # Secrets + local configs (313.0)
-    ".env.dev", ".env.staging", ".env.test", ".env", ".env.e2e", ".env.test.ckan", ".env.local",
+    ".env.dev",
+    ".env.staging",
+    ".env.test",
+    ".env",
+    ".env.e2e",
+    ".env.test.ckan",
+    ".env.local",
     "infrastructure/postgres/certs/",
     # Duplicated docs trees
     "docs/docs/",
@@ -71,6 +111,10 @@ EXTRA = (
     "scripts/publish_public_overlay/",
     "openspec/",
     "archive/",
+    # Phase 227 W6.4 rollout-evidence manifest + hash-linked JSONL — a
+    # compliance breadcrumb the contracts tests assert ships (hash-match
+    # contract); the rest of archive/ stays private.
+    "!archive/phase-227-rollout/",
     "examples/",
     "backups/",
     "product-site/",

@@ -39,7 +39,7 @@ def mesh_info(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get mesh info: {e}")
+        raise click.ClickException(f"Failed to get mesh info: {e}") from e
 
 
 @mesh.group("domains")
@@ -156,7 +156,7 @@ def list_domains(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list domains: {e}")
+        raise click.ClickException(f"Failed to list domains: {e}") from e
 
 
 @domains.command("create")
@@ -202,12 +202,14 @@ def create_domain(
             try:
                 data["boundaries"] = json.loads(boundaries)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --boundaries: {boundaries}")
+                raise click.ClickException(f"Invalid JSON in --boundaries: {boundaries}") from None
         if capabilities:
             try:
                 data["capabilities"] = json.loads(capabilities)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --capabilities: {capabilities}")
+                raise click.ClickException(
+                    f"Invalid JSON in --capabilities: {capabilities}"
+                ) from None
         if resource_quota:
             try:
                 quota_dict = json.loads(resource_quota)
@@ -219,7 +221,9 @@ def create_domain(
                         raise click.ClickException(f"Resource quota '{key}' cannot be negative")
                 data["resource_quota"] = quota_dict
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --resource-quota: {resource_quota}")
+                raise click.ClickException(
+                    f"Invalid JSON in --resource-quota: {resource_quota}"
+                ) from None
 
         # API endpoint: /api/v1/mesh/domains/
         result = api_client.post("mesh/domains/", json_data=data)
@@ -243,7 +247,7 @@ def create_domain(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create domain: {e}")
+        raise click.ClickException(f"Failed to create domain: {e}") from e
 
 
 @domains.command("get")
@@ -288,7 +292,7 @@ def get_domain(domain_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get domain: {e}")
+        raise click.ClickException(f"Failed to get domain: {e}") from e
 
 
 @domains.command("update")
@@ -321,7 +325,8 @@ def update_domain(
     output_format: str,
 ):
     """Update an existing data mesh domain"""
-    try:
+
+    def _build_update_data() -> dict:
         # Build request data (only include provided fields)
         data = {}
 
@@ -335,12 +340,14 @@ def update_domain(
             try:
                 data["boundaries"] = json.loads(boundaries)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --boundaries: {boundaries}")
+                raise click.ClickException(f"Invalid JSON in --boundaries: {boundaries}") from None
         if capabilities:
             try:
                 data["capabilities"] = json.loads(capabilities)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --capabilities: {capabilities}")
+                raise click.ClickException(
+                    f"Invalid JSON in --capabilities: {capabilities}"
+                ) from None
         if resource_quota:
             try:
                 quota_dict = json.loads(resource_quota)
@@ -352,12 +359,18 @@ def update_domain(
                         raise click.ClickException(f"Resource quota '{key}' cannot be negative")
                 data["resource_quota"] = quota_dict
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --resource-quota: {resource_quota}")
+                raise click.ClickException(
+                    f"Invalid JSON in --resource-quota: {resource_quota}"
+                ) from None
         if status:
             data["status"] = status
 
         if not data:
             raise click.ClickException("At least one field must be provided for update")
+        return data
+
+    try:
+        data = _build_update_data()
 
         # API endpoint: /api/v1/mesh/domains/{id}/
         result = api_client.patch(f"mesh/domains/{domain_id}/", json_data=data)
@@ -377,7 +390,7 @@ def update_domain(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update domain: {e}")
+        raise click.ClickException(f"Failed to update domain: {e}") from e
 
 
 @domains.command("delete")
@@ -403,7 +416,7 @@ def delete_domain(domain_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to delete domain: {e}")
+        raise click.ClickException(f"Failed to delete domain: {e}") from e
 
 
 @mesh.group("topology")
@@ -503,7 +516,7 @@ def get_topology(include_health_metrics: bool, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get topology: {e}")
+        raise click.ClickException(f"Failed to get topology: {e}") from e
 
 
 @topology.command("get-domain")
@@ -586,7 +599,7 @@ def get_domain_topology(domain_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get domain topology: {e}")
+        raise click.ClickException(f"Failed to get domain topology: {e}") from e
 
 
 @mesh.group("policies")
@@ -621,7 +634,7 @@ def apply_policy(domain_id: str, policy_id: str, overrides: str | None, output_f
                 # Ensure overrides is a proper dict for JSON serialization
                 data["overrides"] = dict(overrides_dict)
             except json.JSONDecodeError as e:
-                raise click.ClickException(f"Invalid JSON in --overrides: {e}")
+                raise click.ClickException(f"Invalid JSON in --overrides: {e}") from e
 
         # API endpoint: /api/v1/mesh/domains/{domain_id}/policies/apply/
         result = api_client.post(f"mesh/domains/{domain_id}/policies/apply/", json_data=data)
@@ -643,7 +656,7 @@ def apply_policy(domain_id: str, policy_id: str, overrides: str | None, output_f
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to apply policy: {e}")
+        raise click.ClickException(f"Failed to apply policy: {e}") from e
 
 
 @policies.command("list")
@@ -756,7 +769,7 @@ def list_policies(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list policies: {e}")
+        raise click.ClickException(f"Failed to list policies: {e}") from e
 
 
 @policies.command("remove")
@@ -797,7 +810,7 @@ def remove_policy(domain_id: str, policy_id: str, reason: str | None, output_for
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to remove policy: {e}")
+        raise click.ClickException(f"Failed to remove policy: {e}") from e
 
 
 @mesh.group("compliance")
@@ -861,7 +874,7 @@ def check_compliance(domain_id: str, asset_id: str | None, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to check compliance: {e}")
+        raise click.ClickException(f"Failed to check compliance: {e}") from e
 
 
 @compliance.command("report")
@@ -964,4 +977,4 @@ def get_compliance_report(domain_id: str, report_id: str | None, output_format: 
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get compliance report: {e}")
+        raise click.ClickException(f"Failed to get compliance report: {e}") from e

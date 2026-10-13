@@ -3,6 +3,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { marketplaceConnectionService } from '../services/marketplaceConnectionService';
 import type {
@@ -17,7 +18,7 @@ export function useMarketplaceConnections(filters: MarketplaceConnectionListFilt
     queryFn: async () => {
       const data = await marketplaceConnectionService.list(filters);
       // React Query requires non-undefined; API may return undefined on error/empty
-      return (
+      return normalizePaginated(
         data ?? {
           results: [],
           count: 0,
@@ -65,7 +66,9 @@ export function useUpdateMarketplaceConnection() {
     errorMessage: 'Failed to update connection',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
-      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id],
+      });
     },
   });
 }
@@ -80,7 +83,9 @@ export function usePartialUpdateMarketplaceConnection() {
     errorMessage: 'Failed to update connection',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
-      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id],
+      });
     },
   });
 }

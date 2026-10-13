@@ -15,7 +15,6 @@ import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.integrations.encryption import (
-    _get_fernet,
     decrypt_json_field,
     encrypt_json_field,
 )
@@ -237,9 +236,10 @@ class EncryptionConcurrencyTest(TestCase):
             try:
                 encrypted = encrypt_json_field(configs[idx])
                 decrypted = decrypt_json_field(encrypted)
-                return idx, decrypted
             except Exception as e:
                 return idx, e
+            else:
+                return idx, decrypted
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(round_trip, i): i for i in range(len(configs))}
@@ -257,8 +257,7 @@ class EncryptionConcurrencyTest(TestCase):
             f"Concurrent round-trip errors: {errors}",
         )
         for idx, decrypted in results.items():
-            self.assertEqual(decrypted, configs[idx],
-                             f"Mismatch at index {idx}")
+            self.assertEqual(decrypted, configs[idx], f"Mismatch at index {idx}")
 
     def test_fernet_round_trips_distinct_payloads(self):
         """Fernet instances (via _get_fernet) correctly encrypt and

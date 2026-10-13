@@ -62,7 +62,7 @@ def _generate_mock_file_content(file_obj: File, file_format: str) -> bytes:
         try:
             import io
 
-            import pandas as pd
+            import pandas as pd  # type: ignore[import-untyped]
 
             df = pd.DataFrame({"id": ["1"], "name": ["test_row"]})
             buf = io.BytesIO()
@@ -169,7 +169,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
         try:
             file_obj = File.objects.get(id=file_id, tenant_id=tenant_id)
         except File.DoesNotExist:
-            raise NotFoundError("File", file_id)
+            raise NotFoundError("File", file_id) from None
 
         # Verify file is active
         if not file_obj.is_active():
@@ -211,7 +211,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
             try:
                 asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
             except Asset.DoesNotExist:
-                raise NotFoundError("Asset", asset_id)
+                raise NotFoundError("Asset", asset_id) from None
 
         # Determine file format
         format_map = {
@@ -228,7 +228,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
         # Infer format from filename if not in map
         if file_format == "CSV":
             filename_lower = file_obj.name.lower()
-            if filename_lower.endswith(".json") or filename_lower.endswith(".ndjson"):
+            if filename_lower.endswith((".json", ".ndjson")):
                 file_format = "JSON"
             elif filename_lower.endswith(".parquet"):
                 file_format = "PARQUET"
@@ -287,7 +287,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
                 raise ValidationError(
                     f"Failed to download file from storage: {e!s}. "
                     f"Mock content generation also failed (missing dependency): {mock_error!s}"
-                )
+                ) from mock_error
 
         # Infer schema via the canonical gated entry point (Phase 260.5.D.R1).
         # This runs validate_text_encoding for text formats before inference,
@@ -301,7 +301,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
             raise ValidationError(
                 f"Schema inference failed: {e!s}",
                 details={"file_format": file_format, "error": str(e)},
-            )
+            ) from e
 
         # Enrich with inference-plan metadata so consumers (FE, SDK,
         # contract drift) know the schema came from a partial read.
@@ -688,14 +688,27 @@ class DatasetService(BaseService, DatasetEventPublisher):
             tenant = Tenant.objects.get(id=tenant_id)
             user = User.objects.get(id=user_id) if user_id else None
             new_version = parent.version + 1
+
+            # W2.8 (B-9) — a new version IS a new Dataset row, so the
+            # versioning path routes through the same max_datasets cap as
+            # dataset creation (the pre-fix bypass minted rows for free).
+            from hub.apps.tenants.services import PlanLimitService
+
+            plan_limit_service = PlanLimitService(
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+            plan_limit_service.check_limit(
+                tenant_id=tenant_id,
+                limit_key="max_datasets",
+                delta=1,
+            )
+
             # Phase 260.5.I — re-derive sample_data from file bytes
             # instead of blindly copying the parent cache. Fall back
             # to parent's value when the file is unreachable.
             fresh_sample = extract_sample_data_from_storage(parent.file, parent.format)
-            if fresh_sample is not None:
-                sample_data = fresh_sample
-            else:
-                sample_data = parent.sample_data_json
+            sample_data = fresh_sample if fresh_sample is not None else parent.sample_data_json
 
             new_dataset = Dataset.objects.create(
                 tenant=parent.tenant,

@@ -21,6 +21,8 @@ import '../journeys/dc/JOURNEY-DC-013.spec';
 import '../journeys/dc/JOURNEY-DC-014.spec';
 import '../journeys/dc/JOURNEY-DC-015.spec';
 
+import '../journeys/dc/JOURNEY-DB-012.spec';
+
 import { test, expect } from '@playwright/test';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 import { loginAsPersona, getConsumerTestUser } from '../fixtures/auth';
@@ -34,10 +36,12 @@ test.describe('Persona RBAC: Data Consumer @critical', () => {
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/marketplace');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
-    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
+    await expect(
+      page.locator('.error-display, [data-testid="error-display"]').first()
+    ).not.toBeVisible({ timeout: 2000 });
     // Assert actual marketplace content rendered (not just app shell)
     const hasContent = page.locator(
-      '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
+      '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]'
     );
     await expect(hasContent.first()).toBeVisible({ timeout: 30000 });
   });
@@ -48,7 +52,7 @@ test.describe('Persona RBAC: Data Consumer @critical', () => {
     await page.waitForLoadState('domcontentloaded');
     const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
     if (resolvedPath.includes('/login')) {
-      test.skip(true, 'Auth session expired — not an RBAC result');
+      test.skip(resolvedPath.includes('/login'), 'Auth session expired — not an RBAC result');
       return;
     }
     expect(

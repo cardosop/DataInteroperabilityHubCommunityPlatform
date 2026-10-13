@@ -7,10 +7,13 @@ Validates that login sets secure httpOnly cookies for staging/prod hosts.
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import pytest
-import requests
+
+if TYPE_CHECKING:
+    import requests
 
 COOKIE_SECURITY_PATTERN = re.compile(
     r"Set-Cookie:.*HttpOnly.*Secure.*SameSite=Strict.*Domain=\.meshant\.com",

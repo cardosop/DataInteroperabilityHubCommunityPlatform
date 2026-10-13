@@ -81,6 +81,7 @@ class IncludeActiveOnlyFilterTests(TestCase):
     def setUp(self):
         """Purge structureless contracts left by a previous --reuse-db run."""
         from hub.apps.contracts.models import Contract
+
         Contract.objects.all().delete()
 
     def test_active_structureless_counted_when_flag_set(self):

@@ -21,6 +21,7 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import json
 
@@ -42,7 +43,7 @@ def _emit_rotation_audit(*, tenant, new_key, outgoing_count, grace_window_ends):
         from hub.apps.audit.utils import create_audit_event
     except Exception:
         return
-    try:
+    with contextlib.suppress(Exception):  # audit emit must not fail key rotation
         create_audit_event(
             resource_type="OPENLINEAGE_KEY",
             action=OPENLINEAGE_KEY_ROTATED,
@@ -55,8 +56,6 @@ def _emit_rotation_audit(*, tenant, new_key, outgoing_count, grace_window_ends):
                 "grace_window_ends": grace_window_ends.isoformat(),
             },
         )
-    except Exception:
-        pass
 
 
 class Command(BaseCommand):

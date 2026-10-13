@@ -23,11 +23,14 @@ from datetime import timedelta
 
 import structlog
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError
 from django.utils import timezone
+from redis.exceptions import RedisError
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.jobs.utils import get_job_timeout
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 
 logger = structlog.get_logger(__name__)
 
@@ -57,7 +60,7 @@ class Command(BaseCommand):
             help="List stuck/orphaned jobs without modifying them.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         threshold_minutes: int = options["threshold_minutes"]
         dry_run: bool = options["dry_run"]
 
@@ -158,7 +161,7 @@ class Command(BaseCommand):
                     },
                 )
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "recover_stuck_job_audit_failed",
                     job_id=str(job_obj.id),
                     error=str(exc),
@@ -216,14 +219,20 @@ class Command(BaseCommand):
                 )
 
                 DeadLetterQueueManager.sync_from_ingestion_state(str(job_obj.resource_id))
-            except Exception as dlq_exc:
+            except (
+                ScheduledIngestion.DoesNotExist,
+                DatabaseError,
+                KeyError,
+                AttributeError,
+                ValueError,
+            ) as dlq_exc:
                 logger.warning(
                     "recover_stuck_dlq_sync_failed",
                     job_id=str(job_obj.id),
                     error=str(dlq_exc),
                 )
 
-        except Exception as exc:
+        except DatabaseError as exc:
             logger.error(
                 "recover_stuck_ingestion_run_sync_error",
                 job_id=str(job_obj.id),
@@ -366,14 +375,15 @@ class Command(BaseCommand):
                 job_type=job_obj.type,
                 timeout=timeout,
             )
-            return True
-        except Exception as exc:
+        except RedisError as exc:
             logger.warning(
                 "recover_orphaned_reenqueue_failed",
                 job_id=str(job_obj.id),
                 error=str(exc),
             )
             return False
+        else:
+            return True
 
     # ------------------------------------------------------------------
     # Phase 73.1 — Prefect-executed orphan detection
@@ -426,7 +436,7 @@ class Command(BaseCommand):
                             timeout=5.0,
                         )
                         has_flow_run = resp.status_code == 200
-                except Exception as exc:
+                except httpx.HTTPError as exc:
                     logger.debug(
                         "prefect_orphan_check_error",
                         job_id=str(job_obj.id),

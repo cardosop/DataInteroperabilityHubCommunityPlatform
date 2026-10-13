@@ -90,10 +90,7 @@ class URLPatternParser:
             if prefix:
                 prefix_clean = prefix.rstrip("/")
                 pattern_clean = pattern_str.lstrip("/")
-                if pattern_clean:
-                    full_path = prefix_clean + "/" + pattern_clean
-                else:
-                    full_path = prefix_clean
+                full_path = prefix_clean + "/" + pattern_clean if pattern_clean else prefix_clean
             else:
                 # No prefix, use base_path + pattern_str
                 full_path = base_path.rstrip("/") + "/" + pattern_str.lstrip("/")
@@ -139,10 +136,7 @@ class URLPatternParser:
                 # Prefix already includes base_path, so just append simplified_pattern
                 prefix_clean = prefix.rstrip("/")
                 pattern_clean = simplified_pattern.lstrip("/")
-                if pattern_clean:
-                    full_path = prefix_clean + "/" + pattern_clean
-                else:
-                    full_path = prefix_clean
+                full_path = prefix_clean + "/" + pattern_clean if pattern_clean else prefix_clean
             else:
                 # No prefix, use base_path + simplified_pattern
                 full_path = base_path.rstrip("/") + "/" + simplified_pattern.lstrip("/")
@@ -308,37 +302,37 @@ class ServiceMountPointMapper:
 
             # Second arg might be include()
             include_node = node.args[1]
-            if isinstance(include_node, ast.Call):
-                if isinstance(include_node.func, ast.Name) and include_node.func.id == "include":
-                    if len(include_node.args) > 0:
-                        module_node = include_node.args[0]
-                        if isinstance(module_node, ast.Constant) or isinstance(
-                            module_node, ast.Str
-                        ):
-                            module = module_node.value
+            if (
+                isinstance(include_node, ast.Call)
+                and isinstance(include_node.func, ast.Name)
+                and include_node.func.id == "include"
+                and len(include_node.args) > 0
+            ):
+                module_node = include_node.args[0]
+                if isinstance(module_node, (ast.Constant, ast.Str)):
+                    module = module_node.value
 
-                        # Extract service name from prefix
-                        service_name = prefix.rstrip("/").split("/")[-1] if prefix else ""
-                        if service_name:
-                            self.mount_points[service_name] = module
+                # Extract service name from prefix
+                service_name = prefix.rstrip("/").split("/")[-1] if prefix else ""
+                if service_name:
+                    self.mount_points[service_name] = module
 
     def _extract_include_mapping(self, node: ast.Call):
         """Extract include() mappings"""
         if len(node.args) > 0:
             module_node = node.args[0]
-            if isinstance(module_node, ast.Constant) or isinstance(module_node, ast.Str):
+            if isinstance(module_node, (ast.Constant, ast.Str)):
                 module = module_node.value
 
             # Extract service name from module path
             if isinstance(module, str):
                 parts = module.split(".")
-                if len(parts) >= 3:
+                if len(parts) >= 3 and "apps" in parts:
                     # Extract service name (e.g., 'hub.apps.auth.urls' -> 'auth')
-                    if "apps" in parts:
-                        idx = parts.index("apps")
-                        if idx + 1 < len(parts):
-                            service_name = parts[idx + 1]
-                            self.mount_points[service_name] = module
+                    idx = parts.index("apps")
+                    if idx + 1 < len(parts):
+                        service_name = parts[idx + 1]
+                        self.mount_points[service_name] = module
 
 
 class DuplicateServiceNameDetector:
@@ -386,7 +380,7 @@ class DuplicateServiceNameDetector:
         for name, endpoint_list in name_groups.items():
             if len(endpoint_list) > 1:
                 # Check if they're actually different endpoints
-                paths = set(e.get("full_path", "") for e in endpoint_list)
+                paths = {e.get("full_path", "") for e in endpoint_list}
                 if len(paths) > 1:
                     duplicates.append(
                         {
@@ -485,7 +479,7 @@ class EndpointInventoryGenerator:
         inventory = {
             "summary": {
                 "total_endpoints": len(endpoints),
-                "total_services": len(set(e.get("service", "") for e in endpoints)),
+                "total_services": len({e.get("service", "") for e in endpoints}),
             },
             "endpoints": endpoints,
         }
@@ -590,10 +584,12 @@ class EndpointAuditor:
 
                 # Ensure project_root is absolute and exists
                 project_root = project_root.resolve()
-                if not (project_root / "hub" / "apps" / "api" / "urls.py").exists():
+                if (
+                    not (project_root / "hub" / "apps" / "api" / "urls.py").exists()
+                    and Path("/app/hub/apps/api/urls.py").exists()
+                ):
                     # Final fallback: try /app
-                    if Path("/app/hub/apps/api/urls.py").exists():
-                        project_root = Path("/app")
+                    project_root = Path("/app")
 
                 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
                 # Add project root to Python path (must be first, before any other paths)
@@ -619,10 +615,13 @@ class EndpointAuditor:
             # Find API v1 resolver
             api_resolver = None
             for pattern in resolver.url_patterns:
-                if hasattr(pattern, "pattern") and "api/v1" in str(pattern.pattern):
-                    if hasattr(pattern, "url_patterns"):
-                        api_resolver = pattern
-                        break
+                if (
+                    hasattr(pattern, "pattern")
+                    and "api/v1" in str(pattern.pattern)
+                    and hasattr(pattern, "url_patterns")
+                ):
+                    api_resolver = pattern
+                    break
 
             # Parse all URL patterns
             # Start with prefix that includes base_path

@@ -4,6 +4,8 @@ Scheduled Export Serializers
 DRF serializers for scheduled export API endpoints.
 """
 
+from typing import ClassVar
+
 from rest_framework import serializers
 
 from hub.apps.virtualization.source_config_utils import mask_source_config
@@ -21,7 +23,7 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ScheduledExport
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -39,8 +41,8 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             "deployment_sync_status",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant_name",
             "next_run_at",
@@ -50,7 +52,7 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             "deployment_sync_status",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def to_representation(self, instance):
         """Decrypt and mask sensitive fields in destination_config."""
@@ -65,11 +67,11 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Cron expression is required in schedule_config")
 
         try:
-            from croniter import croniter
+            from croniter import croniter  # type: ignore[import-untyped]
 
             croniter(cron_expr)
         except Exception as e:
-            raise serializers.ValidationError(f"Invalid cron expression: {e!s}")
+            raise serializers.ValidationError(f"Invalid cron expression: {e!s}") from e
 
         return value
 
@@ -100,7 +102,9 @@ class ScheduledExportCreateSerializer(ScheduledExportSerializer):
 
     class Meta(ScheduledExportSerializer.Meta):
         # Tenant is set by ViewSet, not required in request
-        extra_kwargs = {"tenant": {"required": False, "read_only": True}}
+        extra_kwargs: ClassVar[dict[str, dict[str, bool]]] = {
+            "tenant": {"required": False, "read_only": True}
+        }
 
 
 class ScheduledExportRunSerializer(serializers.ModelSerializer):
@@ -110,7 +114,7 @@ class ScheduledExportRunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ScheduledExportRun
-        fields = [
+        fields = (
             "id",
             "scheduled_export",
             "scheduled_export_name",
@@ -124,8 +128,8 @@ class ScheduledExportRunSerializer(serializers.ModelSerializer):
             "prefect_flow_run_id",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "scheduled_export_name",
             "status",
@@ -138,7 +142,7 @@ class ScheduledExportRunSerializer(serializers.ModelSerializer):
             "prefect_flow_run_id",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class ScheduledExportTriggerSerializer(serializers.Serializer):

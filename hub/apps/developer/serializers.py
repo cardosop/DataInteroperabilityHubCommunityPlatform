@@ -14,7 +14,7 @@ class PluginSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Plugin
-        fields = [
+        fields = (
             "id",
             "name",
             "description",
@@ -27,8 +27,8 @@ class PluginSerializer(serializers.ModelSerializer):
             "metadata_json",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "download_count", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "download_count", "created_at", "updated_at")
 
 
 class SDKDocumentationSerializer(serializers.ModelSerializer):
@@ -36,7 +36,7 @@ class SDKDocumentationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SDKDocumentation
-        fields = [
+        fields = (
             "id",
             "language",
             "version",
@@ -49,5 +49,5 @@ class SDKDocumentationSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "created_at", "updated_at")

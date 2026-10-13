@@ -87,6 +87,7 @@ describe('E2E Tests', () => {
       // expect(lineage.contract_id).toBe(created.id);
 
       // This test structure is ready for real E2E execution
+      // TICKET=PREPRO01-T5 EXPIRES=2026-12-31 — placeholder E2E scaffold: real API calls require a live backend (see Phase T.5 / W17 gate-40)
       expect(true).toBe(true); // Placeholder assertion
     });
   });
@@ -96,6 +97,7 @@ describe('E2E Tests', () => {
       // Create -> Update -> Validate -> Get Lineage -> Delete
       
       // This demonstrates the expected flow for E2E testing
+      // TICKET=PREPRO01-T5 EXPIRES=2026-12-31 — placeholder E2E scaffold: real API calls require a live backend (see Phase T.5 / W17 gate-40)
       // In production, these would be actual API calls
       
       expect(true).toBe(true); // Placeholder assertion
@@ -107,6 +109,7 @@ describe('E2E Tests', () => {
       // Get Contract Lineage -> Get Model Lineage -> Get Field Lineage -> Get Full Lineage
       
       // This demonstrates the expected flow for lineage exploration
+      // TICKET=PREPRO01-T5 EXPIRES=2026-12-31 — placeholder E2E scaffold: real API calls require a live backend (see Phase T.5 / W17 gate-40)
       
       expect(true).toBe(true); // Placeholder assertion
     });
@@ -115,6 +118,7 @@ describe('E2E Tests', () => {
       // Get Impact Analysis -> Visualize Lineage -> Export Lineage
       
       // This demonstrates the expected flow for impact analysis
+      // TICKET=PREPRO01-T5 EXPIRES=2026-12-31 — placeholder E2E scaffold: real API calls require a live backend (see Phase T.5 / W17 gate-40)
       
       expect(true).toBe(true); // Placeholder assertion
     });
@@ -125,6 +129,7 @@ describe('E2E Tests', () => {
       // Test error scenarios and recovery
       
       // This demonstrates error handling in E2E scenarios
+      // TICKET=PREPRO01-T5 EXPIRES=2026-12-31 — placeholder E2E scaffold: real API calls require a live backend (see Phase T.5 / W17 gate-40)
       
       expect(true).toBe(true); // Placeholder assertion
     });

@@ -135,7 +135,7 @@ class SemanticLayerE2ETest(E2ETestBase):
                 ]
                 and attempt < max_retries - 1
             ):
-                time.sleep(  # noqa: sleep-needed — polling loop
+                time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     retry_delay
                 )  # Fixed delay for faster execution  # INTENTIONAL: test-specific timing
                 continue
@@ -435,7 +435,7 @@ class SemanticLayerE2ETest(E2ETestBase):
                 ]
                 and attempt < max_retries - 1
             ):
-                time.sleep(  # noqa: sleep-needed — polling loop
+                time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     retry_delay
                 )  # Fixed delay for faster execution  # INTENTIONAL: test-specific timing
                 continue

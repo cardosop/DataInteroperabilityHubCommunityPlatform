@@ -25,7 +25,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
         key = get_api_key()
         if key:
             return key
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 2: Use credentials from environment to login and get JWT token
@@ -47,7 +47,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
             access_token = login_data.get("access_token")
             if access_token:
                 return access_token
-    except Exception:
+    except (requests.RequestException, ValueError, AttributeError):
         pass
 
     return None

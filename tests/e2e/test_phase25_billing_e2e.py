@@ -164,8 +164,12 @@ class Phase25BillingE2ETest(TestCase):
             any(
                 phrase in error_str
                 for phrase in [
-                    "inactive", "past_due", "canceled", "subscription_inactive",
-                    "subscription_required", "no active subscription",
+                    "inactive",
+                    "past_due",
+                    "canceled",
+                    "subscription_inactive",
+                    "subscription_required",
+                    "no active subscription",
                 ]
             ),
             f"Expected billing-related block error, got: {data.get('error', '')}",
@@ -201,8 +205,11 @@ class Phase25BillingE2ETest(TestCase):
             any(
                 phrase in error_str
                 for phrase in [
-                    "suspended", "tenant_disabled", "tenant_inactive",
-                    "account suspended", "tenant_suspended",
+                    "suspended",
+                    "tenant_disabled",
+                    "tenant_inactive",
+                    "account suspended",
+                    "tenant_suspended",
                 ]
             ),
             f"Expected tenant-suspension block error, got: {data.get('error', '')}",

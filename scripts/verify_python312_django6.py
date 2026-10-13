@@ -72,7 +72,7 @@ def check_python_version() -> tuple[bool, str]:
         else:
             print_error("Could not parse Python version")
             return False, "unknown"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print_error(f"Error checking Python version: {e}")
         return False, "error"
 
@@ -175,7 +175,7 @@ def check_django_middleware() -> bool:
                     ):
                         print_warning(f"Found MiddlewareMixin usage in {mw_file}")
                         middlewaremixin_found = True
-                except Exception:
+                except (OSError, UnicodeDecodeError):
                     pass
 
             if not middlewaremixin_found:
@@ -262,7 +262,7 @@ def check_requirements_txt() -> bool:
                 if "django" in line.lower() and not line.strip().startswith("#"):
                     print_info(f"  {line.strip()}")
             return False
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         print_error(f"Error checking requirements.txt: {e}")
         return False
 

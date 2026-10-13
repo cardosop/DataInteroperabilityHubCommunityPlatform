@@ -42,6 +42,15 @@ def _generate_current_schema() -> dict:
 
     factory = RequestFactory()
     request = factory.get("/api/v1/")
+    # drf-spectacular's schema introspection touches request.user and
+    # request.auth (endpoint-level gating) — RequestFactory attaches
+    # neither. Without them generation raises AttributeError and the
+    # contract check fails with "Failed to generate current schema"
+    # (found by P.3a, which reuses this exact pipeline).
+    from django.contrib.auth.models import AnonymousUser
+
+    request.user = AnonymousUser()
+    request.auth = None
     generator = SchemaGenerator(urlconf="hub.urls")
     schema = generator.get_schema(request=request, public=True)
     schema = OpenAPISpecValidator.enhance_spec(schema)
@@ -259,7 +268,7 @@ def run_contract_test(baseline_path: Path) -> tuple[bool, list[str], dict | None
     try:
         with open(resolved_path) as f:
             baseline = json.load(f)
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         return False, [f"Failed to load baseline: {e}"], None
 
     structure_errs = _validate_baseline_structure(baseline)
@@ -312,10 +321,11 @@ def main() -> int:
             with open(baseline_path, "w") as f:
                 json.dump(schema, f, indent=2, sort_keys=False)
             print(f"Updated baseline: {baseline_path}")
-            return 0
         except Exception as e:
             print(f"Error generating or writing baseline: {e}", file=sys.stderr)
             return 1
+        else:
+            return 0
 
     ok, violations, current_schema = run_contract_test(args.baseline)
     if ok:
@@ -327,7 +337,7 @@ def main() -> int:
             with open(args.write_current, "w") as f:
                 json.dump(current_schema, f, indent=2, sort_keys=False)
             print(f"Current schema written to {args.write_current} for debugging.", file=sys.stderr)
-        except Exception as e:
+        except (OSError, TypeError) as e:
             print(f"Could not write current schema: {e}", file=sys.stderr)
     print("Contract test failed: breaking changes detected.", file=sys.stderr)
     for v in violations:

@@ -45,7 +45,12 @@ test.describe('Feature: Dataset Refresh-from-new-file (Phase 260.4.D)', () => {
     }
 
     // noverify: navigation-only — opens the dataset detail page; no mutation.
-    await firstRow.click();
+    // Click the NAME CELL, not the row center: the row's Asset column
+    // holds a <Link to=/assets/<id>> (stopPropagation), and Playwright's
+    // row click lands on the row's center — often inside that link — so
+    // the row's own navigate('/datasets/<id>') never fires and the test
+    // lands on the ASSET detail (b7 re-run #3).
+    await firstRow.locator('td:has(strong)').first().click();
     await waitForAppMainReady(page, { timeout: 60_000 });
     await expect(page.getByTestId('dataset-detail-page')).toBeVisible();
 

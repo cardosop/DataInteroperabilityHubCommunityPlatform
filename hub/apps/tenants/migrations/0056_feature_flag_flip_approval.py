@@ -130,7 +130,7 @@ class Migration(migrations.Migration):
             model_name="featureflagflipapproval",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("status", "PENDING")),
-                fields=("tenant", "flag"),
+                fields=["tenant", "flag"],
                 name="ffa_one_pending_per_tenant_flag",
             ),
         ),

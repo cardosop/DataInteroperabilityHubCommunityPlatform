@@ -71,9 +71,7 @@ except Exception:  # pragma: no cover
     file_scan_bytes_total = _MetricStub()
 
 
-_VALID_OUTCOMES = frozenset(
-    {"clean", "infected", "unavailable", "error", "skipped"}
-)
+_VALID_OUTCOMES = frozenset({"clean", "infected", "unavailable", "error", "skipped"})
 
 
 # ── Recording helpers ──────────────────────────────────────────────────

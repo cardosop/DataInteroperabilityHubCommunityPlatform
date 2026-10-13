@@ -156,8 +156,8 @@ class DeployImpactAnalyzer:
 
     def _check_contract_compatibility(
         self,
-        pipeline_type: str,
-        pipeline_id: str,
+        _pipeline_type: str,
+        _pipeline_id: str,
         contract_id: str | None = None,
     ) -> dict[str, Any]:
         """Check for breaking contract drift against the source contract."""
@@ -191,15 +191,16 @@ class DeployImpactAnalyzer:
                     ),
                 }
 
-            return {
-                "status": "PASS",
-                "drift_report": drift_report,
-            }
         except Exception as exc:
             return {
                 "status": "WARNING",
                 "error": "CONTRACT_CHECK_FAILED",
                 "detail": str(exc),
+            }
+        else:
+            return {
+                "status": "PASS",
+                "drift_report": drift_report,
             }
 
     # ── Check 3: Downstream impact simulation ──────────────────────

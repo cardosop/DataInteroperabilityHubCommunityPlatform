@@ -90,16 +90,11 @@ class ErrorHandlingMiddleware(MiddlewareMixin):
                 http_status = 404
             elif isinstance(exception, DjangoPermissionDenied):
                 http_status = 403
-            elif isinstance(exception, SuspiciousOperation) or isinstance(
-                exception, DjangoValidationError
-            ):
+            elif isinstance(exception, (SuspiciousOperation, DjangoValidationError)):
                 http_status = 400
             else:
                 http_status = 500
-        if http_status < 500:
-            log_level = "warning"
-        else:
-            log_level = "error"
+        log_level = "warning" if http_status < 500 else "error"
 
         # Log error
         self.error_logger.log_error(

@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 from django.test import TestCase
-from django.urls import Resolver404, resolve, reverse
+from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -128,30 +128,21 @@ class DQURLPatternTest(TestCase):
 
     def test_runs_list_reverse_lookup(self):
         """Test reverse lookup for runs list endpoint."""
-        try:
-            # Try to reverse using the standardized basename
-            url = reverse("dq-run-list")
-            self.assertEqual(url, "/api/v1/dq/runs/")
-        except Exception as e:
-            self.fail(f"Reverse lookup failed: {e}")
+        # Try to reverse using the standardized basename
+        url = reverse("dq-run-list")
+        self.assertEqual(url, "/api/v1/dq/runs/")
 
     def test_runs_detail_reverse_lookup(self):
         """Test reverse lookup for runs detail endpoint."""
-        try:
-            # Try to reverse using the standardized basename
-            url = reverse("dq-run-detail", kwargs={"id": self.dq_run.id})
-            self.assertEqual(url, f"/api/v1/dq/runs/{self.dq_run.id}/")
-        except Exception as e:
-            self.fail(f"Reverse lookup failed: {e}")
+        # Try to reverse using the standardized basename
+        url = reverse("dq-run-detail", kwargs={"id": self.dq_run.id})
+        self.assertEqual(url, f"/api/v1/dq/runs/{self.dq_run.id}/")
 
     def test_runs_results_reverse_lookup(self):
         """Test reverse lookup for runs results endpoint."""
-        try:
-            # Try to reverse using the standardized basename
-            url = reverse("dq-run-results", kwargs={"id": self.dq_run.id})
-            self.assertEqual(url, f"/api/v1/dq/runs/{self.dq_run.id}/results/")
-        except Exception as e:
-            self.fail(f"Reverse lookup failed: {e}")
+        # Try to reverse using the standardized basename
+        url = reverse("dq-run-results", kwargs={"id": self.dq_run.id})
+        self.assertEqual(url, f"/api/v1/dq/runs/{self.dq_run.id}/results/")
 
     def test_no_duplicate_router_registration(self):
         """Test that there is no duplicate router registration."""
@@ -180,8 +171,7 @@ class DQURLPatternTest(TestCase):
         self.assertEqual(
             len(registrations),
             1,
-            f"Expected exactly one quality router registration, "
-            f"found {len(registrations)}",
+            f"Expected exactly one quality router registration, found {len(registrations)}",
         )
         prefix, _viewset, basename = registrations[0]
         self.assertEqual(prefix, "quality")
@@ -200,15 +190,13 @@ class DQURLPatternTest(TestCase):
             self.assertEqual(
                 dq_count,
                 1,
-                f"URL {generated_url} should contain 'dq' exactly once, "
-                f"found {dq_count} times",
+                f"URL {generated_url} should contain 'dq' exactly once, found {dq_count} times",
             )
             # Registered prefix should appear in the generated URL
             self.assertIn(
                 prefix,
                 parts,
-                f"Registered prefix '{prefix}' should appear in "
-                f"generated URL {generated_url}",
+                f"Registered prefix '{prefix}' should appear in generated URL {generated_url}",
             )
 
     def test_runs_list_endpoint_accessible(self):

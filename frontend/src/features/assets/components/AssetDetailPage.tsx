@@ -16,6 +16,12 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { InfoHint } from '../../../shared/components/InfoHint';
 import type { File } from '../../../shared/types/files';
 import { useComplianceRuns, useCreateComplianceRun } from '../../compliance/hooks/useCompliance';
+// Phase 231.3 (REQ-COMP-DISCO-001) — discovery badge fed by the asset
+// detail API's ``latest_compliance_run``. Wrapped in ErrorBoundary so a
+// contract-breaking payload fails closed instead of blanking the page
+// (231.3.AUDIT.2).
+import { ComplianceBadge } from '../../compliance/components/ComplianceBadge';
+import { ErrorBoundary } from '../../../shared/components/ErrorBoundary';
 import { useContracts } from '../../contracts/hooks/useContracts';
 import { useCreateDataset, useDatasets } from '../../datasets/hooks/useDatasets';
 import { useCreateDQRun, useDQRuns } from '../../dq/hooks/useDQ';
@@ -43,7 +49,8 @@ import { OnboardingChecklist } from './OnboardingChecklist';
 // not yet discoverable" with a retry CTA.
 import { SemanticDegradedBanner } from './SemanticDegradedBanner';
 import { CanonicalIriCard } from '../../semantic/components/CanonicalIriCard';
-import { ActivationBlockerDialog, extractBlockersFromError } from './ActivationBlockerDialog';
+import { ActivationBlockerDialog, } from './ActivationBlockerDialog';
+import { extractBlockersFromError } from './extractBlockersFromError';
 import './AssetDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -486,6 +493,22 @@ export function AssetDetailPage() {
 
           {/* Inline Compliance Result Summary */}
           <div className="asset-inline-summary" data-testid="asset-compliance-summary">
+            {/* Phase 231.3 (REQ-COMP-DISCO-001) — discovery badge on the
+                resource detail surface, fed by ``latest_compliance_run``
+                from the asset detail API (not the runs list: the detail
+                field is the authoritative succeeded-run signal, AUDIT.5).
+                Malformed ``regulation_summaries`` throw inside the badge
+                subtree and this boundary fails closed with the canonical
+                fallback (231.3.AUDIT.2). */}
+            <ErrorBoundary
+              fallback={
+                <div data-testid="compliance-fallback">
+                  Compliance status unavailable
+                </div>
+              }
+            >
+              <ComplianceBadge summary={asset?.latest_compliance_run ?? null} />
+            </ErrorBoundary>
             <div className="inline-summary-header">
               <h3>Latest Compliance Result</h3>
               {latestComplianceRun && (

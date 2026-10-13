@@ -436,9 +436,7 @@ class QueryExecutionJobQueueIntegrationTest(TestCase):
         """
         from hub.apps.core.services.base import NotFoundError
 
-        service = VirtualizationService(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         nonexistent_id = str(uuid.uuid4())
 
         with self.assertRaises(NotFoundError):

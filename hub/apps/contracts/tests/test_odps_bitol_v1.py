@@ -10,6 +10,8 @@ Covers:
 
 from unittest import TestCase
 
+import pytest
+
 from hub.apps.contracts.business_rules import (
     SUPPORTED_ODCS_VERSIONS,
     SUPPORTED_ODPS_VERSIONS,
@@ -90,6 +92,7 @@ def _pre_bitol_v41_contract():
 # ======================================================================
 
 
+@pytest.mark.journey("JOURNEY-ODPS-BITOL-LIFECYCLE")
 class BitolVersionDetectionTest(TestCase):
     """Test _detect_bitol_odps_version and detect_odps_version."""
 

@@ -63,7 +63,10 @@ class TestScanWarehouseEndpoint:
 
     @pytest.mark.integration
     def test_400_for_missing_warehouse_config(self):
-        run = self._create_run(warehouse_config=None)
+        # Phase T.2 — the model contract is default=dict on a NOT NULL
+        # column; "missing" is an EMPTY dict, and the view's falsy check
+        # still rejects it (the None form was a pre-NOT-NULL-era fixture).
+        run = self._create_run(warehouse_config={})
         resp = self.client.post(f"/api/v1/compliance/runs/{run.id}/scan-warehouse/")
         assert resp.status_code == 400
 

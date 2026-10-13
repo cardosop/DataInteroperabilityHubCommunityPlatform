@@ -59,12 +59,8 @@ def record_normalization_coverage(
 
     # Calculate coverage for each object type
     for obj_type in object_types:
-        if obj_type in hub_contract:
-            # Object is present
-            coverage = 1.0
-        else:
-            # Object is missing
-            coverage = 0.0
+        # Object is present (1.0) or missing (0.0)
+        coverage = 1.0 if obj_type in hub_contract else 0.0
 
         # Record metric
         labels = {"object_type": obj_type}

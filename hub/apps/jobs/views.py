@@ -5,7 +5,7 @@ REST API views for job management.
 """
 
 import structlog
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -38,10 +38,10 @@ class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter, SearchFilter]
-    search_fields = ["type", "status", "resource_type"]
-    ordering_fields = ["created_at", "started_at", "completed_at"]
-    ordering = ["-created_at"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    search_fields = ("type", "status", "resource_type")
+    ordering_fields = ("created_at", "started_at", "completed_at")
+    ordering = "-created_at"
 
     def get_queryset(self):
         """Filter queryset based on user permissions (Phase 16: central helper)."""
@@ -193,7 +193,7 @@ class JobViewSet(viewsets.ModelViewSet):
                             "completed_at",
                         ]
                     )
-            except Exception as e:
+            except DatabaseError as e:
                 import logging
 
                 logger = logging.getLogger(__name__)
@@ -211,7 +211,7 @@ class JobViewSet(viewsets.ModelViewSet):
                 execution = QueryExecution.objects.filter(job=job).first()
                 if execution:
                     execution.sync_status_from_job()
-            except Exception as e:
+            except DatabaseError as e:
                 # Log but don't fail job cancellation if execution sync fails
                 import logging
 
@@ -235,7 +235,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
         return Response(JobSerializer(job).data, status=status.HTTP_200_OK)
 
-    def list(self, request, *args, **kwargs):
+    def list(self, request, *_args, **_kwargs):
         """List jobs with filtering (tenant-scoped)"""
         queryset = self.get_queryset()
 
@@ -275,10 +275,10 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FailedJobDLQSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter, SearchFilter]
-    search_fields = ["queue", "func_name", "error_message"]
-    ordering_fields = ["created_at", "resolved_at"]
-    ordering = ["-created_at"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    search_fields = ("queue", "func_name", "error_message")
+    ordering_fields = ("created_at", "resolved_at")
+    ordering = "-created_at"
 
     def get_queryset(self):
         """Tenant-scoped; platform admins see all."""
@@ -306,7 +306,7 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
     @action(detail=True, methods=["post"])
-    def retry(self, request, id=None):
+    def retry(self, _request, id=None):
         """
         Re-enqueue a DLQ entry as a new PENDING job.
 

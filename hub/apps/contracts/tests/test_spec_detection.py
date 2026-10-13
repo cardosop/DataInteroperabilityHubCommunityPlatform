@@ -2,8 +2,6 @@
 Unit Tests for Spec Detection and Metadata Tracking
 """
 
-import pytest
-
 from hub.apps.contracts.models import OriginalSpecType
 from hub.apps.contracts.spec_detection import (
     detect_odps_version,
@@ -269,12 +267,12 @@ class TestDetectSpecType:
 
         for contract, expected_type, expected_version in test_cases:
             spec_type, spec_version = detect_spec_type(contract)
-            assert (
-                spec_type == expected_type
-            ), f"Contract {contract} should be detected as {expected_type}, got {spec_type}"
-            assert (
-                spec_version == expected_version
-            ), f"Contract {contract} should have version {expected_version}, got {spec_version}"
+            assert spec_type == expected_type, (
+                f"Contract {contract} should be detected as {expected_type}, got {spec_type}"
+            )
+            assert spec_version == expected_version, (
+                f"Contract {contract} should have version {expected_version}, got {spec_version}"
+            )
 
     def test_integration_odps_spec_detection_complete_flow(self):
         """Test: Integration test for ODPS spec detection - complete flow"""
@@ -328,34 +326,34 @@ class TestDetectSpecType:
             contract = test_case["contract"]
 
             # Test is_odps_contract()
-            assert (
-                is_odps_contract(contract) is True
-            ), f"Contract '{test_case['name']}' should be detected as ODPS"
+            assert is_odps_contract(contract) is True, (
+                f"Contract '{test_case['name']}' should be detected as ODPS"
+            )
 
             # Test detect_odps_version()
             detected_version = detect_odps_version(contract)
             if "version" in contract or "schema" in contract:
-                assert (
-                    detected_version is not None
-                ), f"Version should be detected for '{test_case['name']}'"
+                assert detected_version is not None, (
+                    f"Version should be detected for '{test_case['name']}'"
+                )
 
             # Test detect_spec_type()
             spec_type, spec_version = detect_spec_type(contract)
-            assert (
-                spec_type == test_case["expected_type"]
-            ), f"Spec type should be {test_case['expected_type']} for '{test_case['name']}'"
-            assert (
-                spec_version == test_case["expected_version"]
-            ), f"Spec version should be {test_case['expected_version']} for '{test_case['name']}'"
+            assert spec_type == test_case["expected_type"], (
+                f"Spec type should be {test_case['expected_type']} for '{test_case['name']}'"
+            )
+            assert spec_version == test_case["expected_version"], (
+                f"Spec version should be {test_case['expected_version']} for '{test_case['name']}'"
+            )
 
             # Test extract_original_spec_metadata()
             metadata = extract_original_spec_metadata(contract)
-            assert (
-                metadata["type"] == test_case["expected_type"]
-            ), f"Metadata type should be {test_case['expected_type']}"
-            assert (
-                metadata["version"] == test_case["expected_version"]
-            ), f"Metadata version should be {test_case['expected_version']}"
+            assert metadata["type"] == test_case["expected_type"], (
+                f"Metadata type should be {test_case['expected_type']}"
+            )
+            assert metadata["version"] == test_case["expected_version"], (
+                f"Metadata version should be {test_case['expected_version']}"
+            )
 
     def test_integration_odps_vs_odcs_detection_priority(self):
         """Test: Integration test - ODPS detection takes priority over ODCS"""
@@ -463,7 +461,7 @@ class TestStoreOriginalSpecMetadata:
     def test_detect_spec_type_with_invalid_api_version_format(self):
         """Test spec type detection with invalid apiVersion format."""
         contract = {"apiVersion": "invalid-format", "kind": "DataContract"}
-        spec_type, spec_version = detect_spec_type(contract)
+        spec_type, _spec_version = detect_spec_type(contract)
         # Should handle gracefully - may fallback to ODCS or detect as ODCS
         assert spec_type == OriginalSpecType.ODCS
 
@@ -537,7 +535,9 @@ class TestStoreOriginalSpecMetadata:
 
     def test_store_original_spec_metadata_with_none_hub_contract(self):
         """None hub_contract is replaced with {} and populated."""
-        result = store_original_spec_metadata(None, {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"})
+        result = store_original_spec_metadata(
+            None, {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}
+        )
         assert isinstance(result, dict)
         assert "original_spec" in result
 
@@ -576,9 +576,9 @@ class TestStoreOriginalSpecMetadata:
         """Test spec type detection with very long field values."""
         long_value = "A" * 10000
         contract = {"apiVersion": f"odcs.io/{long_value}", "kind": "DataContract"}
-        spec_type, spec_version = detect_spec_type(contract)
+        spec_type, _spec_version = detect_spec_type(contract)
         # Should handle long values gracefully
-        assert spec_type == OriginalSpecType.ODCS or spec_type == OriginalSpecType.ODPS
+        assert spec_type in (OriginalSpecType.ODCS, OriginalSpecType.ODPS)
 
     def test_is_odps_contract_with_case_insensitive_schema_url(self):
         """Test is_odps_contract() with case variations in schema URL."""
@@ -619,6 +619,6 @@ class TestStoreOriginalSpecMetadata:
             "metadata": {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"},
             "data": {"nested": {"deep": {"schema": "https://opendataproducts.org/schema/v4.1"}}},
         }
-        spec_type, spec_version = detect_spec_type(contract)
+        spec_type, _spec_version = detect_spec_type(contract)
         # Should detect from top-level fields, not nested
-        assert spec_type == OriginalSpecType.ODCS or spec_type == OriginalSpecType.ODPS
+        assert spec_type in (OriginalSpecType.ODCS, OriginalSpecType.ODPS)

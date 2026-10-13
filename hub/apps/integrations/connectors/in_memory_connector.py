@@ -49,7 +49,7 @@ class InMemoryMarketplaceConnector(DataMarketplaceConnector):
     return minimal/empty results. No network or external I/O.
     """
 
-    def __init__(self, config: dict[str, Any] | None = None, **kwargs):
+    def __init__(self, config: dict[str, Any] | None = None, **_kwargs):
         """
         Initialize with optional config.
 
@@ -74,7 +74,7 @@ class InMemoryMarketplaceConnector(DataMarketplaceConnector):
     def supported_sync_directions(self) -> list[SyncDirection]:
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: dict[str, Any]) -> bool:
+    def authenticate(self, _credentials: dict[str, Any]) -> bool:
         return True
 
     def test_connection(self) -> bool:
@@ -89,19 +89,19 @@ class InMemoryMarketplaceConnector(DataMarketplaceConnector):
         return []
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
-        raise NotFoundError("Listing not found: %s" % listing_id)
+        raise NotFoundError(f"Listing not found: {listing_id}")
 
-    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
+    def list_resources(self, _listing_id: str) -> list[MarketplaceResource]:
         return []
 
     def create_listing(self, listing: MarketplaceListing) -> MarketplaceListing:
         return listing
 
-    def update_listing(self, listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
+    def update_listing(self, _listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
         return listing
 
     def publish_resource(
-        self, listing_id: str, resource: MarketplaceResource
+        self, _listing_id: str, resource: MarketplaceResource
     ) -> MarketplaceResource:
         return resource
 
@@ -114,7 +114,7 @@ class InMemoryMarketplaceConnector(DataMarketplaceConnector):
         """
         if resource_id not in self._resources:
             avail = list(self._resources.keys())
-            raise NotFoundError("Resource not found: %s. Available: %s" % (resource_id, avail))
+            raise NotFoundError(f"Resource not found: {resource_id}. Available: {avail}")
         content = self._resources[resource_id]
         dir_path = os.path.dirname(destination_path)
         if dir_path:
@@ -126,7 +126,7 @@ class InMemoryMarketplaceConnector(DataMarketplaceConnector):
     def map_to_hub_asset(
         self,
         listing: MarketplaceListing,
-        sync_job_id: str | None = None,
+        _sync_job_id: str | None = None,
     ) -> MarketplaceAssetMapping:
         title = listing.title or "in-memory"
         return MarketplaceAssetMapping(

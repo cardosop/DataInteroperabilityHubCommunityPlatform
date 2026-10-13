@@ -7,6 +7,7 @@ Tests integrations with:
 - Semantic service
 """
 
+import contextlib
 import uuid
 from datetime import timedelta
 
@@ -299,6 +300,7 @@ class VirtualizationComplianceIntegrationTest(IntegrationRegressionTest):
 
     def test_compliance_check_before_query_execution(self):
         """Test compliance check runs before query execution"""
+        from hub.apps.core.services.base import ValidationError
         from hub.apps.virtualization.models import QueryExecution, QueryExecutionStatus
 
         # Create query execution
@@ -310,14 +312,12 @@ class VirtualizationComplianceIntegrationTest(IntegrationRegressionTest):
         )
 
         # Run compliance check
-        try:
+        # May fail if compliance service unavailable or asset has no dataset
+        # This is acceptable for integration test
+        with contextlib.suppress(ValidationError):
             self.service._run_compliance_check_before_query(
                 self.virtual_dataset, execution, str(self.tenant.id)
             )
-        except ValidationError:
-            # May fail if compliance service unavailable or asset has no dataset
-            # This is acceptable for integration test
-            pass
 
         # Verify execution log was updated
         execution.refresh_from_db()
@@ -326,6 +326,7 @@ class VirtualizationComplianceIntegrationTest(IntegrationRegressionTest):
     def test_compliance_check_blocks_violations(self):
         """Test compliance check blocks query execution on violations"""
         from hub.apps.compliance.service_client import ComplianceServiceClient
+        from hub.apps.core.services.base import ValidationError
         from hub.apps.virtualization.models import QueryExecution, QueryExecutionStatus
 
         # Check if compliance service is available
@@ -406,7 +407,7 @@ class VirtualizationComplianceIntegrationTest(IntegrationRegressionTest):
         )
 
         # Should raise ValidationError for cross-tenant access without entitlement
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ValidationError) as cm:
             self.service._run_compliance_check_before_query(
                 cross_tenant_dataset, execution, str(self.tenant.id)
             )
@@ -478,11 +479,10 @@ class VirtualizationAuditLoggingIntegrationTest(IntegrationRegressionTest):
         ).count()
 
         # Execute query (will fail at execution but audit logging should run)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # expected-failure guard: execution may fail but the audit event is what is asserted
             self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution may fail for various reasons
-            pass
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
@@ -525,11 +525,10 @@ class VirtualizationAuditLoggingIntegrationTest(IntegrationRegressionTest):
         ).count()
 
         # Execute query (will fail due to no actual database)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # expected-failure guard: execution should fail, triggering the audit event under test
             self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution should fail, triggering failure audit logging
-            pass
 
         # Verify failure audit event was created
         failure_events = AuditEvent.objects.filter(

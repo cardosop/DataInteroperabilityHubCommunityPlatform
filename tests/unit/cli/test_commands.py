@@ -67,7 +67,7 @@ class TestAssetsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_assets_get_help(self, runner):
         """Test assets get command help"""
@@ -83,7 +83,7 @@ class TestAssetsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_assets_create_help(self, runner):
         """Test assets create command help"""
@@ -118,7 +118,7 @@ class TestAssetsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_assets_update_help(self, runner):
         """Test assets update command help"""
@@ -147,7 +147,7 @@ class TestAssetsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_assets_delete_help(self, runner):
         """Test assets delete command help"""
@@ -162,7 +162,7 @@ class TestAssetsCommands:
         )  # Don't confirm
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_assets_activate_help(self, runner):
         """Test assets activate command help"""
@@ -175,7 +175,7 @@ class TestAssetsCommands:
         result = runner.invoke(assets.assets, ["activate", "test-asset-id", "--format", "json"])
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_assets_list_output_format_table(self, runner):
         """Test assets list table output format"""
@@ -230,7 +230,7 @@ class TestContractsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_contracts_get_help(self, runner):
         """Test contracts get command help"""
@@ -243,7 +243,7 @@ class TestContractsCommands:
         result = runner.invoke(contracts.contracts, ["get", "test-contract-id", "--format", "json"])
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_contracts_create_help(self, runner):
         """Test contracts create command help"""
@@ -315,7 +315,7 @@ schema:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_contracts_lint_help(self, runner):
         """Test contracts lint command help"""
@@ -330,7 +330,7 @@ schema:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
 
 class TestFilesCommands:
@@ -355,7 +355,7 @@ class TestFilesCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_files_upload_help(self, runner):
         """Test files upload command help"""
@@ -397,7 +397,7 @@ class TestFilesCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_files_delete_help(self, runner):
         """Test files delete command help"""
@@ -412,7 +412,7 @@ class TestFilesCommands:
         )  # Don't confirm
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
 
 class TestJobsCommands:
@@ -449,7 +449,7 @@ class TestJobsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_jobs_get_help(self, runner):
         """Test jobs get command help"""
@@ -462,7 +462,7 @@ class TestJobsCommands:
         result = runner.invoke(jobs.jobs, ["get", "test-job-id", "--format", "json"])
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_jobs_cancel_help(self, runner):
         """Test jobs cancel command help"""
@@ -475,7 +475,7 @@ class TestJobsCommands:
         result = runner.invoke(jobs.jobs, ["cancel", "test-job-id", "--format", "json"])
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_jobs_watch_help(self, runner):
         """Test jobs watch command help"""
@@ -491,7 +491,7 @@ class TestJobsCommands:
         )
         # May fail without auth (exit 1), but must NOT be a Click usage
         # error (exit 2), which would mean broken option parsing.
-        assert result.exit_code != 2, "Command parsing failed (exit 2)" 
+        assert result.exit_code != 2, "Command parsing failed (exit 2)"
 
     def test_jobs_list_output_format_table(self, runner):
         """Test jobs list table output format"""

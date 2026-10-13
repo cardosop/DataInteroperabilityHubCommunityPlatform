@@ -356,7 +356,7 @@ return make_validation_result(
 1. **Chain execution fails with RuntimeError** — Ensure an active `transaction.atomic()` context exists. Chains require database transaction context.
 2. **Cache returns stale results** — Verify cache invalidation signals are properly connected. Check `business_rules:validation` prefix keys.
 3. **Metrics not appearing** — Confirm Prometheus client is initialized and the metrics registry is properly configured.
-4. **Rule validation blocks unexpectedly** — Check `Tenant.business_rules_chain_<name>_enabled` flag — chains may be gated per-tenant.
+4. **Rule validation blocks unexpectedly** — Chains are registered and enabled GLOBALLY via `@register_chain` (there is no per-tenant chain switch); check the chain's step order and each step's rule logic, not a tenant flag.
 5. **Import errors for rule classes** — Verify the rule class is registered in `BusinessRulesRegistry` and the module is importable.
 6. **Audit events missing** — Confirm `audit_retention_category='business_rules'` is set and the audit backend is available.
 

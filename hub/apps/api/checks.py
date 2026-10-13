@@ -17,7 +17,7 @@ from django.core.checks import Error, Tags, register
 
 
 @register(Tags.security, deploy=True)
-def check_mvp_mode_on_staging(app_configs: Any, **kwargs: Any) -> list[Error]:
+def check_mvp_mode_on_staging(app_configs: Any, **_kwargs: Any) -> list[Error]:
     """hub.E001 — staging must run with MVP_MODE=True.
 
     Without MVP_MODE=True on staging, every non-MVP API prefix (mesh/,
@@ -46,7 +46,7 @@ def check_mvp_mode_on_staging(app_configs: Any, **kwargs: Any) -> list[Error]:
 
 
 @register(Tags.security, deploy=True)
-def check_e2e_secret_when_endpoints_mounted(app_configs: Any, **kwargs: Any) -> list[Error]:
+def check_e2e_secret_when_endpoints_mounted(app_configs: Any, **_kwargs: Any) -> list[Error]:
     """hub.E002 — E2E_TEST_SECRET must be set where ensure_e2e_* endpoints exist.
 
     The ``@require_e2e_token`` decorator returns 404 when the secret is

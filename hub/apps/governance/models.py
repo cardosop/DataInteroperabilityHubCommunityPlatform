@@ -75,7 +75,9 @@ class DataClassification(models.Model):
         help_text="Field name for field-level classification (nullable)",
     )
     category = models.CharField(
-        max_length=50, choices=ClassificationCategory.choices, help_text="Classification category"
+        max_length=50,
+        choices=ClassificationCategory.choices,
+        help_text="Classification category",
     )
     status = models.CharField(
         max_length=20,
@@ -84,10 +86,15 @@ class DataClassification(models.Model):
         help_text="Classification status",
     )
     confidence_score = models.FloatField(
-        null=True, blank=True, help_text="Confidence score (0.0-1.0) for automatic classification"
+        null=True,
+        blank=True,
+        help_text="Confidence score (0.0-1.0) for automatic classification",
     )
     classification_rules = models.JSONField(
-        default=list, null=True, blank=True, help_text="Rules that matched for this classification"
+        default=list,
+        null=True,
+        blank=True,
+        help_text="Rules that matched for this classification",
     )
     detected_patterns = models.JSONField(
         default=list,
@@ -191,7 +198,9 @@ class RetentionPolicy(models.Model):
         help_text="Tenant this retention policy belongs to",
     )
     name = models.CharField(max_length=255, help_text="Policy name")
-    description = models.TextField(null=True, blank=True, help_text="Policy description")
+    description = models.TextField(
+        null=True, blank=True, help_text="Policy description"
+    )
     # Polymorphic resource reference
     asset = models.ForeignKey(
         "assets.Asset",
@@ -224,7 +233,9 @@ class RetentionPolicy(models.Model):
     )
     # Time-based retention
     retention_period_days = models.IntegerField(
-        null=True, blank=True, help_text="Retention period in days (for time-based policies)"
+        null=True,
+        blank=True,
+        help_text="Retention period in days (for time-based policies)",
     )
     # Event-based retention
     event_trigger = models.CharField(
@@ -240,14 +251,19 @@ class RetentionPolicy(models.Model):
         help_text="Action to take when retention period expires",
     )
     grace_period_days = models.IntegerField(
-        default=30, help_text="Grace period in days before hard delete (for soft delete)"
+        default=30,
+        help_text="Grace period in days before hard delete (for soft delete)",
     )
     legal_hold = models.BooleanField(
         default=False, help_text="Whether data is under legal hold (prevents deletion)"
     )
-    legal_hold_reason = models.TextField(null=True, blank=True, help_text="Reason for legal hold")
+    legal_hold_reason = models.TextField(
+        null=True, blank=True, help_text="Reason for legal hold"
+    )
     legal_hold_expires_at = models.DateTimeField(
-        null=True, blank=True, help_text="When legal hold expires (nullable for indefinite hold)"
+        null=True,
+        blank=True,
+        help_text="When legal hold expires (nullable for indefinite hold)",
     )
     regulation_keys = models.JSONField(
         default=list,
@@ -322,7 +338,9 @@ class RetentionPolicy(models.Model):
                 )
         elif self.policy_type == RetentionPolicyType.EVENT_BASED.value:
             if not self.event_trigger:
-                raise ValidationError("event_trigger is required for event-based policies")
+                raise ValidationError(
+                    "event_trigger is required for event-based policies"
+                )
 
     def save(self, *args, **kwargs):
         """Override save to validate before saving"""
@@ -388,7 +406,8 @@ class AccessRequest(models.Model):
     )
     reason = models.TextField(help_text="Reason for access request")
     requested_access_type = models.CharField(
-        max_length=50, help_text="Type of access requested (e.g., 'READ', 'WRITE', 'DOWNLOAD')"
+        max_length=50,
+        help_text="Type of access requested (e.g., 'READ', 'WRITE', 'DOWNLOAD')",
     )
     status = models.CharField(
         max_length=30,
@@ -406,9 +425,20 @@ class AccessRequest(models.Model):
         blank=True,
         help_text="Approval workflow steps (for multi-step approval)",
     )
-    current_approval_step = models.IntegerField(default=0, help_text="Current approval step index")
+    current_approval_step = models.IntegerField(
+        default=0, help_text="Current approval step index"
+    )
     approvers = models.JSONField(
         default=list, null=True, blank=True, help_text="List of approver user IDs"
+    )
+    # W2.4 (R2-D5) — per-step clearance ledger:
+    # [{"step": <index>, "cleared_by": "<user_id>", "cleared_at": "<iso>"}]
+    # appended on every step advance. Feeds the segregation-of-duties rule
+    # (same approver cannot clear two consecutive steps) and the audit trail.
+    approval_step_records = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Per-step clearance records (who cleared which step)",
     )
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -418,8 +448,12 @@ class AccessRequest(models.Model):
         blank=True,
         help_text="User who approved this request",
     )
-    approved_at = models.DateTimeField(null=True, blank=True, help_text="When request was approved")
-    rejection_reason = models.TextField(null=True, blank=True, help_text="Reason for rejection")
+    approved_at = models.DateTimeField(
+        null=True, blank=True, help_text="When request was approved"
+    )
+    rejection_reason = models.TextField(
+        null=True, blank=True, help_text="Reason for rejection"
+    )
     revocation_reason = models.TextField(
         null=True,
         blank=True,
@@ -433,33 +467,25 @@ class AccessRequest(models.Model):
         blank=True,
         help_text="User who rejected this request",
     )
-    rejected_at = models.DateTimeField(null=True, blank=True, help_text="When request was rejected")
+    rejected_at = models.DateTimeField(
+        null=True, blank=True, help_text="When request was rejected"
+    )
     expires_at = models.DateTimeField(
-        null=True, blank=True, help_text="When access expires (nullable for permanent access)"
+        null=True,
+        blank=True,
+        help_text="When access expires (nullable for permanent access)",
     )
     access_granted_at = models.DateTimeField(
         null=True, blank=True, help_text="When access was granted"
     )
-    # Phase 313.1 — paid-layer FK: declared only when the marketplace app is
-    # installed. In core-only mode the attribute is absent and cascade code
-    # guards with getattr (core has no marketplace order to cascade to).
-    if not settings.HUB_CORE_ONLY:
-        order = models.ForeignKey(
-            "marketplace.Order",
-            on_delete=models.SET_NULL,
-            related_name="governance_access_requests",
-            null=True,
-            blank=True,
-            help_text="Marketplace order that triggered this access request",
-        )
+    # Phase 313 paid-ward FK: the order link now lives on the PAID side
+    # (marketplace.Order.access_request); core has no FK in either mode.
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "access_requests"
         ordering = ["-created_at"]
-        # Phase 313.1 — the "order" index exists only with the conditional
-        # marketplace FK (see field declaration above).
         indexes = [
             models.Index(fields=["tenant", "requested_by"]),
             models.Index(fields=["tenant", "asset"]),
@@ -467,7 +493,7 @@ class AccessRequest(models.Model):
             models.Index(fields=["tenant", "file"]),
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["expires_at"]),
-        ] + ([models.Index(fields=["order"])] if not settings.HUB_CORE_ONLY else [])
+        ]
 
     def __str__(self):
         resource = self.asset or self.dataset or self.file
@@ -565,6 +591,16 @@ class ApprovalDelegation(models.Model):
         blank=True,
         help_text="Reason for delegation",
     )
+    # W2.4 (A-4) — per-delegation usage recording: incremented atomically
+    # (F()) every time the delegate's authority is actually used to clear
+    # an approval step.
+    usage_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of times this delegation was used to authorize an approval",
+    )
+    last_used_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the delegation was last used"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -587,21 +623,18 @@ class ApprovalDelegation(models.Model):
         # Detect overlapping active delegations for the same
         # delegator-delegate pair.  Two windows overlap when
         # A.start < B.end AND A.end > B.start.
-        overlapping = (
-            ApprovalDelegation.objects.filter(
-                tenant=self.tenant,
-                delegator=self.delegator,
-                delegate=self.delegate,
-                start_at__lt=self.end_at,
-                end_at__gt=self.start_at,
-            )
+        overlapping = ApprovalDelegation.objects.filter(
+            tenant=self.tenant,
+            delegator=self.delegator,
+            delegate=self.delegate,
+            start_at__lt=self.end_at,
+            end_at__gt=self.start_at,
         )
         if self.pk is not None:
             overlapping = overlapping.exclude(pk=self.pk)
         if overlapping.exists():
             raise ValidationError(
-                "An overlapping active delegation already exists for "
-                "this delegator-delegate pair.",
+                "An overlapping active delegation already exists for this delegator-delegate pair.",
                 code="DUPLICATE_DELEGATION",
             )
 
@@ -631,13 +664,17 @@ class ComplianceReport(models.Model):
         max_length=20, help_text="Regulation: GDPR, HIPAA, SOX, LGPD, CCPA"
     )
     report_type = models.CharField(
-        max_length=50, default="STANDARD", help_text="Report type: STANDARD, SUMMARY, DETAILED"
+        max_length=50,
+        default="STANDARD",
+        help_text="Report type: STANDARD, SUMMARY, DETAILED",
     )
     report_data = models.JSONField(help_text="Report data (JSON structure)")
     start_date = models.DateTimeField(help_text="Start date for report period")
     end_date = models.DateTimeField(help_text="End date for report period")
     # Scheduling
-    scheduled = models.BooleanField(default=False, help_text="Whether report is scheduled")
+    scheduled = models.BooleanField(
+        default=False, help_text="Whether report is scheduled"
+    )
     schedule_frequency = models.CharField(
         max_length=20,
         null=True,
@@ -646,9 +683,14 @@ class ComplianceReport(models.Model):
     )
     # Email delivery
     email_recipients = models.JSONField(
-        default=list, null=True, blank=True, help_text="List of email addresses to send report to"
+        default=list,
+        null=True,
+        blank=True,
+        help_text="List of email addresses to send report to",
     )
-    email_sent = models.BooleanField(default=False, help_text="Whether report was sent via email")
+    email_sent = models.BooleanField(
+        default=False, help_text="Whether report was sent via email"
+    )
     email_sent_at = models.DateTimeField(
         null=True, blank=True, help_text="When report was sent via email"
     )
@@ -690,7 +732,9 @@ class AccessPolicy(models.Model):
         help_text="Tenant this policy belongs to",
     )
     name = models.CharField(max_length=255, help_text="Policy name")
-    description = models.TextField(null=True, blank=True, help_text="Policy description")
+    description = models.TextField(
+        null=True, blank=True, help_text="Policy description"
+    )
     # Policy conditions (JSON structure)
     conditions = models.JSONField(
         default=dict,
@@ -785,7 +829,9 @@ class FieldAccessPolicy(models.Model):
         related_name="field_access_policies",
         help_text="Dataset this field policy applies to",
     )
-    field_name = models.CharField(max_length=255, help_text="Field name this policy applies to")
+    field_name = models.CharField(
+        max_length=255, help_text="Field name this policy applies to"
+    )
     # Access control
     access_type = models.CharField(
         max_length=20,
@@ -805,7 +851,9 @@ class FieldAccessPolicy(models.Model):
         blank=True,
         help_text="Masking configuration (e.g., partial mask characters, hash algorithm)",
     )
-    enabled = models.BooleanField(default=True, help_text="Whether field policy is enabled")
+    enabled = models.BooleanField(
+        default=True, help_text="Whether field policy is enabled"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

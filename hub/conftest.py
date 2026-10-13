@@ -75,10 +75,8 @@ if _repo_root.exists() and str(_repo_root) not in sys.path:
 # When testpaths collect only from hub/apps, tests/conftest.py is never loaded, so create_test_db
 # and setup_databases patches (run_syncdb=False, keepdb for TEST_DB_SUFFIX) are not applied.
 # Without these patches, create_test_db runs sync_apps and hits UniqueViolation on pg_type.
-try:
-    import tests.conftest  # noqa: F401
-except ImportError:
-    pass  # tests package not on path (e.g. minimal env)
+with contextlib.suppress(ImportError):
+    import tests.conftest  # tests package not on path (e.g. minimal env)  # side-effect import: applies create_test_db/setup_databases patches
 
 # Defaults for DB connectivity check (used only when env not set). Read at runtime in pytest_sessionstart.
 _DB_CHECK_RETRIES_DEFAULT = "72"
@@ -95,7 +93,7 @@ def _get_db_check_interval():
     return float(os.environ.get("DB_CONNECTIVITY_CHECK_INTERVAL", _DB_CHECK_INTERVAL_DEFAULT))
 
 
-def pytest_sessionstart(session):
+def pytest_sessionstart(session):  # pytest hook — pluggy keyword-dispatches by hookspec name
     """Verify DB is reachable at session start so batch fails fast if PostgreSQL is down.
 
     Uses a direct psycopg2 connection to the 'postgres' database (always exists)
@@ -115,7 +113,8 @@ def pytest_sessionstart(session):
     sys.stderr.flush()
     db_check_retries = _get_db_check_retries()
     db_check_interval = _get_db_check_interval()
-    try:
+
+    def _check_session_db():
         import django
 
         django.setup()
@@ -146,7 +145,6 @@ def pytest_sessionstart(session):
                 conn.close()
                 sys.stderr.write("OK\n")
                 sys.stderr.flush()
-                return
             except Exception as e:
                 last_error = e
                 err = str(e).lower()
@@ -163,14 +161,14 @@ def pytest_sessionstart(session):
                     or "name or service not known" in err
                 ):
                     if attempt < db_check_retries:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             db_check_interval
                         )  # INTENTIONAL: wait for database/service startup
                         continue
                     raise RuntimeError(
-                        "PostgreSQL still not ready after %s attempts (e.g. starting up or "
+                        f"PostgreSQL still not ready after {db_check_retries} attempts (e.g. starting up or "
                         "recovery). Ensure the database is running and stable. "
-                        "Set SKIP_DB_CONNECTIVITY_CHECK=1 to skip." % db_check_retries
+                        "Set SKIP_DB_CONNECTIVITY_CHECK=1 to skip."
                     ) from e
                 # Non-transient or final attempt: decide whether to raise
                 if "shutting down" in err or "closed" in err:
@@ -185,13 +183,14 @@ def pytest_sessionstart(session):
                     if attempt >= db_check_retries:
                         raise RuntimeError(
                             "PostgreSQL is not reachable at test session start after "
-                            "%s attempts. Set SKIP_DB_CONNECTIVITY_CHECK=1 to skip."
-                            % db_check_retries
+                            f"{db_check_retries} attempts. Set SKIP_DB_CONNECTIVITY_CHECK=1 to skip."
                         ) from e
                     time.sleep(db_check_interval)  # noqa: sleep-needed  # INTENTIONAL: wait for database/service startup
                     continue
                 # Other errors (e.g. "database X does not exist", import, config): no retry
                 break
+            else:
+                return
         if last_error is not None:
             err = str(last_error).lower()
             if "shutting down" in err or "refused" in err or "closed" in err:
@@ -206,6 +205,9 @@ def pytest_sessionstart(session):
                     "Set SKIP_DB_CONNECTIVITY_CHECK=1 to skip."
                 ) from last_error
         # Other errors: continue (e.g. database does not exist, config)
+
+    try:
+        _check_session_db()
     except RuntimeError:
         raise
     except Exception:
@@ -260,7 +262,6 @@ def _ensure_db_connection_impl():
                     raw.execute("SELECT 1")
                 finally:
                     raw.close()
-            return
         except Exception:
             try:
                 from django.db import connections
@@ -269,6 +270,8 @@ def _ensure_db_connection_impl():
                 connection.connection = None
             except Exception:
                 pass
+        else:
+            return
     # Last resort: force close_all and reconnect
     try:
         from django.db import connections
@@ -316,12 +319,15 @@ def _ensure_db_connection_before_test(request):
     #    pytestmark at module/class level applies to the individual item, so
     #    get_closest_marker() is sufficient.
     has_db_marker = bool(request.node.get_closest_marker("django_db"))
-    if not has_db_marker and test_cls is not None:
+    if (
+        not has_db_marker
+        and test_cls is not None
+        and not issubclass(test_cls, (TestCase, TransactionTestCase, SimpleTestCase))
+    ):
         # Classes that don't inherit from any Django TestCase and don't
         # carry django_db are pure-unit doc/metadata tests — skip.
-        if not issubclass(test_cls, (TestCase, TransactionTestCase, SimpleTestCase)):
-            yield
-            return
+        yield
+        return
 
     # 3. Standalone function without django_db marker — skip.
     if test_fn is not None and test_cls is None and not has_db_marker:
@@ -354,7 +360,6 @@ def _clear_login_rate_limit():
         cache.delete("login_ip_rate:127.0.0.1")
     except Exception:
         pass
-    yield
 
 
 # ── Circuit breaker reset fixtures ────────────────────────────────────────
@@ -472,6 +477,45 @@ def _reset_odh_circuit_breakers():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_semantic_service_circuit_breakers():
+    """Reset the semantic-service read/write breakers before/after each test.
+
+    The write breaker wraps RDF mapping calls; a run where Fuseki rejected
+    writes (e.g. a persisted-volume password drift, Phase P.1) opens the
+    circuit, and because the breaker state is Redis-backed it stays OPEN
+    across pytest sessions — unrelated semantic tests then get the empty
+    fallback instead of a real mapping. Measured: 40 → 6 fixed by the
+    password sync, the remaining 34 by resetting this breaker. The test
+    isolated-run delta (1 passed with a clean breaker) confirmed it.
+    """
+    _SEMANTIC_BREAKERS = [
+        "semantic-service-read",
+        "semantic-service-write",
+    ]
+    try:
+        from hub.apps.core.resilience.circuit_breaker import (
+            reset_circuit_breaker_by_name,
+        )
+
+        for name in _SEMANTIC_BREAKERS:
+            with contextlib.suppress(Exception):
+                reset_circuit_breaker_by_name(name)
+    except Exception:
+        pass
+    yield
+    try:
+        from hub.apps.core.resilience.circuit_breaker import (
+            reset_circuit_breaker_by_name,
+        )
+
+        for name in _SEMANTIC_BREAKERS:
+            with contextlib.suppress(Exception):
+                reset_circuit_breaker_by_name(name)
+    except Exception:
+        pass
+
+
 # ── Permanent module-level patch: suppress TransactionManagementError ──
 # Applied IMMEDIATELY at conftest import time (before any test fixture or
 # pytest_configure hook), so it is active for ALL test phases including
@@ -488,12 +532,10 @@ if not _hub_tme_module_patched:
             _orig_tx_set_rollback = _dbtx.set_rollback
 
             def _hub_safe_set_rollback(rollback, using=None):
-                try:
-                    _orig_tx_set_rollback(rollback, using=using)
-                except _Tme2:
+                with contextlib.suppress(_Tme2):
                     # No active atomic block — cosmetic teardown noise.
                     # The test passed; the DB is clean (TRUNCATE committed).
-                    pass
+                    _orig_tx_set_rollback(rollback, using=using)
 
             _hub_safe_set_rollback._hub_tme_patched = True
             _dbtx.set_rollback = _hub_safe_set_rollback
@@ -625,8 +667,12 @@ def _seed_tenant_plans_if_missing():
             _conn.ensure_connection()
             if _conn.connection and not _conn.connection.closed:
                 with _conn.cursor() as _c:
-                    _c.execute("SET statement_timeout = '10s'")
-                    _c.execute("SET lock_timeout = '5s'")
+                    # is_local=true scopes the timeouts to the CURRENT
+                    # transaction — a session-level SET leaks into the
+                    # test framework's teardown sqlflush and cancels it
+                    # (QueryCanceled) once the DB grows past 10s.
+                    _c.execute("SELECT set_config('statement_timeout', '10s', true)")
+                    _c.execute("SELECT set_config('lock_timeout', '5s', true)")
         except Exception:
             pass
 
@@ -655,7 +701,9 @@ def _seed_tenant_plans_if_missing():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _seed_default_tenant_plans(django_db_setup, django_db_blocker):
+def _seed_default_tenant_plans(
+    django_db_setup, django_db_blocker
+):  # django_db_setup: pytest-django fixture ordering hook, keyword-injected
     """Session-scoped: seed free/pro/enterprise plans once at test session start.
 
     Runs after django_db_setup (DB exists + migrations applied) using
@@ -713,7 +761,9 @@ def _seed_default_tenant_plans(django_db_setup, django_db_blocker):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _ensure_baas_tables(django_db_setup, django_db_blocker):
+def _ensure_baas_tables(
+    django_db_setup, django_db_blocker
+):  # django_db_setup: pytest-django fixture ordering hook, keyword-injected
     """Ensure baas_usage_record table exists on the 'baas' alias.
 
     With --reuse-db the test DB may pre-date the addition of
@@ -803,7 +853,7 @@ def pytest_collection_modifyitems(config, items):
             items[:] = remaining
 
 
-def pytest_runtest_setup(item):
+def pytest_runtest_setup(item):  # pytest hook — pluggy keyword-dispatches by hookspec name
     """Ensure DB connections are alive before each test.
 
     Also extends statement_timeout for TransactionTestCase integration
@@ -940,12 +990,25 @@ def pytest_configure(config):
             "Example:\n"
             "  docker compose -f docker-compose.test.yml exec -T api-service-test "
             "python -m pytest <paths>\n\n"
-            "Or: python3.12 -m venv .venv && pip install -r requirements.txt "
-            "-r requirements-dev.txt"
+            # `venv/` (not `.venv/`) is the canonical host-side interpreter —
+            # see docs/test-infrastructure/host-env-matrix.md. Keep this string
+            # in step with it; the two used to disagree, which is how this repo
+            # ended up with two divergent virtualenvs.
+            "Or: python3.12 -m venv venv && venv/bin/pip install "
+            "-r requirements.txt -r requirements-dev.txt"
         ) from exc
 
     TestCase.databases = "__all__"
     TransactionTestCase.databases = "__all__"
+
+    # Django imported fine, but its LAZY setting resolution (middleware, auth
+    # backends, DRF class paths, storages, template loaders, logging handlers)
+    # can still hide a half-provisioned environment until first use. Import
+    # every entry now so the failure is an environment diagnosis, not N
+    # unrelated-looking test errors (Phase Q.4 W4.1).
+    from hub.conftest_lazy_settings import verify_lazy_settings_importable
+
+    verify_lazy_settings_importable()
 
     # CRITICAL: When only hub/apps paths are collected, tests/conftest.py is never discovered
     # so its pytest_configure (setup_databases keepdb, create_test_db DuplicateDatabase patch)
@@ -971,7 +1034,12 @@ def pytest_configure(config):
             _original_sql_flush = pg_operations.DatabaseOperations.sql_flush
 
             def _patched_sql_flush(
-                self, style, tables, *, reset_sequences=False, allow_cascade=False
+                self,
+                style,
+                tables,
+                *,
+                reset_sequences=False,
+                allow_cascade=False,  # kwonly, Django keyword-passes it; patch intentionally forces True
             ):
                 return _original_sql_flush(
                     self, style, tables, reset_sequences=reset_sequences, allow_cascade=True
@@ -993,6 +1061,7 @@ def pytest_configure(config):
         from django.db import connection as _db_conn
         from django.db import transaction as db_transaction
         from django.db.utils import IntegrityError as DjIntegrityError
+
         # Django 6.0: InterfaceError is a sibling of DatabaseError, not a child.
         # except (DjIntegrityError, OperationalError) would silently miss it.
         from django.db.utils import InterfaceError as DjInterfaceError
@@ -1045,7 +1114,7 @@ def pytest_configure(config):
                             except model_cls.DoesNotExist:
                                 continue
                     raise
-                except (DjInterfaceError, DjIntegrityError, DjOperationalError):
+                except (DjInterfaceError, DjOperationalError):
                     # OperationalError (deadlock, connection loss) or InterfaceError
                     # (connection already closed, Django 6.0 sibling of DatabaseError)
                     # may leave the transaction aborted; try get() as a fallback
@@ -1056,8 +1125,7 @@ def pytest_configure(config):
                         if key in kwargs:
                             try:
                                 return mgr.get(**{key: kwargs[key]})
-                            except (model_cls.DoesNotExist, DjInterfaceError,
-                                    DjOperationalError):
+                            except (model_cls.DoesNotExist, DjInterfaceError, DjOperationalError):
                                 # Expected: row may not exist for this key,
                                 # or connection may be unstable; try next key.
                                 continue
@@ -1194,7 +1262,7 @@ def pytest_configure(config):
                         try:
                             return _TPlan.objects.get(slug=slug)
                         except _TPlan.DoesNotExist:
-                            raise exc
+                            raise exc from None
                 # Non-standard slugs: pass through unmodified
                 return _orig_tp_create(**kwargs)
 
@@ -1206,7 +1274,7 @@ def pytest_configure(config):
     # When only hub/apps paths are run (e.g. batch 52), tests/conftest.py is not loaded,
     # so setup_databases is never patched with retry. Wrap it here so transient Postgres
     # errors ("server closed the connection unexpectedly" during long migrate) get retried.
-    try:
+    def _patch_setup_databases_with_retry():
         import django.test.utils
 
         if not getattr(django.test.utils.setup_databases, "_hub_retry_wrapped", False):
@@ -1262,8 +1330,9 @@ def pytest_configure(config):
 
             _setup_databases_with_retry._hub_retry_wrapped = True
             django.test.utils.setup_databases = _setup_databases_with_retry
-    except Exception:
-        pass
+
+    with contextlib.suppress(Exception):
+        _patch_setup_databases_with_retry()
 
     # ── Permanent patch: suppress TransactionManagementError in teardown ──
     # Django 6.0 TestCase._fixture_teardown calls _rollback_atomics(self.atomics)
@@ -1300,8 +1369,6 @@ def pytest_configure(config):
     # that fire during TransactionTestCase teardown via the post_migrate signal when multiple
     # processes (gunicorn + pytest) compete to insert into django_content_types.
     try:
-        import logging
-
         _teardown_logger = logging.getLogger("hub.conftest.teardown")
 
         from django.core.management.base import CommandError as DjangoCommandError
@@ -1415,10 +1482,7 @@ def pytest_configure(config):
                         or "canceling statement" in msg
                         or "statement timeout" in msg
                     ):
-                        _teardown_logger.error(
-                            "teardown_operational_error_suppressed: %s",
-                            e,
-                        )
+                        _teardown_logger.exception("teardown_operational_error_suppressed")
                         if os.environ.get("STRICT_TEST_TEARDOWN") == "1":
                             raise
                         _rollback_and_close_all_connections()
@@ -1432,10 +1496,7 @@ def pytest_configure(config):
                     # When TransactionTestCase teardown tries to flush the non-existent
                     # table, catch the ProgrammingError and swallow it.
                     if "does not exist" in msg or "relation" in msg:
-                        _teardown_logger.error(
-                            "teardown_programming_error_suppressed: %s",
-                            e,
-                        )
+                        _teardown_logger.exception("teardown_programming_error_suppressed")
                         if os.environ.get("STRICT_TEST_TEARDOWN") == "1":
                             raise
                         _rollback_and_close_all_connections()
@@ -1448,10 +1509,7 @@ def pytest_configure(config):
                     # underlying DB errors: the test already passed.
                     msg = str(e).lower()
                     if "couldn't be flushed" in msg:
-                        _teardown_logger.error(
-                            "teardown_command_error_suppressed: %s",
-                            e,
-                        )
+                        _teardown_logger.exception("teardown_command_error_suppressed")
                         if os.environ.get("STRICT_TEST_TEARDOWN") == "1":
                             raise
                         _rollback_and_close_all_connections()
@@ -1472,23 +1530,17 @@ def pytest_configure(config):
                         or "unique constraint" in msg
                         or "violates foreign key constraint" in msg
                     ):
-                        _teardown_logger.error(
-                            "teardown_integrity_error_suppressed: %s",
-                            e,
-                        )
+                        _teardown_logger.exception("teardown_integrity_error_suppressed")
                         if os.environ.get("STRICT_TEST_TEARDOWN") == "1":
                             raise
                         _rollback_and_close_all_connections()
                         return
                     raise
-                except DjangoInterfaceError as e:
+                except DjangoInterfaceError:
                     # Connection was closed by the server or a previous error.
                     # Reconnect and retry the teardown once so the DB is flushed
                     # and subsequent tests start with a clean state.
-                    _teardown_logger.error(
-                        "teardown_interface_error_reconnecting: %s",
-                        e,
-                    )
+                    _teardown_logger.exception("teardown_interface_error_reconnecting")
                     if os.environ.get("STRICT_TEST_TEARDOWN") == "1":
                         raise
                     try:
@@ -1500,17 +1552,14 @@ def pytest_configure(config):
                         # If retry also fails, rollback+close and move on
                         _rollback_and_close_all_connections()
                     return
-                except DjangoTransactionManagementError as e:
+                except DjangoTransactionManagementError:
                     # Django 6.0: TestCase._fixture_teardown calls
                     # _rollback_atomics(self.atomics) after the flush
                     # (TRUNCATE CASCADE).  TRUNCATE implicitly commits,
                     # so the subsequent transaction.set_rollback(True)
                     # has no active atomic block to roll back.  The
                     # database is already clean — the error is cosmetic.
-                    _teardown_logger.error(
-                        "teardown_transaction_management_error_suppressed: %s",
-                        e,
-                    )
+                    _teardown_logger.exception("teardown_transaction_management_error_suppressed")
                     if os.environ.get("STRICT_TEST_TEARDOWN") == "1":
                         raise
                     _rollback_and_close_all_connections()

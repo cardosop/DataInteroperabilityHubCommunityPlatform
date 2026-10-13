@@ -12,6 +12,7 @@ in parallel (xdist); otherwise workers share circuit_breaker:dq-service keys
 and interfere with each other.
 """
 
+import contextlib
 import uuid
 from datetime import UTC
 from unittest.mock import Mock, patch
@@ -43,9 +44,10 @@ def get_real_redis_client_or_none():
             socket_timeout=2,
         )
         client.ping()
-        return client
     except Exception:
         return None
+    else:
+        return client
 
 
 class TestDQServiceClientCircuitBreaker(TestCase):
@@ -144,17 +146,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         with patch.object(self.service_client.client, "send", side_effect=failing_request):
             # Trigger failures to open circuit
             for _i in range(5):
-                try:
-                    self.service_client.run_dq(
-                        file_content=file_content, file_format="csv", use_cache=False
-                    )
-                except (
+                with contextlib.suppress(
                     httpx.RequestError,
                     httpx.HTTPStatusError,
                     CircuitBreakerError,
                     ConnectionError,
-                ):
-                    pass  # Expected: service is unavailable, triggering circuit breaker
+                ):  # Expected: service is unavailable, triggering circuit breaker
+                    self.service_client.run_dq(
+                        file_content=file_content, file_format="csv", use_cache=False
+                    )
 
         # Circuit should be open now
         self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
@@ -179,17 +179,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         with patch.object(self.service_client.client, "send", side_effect=failing_request):
             # Trigger 3 failures
             for _i in range(3):
-                try:
-                    self.service_client.run_dq(
-                        file_content=file_content, file_format="csv", use_cache=False
-                    )
-                except (
+                with contextlib.suppress(
                     httpx.RequestError,
                     httpx.HTTPStatusError,
                     CircuitBreakerError,
                     ConnectionError,
-                ):
-                    pass  # Expected: service is unavailable, triggering circuit breaker
+                ):  # Expected: service is unavailable, triggering circuit breaker
+                    self.service_client.run_dq(
+                        file_content=file_content, file_format="csv", use_cache=False
+                    )
 
             # Circuit should still be closed (threshold is 5)
             self.assertEqual(
@@ -198,17 +196,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
 
             # Trigger 2 more failures
             for _i in range(2):
-                try:
-                    self.service_client.run_dq(
-                        file_content=file_content, file_format="csv", use_cache=False
-                    )
-                except (
+                with contextlib.suppress(
                     httpx.RequestError,
                     httpx.HTTPStatusError,
                     CircuitBreakerError,
                     ConnectionError,
-                ):
-                    pass  # Expected: service is unavailable, triggering circuit breaker
+                ):  # Expected: service is unavailable, triggering circuit breaker
+                    self.service_client.run_dq(
+                        file_content=file_content, file_format="csv", use_cache=False
+                    )
 
             # Circuit should now be open
             self.assertEqual(
@@ -225,17 +221,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
 
         with patch.object(self.service_client.client, "send", side_effect=failing_request):
             for _i in range(5):
-                try:
-                    self.service_client.run_dq(
-                        file_content=file_content, file_format="csv", use_cache=False
-                    )
-                except (
+                with contextlib.suppress(
                     httpx.RequestError,
                     httpx.HTTPStatusError,
                     CircuitBreakerError,
                     ConnectionError,
-                ):
-                    pass  # Expected: service is unavailable, triggering circuit breaker
+                ):  # Expected: service is unavailable, triggering circuit breaker
+                    self.service_client.run_dq(
+                        file_content=file_content, file_format="csv", use_cache=False
+                    )
 
         self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
 
@@ -295,17 +289,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
 
         with patch.object(self.service_client.client, "send", side_effect=failing_request):
             for _i in range(5):
-                try:
-                    self.service_client.run_dq(
-                        file_content=file_content, file_format="csv", use_cache=False
-                    )
-                except (
+                with contextlib.suppress(
                     httpx.RequestError,
                     httpx.HTTPStatusError,
                     CircuitBreakerError,
                     ConnectionError,
-                ):
-                    pass  # Expected: service is unavailable, triggering circuit breaker
+                ):  # Expected: service is unavailable, triggering circuit breaker
+                    self.service_client.run_dq(
+                        file_content=file_content, file_format="csv", use_cache=False
+                    )
 
         # Get fallback response
         result = self.service_client.run_dq(

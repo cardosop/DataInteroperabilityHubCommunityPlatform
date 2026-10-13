@@ -23,6 +23,8 @@ import pytest
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
 hub = pytest.importorskip("hub")
+import contextlib
+
 import requests
 from click.testing import CliRunner
 from datahub_cli.config import config
@@ -52,21 +54,60 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
     through the server thread's database connection and is immediately visible.
     """
 
+    @classmethod
+    def _fixture_setup(cls):
+        """Skip the per-test flush on the persistent dedicated test DB.
+
+        The default TransactionTestCase flush TRUNCATEs without CASCADE and
+        blocks on FK-referenced tables until the 120 s statement_timeout —
+        every test burned 2+ minutes in setup (measured 2026-08-28).
+        Fixtures are per-run unique (uuid suffixes), so the flush is not
+        the isolation mechanism.
+        """
+        import os
+
+        if not os.environ.get("TEST_DB_SUFFIX"):
+            with contextlib.suppress(Exception):
+                super()._fixture_setup()
+
+    def _post_teardown(self):
+        import os
+
+        if not os.environ.get("TEST_DB_SUFFIX"):
+            with contextlib.suppress(Exception):
+                super()._post_teardown()
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
         self.runner = CliRunner()
+        import uuid as _uuid
+
+        _uid = _uuid.uuid4().hex[:8]
+        config.clear_auth()
 
         # Create tenant (this is OK to create directly as it's needed for user creation)
-        self.tenant = Tenant.objects.create(name="CLI Test Tenant", slug="cli-test-tenant")
+        self.tenant = Tenant.objects.create(
+            name=f"CLI Test Tenant {_uid}", slug=f"cli-test-tenant-{_uid}"
+        )
 
         # Create user with ACTIVE status (required for authentication)
         self.user = User.objects.create_user(
-            email="cli-test@example.com",
+            email=f"cli-test-{_uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # Asset writes require the DATA_PROVIDER (or TENANT_ADMIN) role —
+        # a role-less user 403s every create (measured 2026-08-28).
+        from hub.apps.users.models import Role, UserRole
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
         # Set API base URL to live test server
         # LiveServerTestCase provides self.live_server_url automatically
@@ -74,13 +115,64 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
         self.api_base_url = f"{self.live_server_url}/api/v1"
         config.set_api_base_url(self.api_base_url)
 
+        # Phase 313 paid write-gate — provision an ACTIVE subscription or
+        # every write 403s with "No active subscription" (measured
+        # 2026-08-28).
+        # Apps-registry lookup (no paid-module import): the paid
+        # write-gate provisioning must not couple this core file to
+        # hub.apps.billing — GATE-29.
+        from django.apps import apps
+
+        Subscription = apps.get_model("billing", "Subscription")
+        SubscriptionStatus = apps.get_model("billing", "SubscriptionStatus")
+        from hub.apps.tenants.models import PlanTier, TenantPlan
+
+        plan, _ = TenantPlan.objects.get_or_create(
+            name="CLI Real API Pro Plan",
+            defaults={
+                "slug": "cli-real-api-pro-plan",
+                "tier": PlanTier.PRO,
+                "category": "BASE",
+                "order": 1,
+            },
+        )
+        # The plan-enforcement layer reads the TENANT's plan field (a new
+        # tenant has none → free-plan limits, e.g. max_assets=10, and the
+        # suite's asset tests 403 with plan_limit_exceeded — measured
+        # 2026-08-28).
+        if self.tenant.plan_id is None:
+            self.tenant.plan = plan
+            self.tenant.save(update_fields=["plan"])
+        Subscription.objects.get_or_create(
+            tenant=self.tenant,
+            defaults={"plan": plan, "status": SubscriptionStatus.ACTIVE, "category": "BASE"},
+        )
+
         # Create API key for testing (more reliable than login for tests)
         from hub.apps.auth.models import APIKey
 
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
+        # Scopes are REQUIRED — the asset/contract write views gate on
+        # HasScope(...), and a scopeless key 403s every write (measured
+        # 2026-08-28).
         APIKey.objects.create(
-            user=self.user, tenant=self.tenant, name="CLI Test Key", key_hash=key_hash
+            user=self.user,
+            tenant=self.tenant,
+            name="CLI Test Key",
+            key_hash=key_hash,
+            scopes=[
+                "assets:write",
+                "assets:read",
+                "contracts:write",
+                "contracts:read",
+                "jobs:read",
+                "jobs:write",
+                "files:write",
+                "files:read",
+                "integrations:write",
+                "integrations:read",
+            ],
         )
         config.set_api_key(plaintext_key)
         self.api_key = plaintext_key
@@ -122,7 +214,10 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
             data["domain"] = domain
 
         response = requests.post(url, json=data, headers=self._get_auth_headers())
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise AssertionError(
+                f"Asset create failed: {response.status_code}: {response.text[:400]}"
+            )
         return response.json()
 
     def _create_contract_via_api(
@@ -181,7 +276,7 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
         Returns the created job data as a dict.
         """
         # URL structure: /api/v1/jobs/ (jobs/ from api/urls.py)
-        url = f"{self.api_base_url}/jobs/jobs/"
+        url = f"{self.api_base_url}/jobs/"
 
         if not resource_id:
             raise ValueError("resource_id must be provided")
@@ -300,25 +395,28 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
   "product": {
     "details": {
       "en": {
-        "productID": "cli-test-product",
-        "name": "CLI Test Product",
-        "description": "Test product created via CLI"
+        "productID": "cli-test-product-odps",
+        "name": "CLI Test Product ODPS",
+        "description": "Test product for ODPS workflows"
       }
     },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string", "nullable": false}
+      ]
+    },
     "contract": {
-      "apiVersion": "odcs/v3",
-      "kind": "DataContract",
-      "id": "cli-test-contract",
-      "name": "CLI Test Contract",
-      "version": "1.0.0",
-      "schema": {
-        "fields": [
-          {
-            "name": "id",
-            "type": "string",
-            "nullable": false
-          }
-        ]
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.0",
+        "kind": "DataContract",
+        "id": "cli-test-contract-odps",
+        "name": "CLI Test Contract ODPS",
+        "version": "1.0.0",
+        "schema": {
+          "fields": [
+            {"name": "id", "type": "string", "nullable": false}
+          ]
+        }
       }
     }
   }
@@ -391,16 +489,29 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
   "product": {
     "details": {
       "en": {
-        "productID": "cli-test-product-link",
-        "name": "CLI Test Product for Link",
-        "description": "Test product for linking to existing ODCS"
+        "productID": "cli-test-product-odps",
+        "name": "CLI Test Product ODPS",
+        "description": "Test product for ODPS workflows"
       }
     },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string", "nullable": false}
+      ]
+    },
     "contract": {
-      "apiVersion": "odcs/v3",
-      "kind": "DataContract",
-      "id": "cli-test-odcs-for-link",
-      "name": "CLI Test ODCS for Link"
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.0",
+        "kind": "DataContract",
+        "id": "cli-test-contract-odps",
+        "name": "CLI Test Contract ODPS",
+        "version": "1.0.0",
+        "schema": {
+          "fields": [
+            {"name": "id", "type": "string", "nullable": false}
+          ]
+        }
+      }
     }
   }
 }"""
@@ -497,54 +608,27 @@ product:
   "product": {
     "details": {
       "en": {
-        "productID": "cli-test-product-odps-info",
-        "name": "CLI Test Product for ODPS Info",
-        "description": "Test product for ODPS information display"
+        "productID": "cli-test-product-odps",
+        "name": "CLI Test Product ODPS",
+        "description": "Test product for ODPS workflows"
       }
+    },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string", "nullable": false}
+      ]
     },
     "contract": {
-      "apiVersion": "odcs/v3",
-      "kind": "DataContract",
-      "id": "cli-test-contract-odps-info",
-      "name": "CLI Test Contract for ODPS Info",
-      "version": "1.0.0",
-      "schema": {
-        "fields": [
-          {
-            "name": "id",
-            "type": "string",
-            "nullable": false
-          }
-        ]
-      }
-    },
-    "marketplace": {
-      "pricingPlans": [
-        {
-          "planID": "basic",
-          "name": "Basic Plan",
-          "price": 9.99,
-          "currency": "USD",
-          "billingPeriod": "monthly"
-        },
-        {
-          "planID": "premium",
-          "name": "Premium Plan",
-          "price": 49.99,
-          "currency": "USD",
-          "billingPeriod": "monthly",
-          "isDefault": true
-        }
-      ],
-      "accessMethods": {
-        "api": {
-          "type": "REST API",
-          "endpoint": "https://api.example.com/v1/products/cli-test-product-odps-info",
-          "protocol": "HTTPS"
-        },
-        "download": {
-          "type": "File Download",
-          "url": "https://download.example.com/data.zip"
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.0",
+        "kind": "DataContract",
+        "id": "cli-test-contract-odps",
+        "name": "CLI Test Contract ODPS",
+        "version": "1.0.0",
+        "schema": {
+          "fields": [
+            {"name": "id", "type": "string", "nullable": false}
+          ]
         }
       }
     }
@@ -614,31 +698,29 @@ product:
   "product": {
     "details": {
       "en": {
-        "productID": "cli-test-product-pricing",
-        "name": "CLI Test Product for Pricing"
+        "productID": "cli-test-product-odps",
+        "name": "CLI Test Product ODPS",
+        "description": "Test product for ODPS workflows"
       }
+    },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string", "nullable": false}
+      ]
     },
     "contract": {
-      "apiVersion": "odcs/v3",
-      "kind": "DataContract",
-      "id": "cli-test-contract-pricing",
-      "name": "CLI Test Contract for Pricing",
-      "version": "1.0.0",
-      "schema": {
-        "fields": [{"name": "id", "type": "string", "nullable": false}]
-      }
-    },
-    "marketplace": {
-      "pricingPlans": [
-        {
-          "planID": "enterprise",
-          "name": "Enterprise Plan",
-          "price": 199.99,
-          "currency": "USD",
-          "billingPeriod": "monthly",
-          "description": "Full enterprise features"
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.0",
+        "kind": "DataContract",
+        "id": "cli-test-contract-odps",
+        "name": "CLI Test Contract ODPS",
+        "version": "1.0.0",
+        "schema": {
+          "fields": [
+            {"name": "id", "type": "string", "nullable": false}
+          ]
         }
-      ]
+      }
     }
   }
 }"""
@@ -692,30 +774,27 @@ product:
   "product": {
     "details": {
       "en": {
-        "productID": "cli-test-product-access",
-        "name": "CLI Test Product for Access Methods"
+        "productID": "cli-test-product-odps",
+        "name": "CLI Test Product ODPS",
+        "description": "Test product for ODPS workflows"
       }
+    },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string", "nullable": false}
+      ]
     },
     "contract": {
-      "apiVersion": "odcs/v3",
-      "kind": "DataContract",
-      "id": "cli-test-contract-access",
-      "name": "CLI Test Contract for Access",
-      "version": "1.0.0",
-      "schema": {
-        "fields": [{"name": "id", "type": "string", "nullable": false}]
-      }
-    },
-    "marketplace": {
-      "accessMethods": {
-        "api": {
-          "type": "REST API",
-          "endpoint": "https://api.example.com/v1/products/cli-test-product-access",
-          "protocol": "HTTPS",
-          "authentication": {
-            "type": "OAuth2",
-            "scopes": ["read", "write"]
-          }
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.0",
+        "kind": "DataContract",
+        "id": "cli-test-contract-odps",
+        "name": "CLI Test Contract ODPS",
+        "version": "1.0.0",
+        "schema": {
+          "fields": [
+            {"name": "id", "type": "string", "nullable": false}
+          ]
         }
       }
     }

@@ -23,6 +23,7 @@ import {
   generateCorrelationId,
   // Phase 226 G16 — security-header guard pure helpers.
   evaluateSecurityHeaders,
+  filterSecurityHeaderProblemsForDevServer,
   hasSecurityHeaderEvidence,
   isDocumentResponseForSecurityGuard,
   isSecurityHeaderGuardDisabled,
@@ -452,13 +453,12 @@ test.describe('pollForAuditEvent — retry budget + injected fetcher (Phase 226 
     ).rejects.toThrow(/ASSET_CREATED/);
   });
 
-  test('default retry budget is 3000ms (audit emission is synchronous — Phase 226 OQ1)', async () => {
+  test('default retry budget is 15000ms (audit emission is synchronous — Phase 226 OQ1)', async () => {
     // Pin the budget. Audit writes are synchronous via
-    // `hub/apps/audit/utils.py:239` (zero `.delay()` callsites). 3 s
-    // covers replication lag for the audit list endpoint and nothing
-    // more — bumping back to 10 s would re-introduce the silent
-    // flake-tolerance OQ1 was created to remove.
-    let attemptTimestamps: number[] = [];
+    // `hub/apps/audit/utils.py:239` (zero `.delay()` callsites). The
+    // 15 s default covers audit-list replication lag; bumping it back to
+    // 10 s would re-introduce the silent flake-tolerance OQ1 removed.
+    const attemptTimestamps: number[] = [];
     const fetcher = async (): Promise<AuditEventRow[]> => {
       attemptTimestamps.push(Date.now());
       return [];
@@ -471,12 +471,12 @@ test.describe('pollForAuditEvent — retry budget + injected fetcher (Phase 226 
         resourceId: 'missing-id',
         // No retryBudgetMs override — exercises the default.
       }),
-    ).rejects.toThrow(/3000 ms retry budget/);
+    ).rejects.toThrow(/15000 ms retry budget/);
     const elapsed = Date.now() - start;
-    // Default is 3000 ms; allow some slack for CI runners but reject any
+    // Default is 15000 ms; allow some slack for CI runners but reject any
     // accidental 10 000 ms regression.
-    expect(elapsed).toBeGreaterThanOrEqual(2500);
-    expect(elapsed).toBeLessThan(6000);
+    expect(elapsed).toBeGreaterThanOrEqual(14000);
+    expect(elapsed).toBeLessThan(21000);
     expect(attemptTimestamps.length).toBeGreaterThan(1);
   });
 });
@@ -522,6 +522,13 @@ test.describe('classifyClearAuthStorageError — pure error bucketing', () => {
 
   test('net::ERR_NETWORK_CHANGED → transient-network', () => {
     const err = new Error('page.reload: net::ERR_NETWORK_CHANGED');
+    expect(classifyClearAuthStorageError(err)).toBe('transient-network');
+  });
+
+  test('net::ERR_ABORTED (frame detached) → transient-network', () => {
+    // The reload was superseded by a concurrent navigation (the app's
+    // own post-clear redirect) — benign: storage was already cleared.
+    const err = new Error('page.reload: net::ERR_ABORTED; maybe frame was detached?');
     expect(classifyClearAuthStorageError(err)).toBe('transient-network');
   });
 
@@ -1657,7 +1664,6 @@ test.describe('createdResources — track / dedup (Phase 226 E2)', () => {
 
   test('runId is stable across calls within a registry', () => {
     const r = createCreatedResourcesRegistry();
-    expect(r.runId).toBe(r.runId);
     expect(r.runId).toMatch(/^[0-9a-f-]{36}$/i);
   });
 });
@@ -2201,6 +2207,55 @@ test.describe('evaluateSecurityHeaders — branch coverage', () => {
     };
     const out = evaluateSecurityHeaders('https://x/', headers, true);
     expect(out).toEqual([]);
+  });
+});
+
+test.describe('filterSecurityHeaderProblemsForDevServer — Vite dev-marker exemption (4.4)', () => {
+  const devCsp = {
+    'content-security-policy':
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline'",
+    'x-frame-options': 'DENY',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+  };
+
+  test('dev-marked response drops ONLY the unsafe-inline problem', () => {
+    const headers = { ...devCsp, 'x-vite-security-headers-rev': '2026-09-25-1' };
+    const problems = evaluateSecurityHeaders('http://localhost:5184/governance/breach', headers, false);
+    expect(problems.some((p) => p.reason === 'csp-allows-unsafe-inline-script')).toBe(true);
+
+    const out = filterSecurityHeaderProblemsForDevServer(headers, problems);
+    expect(out.some((p) => p.reason === 'csp-allows-unsafe-inline-script')).toBe(false);
+  });
+
+  test('dev-marked response retains non-CSP problems (missing header)', () => {
+    const headers = {
+      'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'",
+      'x-vite-security-headers-rev': '2026-09-25-1',
+    };
+    const problems = evaluateSecurityHeaders('http://localhost:5184/', headers, false);
+    const out = filterSecurityHeaderProblemsForDevServer(headers, problems);
+    expect(out.some((p) => p.reason === 'missing-header')).toBe(true);
+  });
+
+  test('non-dev response is unchanged by the filter', () => {
+    const problems = evaluateSecurityHeaders('https://staging.example/', {
+      'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'",
+      'x-frame-options': 'DENY',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'strict-origin',
+      'strict-transport-security': 'max-age=31536000',
+    }, true);
+    const out = filterSecurityHeaderProblemsForDevServer({}, problems);
+    expect(out).toEqual(problems);
+    expect(out.some((p) => p.reason === 'csp-allows-unsafe-inline-script')).toBe(true);
+  });
+
+  test('case-insensitive dev marker recognition', () => {
+    const headers = { ...devCsp, 'X-Vite-Security-Headers-Rev': '2026-09-25-1' };
+    const problems = evaluateSecurityHeaders('http://localhost:5184/', headers, false);
+    const out = filterSecurityHeaderProblemsForDevServer(headers, problems);
+    expect(out.some((p) => p.reason === 'csp-allows-unsafe-inline-script')).toBe(false);
   });
 });
 

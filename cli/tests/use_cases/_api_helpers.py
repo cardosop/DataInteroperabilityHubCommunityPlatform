@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import os
 import time
+from typing import TYPE_CHECKING
 
 import requests
-from tests._persona_provisioning import PersonaCredentials
+
+if TYPE_CHECKING:
+    from tests._persona_provisioning import PersonaCredentials
 
 
 def _default_api_base_url() -> str:
@@ -25,6 +28,27 @@ def api_base_url() -> str:
     return os.environ.get(
         "MESHANT_API_URL",
         os.environ.get("ODH_BASE_URL", _default_api_base_url()),
+    )
+
+
+def reset_rate_limits() -> None:
+    """Clear auth + asset-creation throttle buckets before stress tests.
+
+    The whole use_cases suite runs as one persona user, and its cumulative
+    activity exhausts the per-user 60/min asset-creation throttle (S-8,
+    Phase 250.1.A.10) plus the auth-category limiter — downstream
+    business-flow tests then 429 with "Request was throttled" (measured
+    2026-09-20: a billing quota loop burst ~41 asset creates in ~3 s and
+    the following compliance file failed 10 tests on 429s).  The API
+    exposes POST /test/reset-e2e-auth-rate-limits/ (gated by the shared
+    X-E2E-Token secret) for exactly this self-healing purpose; the
+    concurrent_operations use_cases tests have used it since 2026-08-28.
+    """
+    secret = os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
+    requests.post(
+        f"{api_base_url()}/test/reset-e2e-auth-rate-limits/",
+        headers={"X-E2E-Token": secret},
+        timeout=15,
     )
 
 
@@ -137,10 +161,7 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
         # ---- 429 rate-limit ----
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
-            if retry_after:
-                wait = int(retry_after)
-            else:
-                wait = min(2 ** (attempt + 2), 60)
+            wait = int(retry_after) if retry_after else min(2 ** (attempt + 2), 60)
             time.sleep(wait)
             last_resp = resp
             continue

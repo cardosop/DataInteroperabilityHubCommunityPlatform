@@ -123,13 +123,13 @@ class APIGatewayRulesChecker:
                         elif isinstance(methods, str):
                             self.known_endpoints[normalized].add(methods.upper())
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"Warning: Error loading endpoint inventory: {e}", file=sys.stderr)
 
     def normalize_endpoint(self, endpoint: str) -> str:
         """Normalize endpoint path for comparison"""
         # Remove query parameters
-        endpoint = endpoint.split("?")[0]
+        endpoint = endpoint.split("?", maxsplit=1)[0]
         # Remove fragments
         endpoint = endpoint.split("#")[0]
         # Normalize trailing slash
@@ -277,9 +277,11 @@ class APIGatewayRulesChecker:
                         if middleware_name in router_middlewares:
                             # Find the corresponding rate limit rule and add router
                             for rate_limit_rule in rate_limit_rules:
-                                if rate_limit_rule.middleware_name == middleware_name:
-                                    if router_name not in rate_limit_rule.applied_to_routers:
-                                        rate_limit_rule.applied_to_routers.append(router_name)
+                                if (
+                                    rate_limit_rule.middleware_name == middleware_name
+                                    and router_name not in rate_limit_rule.applied_to_routers
+                                ):
+                                    rate_limit_rule.applied_to_routers.append(router_name)
 
             except Exception as e:
                 print(f"Error processing {config_file}: {e}", file=sys.stderr)
@@ -349,9 +351,11 @@ class APIGatewayRulesChecker:
                         if middleware_name in router_middlewares:
                             # Find the corresponding auth rule and add router
                             for auth_rule in auth_rules:
-                                if auth_rule.middleware_name == middleware_name:
-                                    if router_name not in auth_rule.applied_to_routers:
-                                        auth_rule.applied_to_routers.append(router_name)
+                                if (
+                                    auth_rule.middleware_name == middleware_name
+                                    and router_name not in auth_rule.applied_to_routers
+                                ):
+                                    auth_rule.applied_to_routers.append(router_name)
 
             except Exception as e:
                 print(f"Error processing {config_file}: {e}", file=sys.stderr)
@@ -381,9 +385,7 @@ class APIGatewayRulesChecker:
             matching_endpoints = []
             for endpoint_path, methods in self.known_endpoints.items():
                 if endpoint_path.startswith(routing_rule.path_prefix):
-                    matching_endpoints.append(
-                        {"path": endpoint_path, "methods": sorted(list(methods))}
-                    )
+                    matching_endpoints.append({"path": endpoint_path, "methods": sorted(methods)})
 
             if matching_endpoints:
                 mappings["routing_rules"].append(

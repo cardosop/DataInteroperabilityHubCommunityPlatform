@@ -6,6 +6,7 @@ real EventBus methods and reading back metric values via _value.get()
 (for Counters) or mock_labels.called (for Histograms / publish path).
 """
 
+import contextlib
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
@@ -50,8 +51,11 @@ class TestEventBusMetricsAccuracy:
 
         with patch.object(bus, "_persist_event", return_value=Mock(id="ev-1")):
             for _ in range(5):
-                bus.publish("contract.created", {"contract_id": str(uuid.uuid4()), "info": {"name": "test"}},
-                            tenant_id=_TENANT_ID)
+                bus.publish(
+                    "contract.created",
+                    {"contract_id": str(uuid.uuid4()), "info": {"name": "test"}},
+                    tenant_id=_TENANT_ID,
+                )
 
         assert labeled._value.get() - before == 5
 
@@ -71,12 +75,12 @@ class TestEventBusMetricsAccuracy:
         ):
             mock_counter = Mock()
             mock_labels.return_value = mock_counter
-            try:
-                bus.publish("contract.created",
-                            {"contract_id": str(uuid.uuid4()), "info": {"name": "test"}},
-                            tenant_id=_TENANT_ID)
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                bus.publish(
+                    "contract.created",
+                    {"contract_id": str(uuid.uuid4()), "info": {"name": "test"}},
+                    tenant_id=_TENANT_ID,
+                )
 
         assert mock_labels.called, "event_publish_failed_total.labels must be called"
         mock_counter.inc.assert_called_once()
@@ -95,8 +99,12 @@ class TestEventBusMetricsAccuracy:
             patch.object(event_published_total, "labels", side_effect=capture),
             patch.object(bus, "_persist_event", return_value=Mock(id="ev-lbl")),
         ):
-            bus.publish("contract.created", {"contract_id": str(uuid.uuid4()), "info": {"name": "test"}},
-                        tenant_id=_TENANT_ID, user_id=_TENANT_ID)
+            bus.publish(
+                "contract.created",
+                {"contract_id": str(uuid.uuid4()), "info": {"name": "test"}},
+                tenant_id=_TENANT_ID,
+                user_id=_TENANT_ID,
+            )
 
         assert captured.get("event_type") == "contract.created"
         assert captured.get("tenant_id") == _TENANT_ID
@@ -110,15 +118,19 @@ class TestEventBusMetricsAccuracy:
         from hub.apps.core.events.metrics import event_consumed_total
 
         labeled = event_consumed_total.labels(
-            event_type="contract.created", subscriber_name="acc-sub",
-            status="success", tenant_id=_TENANT_ID
+            event_type="contract.created",
+            subscriber_name="acc-sub",
+            status="success",
+            tenant_id=_TENANT_ID,
         )
         before = labeled._value.get()
 
         event = {
-            "event_id": "ev-1", "event_type": "contract.created",
+            "event_id": "ev-1",
+            "event_type": "contract.created",
             "timestamp": datetime.now().isoformat(),
-            "source": {"tenant_id": _TENANT_ID}, "data": {},
+            "source": {"tenant_id": _TENANT_ID},
+            "data": {},
         }
         handler = Mock()
         with (
@@ -136,9 +148,11 @@ class TestEventBusMetricsAccuracy:
         from hub.apps.core.events.metrics import event_latency_seconds
 
         event = {
-            "event_id": "ev-lat", "event_type": "contract.created",
+            "event_id": "ev-lat",
+            "event_type": "contract.created",
             "timestamp": (datetime.now() - timedelta(seconds=2)).isoformat(),
-            "source": {"tenant_id": _TENANT_ID}, "data": {},
+            "source": {"tenant_id": _TENANT_ID},
+            "data": {},
         }
         handler = Mock()
         with (
@@ -161,15 +175,16 @@ class TestEventBusMetricsAccuracy:
         from hub.apps.core.events.metrics import event_retry_attempts_total
 
         labeled = event_retry_attempts_total.labels(
-            event_type="contract.created", subscriber_name="acc-sub",
-            tenant_id=_TENANT_ID
+            event_type="contract.created", subscriber_name="acc-sub", tenant_id=_TENANT_ID
         )
         before = labeled._value.get()
 
         event = {
-            "event_id": "ev-retry", "event_type": "contract.created",
+            "event_id": "ev-retry",
+            "event_type": "contract.created",
             "timestamp": datetime.now().isoformat(),
-            "source": {"tenant_id": _TENANT_ID}, "data": {},
+            "source": {"tenant_id": _TENANT_ID},
+            "data": {},
         }
         handler = Mock(side_effect=Exception("fail"))
 
@@ -202,15 +217,16 @@ class TestEventBusMetricsAccuracy:
         from hub.apps.core.events.metrics import event_dlq_size
 
         labeled = event_dlq_size.labels(
-            event_type="contract.created", subscriber_name="acc-sub",
-            tenant_id=_TENANT_ID
+            event_type="contract.created", subscriber_name="acc-sub", tenant_id=_TENANT_ID
         )
         before = labeled._value.get()
 
         event = {
-            "event_id": "ev-dlq", "event_type": "contract.created",
+            "event_id": "ev-dlq",
+            "event_type": "contract.created",
             "timestamp": datetime.now().isoformat(),
-            "source": {"tenant_id": _TENANT_ID}, "data": {},
+            "source": {"tenant_id": _TENANT_ID},
+            "data": {},
         }
         handler = Mock(side_effect=Exception("fail"))
 
@@ -244,9 +260,11 @@ class TestEventBusMetricsAccuracy:
         from hub.apps.core.events.metrics import event_queue_depth
 
         event = {
-            "event_id": "ev-q3", "event_type": "contract.created",
+            "event_id": "ev-q3",
+            "event_type": "contract.created",
             "timestamp": datetime.now().isoformat(),
-            "source": {"tenant_id": _TENANT_ID}, "data": {},
+            "source": {"tenant_id": _TENANT_ID},
+            "data": {},
         }
         handler = Mock()
         with (

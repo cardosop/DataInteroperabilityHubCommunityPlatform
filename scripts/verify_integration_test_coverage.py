@@ -130,7 +130,7 @@ def extract_endpoints_from_tests(test_file: Path) -> set[str]:
                 if is_dq:
                     endpoints.add("GET /api/v1/dq/runs/{id}/results/")
 
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"Error reading {test_file}: {e}", file=sys.stderr)
 
     return endpoints

@@ -8,6 +8,7 @@ import base64
 import json
 from typing import Any
 
+from django.core.exceptions import FieldError, ValidationError
 from django.db.models import QuerySet
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.response import Response
@@ -66,7 +67,7 @@ class StandardCursorPagination(CursorPagination):
             cursor_data = json.dumps(position)
             encoded = base64.b64encode(cursor_data.encode("utf-8")).decode("utf-8")
             return encoded
-        except Exception:
+        except (TypeError, ValueError):
             return None
 
     def decode_cursor(self, cursor):
@@ -86,7 +87,7 @@ class StandardCursorPagination(CursorPagination):
             decoded = base64.b64decode(cursor.encode("utf-8")).decode("utf-8")
             position = json.loads(decoded)
             return tuple(position) if isinstance(position, list) else position
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
 
@@ -271,7 +272,7 @@ def paginate_queryset_cursor(
                     Q(**{f"{field}__gt": field_val})
                     | Q(**{f"{field}": field_val, "pk__gt": pk_val})
                 )
-        except Exception:
+        except (ValueError, IndexError, KeyError, TypeError, FieldError, ValidationError):
             # Invalid cursor, return empty queryset
             return queryset.none(), None, None
 

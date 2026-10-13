@@ -17,7 +17,13 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+_baas_models = pytest.importorskip("hub.apps.baas.models")
 hub = pytest.importorskip("hub")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import json
 import uuid
 from datetime import timedelta
@@ -29,9 +35,13 @@ from django.contrib.auth import get_user_model
 from django.test import LiveServerTestCase
 from django.utils import timezone
 
-from hub.apps.baas.models import APIKey, APITierModel
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, UserRole, UserStatus
+
+# GATE-29 — no static paid import: reuse the importorskip'd module object
+# above (its skip-in-public-tree behaviour stays intact).
+APIKey = _baas_models.APIKey
+APITierModel = _baas_models.APITierModel
 
 User = get_user_model()
 
@@ -61,9 +71,13 @@ class TestBaaSAPIKeysE2E(LiveServerTestCase):
         # Generate unique identifiers for this test to avoid conflicts
         unique_id = uuid.uuid4().hex[:8]
 
-        # Create tenant with unique name
+        # Create tenant with unique name.  The BaaS viewsets gate on the
+        # tenant feature flag (403 BAAS_DISABLED when False — measured
+        # 2026-08-28).
         self.tenant = Tenant.objects.create(
-            name=f"BaaS E2E Test Tenant {unique_id}", slug=f"baas-e2e-test-tenant-{unique_id}"
+            name=f"BaaS E2E Test Tenant {unique_id}",
+            slug=f"baas-e2e-test-tenant-{unique_id}",
+            baas_enabled=True,
         )
 
         # Create user with ACTIVE status and unique email
@@ -82,6 +96,11 @@ class TestBaaSAPIKeysE2E(LiveServerTestCase):
         )
         UserRole.objects.create(user=self.user, role=tenant_admin_role)
 
+        # Clear any auth left on the GLOBAL config by other tests — the
+        # CLI prefers an access token over the API key, so a stale JWT
+        # would make every call here "Invalid or expired token" (measured
+        # 2026-08-28).
+        config.clear_auth()
         # Set API base URL to live test server
         self.api_base_url = f"{self.live_server_url}/api/v1"
         config.set_api_base_url(self.api_base_url)
@@ -102,6 +121,33 @@ class TestBaaSAPIKeysE2E(LiveServerTestCase):
                 "rate_limit_per_day": 100000,
                 "max_requests_per_month": 100000,
             },
+        )
+
+        # Phase 313 paid write-gate — the tenants middleware blocks every
+        # write with 403 "No active subscription" when the tenant has no
+        # ACTIVE billing subscription (measured 2026-08-28).  Provision
+        # one, mirroring test_marketplace_cli_sdk_consistency.py.
+        # Apps-registry lookup (no paid-module import): the paid
+        # write-gate provisioning must not couple this core file to
+        # hub.apps.billing — GATE-29.
+        from django.apps import apps
+
+        Subscription = apps.get_model("billing", "Subscription")
+        SubscriptionStatus = apps.get_model("billing", "SubscriptionStatus")
+        from hub.apps.tenants.models import PlanTier, TenantPlan
+
+        plan, _ = TenantPlan.objects.get_or_create(
+            name="BaaS E2E Pro Plan",
+            defaults={
+                "slug": "baas-e2e-pro-plan",
+                "tier": PlanTier.PRO,
+                "category": "BASE",
+                "order": 1,
+            },
+        )
+        Subscription.objects.get_or_create(
+            tenant=self.tenant,
+            defaults={"plan": plan, "status": SubscriptionStatus.ACTIVE, "category": "BASE"},
         )
 
         # Create API key for authentication
@@ -160,7 +206,7 @@ class TestBaaSAPIKeysE2E(LiveServerTestCase):
             ],
         )
 
-        assert create_result.exit_code == 0
+        assert create_result.exit_code == 0, f"Create failed: {create_result.output[:400]}"
         create_data = json.loads(create_result.output)
         api_key_id = create_data["id"]
         created_api_key_value = create_data["api_key"]

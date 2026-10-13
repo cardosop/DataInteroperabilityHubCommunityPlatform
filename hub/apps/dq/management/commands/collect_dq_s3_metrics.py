@@ -57,7 +57,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         bucket = opts.get("bucket") or getattr(
             settings,
             "DQ_S3_BUCKET",

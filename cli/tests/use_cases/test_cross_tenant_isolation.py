@@ -136,14 +136,37 @@ def test_contract_invisible_across_tenants():
     creds_a, creds_b = _provision_two_tenants()
     base = api_base_url()
 
-    # Create contract in tenant A
+    # Create contract in tenant A.  The ODCS normaliser requires a valid
+    # Open Data Contract Standard document with ``schema.fields[]`` so the
+    # structural-floor check passes.
+    import json as _json
+
     contract_name = fresh_id("iso-contract")
+    odcs_doc = {
+        "apiVersion": "odcs/v3",
+        "kind": "Contract",
+        "id": contract_name,
+        "name": contract_name,
+        "hub_contract_version": "1.0.0",
+        "info": {
+            "name": contract_name,
+            "description": "Cross-tenant isolation test contract",
+        },
+        "schema": {
+            "fields": [
+                {"name": "id", "type": "string", "description": "Primary key"},
+                {"name": "value", "type": "integer", "description": "Test value"},
+            ],
+        },
+    }
     create_resp = requests.post(
         f"{base}/contracts/",
         headers=_auth_headers(creds_a.api_key, creds_a.tenant_id),
         json={
             "name": contract_name,
             "description": "Cross-tenant isolation test contract",
+            "original_raw": _json.dumps(odcs_doc),
+            "original_format": "JSON",
         },
         timeout=15,
     )
@@ -177,13 +200,33 @@ def test_compliance_run_invisible_across_tenants():
     creds_a, creds_b = _provision_two_tenants()
     base = api_base_url()
 
+    # First create a test asset in tenant A so the compliance run has
+    # a resource to scan.  (ComplianceRunCreateSerializer requires at
+    # least one of asset_id / dataset_id / file_id.)
+    asset_key = fresh_id("iso-comp-asset")
+    asset_resp = requests.post(
+        f"{base}/assets/",
+        headers=_auth_headers(creds_a.api_key, creds_a.tenant_id),
+        json={
+            "name": f"Compliance Asset {asset_key}",
+            "key": asset_key,
+            "description": "Asset for compliance isolation test",
+            "visibility": "INTERNAL",
+        },
+        timeout=15,
+    )
+    assert asset_resp.status_code in (200, 201), (
+        f"Asset creation for compliance test failed: "
+        f"{asset_resp.status_code}: {asset_resp.text[:200]}"
+    )
+    asset_id = asset_resp.json().get("id") or asset_resp.json().get("key")
+
     # Trigger a compliance run in tenant A
     run_resp = requests.post(
         f"{base}/compliance/runs/",
         headers=_auth_headers(creds_a.api_key, creds_a.tenant_id),
         json={
-            "name": fresh_id("iso-compliance"),
-            "description": "Cross-tenant isolation compliance run",
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
         },
         timeout=15,
     )

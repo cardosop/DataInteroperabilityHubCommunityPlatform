@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def check_method_exists(module, method_name, expected_signature_hints=None):
+def check_method_exists(module, method_name, _expected_signature_hints=None):
     """Check if a method exists in a module"""
     if not hasattr(module, method_name):
         print(f"❌ Method {method_name} not found in {module.__name__}")
@@ -55,14 +55,16 @@ def validate_imports():
             validate_connection_config,
             validate_connection_test,
         )
-
-        print("❌ Methods should not be imported directly - they are instance methods")
-        return False
     except ImportError:
         pass
+    else:
+        print("❌ Methods should not be imported directly - they are instance methods")
+        return False
 
     try:
-        from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
+        from hub.apps.integrations.business_rules import (
+            MarketplaceIntegrationBusinessRules,
+        )
 
         print("✓ MarketplaceIntegrationBusinessRules imports successfully")
     except ImportError as e:
@@ -70,7 +72,9 @@ def validate_imports():
         return False
 
     try:
-        from hub.apps.integrations.models import MarketplaceConnection
+        from hub.apps.integrations.models import (
+            MarketplaceConnection,
+        )
 
         print("✓ MarketplaceConnection imports successfully")
     except ImportError as e:
@@ -78,7 +82,9 @@ def validate_imports():
         return False
 
     try:
-        from hub.apps.integrations.base import MarketplaceType
+        from hub.apps.integrations.base import (
+            MarketplaceType,
+        )
 
         print("✓ MarketplaceType imports successfully")
     except ImportError as e:
@@ -86,7 +92,9 @@ def validate_imports():
         return False
 
     try:
-        from hub.apps.core.business_rules.base import ValidationResult
+        from hub.apps.core.business_rules.base import (
+            ValidationResult,
+        )
 
         print("✓ ValidationResult imports successfully")
     except ImportError as e:
@@ -112,11 +120,11 @@ def validate_methods():
         for method_name in methods_to_check:
             if not check_method_exists(MarketplaceIntegrationBusinessRules, method_name):
                 all_exist = False
-
-        return all_exist
     except Exception as e:
         print(f"❌ Error validating methods: {e}")
         return False
+    else:
+        return all_exist
 
 
 def validate_test_files():
@@ -193,14 +201,14 @@ def validate_method_signatures():
             )
             return False
         print("✓ validate_connection_test signature is correct")
-
-        return True
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         print(f"❌ Error validating signatures: {e}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def main():

@@ -16,7 +16,12 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser } from '../fixtures/auth';
+import {
+  getAuditorUser,
+  getTenantAdminUser,
+  getTestUser,
+  type TestUser,
+} from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Feature: Track B — list-page input focus retention', () => {
@@ -29,6 +34,14 @@ test.describe('Feature: Track B — list-page input focus retention', () => {
     inputLocator: string;
     /** Selector shown once the page has committed to rendering (any of comma-separated list). */
     contentSelector: string;
+    /**
+     * Persona for role-gated routes. The default e2e user is
+     * DATA_PROVIDER-only; /governance/* requires TENANT_ADMIN/DPO/… and
+     * /audit requires TENANT_ADMIN/AUDITOR/…, so the default user bounced
+     * to /403 and the filter input never rendered (b7 #34/#35: 30s
+     * "element not found" hiding the role redirect).
+     */
+    userGetter?: () => Promise<TestUser>;
   };
 
   const PAGES: PageCase[] = [
@@ -49,22 +62,35 @@ test.describe('Feature: Track B — list-page input focus retention', () => {
       url: '/governance/retention',
       inputLocator: '#asset-id-filter',
       contentSelector: '.governance-retention-policy-list-page, .empty-state, [data-testid="empty-state"]',
+      userGetter: getTenantAdminUser,
     },
     {
       name: '/audit actor-user-id filter input',
       url: '/audit',
       inputLocator: '#audit-actor-filter',
       contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]',
+      userGetter: getAuditorUser,
     },
   ];
 
   for (const pageCase of PAGES) {
     test(`input retains focus while typing on ${pageCase.name}`, async ({ page }) => {
-      const testUser = await getTestUser();
+      const testUser = pageCase.userGetter ? await pageCase.userGetter() : await getTestUser();
       await loginAndNavigateToRoute(page, testUser, pageCase.url, {
         timeout: 60000,
         contentSelector: pageCase.contentSelector,
       });
+
+      // A /403 here means the route's ProtectedRoute guard bounced the
+      // persona that was supposed to pass it (role-seeding drift) — the
+      // Track B input contract cannot run and a 30s "element not found"
+      // would mask the real signal. Fail fast with the actual URL.
+      if (page.url().includes('/403')) {
+        throw new Error(
+          `list-page-input-focus: ${pageCase.name} redirected to /403 — ` +
+            'the persona for this route lacks its ProtectedRoute role (ensure_e2e_user_roles drift?)'
+        );
+      }
 
       const input = page.locator(pageCase.inputLocator);
       // Input must be rendered regardless of list state (loading/error/empty/success).

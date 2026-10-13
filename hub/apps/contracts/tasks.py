@@ -7,9 +7,11 @@ cache invalidation, and progress events.
 
 import hashlib
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import structlog
+from django.db import DatabaseError
 
 logger = structlog.get_logger(__name__)
 
@@ -27,6 +29,7 @@ def _run_with_tenant_context(tenant_id: str | None, callable: Callable[[], Any])
 
     with tenant_context(tenant_id):
         return callable()
+
 
 try:
     from hub.apps.observability.otel_metrics import (
@@ -154,7 +157,7 @@ def renormalize_contracts_v310(
                                 "normalization_errors",
                             ]
                         )
-                    except Exception:
+                    except (DatabaseError, AttributeError):
                         pass
                 failed += 1
 
@@ -214,22 +217,35 @@ _redis_pub_client = None
 
 
 def _get_redis_pub_client():
-    """Lazy singleton Redis client for pub/sub invalidation."""
+    """Lazy singleton Redis client for pub/sub invalidation.
+
+    URL fallback chain (close-test-coverage-gaps 0.5): ``REDIS_CACHE_URL``
+    env → ``REDIS_URL`` env → the settings-computed default. The old code
+    read ONLY ``REDIS_CACHE_URL`` with a hardcoded
+    ``redis://localhost:6379/0`` default — on host-side runs that ignored
+    the recipe's ``REDIS_URL`` and hit the wrong instance (contracts Redis
+    tests skipped), and an empty-string env var crashed ``from_url``.
+    Falsy env values are treated as unset.
+    """
     global _redis_pub_client
     if _redis_pub_client is None:
         import os
 
         import redis as redis_lib
 
-        url = os.getenv(
-            "REDIS_CACHE_URL",
-            "redis://localhost:6379/0",
-        )
+        url = os.getenv("REDIS_CACHE_URL") or os.getenv("REDIS_URL") or _settings_redis_cache_url()
         _redis_pub_client = redis_lib.Redis.from_url(
             url,
             socket_timeout=2,
         )
     return _redis_pub_client
+
+
+def _settings_redis_cache_url() -> str:
+    """The settings-computed cache URL (never the raw env default)."""
+    from django.conf import settings
+
+    return str(settings.REDIS_CACHE_URL or "redis://localhost:6379/0")
 
 
 def _invalidate_contract_cache(contract) -> None:

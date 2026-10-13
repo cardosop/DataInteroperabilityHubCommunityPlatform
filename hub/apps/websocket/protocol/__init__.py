@@ -6,11 +6,11 @@ Defines the message protocol for WebSocket communication.
 
 import json
 from dataclasses import asdict, dataclass
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import Enum, StrEnum
+from typing import Any, Optional
 
 
-class WebSocketMessageType(str, Enum):
+class WebSocketMessageType(StrEnum):
     """WebSocket message types."""
 
     # Client to server

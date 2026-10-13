@@ -22,6 +22,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../shared/api/client');
 
+// Phase 260.3.F.3 — the resume CTA routes picks through
+// useMultipartUpload.resume / computeFingerprint. The hoisted mocks keep
+// the component wiring testable without exercising MultipartUploader
+// (covered by utils/multipartUploader.test.ts).
+const resumeMocks = vi.hoisted(() => ({
+  resume: vi.fn(),
+  computeFingerprint: vi.fn(),
+}));
+
+vi.mock('../hooks/useMultipartUpload', () => ({
+  useMultipartUpload: () => ({
+    upload: vi.fn(),
+    resume: resumeMocks.resume,
+    computeFingerprint: resumeMocks.computeFingerprint,
+    isPending: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+}));
+
 import { FileUpload } from './FileUpload';
 import { ToastProvider } from '../../../shared/components/Toast';
 import { useAuthStore } from '../../auth/store/authStore';
@@ -83,6 +103,9 @@ beforeEach(() => {
   localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
+  resumeMocks.resume.mockReset();
+  resumeMocks.computeFingerprint.mockReset();
+  resumeMocks.computeFingerprint.mockReturnValue(null);
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -165,6 +188,84 @@ describe('FileUpload — Phase 260.3.F resume prompt', () => {
 
     expect(screen.getByTestId('file-upload-resume-prompt')).toBeInTheDocument();
     await user.click(screen.getByTestId('discard-btn-fp-only'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('file-upload-resume-prompt')).toBeNull();
+    });
+  });
+});
+
+describe('FileUpload — Phase 260.3.F.3 resume CTA', () => {
+  it('renders a Resume button per checkpoint entry', () => {
+    saveUploadCheckpoint(makeCheckpoint({ fingerprint: 'fp-A' }));
+    render(<FileUpload />, { wrapper });
+    expect(screen.getByTestId('resume-btn-fp-A')).toBeInTheDocument();
+    expect(screen.getByTestId('resume-btn-fp-A')).toHaveTextContent('Resume');
+  });
+
+  it('resume pick with a mismatched file renders the inline mismatch error and never calls resume', async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    resumeMocks.computeFingerprint.mockReturnValue('other-fp');
+    // Relative timestamps: listResumableUploads prunes stale checkpoints,
+    // so a FIXED_NOW-anchored entry expires under real timers.
+    saveUploadCheckpoint(
+      makeCheckpoint({ fingerprint: 'fp-A', updatedAt: Date.now() - 100 }),
+    );
+    render(<FileUpload />, { wrapper });
+
+    await user.click(screen.getByTestId('resume-btn-fp-A'));
+    await user.upload(
+      screen.getByTestId('file-upload-input'),
+      new File(['x'], 'different.csv', { type: 'text/csv' }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-error')).toHaveTextContent(/does not match/i);
+    });
+    expect(resumeMocks.resume).not.toHaveBeenCalled();
+    // The rejected pick must not leave the dropzone stuck in the
+    // "Uploading..." state behind the mismatch error.
+    expect(screen.getByTestId('file-upload-dropzone')).toHaveAttribute(
+      'data-upload-state',
+      'idle',
+    );
+  });
+
+  it('resume pick with a matching file resumes the checkpoint and clears the prompt', async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    resumeMocks.computeFingerprint.mockReturnValue('fp-A');
+    resumeMocks.resume.mockResolvedValue({ id: 'file-A' });
+    // Relative timestamps: listResumableUploads prunes stale checkpoints,
+    // so a FIXED_NOW-anchored entry expires under real timers. totalSize
+    // matches the 1-byte File below — the component's size pre-check
+    // rejects a pick whose size differs from the checkpoint.
+    saveUploadCheckpoint(
+      makeCheckpoint({
+        fingerprint: 'fp-A',
+        totalSize: 1,
+        updatedAt: Date.now() - 100,
+      }),
+    );
+    const onUploadComplete = vi.fn();
+    render(<FileUpload onUploadComplete={onUploadComplete} />, { wrapper });
+
+    await user.click(screen.getByTestId('resume-btn-fp-A'));
+    await user.upload(
+      screen.getByTestId('file-upload-input'),
+      new File(['x'], 'big.csv', { type: 'text/csv' }),
+    );
+
+    await waitFor(() => {
+      expect(resumeMocks.resume).toHaveBeenCalledTimes(1);
+    });
+    const [fileArg, checkpointArg] = resumeMocks.resume.mock.calls[0];
+    expect((fileArg as File).name).toBe('big.csv');
+    expect((checkpointArg as UploadCheckpoint).fingerprint).toBe('fp-A');
+    await waitFor(() => {
+      expect(onUploadComplete).toHaveBeenCalled();
+    });
+    // The consumed checkpoint removes the prompt.
     await waitFor(() => {
       expect(screen.queryByTestId('file-upload-resume-prompt')).toBeNull();
     });

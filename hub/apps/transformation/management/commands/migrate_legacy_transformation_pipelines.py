@@ -33,8 +33,9 @@ class Command(BaseCommand):
             help="Migrate a single pipeline by UUID.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.integrations.encryption import EncryptionError
         from hub.apps.transformation.models import (
             PipelineStatus,
             TransformationPipeline,
@@ -57,7 +58,7 @@ class Command(BaseCommand):
                     if hasattr(pipeline, "get_pipeline_definition")
                     else pipeline.pipeline_definition
                 )
-            except Exception:
+            except EncryptionError:
                 pdef = pipeline.pipeline_definition
 
             if isinstance(pdef, dict) and pdef.get("mode") in ("SQL", "VISUAL"):

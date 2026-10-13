@@ -170,7 +170,7 @@ class DataContractCLIClient:
 
                     time.sleep(delay)
                     continue
-                logger.error(
+                logger.exception(
                     "datacontract_service_server_error",
                     endpoint=endpoint,
                     status_code=e.response.status_code,
@@ -261,7 +261,7 @@ class DataContractCLIClient:
                 pass  # Continue with validation if cache/health check fails
 
         # Define fallback response
-        def fallback_response(*args, **kwargs) -> dict[str, Any]:
+        def fallback_response(*_args, **_kwargs) -> dict[str, Any]:
             """Fallback response when circuit breaker is open or service fails."""
             return {
                 "validation_status": "ERROR",
@@ -293,7 +293,6 @@ class DataContractCLIClient:
 
         try:
             result = self._circuit_breaker.call(execute_validation, fallback=fallback_response)
-            return result
         except Exception as e:
             # The underlying _make_request / circuit-breaker call already
             # logged the specific failure mode at the appropriate level.
@@ -302,6 +301,8 @@ class DataContractCLIClient:
             # caller is expected to handle the fallback.
             logger.warning("datacontract_validation_error", error=str(e), endpoint="/validate")
             return fallback_response()
+        else:
+            return result
 
     def lint(self, raw_contract: str, format: str, timeout: int | None = None) -> dict[str, Any]:
         """
@@ -360,7 +361,7 @@ class DataContractCLIClient:
                 response = client.get(url)
                 response.raise_for_status()
                 return response.json()
-        except Exception as e:
+        except (httpx.HTTPError, ValueError) as e:
             logger.warning("datacontract_service_health_check_failed", error=str(e))
             return {"status": "unhealthy", "cli_version": "unknown"}
 

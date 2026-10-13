@@ -24,6 +24,7 @@ User = get_user_model()
 
 class DatasetsBusinessRulesInitializationTest(DatasetsTestBase):
     """Test DatasetsBusinessRules initialization"""
+
     _needs_storage = False
 
     def setUp(self):
@@ -83,6 +84,7 @@ class DatasetsBusinessRulesInitializationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesRegistrationTest(DatasetsTestBase):
     """Test DatasetsBusinessRules registration in business rules registry"""
+
     _needs_storage = False
 
     def setUp(self):
@@ -129,6 +131,7 @@ class DatasetsBusinessRulesRegistrationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
     """Test DatasetsBusinessRules validation methods"""
+
     _needs_storage = False
 
     def setUp(self):
@@ -172,7 +175,8 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
             "file_relationship",
         ):
             self.assertIn(
-                check_type, checks,
+                check_type,
+                checks,
                 f"validation_checks must include '{check_type}'",
             )
 
@@ -602,6 +606,7 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesSchemaValidationTest(DatasetsTestBase):
     """Test comprehensive dataset schema validation"""
+
     _needs_storage = False
 
     def setUp(self):
@@ -890,6 +895,7 @@ class DatasetsBusinessRulesSchemaValidationIntegrationTest(DatasetsTestBase):
     Validates schema structure and field validation through the business
     rules layer using factory-created datasets (does NOT go through
     DatasetService — the DatasetService integration is tested elsewhere)."""
+
     _needs_storage = False
 
     def setUp(self):
@@ -936,6 +942,7 @@ class DatasetsBusinessRulesSchemaValidationIntegrationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
     """Test cases for dataset versioning validation methods."""
+
     _needs_storage = False
 
     def setUp(self):
@@ -1441,8 +1448,7 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         )
         self.assertTrue(
             result.is_valid,
-            "Persisted dataset with valid structure must validate: "
-            f"errors={result.errors}",
+            f"Persisted dataset with valid structure must validate: errors={result.errors}",
         )
         self.assertIn("validation_checks", result.details)
         self.assertIn("structure", result.details["validation_checks"])
@@ -1468,7 +1474,8 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
             f"got is_valid=True, errors={result.errors}",
         )
         self.assertGreater(
-            len(result.errors), 0,
+            len(result.errors),
+            0,
             "Must return at least one validation error (missing file, missing format, etc.)",
         )
 

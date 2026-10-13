@@ -257,3 +257,36 @@ class DQAlertingServiceTest(TestCase):
         self.assertFalse(rule_gte.evaluate(70.0))
         self.assertTrue(rule_gte.evaluate(80.0))
         self.assertTrue(rule_gte.evaluate(90.0))
+
+
+class DQAlertingRuleCreateSerializerTest(TestCase):
+    """Serializer contract: a rule without asset_id is a GLOBAL rule (b7 #2)."""
+
+    def test_global_rule_create_payload_valid_without_asset_id(self):
+        from hub.apps.dq.serializers import DQAlertingRuleCreateSerializer
+
+        serializer = DQAlertingRuleCreateSerializer(
+            data={
+                "name": "Global Quality Alert",
+                "metric_type": "quality_score",
+                "threshold": 80,
+                "comparison_operator": "<",
+                "severity": "MEDIUM",
+                "alert_channels": ["EMAIL"],
+                "channel_config": {"recipients": "oncall@e2e.test"},
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertNotIn("asset_id", serializer.validated_data)
+
+    def test_global_rule_create_payload_valid_with_null_asset_id(self):
+        from hub.apps.dq.serializers import DQAlertingRuleCreateSerializer
+
+        serializer = DQAlertingRuleCreateSerializer(
+            data={
+                "asset_id": None,
+                "name": "Global Quality Alert",
+                "threshold": 80,
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)

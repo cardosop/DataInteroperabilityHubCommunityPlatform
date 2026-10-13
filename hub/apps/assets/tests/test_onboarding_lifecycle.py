@@ -63,27 +63,27 @@ class OnboardingLifecycleTest(TestCase):
     # -- helpers -------------------------------------------------------
 
     def _create_asset(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            key=f"asset-{uuid.uuid4().hex[:6]}",
-            name="Lifecycle Asset",
-            created_by=self.user,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "key": f"asset-{uuid.uuid4().hex[:6]}",
+            "name": "Lifecycle Asset",
+            "created_by": self.user,
+        }
         defaults.update(overrides)
         return Asset.objects.create(**defaults)
 
     def _create_contract(self, asset, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            asset=asset,
-            status=ContractStatus.ACTIVE,
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_format=OriginalFormat.JSON,
-            original_raw='{"id":"test"}',
-            created_by=self.user,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "asset": asset,
+            "status": ContractStatus.ACTIVE,
+            "validation_status": ValidationStatus.VALID,
+            "normalization_status": NormalizationStatus.NORMALIZED_OK,
+            "original_spec_type": OriginalSpecType.ODCS,
+            "original_format": OriginalFormat.JSON,
+            "original_raw": '{"id":"test"}',
+            "created_by": self.user,
+        }
         defaults.update(overrides)
         return Contract.objects.create(**defaults)
 

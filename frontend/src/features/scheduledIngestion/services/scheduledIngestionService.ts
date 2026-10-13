@@ -26,6 +26,7 @@ export const scheduledIngestionService = {
     if (filters.page != null) params.set('page', String(filters.page));
     if (filters.page_size != null) params.set('page_size', String(filters.page_size));
     if (filters.status) params.set('status', filters.status);
+    if (filters.asset_id) params.set('asset_id', filters.asset_id);
     const qs = params.toString();
     const url = qs ? `${SCHEDULED_INGESTIONS_PATH}/?${qs}` : `${SCHEDULED_INGESTIONS_PATH}/`;
     const response = await apiClient.getClient().get<ScheduledIngestionListResponse>(url);
@@ -48,12 +49,18 @@ export const scheduledIngestionService = {
 
   /**
    * Create scheduled ingestion
+   *
+   * The backend returns 207 ``{resource, deployment_sync}`` when the
+   * Prefect deployment sync fails (the resource itself was created) —
+   * unwrap that envelope so callers always get the ScheduledIngestion
+   * and the create page never navigates to
+   * ``/scheduled-ingestions/undefined`` (JOURNEY-INGESTION-001, 2026-10-03).
    */
   async create(data: ScheduledIngestionCreateRequest): Promise<ScheduledIngestion> {
-    const response = await apiClient
-      .getClient()
-      .post<ScheduledIngestion>(`${SCHEDULED_INGESTIONS_PATH}/`, data);
-    return response.data;
+    const response = await apiClient.getClient().post<
+      ScheduledIngestion & { resource?: ScheduledIngestion }
+    >(`${SCHEDULED_INGESTIONS_PATH}/`, data);
+    return response.data.resource ?? response.data;
   },
 
   /**

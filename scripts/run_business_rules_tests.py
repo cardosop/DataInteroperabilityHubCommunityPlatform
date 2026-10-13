@@ -117,7 +117,8 @@ def run_pytest_tests(test_files: list[str], verbose: bool = True) -> tuple[int, 
         "--tb=short",
         "--no-header",
         "--ignore-glob=**/__pycache__",
-    ] + test_files
+        *test_files,
+    ]
 
     # Remove empty strings
     cmd = [c for c in cmd if c]
@@ -154,7 +155,7 @@ def run_pytest_tests(test_files: list[str], verbose: bool = True) -> tuple[int, 
         return result.returncode, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
         return 1, "Test execution timed out after 10 minutes"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         # Fall back to Django test runner
         print(f"⚠️  pytest failed ({e!s}), falling back to Django test runner...")
         return run_django_tests(test_files, verbose)
@@ -220,7 +221,8 @@ def run_django_tests(
             "test",
             "--verbosity=2" if verbose else "--verbosity=1",
             "--keepdb",
-        ] + batch
+            *batch,
+        ]
 
         try:
             result = subprocess.run(
@@ -254,7 +256,7 @@ def run_django_tests(
             error_msg = f"Batch {batch_num} timed out after {timeout_per_batch // 60} minutes"
             all_output += f"\n❌ {error_msg}\n"
             print(f"❌ {error_msg}")
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             overall_exit_code = 1
             error_msg = f"Error running batch {batch_num}: {e!s}"
             all_output += f"\n❌ {error_msg}\n"
@@ -301,7 +303,7 @@ def check_services() -> bool:
             else:
                 print(f"⚠️  {service_name} is not available on {host}:{port}")
                 all_available = False
-        except Exception as e:
+        except OSError as e:
             print(f"⚠️  Could not check {service_name}: {e}")
             all_available = False
 

@@ -56,9 +56,10 @@ def check_service_health(service_url: str, timeout: int = 5) -> bool:
     """Check if a service is healthy (public /health endpoint — no auth needed)."""
     try:
         response = requests.get(service_url, timeout=timeout)
-        return response.status_code in [200, 404]
     except (requests.exceptions.RequestException, requests.exceptions.Timeout):
         return False
+    else:
+        return response.status_code in [200, 404]
 
 
 class APIServiceDjango6Test(TestCase):
@@ -82,6 +83,7 @@ class APIServiceDjango6Test(TestCase):
 
     def test_api_service_django_version(self):
         import django
+
         django_version = django.get_version()
         self.assertTrue(
             django_version.startswith("6."), f"Django version is {django_version}, expected 6.x"
@@ -89,6 +91,7 @@ class APIServiceDjango6Test(TestCase):
 
     def test_api_service_database_connection(self):
         from django.db import connection
+
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
             result = cursor.fetchone()
@@ -96,6 +99,7 @@ class APIServiceDjango6Test(TestCase):
 
     def test_api_service_redis_connection(self):
         from django.core.cache import cache
+
         cache.set("test_key", "test_value", 60)
         value = cache.get("test_key")
         self.assertEqual(value, "test_value")
@@ -198,7 +202,7 @@ class DataContractServiceDjango6Test(TestCase):
                 timeout=10,
             )
             # 200=success, 400/422=validation error (body mismatch), 404=endpoint missing
-            self.assertIn(response.status_code, [200, 400, 404, 422])
+            self.assertIn(response.status_code, [200, 400, 404, 422])  # noqa: broad-status-codes
         except requests.exceptions.ConnectionError:
             pytest.skip("DataContract service not reachable")
         except requests.exceptions.RequestException as exc:
@@ -240,7 +244,7 @@ class ComplianceServiceDjango6Test(TestCase):
                 timeout=10,
             )
             # 200=success, 400/422=validation error, 404=endpoint missing, 501=not implemented
-            self.assertIn(response.status_code, [200, 400, 404, 422, 501])
+            self.assertIn(response.status_code, [200, 400, 404, 422, 501])  # noqa: broad-status-codes
         except requests.exceptions.ConnectionError:
             pytest.skip("Compliance service not reachable")
         except requests.exceptions.RequestException as exc:
@@ -283,7 +287,7 @@ class DQServiceDjango6Test(TestCase):
                 timeout=10,
             )
             # 200=success, 400/422=validation error, 404/501=not implemented
-            self.assertIn(response.status_code, [200, 400, 404, 422, 501])
+            self.assertIn(response.status_code, [200, 400, 404, 422, 501])  # noqa: broad-status-codes
         except requests.exceptions.ConnectionError:
             pytest.skip("DQ service not reachable")
         except requests.exceptions.RequestException as exc:
@@ -319,7 +323,7 @@ class SemanticServiceDjango6Test(TestCase):
                 timeout=10,
             )
             # 200=found, 404=not found, 501=not implemented, 503=unavailable
-            self.assertIn(response.status_code, [200, 404, 501, 503])
+            self.assertIn(response.status_code, [200, 404, 501, 503])  # noqa: broad-status-codes
         except requests.exceptions.ConnectionError:
             pytest.skip("Semantic service not reachable")
         except requests.exceptions.Timeout:
@@ -387,7 +391,7 @@ class MicroservicesIntegrationTest(TestCase):
         # profile/config), or 403 (plan/subscription required).  503 means the
         # DQ service is unavailable (infra issue — skip rather than fail).
         if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
-            pytest.skip("DQ service unavailable")
+            pytest.skip("DQ service unavailable")  # noqa: skip-in-body
         self.assertIn(  # noqa: broad-status-codes
             response.status_code,
             [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],

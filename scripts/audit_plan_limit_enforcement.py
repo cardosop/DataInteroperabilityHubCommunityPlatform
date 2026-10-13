@@ -26,7 +26,7 @@ def audit() -> int:
             continue
         try:
             text = pyf.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
         for key in _LIMIT_KEYS:
             if key in text:

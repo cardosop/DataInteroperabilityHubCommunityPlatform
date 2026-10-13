@@ -10,8 +10,10 @@ from decimal import Decimal
 from typing import Any
 
 from django.conf import settings
+from django.db import DatabaseError, InterfaceError
 from django.utils import timezone
 
+from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.services import TenantUsageService
 
@@ -108,10 +110,12 @@ class CostTrackingService:
                 "tenant_id": tenant_id,
                 "total_cost": total_cents / 100.0,
                 "breakdown": breakdown,
-                "period_start": flsc_result.get("period_start",
-                    period_start.isoformat() if period_start else ""),
-                "period_end": flsc_result.get("period_end",
-                    period_end.isoformat() if period_end else ""),
+                "period_start": flsc_result.get(
+                    "period_start", period_start.isoformat() if period_start else ""
+                ),
+                "period_end": flsc_result.get(
+                    "period_end", period_end.isoformat() if period_end else ""
+                ),
                 "period": "month",
                 "source": "flsc",
             }
@@ -123,9 +127,9 @@ class CostTrackingService:
             usage_summary = usage_service.calculate_usage_summary(
                 tenant_id, period_start=period_start, period_end=period_end
             )
-        except Exception:
-            # Tenant does not exist or usage data unavailable —
-            # return a zero-cost fallback result.
+        except (NotFoundError, ValidationError, DatabaseError, InterfaceError):
+            # Tenant does not exist (NotFoundError) or usage data
+            # unavailable (DB errors) — return a zero-cost fallback result.
             now = timezone.now()
             ps = period_start or datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
             pe = period_end or ps
@@ -155,14 +159,30 @@ class CostTrackingService:
         total_cost = storage_cost + api_cost + ingestion_cost + export_cost
 
         breakdown = [
-            {"category": "storage", "amount_usd": float(storage_cost),
-             "amount_cents": int(round(storage_cost * 100)), "quantity": storage_gb},
-            {"category": "api_calls", "amount_usd": float(api_cost),
-             "amount_cents": int(round(api_cost * 100)), "quantity": api_calls},
-            {"category": "ingestion", "amount_usd": float(ingestion_cost),
-             "amount_cents": int(round(ingestion_cost * 100)), "quantity": None},
-            {"category": "export", "amount_usd": float(export_cost),
-             "amount_cents": int(round(export_cost * 100)), "quantity": None},
+            {
+                "category": "storage",
+                "amount_usd": float(storage_cost),
+                "amount_cents": round(storage_cost * 100),
+                "quantity": storage_gb,
+            },
+            {
+                "category": "api_calls",
+                "amount_usd": float(api_cost),
+                "amount_cents": round(api_cost * 100),
+                "quantity": api_calls,
+            },
+            {
+                "category": "ingestion",
+                "amount_usd": float(ingestion_cost),
+                "amount_cents": round(ingestion_cost * 100),
+                "quantity": None,
+            },
+            {
+                "category": "export",
+                "amount_usd": float(export_cost),
+                "amount_cents": round(export_cost * 100),
+                "quantity": None,
+            },
         ]
 
         return {

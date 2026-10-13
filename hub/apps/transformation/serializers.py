@@ -25,7 +25,7 @@ class TransformationPipelineSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TransformationPipeline
-        fields = [
+        fields = (
             "id",
             "tenant",
             "created_by",
@@ -37,14 +37,14 @@ class TransformationPipelineSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "metadata",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "created_by",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def to_representation(self, instance):
         """Decrypt pipeline_definition via model accessor."""
@@ -214,7 +214,7 @@ class PipelineExecutionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PipelineExecution
-        fields = [
+        fields = (
             "id",
             "pipeline_id",
             "pipeline_name",
@@ -233,8 +233,8 @@ class PipelineExecutionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "duration_seconds",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "pipeline_id",
             "pipeline_name",
@@ -253,7 +253,7 @@ class PipelineExecutionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "duration_seconds",
-        ]
+        )
 
     def to_representation(self, instance):
         """Add computed fields"""
@@ -303,7 +303,7 @@ class PreviewResultSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PreviewResult
-        fields = [
+        fields = (
             "id",
             "preview_id",
             "pipeline_id",
@@ -316,8 +316,8 @@ class PreviewResultSerializer(serializers.ModelSerializer):
             "generated_at",
             "expires_at",
             "is_expired",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "preview_id",
             "pipeline_id",
@@ -330,7 +330,7 @@ class PreviewResultSerializer(serializers.ModelSerializer):
             "generated_at",
             "expires_at",
             "is_expired",
-        ]
+        )
 
     def to_representation(self, instance):
         """Add computed fields"""
@@ -385,7 +385,7 @@ class WranglingSessionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WranglingSession
-        fields = [
+        fields = (
             "id",
             "name",
             "description",
@@ -401,8 +401,8 @@ class WranglingSessionSerializer(serializers.ModelSerializer):
             "applied_operations_count",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "asset_id",
             "asset_name",
@@ -416,7 +416,7 @@ class WranglingSessionSerializer(serializers.ModelSerializer):
             "applied_operations_count",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def to_representation(self, instance):
         """Add computed fields"""

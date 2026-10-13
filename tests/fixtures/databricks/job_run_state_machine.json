@@ -1,0 +1,27 @@
+{
+  "run_now_accepted": { "run_id": 73001 },
+  "poll_pending": {
+    "job_id": "job-machine",
+    "run_id": 73001,
+    "state": { "life_cycle_state": "PENDING" }
+  },
+  "poll_running": {
+    "job_id": "job-machine",
+    "run_id": 73001,
+    "state": { "life_cycle_state": "RUNNING" }
+  },
+  "poll_terminated": {
+    "job_id": "job-machine",
+    "run_id": 73001,
+    "state": { "life_cycle_state": "TERMINATED", "result_state": "SUCCESS" },
+    "run_duration": 90000,
+    "cluster_spec": { "num_workers": 2 }
+  },
+  "steps": [
+    "run_now_accepted",
+    "poll_pending",
+    "poll_running",
+    "poll_running",
+    "poll_terminated"
+  ]
+}

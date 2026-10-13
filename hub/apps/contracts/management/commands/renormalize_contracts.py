@@ -62,9 +62,12 @@ Then, after the self-heal run, demote any remaining structureless assets::
 import json
 import time
 
+import structlog
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+
+logger = structlog.get_logger(__name__)
 
 # Truncate stored ``MigrationCheckpoint.error`` to a sane length so a
 # pathological exception (e.g. a multi-MB traceback) doesn't blow up the
@@ -453,7 +456,9 @@ class Command(BaseCommand):
                 except Exception:
                     logger.warning(
                         "renormalize_contracts_set_structureless_backlog_failed",
-                        tenant_id=tenant_id, count=emitted, exc_info=True,
+                        tenant_id=tenant_id,
+                        count=emitted,
+                        exc_info=True,
                     )
         else:
             self.stdout.write(
@@ -873,9 +878,9 @@ class Command(BaseCommand):
         except Exception:
             logger.warning(
                 "renormalize_contracts_batch_duration_metric_failed",
-                outcome=outcome_label, exc_info=True,
+                outcome=outcome_label,
+                exc_info=True,
             )
-            pass
 
         # Phase 227 W3.4 — emit one ``contract.batch_renormalized``
         # webhook per affected tenant (NOT per contract). The summary
@@ -1123,10 +1128,11 @@ class Command(BaseCommand):
         except Exception:
             logger.warning(
                 "renormalize_contracts_audit_failed",
-                contract_id=str(contract.id), run_id=run_id, exc_info=True,
+                contract_id=str(contract.id),
+                run_id=run_id,
+                exc_info=True,
             )
             # the asset state change is the load-bearing operation.
-            pass
 
         # Phase 227 W5.3 — notify every TENANT_ADMIN that the asset
         # has been auto-reverted. Best-effort: this dispatch happens

@@ -2,9 +2,12 @@
 Unit tests for file size limits and validation.
 """
 
+from unittest.mock import patch
+
 import pytest
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.test import override_settings
 from rest_framework import status
 
 from hub.apps.files.tests.test_base import FilesAPITestBase
@@ -26,9 +29,40 @@ class FileSizeLimitsTest(FilesAPITestBase):
         except ValidationError:
             self.fail("validate_file_size raised ValidationError for valid size")
 
-    def test_validate_file_size_browser_exceeds_limit(self):
-        """Test file size validation for browser upload exceeding limit"""
+    def test_validate_file_size_browser_multipart_exempt_from_browser_cap(self):
+        """
+        Phase 260.3.F — browser uploads ABOVE the multipart threshold
+        route through the resumable multipart engine, so the
+        single-PUT-era browser cap does not apply; the platform/tenant
+        effective limit governs instead.
+        """
         size = settings.MAX_BROWSER_UPLOAD_SIZE + 1
+
+        try:
+            validate_file_size(size, "browser")
+        except ValidationError:
+            self.fail(
+                "validate_file_size raised ValidationError for multipart-bound browser upload"
+            )
+
+    def test_validate_file_size_browser_multipart_still_bounded_by_platform_limit(
+        self,
+    ):
+        """A multipart-bound browser upload above the platform limit fails."""
+        size = settings.MAX_FILE_SIZE + 1
+
+        with self.assertRaises(ValidationError) as cm:
+            validate_file_size(size, "browser")
+
+        self.assertIn("exceeds", str(cm.exception))
+
+    @override_settings(MAX_BROWSER_UPLOAD_SIZE=50 * 1024 * 1024)
+    def test_validate_file_size_browser_below_threshold_obeys_cap(self):
+        """
+        An operator-lowered browser cap still binds for uploads BELOW
+        the multipart threshold (they take the single-PUT path).
+        """
+        size = 75 * 1024 * 1024
 
         with self.assertRaises(ValidationError) as cm:
             validate_file_size(size, "browser")
@@ -95,8 +129,19 @@ class FileSizeLimitsTest(FilesAPITestBase):
 
         self.assertIn("extension", str(cm.exception))
 
-    def test_init_upload_browser_size_limit(self):
-        """Test upload initialization enforces browser size limit"""
+    @patch("hub.apps.files.views.S3StorageClient.initiate_multipart_upload")
+    @patch("hub.apps.files.views.S3StorageClient.generate_presigned_part_url")
+    def test_init_upload_browser_multipart_allowed(self, mock_presign, mock_init):
+        """
+        Phase 260.3.F — a browser upload above the multipart threshold
+        initialises a MULTIPART upload instead of being rejected by the
+        single-PUT-era browser cap. Storage calls are mocked; the
+        presigned fast-path URL passes through untouched.
+        """
+        mock_init.return_value = "fake-upload-id"
+        mock_presign.return_value = (
+            "http://localhost:9010/bucket/key?partNumber=1&uploadId=fake-upload-id"
+        )
 
         data = {
             "name": "large.csv",
@@ -107,10 +152,11 @@ class FileSizeLimitsTest(FilesAPITestBase):
 
         response = self.client.post("/api/v1/files/init/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        # Check that error details contain size validation information
-        self.assertIn("detail", response.data)
-        self.assertIn("size", response.data["detail"].lower())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        body = response.json()
+        self.assertTrue(body["requires_multipart"])
+        self.assertEqual(body["upload_id"], "fake-upload-id")
+        mock_init.assert_called_once()
 
     def test_init_upload_sdk_size_limit(self):
         """Test upload initialization enforces SDK size limit"""

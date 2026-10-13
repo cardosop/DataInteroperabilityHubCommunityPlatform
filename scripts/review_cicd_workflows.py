@@ -116,7 +116,7 @@ class CICDWorkflowReviewer:
                     print(
                         f"   ✓ {workflow_file.name}: {review.workflow_type} ({len(review.endpoint_references)} endpoint references)"
                     )
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"   ✗ Error processing {workflow_file.name}: {e}", file=sys.stderr)
 
         # Collect all endpoint references
@@ -174,7 +174,7 @@ class CICDWorkflowReviewer:
             has_e2e_tests=has_e2e_tests,
         )
 
-    def _determine_workflow_type(self, workflow_name: str, content: str, jobs: list[str]) -> str:
+    def _determine_workflow_type(self, workflow_name: str, content: str, _jobs: list[str]) -> str:
         """Determine the type of workflow"""
         content_lower = content.lower()
         name_lower = workflow_name.lower()
@@ -223,7 +223,7 @@ class CICDWorkflowReviewer:
 
         return False
 
-    def _has_openapi_validation(self, content: str, workflow_data: dict) -> bool:
+    def _has_openapi_validation(self, content: str, _workflow_data: dict) -> bool:
         """Check if workflow has OpenAPI validation"""
         content_lower = content.lower()
 
@@ -234,7 +234,7 @@ class CICDWorkflowReviewer:
             or "spectral" in content_lower
         )
 
-    def _has_e2e_tests(self, content: str, workflow_data: dict) -> bool:
+    def _has_e2e_tests(self, content: str, _workflow_data: dict) -> bool:
         """Check if workflow has E2E tests"""
         content_lower = content.lower()
 

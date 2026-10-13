@@ -60,3 +60,63 @@ def scheduled_export(tenant):
     )
 
 
+@pytest.fixture
+def w38_catalog_seams(monkeypatch):
+    """W3.8 — the catalog-phase seams for suites that run the dlt spine
+    to completion: a real in-memory source connector serving CSV content
+    (the spine downloads file content through it for catalog-record
+    creation), the S3 storage boundary stand-in, and ClamAV disabled
+    (the SCAN_UNAVAILABLE branch — no scan-enqueue dependency)."""
+    from django.conf import settings
+
+    from hub.apps.orchestration.workflows import scheduled_ingestion as wf
+
+    from .connector_fakes import FakeSourceConnector
+
+    monkeypatch.setattr(settings, "CLAMAV_ENABLED", False)
+    connector = FakeSourceConnector()
+    monkeypatch.setattr(wf, "_get_source_connector_or_fail", lambda _t: connector)
+    # Binding-tolerant: the core calls save_file(tenant_id=...,
+    # file_id=..., file_content=...) — all keyword arguments — and the
+    # class-attribute patch receives the storage instance positionally.
+    monkeypatch.setattr(
+        "hub.apps.files.storage.S3StorageClient.save_file",
+        lambda *args, tenant_id=None, file_id=None, file_content=None, **kwargs: (
+            f"{tenant_id}/{file_id}/content"
+        ),
+    )
+    return connector
+
+
+@pytest.fixture
+def test_redis_endpoint():
+    """Resolve the shared test cache endpoint from the environment.
+
+    In-container batches (``make test-batch-*``) carry
+    ``REDIS_URL=redis://redis-cache-test:6379/0`` — the compose stack's
+    cache service.  Host-side runs
+    (docs/runbooks/HOST_SIDE_VERIFICATION.md) set
+    ``REDIS_URL=redis://127.0.0.1:63799/0`` — the ``p313-redis``
+    mapping.  Returns ``(host, port)`` after the W16 availability guard:
+    CI raises on a missing dependency, local runs keep the graceful
+    skip.  Callers pin their own db (db 13 per the runbook convention —
+    the app cache lives on db 0 of the same instance).
+    """
+    import os
+    import socket
+    from urllib.parse import urlparse
+
+    from envpolicy import environment_guard
+
+    url = os.environ.get("REDIS_URL", "redis://127.0.0.1:63799/0")
+    parsed = urlparse(url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 63799
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        if sock.connect_ex((host, port)) != 0:
+            # The W16 environment policy: CI RAISES on a missing
+            # dependency, local runs keep the graceful skip.
+            environment_guard(f"redis ({host}:{port}) unavailable — real Redis required")
+            pytest.skip(f"redis ({host}:{port}) unavailable — real Redis required")
+    return host, port

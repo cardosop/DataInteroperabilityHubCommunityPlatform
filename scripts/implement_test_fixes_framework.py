@@ -29,7 +29,7 @@ def load_review_report() -> dict:
         return json.load(f)
 
 
-def add_edge_cases_to_file(file_path: str, app_name: str) -> bool:
+def add_edge_cases_to_file(file_path: str, _app_name: str) -> bool:
     """Add missing edge cases and error handling to a test file"""
     path = Path(file_path)
     if not path.exists():
@@ -101,9 +101,12 @@ def add_edge_cases_to_file(file_path: str, app_name: str) -> bool:
             end_idx = last_test_idx + 1
             while end_idx < len(lines):
                 line = lines[end_idx]
-                if line.strip() and not line.startswith(" " * (indent + 4)):
-                    if line.strip().startswith("def ") or line.strip().startswith("class "):
-                        break
+                if (
+                    line.strip()
+                    and not line.startswith(" " * (indent + 4))
+                    and (line.strip().startswith("def ") or line.strip().startswith("class "))
+                ):
+                    break
                 end_idx += 1
 
             # Insert new tests
@@ -237,10 +240,7 @@ def main():
 
     report = load_review_report()
 
-    if args.feature == "all":
-        features = list(report["apps"].keys())
-    else:
-        features = [args.feature]
+    features = list(report["apps"].keys()) if args.feature == "all" else [args.feature]
 
     for feature in features:
         if feature not in report["apps"]:

@@ -12,7 +12,6 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
     WebSocketMessage,
     WebSocketMessageType,

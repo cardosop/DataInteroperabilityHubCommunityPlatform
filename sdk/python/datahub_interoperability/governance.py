@@ -4,7 +4,7 @@ Governance operations for DataHub SDK.
 Provides methods for data classification, retention policies, access workflows, and compliance reporting.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -30,7 +30,7 @@ class GovernanceAPI:
     async def get_classification(
         self,
         asset_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get data classification for asset.
 
@@ -45,8 +45,8 @@ class GovernanceAPI:
     async def classify_asset(
         self,
         asset_id: str,
-        classification: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        classification: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Classify asset.
 
@@ -63,10 +63,10 @@ class GovernanceAPI:
 
     async def get_retention_policies(
         self,
-        asset_id: Optional[str] = None,
+        asset_id: str | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List retention policies.
 
@@ -78,7 +78,7 @@ class GovernanceAPI:
         Returns:
             Paginated response with retention policies
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -93,7 +93,7 @@ class GovernanceAPI:
         retention_period_days: int,
         action: str = "DELETE",
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create retention policy.
 
@@ -106,7 +106,7 @@ class GovernanceAPI:
         Returns:
             Created retention policy
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "asset_id": asset_id,
             "retention_period_days": retention_period_days,
             "action": action,
@@ -119,7 +119,7 @@ class GovernanceAPI:
         self,
         policy_id: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update retention policy.
 
@@ -149,7 +149,7 @@ class GovernanceAPI:
         reason: str,
         requested_access_type: str = "READ",
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create access request.
 
@@ -162,7 +162,7 @@ class GovernanceAPI:
         Returns:
             Created access request
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "asset_id": asset_id,
             "reason": reason,
             "requested_access_type": requested_access_type,
@@ -173,10 +173,10 @@ class GovernanceAPI:
 
     async def list_access_requests(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List access requests.
 
@@ -188,7 +188,7 @@ class GovernanceAPI:
         Returns:
             Paginated response with access requests
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -201,7 +201,7 @@ class GovernanceAPI:
         self,
         request_id: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Approve access request.
 
@@ -220,7 +220,7 @@ class GovernanceAPI:
         self,
         request_id: str,
         reason: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Reject access request.
 
@@ -240,10 +240,10 @@ class GovernanceAPI:
     async def generate_compliance_report(
         self,
         regime: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        asset_ids: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        start_date: str | None = None,
+        end_date: str | None = None,
+        asset_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Generate compliance report.
 
@@ -256,7 +256,7 @@ class GovernanceAPI:
         Returns:
             Compliance report data
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "regime": regime,
         }
         if start_date:
@@ -271,7 +271,7 @@ class GovernanceAPI:
     async def get_compliance_report(
         self,
         report_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get compliance report by ID.
 

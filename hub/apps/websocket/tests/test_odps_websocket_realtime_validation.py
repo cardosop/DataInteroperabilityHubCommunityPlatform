@@ -1350,7 +1350,7 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
         # Verify average latency is acceptable in containerized CI.
         # Production targets are <100ms; CI/Docker adds scheduling
         # jitter so we use 500ms avg / 1000ms max as CI-safe guards
-        # that still catch catastrophic regressions (10× degradation).
+        # that still catch catastrophic regressions (10x degradation).
         avg_latency = sum(latencies) / len(latencies)
         self.assertLess(
             avg_latency,

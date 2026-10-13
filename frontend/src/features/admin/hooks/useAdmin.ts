@@ -3,6 +3,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type { TenantListFilters } from '../../../shared/types/tenants';
 import type { UserListFilters } from '../../../shared/types/users';
@@ -11,7 +12,7 @@ import { adminService } from '../services/adminService';
 export function useTenants(filters: TenantListFilters = {}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['admin', 'tenants', 'list', filters],
-    queryFn: () => adminService.listTenants(filters),
+    queryFn: async () => normalizePaginated(await adminService.listTenants(filters)),
     enabled: options?.enabled !== false,
   });
 }
@@ -35,7 +36,7 @@ export function useTenantConfig(tenantId: string | null) {
 export function useUsers(filters: UserListFilters = {}) {
   return useQuery({
     queryKey: ['admin', 'users', 'list', filters],
-    queryFn: () => adminService.listUsers(filters),
+    queryFn: async () => normalizePaginated(await adminService.listUsers(filters)),
   });
 }
 
@@ -119,7 +120,7 @@ export function useResumeTenant() {
 export function usePlatformTenantUsage(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['admin', 'platform', 'usage'],
-    queryFn: () => adminService.getPlatformTenantUsage(),
+    queryFn: async () => normalizePaginated(await adminService.getPlatformTenantUsage()),
     enabled: options?.enabled !== false,
   });
 }
@@ -137,12 +138,21 @@ export function useAdminTenantFeatureFlags(tenantId: string | null) {
 export function useUpdateAdminTenantFeatureFlags() {
   const queryClient = useQueryClient();
   return useMutationWithNotification({
-    mutationFn: ({ tenantId, flags, reason }: { tenantId: string; flags: Record<string, boolean>; reason?: string }) =>
-      adminService.updateTenantFeatureFlags(tenantId, flags, reason),
+    mutationFn: ({
+      tenantId,
+      flags,
+      reason,
+    }: {
+      tenantId: string;
+      flags: Record<string, boolean>;
+      reason?: string;
+    }) => adminService.updateTenantFeatureFlags(tenantId, flags, reason),
     successMessage: 'Feature flags updated',
     errorMessage: 'Failed to update feature flags',
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'feature-flags', variables.tenantId] });
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'tenants', 'feature-flags', variables.tenantId],
+      });
     },
   });
 }
@@ -150,12 +160,14 @@ export function useUpdateAdminTenantFeatureFlags() {
 export function useApproveFeatureFlagFlip() {
   const queryClient = useQueryClient();
   return useMutationWithNotification({
-    mutationFn: ({ tenantId, flagId }: { tenantId: string; flagId: string }) =>
-      adminService.approveFeatureFlagFlip(tenantId, flagId),
+    mutationFn: ({ flagId }: { tenantId: string; flagId: string }) =>
+      adminService.approveFeatureFlagFlip(flagId),
     successMessage: 'Feature flag change approved',
     errorMessage: 'Failed to approve feature flag change',
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'feature-flags', variables.tenantId] });
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'tenants', 'feature-flags', variables.tenantId],
+      });
     },
   });
 }

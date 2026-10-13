@@ -11,6 +11,7 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
 
 import json
+import uuid
 
 import pytest
 import yaml
@@ -28,7 +29,6 @@ from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.marketplace.models import Entitlement, Listing, ListingStatus, PricingModel
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -115,24 +115,19 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                 "intended_use": ["analytics", "reporting", "machine-learning"],
                 "x_odps": {
                     "pricing_plans": [
-                        {
-                            "id": "free-plan",
-                            "name": "Free Plan",
-                            "price": 0,
-                            "currency": "USD"
-                        },
+                        {"id": "free-plan", "name": "Free Plan", "price": 0, "currency": "USD"},
                         {
                             "id": "premium-plan",
                             "name": "Premium Plan",
                             "price": 99.99,
-                            "currency": "USD"
-                        }
+                            "currency": "USD",
+                        },
                     ],
                     "access_methods": {
                         "api": {"url": "https://api.example.com/data"},
-                        "s3": {"bucket": "test-bucket", "path": "/data/"}
-                    }
-                }
+                        "s3": {"bucket": "test-bucket", "path": "/data/"},
+                    },
+                },
             },
         }
 
@@ -188,6 +183,33 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
         else:  # json
             return json.loads(response.content)
 
+    def _extract_odps_core_data(self, data):
+        # ODPS has different structure: product.details[lang].productID, product.details[lang].name
+        product = data.get("product", {})
+        if not isinstance(product, dict):
+            return {}
+
+        details = product.get("details", {})
+        if not isinstance(details, dict):
+            return {}
+
+        # Get first language entry (usually "en")
+        lang_details = details.get("en") if "en" in details else {}
+        if not lang_details:
+            # If no "en" key, get first available language
+            lang_details = next(iter(details.values())) if details else {}
+
+        if not isinstance(lang_details, dict):
+            return {}
+
+        return {
+            "id": lang_details.get("productID")
+            or data.get("version"),  # Fallback to version if productID not found
+            "name": lang_details.get("name"),
+            "description": lang_details.get("description"),
+            "version": data.get("version"),
+        }
+
     def _extract_core_data(self, data, format_type):
         """Extract core contract data from different format structures"""
         # Ensure data is a dict
@@ -205,52 +227,30 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             else:
                 return {}
 
-        if format_type == "hubcontract":
-            return {
-                "id": data.get("id"),
-                "name": data.get("info", {}).get("name"),
-                "description": data.get("info", {}).get("description"),
-                "version": data.get("info", {}).get("version"),
-            }
-        elif format_type == "odcs":
-            return {
-                "id": data.get("id"),
-                "name": data.get("name"),
-                "description": data.get("description"),
-                "version": data.get("version"),
-            }
-        elif format_type == "odps":
-            # ODPS has different structure: product.details[lang].productID, product.details[lang].name
-            product = data.get("product", {})
-            if not isinstance(product, dict):
-                return {}
-
-            details = product.get("details", {})
-            if not isinstance(details, dict):
-                return {}
-
-            # Get first language entry (usually "en")
-            lang_details = details.get("en") if "en" in details else {}
-            if not lang_details:
-                # If no "en" key, get first available language
-                lang_details = next(iter(details.values())) if details else {}
-
-            if not isinstance(lang_details, dict):
-                return {}
-
-            return {
-                "id": lang_details.get("productID") or data.get("version"),  # Fallback to version if productID not found
-                "name": lang_details.get("name"),
-                "description": lang_details.get("description"),
-                "version": data.get("version"),
-            }
-        elif format_type == "original":
-            return {
-                "id": data.get("id"),
-                "name": data.get("name"),
-                "description": data.get("description"),
-                "version": data.get("version"),
-            }
+        extractors = {
+            "hubcontract": lambda d: {
+                "id": d.get("id"),
+                "name": d.get("info", {}).get("name"),
+                "description": d.get("info", {}).get("description"),
+                "version": d.get("info", {}).get("version"),
+            },
+            "odcs": lambda d: {
+                "id": d.get("id"),
+                "name": d.get("name"),
+                "description": d.get("description"),
+                "version": d.get("version"),
+            },
+            "odps": self._extract_odps_core_data,
+            "original": lambda d: {
+                "id": d.get("id"),
+                "name": d.get("name"),
+                "description": d.get("description"),
+                "version": d.get("version"),
+            },
+        }
+        extractor = extractors.get(format_type)
+        if extractor is not None:
+            return extractor(data)
         return {}
 
     # ==================== Contract Export Endpoint Tests ====================
@@ -601,9 +601,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             for format_type in formats:
                 for output_format in output_formats:
                     with self.subTest(
-                        endpoint=endpoint_name,
-                        format=format_type,
-                        output=output_format
+                        endpoint=endpoint_name, format=format_type, output=output_format
                     ):
                         response = self.client.get(
                             endpoint_url,
@@ -661,4 +659,3 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                     core_data = self._extract_core_data(data, format_type)
                     self.assertIsNotNone(core_data.get("id"))
                     self.assertIsNotNone(core_data.get("name"))
-

@@ -54,6 +54,39 @@ def issue_state(tenant_id: str, ip_class: str) -> str:
     return state
 
 
+def peek_state(state: str | None) -> str:
+    """Read the tenant_id from a signed state WITHOUT consuming it.
+
+    The callback needs the tenant BEFORE it can build the provider (the
+    provider validates the tenant at consumption time). Signature/TTL
+    checked; the single-use cache is untouched — consumption stays with
+    ``consume_state``.
+    """
+    if not state:
+        raise SSOStateError("SSO_STATE_MISSING")
+
+    try:
+        padded = state + "=" * (-len(state) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+        tenant_id, nonce, issued_ts, token_ip_class, sig = raw.split("|", 4)
+    except Exception as exc:  # pragma: no cover - defensive parse guard
+        raise SSOStateError("SSO_STATE_INVALID") from exc
+
+    expected_sig = _state_sig(tenant_id, nonce, issued_ts, token_ip_class)
+    if not hmac.compare_digest(sig, expected_sig):
+        raise SSOStateError("SSO_STATE_INVALID")
+
+    try:
+        issued_ts_int = int(issued_ts)
+    except ValueError as exc:
+        raise SSOStateError("SSO_STATE_INVALID") from exc
+
+    if int(time.time()) - issued_ts_int > _STATE_TTL_SECONDS:
+        raise SSOStateError("SSO_STATE_EXPIRED")
+
+    return tenant_id
+
+
 def consume_state(state: str | None, ip_class: str) -> str:
     """
     Consume signed state and return tenant_id.

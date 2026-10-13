@@ -15,7 +15,6 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.utils import timezone
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -50,7 +49,7 @@ class EntitlementsE2ETest(E2ETestBase):
             slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
         from hub.apps.users.models import User
 
         ensure_e2e_tenant_ready(self.consumer_tenant)
@@ -210,7 +209,7 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Revoke endpoint may not be available in this deployment.
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 "Entitlement revoke endpoint not available (404) — "
                 "feature may not be deployed in this environment"
             )
@@ -284,9 +283,7 @@ class EntitlementsE2ETest(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify no non-ACTIVE statuses leak through the filter.
-        statuses = {
-            e["status"] for e in (get_response_data(response) or {}).get("results", [])
-        }
+        statuses = {e["status"] for e in (get_response_data(response) or {}).get("results", [])}
         for status_val in statuses:
             self.assertEqual(
                 status_val,

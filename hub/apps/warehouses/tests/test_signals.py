@@ -78,3 +78,45 @@ class LiveQueryAssetIndexSignalTests(TestCase):
             warehouse_connection=self.connection,
         )
         assert asset.id is not None
+
+
+from django.test import TestCase
+
+
+class TestSsrFPrivateEndpointRevalidation(TestCase):
+    """W1.13 — ``private_endpoint_url`` must be SSRF-checked on UPDATE too.
+
+    The pre-fix ``save()`` ran ``_validate_private_endpoint_url`` only
+    inside the raw-config-dict branch, so an update on a connection
+    whose config was already encrypted skipped the check entirely.
+    """
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="ssrf-t", slug="ssrf-t")
+
+    def _conn(self, **kwargs):
+        return WarehouseConnection(
+            tenant=self.tenant,
+            name="ssrf-conn",
+            warehouse_type="snowflake",
+            config={"account": "test"},
+            **kwargs,
+        )
+
+    def test_create_with_internal_private_endpoint_rejected(self):
+        from django.core.exceptions import ValidationError
+
+        conn = self._conn(
+            private_endpoint_url="http://169.254.169.254/latest/meta-data/",
+        )
+        with self.assertRaises(ValidationError):
+            conn.save()
+
+    def test_update_private_endpoint_url_revalidated(self):
+        from django.core.exceptions import ValidationError
+
+        conn = self._conn()
+        conn.save()
+        conn.private_endpoint_url = "http://169.254.169.254/latest/meta-data/"
+        with self.assertRaises(ValidationError):
+            conn.save()

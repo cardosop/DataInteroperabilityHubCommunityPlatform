@@ -73,7 +73,7 @@ class Command(BaseCommand):
             "--retry", type=str, default=None, help="Retry a specific DLQ entry by ID"
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         event_type = options.get("event_type")
         subscriber = options.get("subscriber")
         max_entries = options.get("max_entries", 100)
@@ -217,7 +217,9 @@ class Command(BaseCommand):
         try:
             uuid.UUID(entry_id)
         except ValueError:
-            raise CommandError(f"Invalid entry ID format: {entry_id}. Must be a valid UUID.")
+            raise CommandError(
+                f"Invalid entry ID format: {entry_id}. Must be a valid UUID."
+            ) from None
 
         self.stdout.write(f"Resolving DLQ entry: {entry_id}")
 
@@ -233,7 +235,9 @@ class Command(BaseCommand):
         try:
             uuid.UUID(entry_id)
         except ValueError:
-            raise CommandError(f"Invalid entry ID format: {entry_id}. Must be a valid UUID.")
+            raise CommandError(
+                f"Invalid entry ID format: {entry_id}. Must be a valid UUID."
+            ) from None
 
         self.stdout.write(f"Retrying DLQ entry: {entry_id}")
 

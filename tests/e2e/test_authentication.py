@@ -785,6 +785,15 @@ class AuthenticationE2ETest(E2ETestBase):
 @pytest.mark.journey("JOURNEY-AUTH-005")
 @pytest.mark.uc("UC-AUTH-005")
 class TestJOURNEYAUTH005TenantSwitch(E2ETestBase):
+    def setUp(self):
+        super().setUp()
+        # Tenant switching validates UserTenantMembership; the base fixture
+        # only sets the direct user.tenant FK, so grant the membership the
+        # switch endpoint requires (AUTH-005).
+        from hub.apps.users.models import UserTenantMembership
+
+        UserTenantMembership.objects.get_or_create(user=self.user, tenant=self.tenant)
+
     """JOURNEY-AUTH-005: Tenant Switch
 
     Verifies user can list tenants and switch active tenant context.

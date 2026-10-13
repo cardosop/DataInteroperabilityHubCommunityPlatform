@@ -51,6 +51,13 @@ target-version = ['py312']
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# The SDK test tree bootstraps sys.path before imports (test-isolation
+# pattern) — same intent as the root config's E402/E501 ignores, declared
+# here because nearest-config-wins discovery means this file shadows the
+# root .ruff.toml for the whole sdk/python tree.
+ignore = ["E402", "E501"]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true

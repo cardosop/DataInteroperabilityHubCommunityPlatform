@@ -137,7 +137,9 @@
 
 .tenant-option.disabled,
 .tenant-option:disabled {
-  color: var(--color-neutral-500);
+  /* neutral-500 is #9E9E9E in light theme (≈2.9:1 — axe serious
+     color-contrast violation); neutral-600 meets AA on the dropdown. */
+  color: var(--color-neutral-600);
   cursor: not-allowed;
 }
 

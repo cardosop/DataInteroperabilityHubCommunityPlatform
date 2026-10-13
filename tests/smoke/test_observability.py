@@ -23,9 +23,10 @@ def _api(path, method="get", **kwargs):
     url = f"{BASE_URL}{path}"
     try:
         r = requests.request(method, url, timeout=TIMEOUT, **kwargs)
-        return r
     except (requests.ConnectionError, requests.Timeout):
         pytest.skip(f"Service unavailable at {url}")
+    else:
+        return r
 
 
 class TestObservabilitySmoke:
@@ -35,14 +36,19 @@ class TestObservabilitySmoke:
 
     def test_trace_context_propagation(self):
         """Responses from instrumented endpoints include trace context headers."""
-        r = _api("/health/")
-        if r.status_code not in (200, 503):
-            pytest.skip("Health endpoint unavailable")  # noqa: skip-in-body — runtime service dependency
-        # W3C Trace Context headers should be present if OTel is configured.
+        # The tracing middleware stamps X-Trace-Id only on API responses
+        # (/api/...), not on the root /health/ probe — check an API path.
+        r = _api("/api/v1/")
+        if r.status_code not in (200, 401, 403, 503):
+            pytest.skip("API root unavailable")  # noqa: skip-in-body — runtime service dependency
+        # Trace correlation header should be present if OTel is configured.
+        # The app emits X-Trace-Id (its correlation contract); W3C
+        # traceparent is an INBOUND propagation header and is not echoed
+        # back. Accept either so deployments with a W3C-emitting proxy pass.
         # Not all deployments have OTel enabled, so this is a soft check.
+        has_trace_header = "x-trace-id" in {k.lower() for k in r.headers}
         has_traceparent = "traceparent" in r.headers
-        has_tracestate = "tracestate" in r.headers
-        if not (has_traceparent or has_tracestate):
+        if not (has_trace_header or has_traceparent):
             pytest.skip("OTel trace context not configured in this environment")  # noqa: skip-in-body — runtime service dependency
 
     def test_health_endpoint_generates_span(self):
@@ -89,7 +95,6 @@ class TestObservabilitySmoke:
 
     # ── Tempo / Loki reachability (soft checks) ────────────────────────
 
-@pytest.mark.skip(reason="Tempo not reachable")
     def test_tempo_query_endpoint(self):
         """Tempo is reachable (if configured). Soft check — skips if not deployed."""
         tempo_url = os.environ.get("TEMPO_URL", "")
@@ -99,8 +104,8 @@ class TestObservabilitySmoke:
             r = requests.get(f"{tempo_url}/api/search", timeout=10)
             assert r.status_code in (200, 404), f"Tempo unexpected: {r.status_code}"
         except requests.ConnectionError:
+            pytest.skip("Tempo not reachable")
 
-@pytest.mark.skip(reason="Loki not reachable")
     def test_loki_query_endpoint(self):
         """Loki is reachable (if configured). Soft check — skips if not deployed."""
         loki_url = os.environ.get("LOKI_URL", "")
@@ -110,3 +115,4 @@ class TestObservabilitySmoke:
             r = requests.get(f"{loki_url}/loki/api/v1/label", timeout=10)
             assert r.status_code in (200, 404), f"Loki unexpected: {r.status_code}"
         except requests.ConnectionError:
+            pytest.skip("Loki not reachable")

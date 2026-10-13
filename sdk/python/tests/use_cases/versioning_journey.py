@@ -70,7 +70,7 @@ def test_health_returns_version():
     )
 
     if isinstance(body, dict):
-        keys_lower = {k.lower() for k in body.keys()}
+        keys_lower = {k.lower() for k in body}
         has_version = any(
             k in keys_lower for k in ("version", "api_version", "build", "release", "commit")
         )

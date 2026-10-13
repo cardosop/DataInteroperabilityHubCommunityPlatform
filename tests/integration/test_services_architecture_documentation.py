@@ -51,7 +51,9 @@ class ServicesArchitectureDocumentationTest(TestCase):
         content = self.architecture_doc.read_text()
 
         # Check that documented services are mentioned
-        self.assertIn("VirtualizationService", content, "VirtualizationService not found in architecture doc")
+        self.assertIn(
+            "VirtualizationService", content, "VirtualizationService not found in architecture doc"
+        )
         # Verify service catalog mentions key services
         self.assertIn("api-service", content, "api-service not found in architecture doc")
 

@@ -62,6 +62,8 @@ from typing import Any
 
 import structlog
 
+from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+
 logger = structlog.get_logger(__name__)
 
 
@@ -167,6 +169,11 @@ def _resolve_contract_url(
         resolved = ref_resolver.resolve(url)
         return resolved if isinstance(resolved, dict) else None
     except Exception as exc:
+        # The resolver is a pluggable callback — its failure surface is
+        # unbounded (transport errors, SSRF blocks, parser failures,
+        # callback bugs). The documented contract is "None on ANY
+        # failure", so a broad catch is the contract here.
+        # noqa: BLE001 — best-effort by contract
         logger.warning(
             "ports_helper_contractURL_resolution_failed",
             url=url,
@@ -403,7 +410,7 @@ def _process_output_ports(
     fetched = _bulk_fetch_contract_models(contract_ids_to_fetch)
 
     # Phase 3: per-port resolution.
-    for port, cid in zip(output_ports, port_uuids):
+    for port, cid in zip(output_ports, port_uuids, strict=False):
         port_name = str(port.get("name") or "").strip()
         if not port_name:
             warnings.append(f"{WARNING_NO_RESOLVABLE}: outputPort missing name; skipped")

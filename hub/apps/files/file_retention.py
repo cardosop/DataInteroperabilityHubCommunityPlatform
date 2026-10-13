@@ -7,13 +7,12 @@ Pure functions keep property-based tests focused and fast.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Union
 
 from django.utils import timezone
 
 from hub.apps.files.models import FileStatus
 
-FileStatusLike = Union[str, FileStatus]
+FileStatusLike = str | FileStatus
 
 
 def normalized_file_status(status: FileStatusLike) -> str:

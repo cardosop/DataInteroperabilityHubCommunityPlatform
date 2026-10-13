@@ -21,6 +21,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -32,10 +33,7 @@ from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.files.models import File, FileStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
 from hub.apps.tenants.models import Tenant
-from hub.apps.testing.billing_support import (
-    ensure_e2e_tenant_ready,
-    ensure_tenant_has_active_subscription,
-)
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 User = get_user_model()

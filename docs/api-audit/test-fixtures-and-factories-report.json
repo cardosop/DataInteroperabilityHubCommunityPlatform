@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-06-13T21:03:40.986038",
+  "generated_at": "2026-10-04T21:11:46.170587",
   "summary": {
-    "total_fixture_files": 114,
-    "total_factory_classes": 52,
-    "total_endpoint_urls": 42,
+    "total_fixture_files": 132,
+    "total_factory_classes": 53,
+    "total_endpoint_urls": 52,
     "fixture_files_by_type": {
-      "json": 63,
+      "json": 71,
       "python": 1,
-      "conftest": 50
+      "conftest": 60
     },
     "factories_by_file": 9
   },
@@ -16,6 +16,54 @@
       "path": "tests/fixtures/marketplace/sample_listing_ids.json",
       "type": "json",
       "size": 530,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/job_run_state_matrix.json",
+      "type": "json",
+      "size": 3855,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/estate.json",
+      "type": "json",
+      "size": 2386,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/effective_permissions.json",
+      "type": "json",
+      "size": 192,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/job_run_state_machine.json",
+      "type": "json",
+      "size": 638,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/sql_warehouse_state_matrix.json",
+      "type": "json",
+      "size": 957,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/sql_warehouses_estate.json",
+      "type": "json",
+      "size": 524,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/sql_warehouse_roundtrip.json",
+      "type": "json",
+      "size": 1765,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/estate_multi_page.json",
+      "type": "json",
+      "size": 3930,
       "endpoints": []
     },
     {
@@ -325,7 +373,7 @@
     {
       "path": "tests/fixtures/odps/v4.1/valid/sample-valid-v4.1.json",
       "type": "json",
-      "size": 1574,
+      "size": 1712,
       "endpoints": [
         "https://opendataproducts.org/schema/v4.1",
         "https://example.com/contracts/sample-product-v4.1",
@@ -362,7 +410,7 @@
     {
       "path": "tests/fixtures/odps/v2.x/valid/sample-valid-v2.9.json",
       "type": "json",
-      "size": 698,
+      "size": 792,
       "endpoints": [
         "https://opendataproducts.org/schema/v2.9",
         "https://example.com/contracts/sample-product-v2.9"
@@ -399,7 +447,7 @@
     {
       "path": "tests/fixtures/odps/v3.x/valid/sample-valid-v3.9.json",
       "type": "json",
-      "size": 738,
+      "size": 832,
       "endpoints": [
         "https://opendataproducts.org/schema/v3.9",
         "https://example.com/contracts/sample-product-v3.9"
@@ -436,7 +484,7 @@
     {
       "path": "tests/fixtures/odps/v4.0/valid/sample-valid-v4.0.json",
       "type": "json",
-      "size": 914,
+      "size": 1008,
       "endpoints": [
         "https://opendataproducts.org/schema/v4.0",
         "https://example.com/contracts/sample-product-v4.0",
@@ -526,7 +574,7 @@
     {
       "path": "tests/fixtures/odps/v1.x/valid/sample-valid-v1.9.json",
       "type": "json",
-      "size": 491,
+      "size": 585,
       "endpoints": [
         "https://opendataproducts.org/schema/v1.9",
         "https://example.com/contracts/sample-product-v1.9"
@@ -535,42 +583,54 @@
     {
       "path": "hub/apps/orchestration/tests/fixtures.py",
       "type": "python",
-      "size": 2494,
+      "size": 2455,
       "endpoints": []
     },
     {
       "path": "tests/conftest.py",
       "type": "conftest",
-      "size": 112356,
+      "size": 127694,
       "endpoints": [
-        "localhost:8081",
         "localhost:8080",
-        "localhost:8083",
-        "localhost:8082"
+        "localhost:8082",
+        "localhost:8081",
+        "localhost:8083"
       ]
     },
     {
       "path": "hub/tests/conftest.py",
       "type": "conftest",
-      "size": 951,
+      "size": 952,
       "endpoints": []
     },
     {
       "path": "hub/data_movement/tests/conftest.py",
       "type": "conftest",
-      "size": 3121,
+      "size": 3018,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/webhooks/tests/conftest.py",
+      "type": "conftest",
+      "size": 1181,
       "endpoints": []
     },
     {
       "path": "hub/apps/datasets/tests/conftest.py",
       "type": "conftest",
-      "size": 4041,
+      "size": 4756,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/graphql_graphene/tests/conftest.py",
+      "type": "conftest",
+      "size": 8028,
       "endpoints": []
     },
     {
       "path": "hub/apps/marketplace/tests/conftest.py",
       "type": "conftest",
-      "size": 549,
+      "size": 1066,
       "endpoints": []
     },
     {
@@ -594,19 +654,25 @@
     {
       "path": "hub/apps/orchestration/tests/conftest.py",
       "type": "conftest",
-      "size": 2182,
+      "size": 2173,
       "endpoints": []
     },
     {
       "path": "hub/apps/orchestration/workflows/tests/conftest.py",
       "type": "conftest",
-      "size": 678,
+      "size": 668,
       "endpoints": []
     },
     {
       "path": "hub/apps/auth/tests/conftest.py",
       "type": "conftest",
       "size": 542,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/ml/tests/conftest.py",
+      "type": "conftest",
+      "size": 12215,
       "endpoints": []
     },
     {
@@ -619,6 +685,18 @@
       "path": "hub/apps/compliance/tests/conftest.py",
       "type": "conftest",
       "size": 548,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/integrations/tests/conftest.py",
+      "type": "conftest",
+      "size": 16940,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/warehouses/tests/conftest.py",
+      "type": "conftest",
+      "size": 935,
       "endpoints": []
     },
     {
@@ -640,15 +718,21 @@
       "endpoints": []
     },
     {
+      "path": "hub/apps/databricks_admin/tests/conftest.py",
+      "type": "conftest",
+      "size": 1962,
+      "endpoints": []
+    },
+    {
       "path": "hub/apps/semantic/tests/conftest.py",
       "type": "conftest",
-      "size": 2381,
+      "size": 2926,
       "endpoints": []
     },
     {
       "path": "services/shared/tests/conftest.py",
       "type": "conftest",
-      "size": 2461,
+      "size": 2384,
       "endpoints": []
     },
     {
@@ -660,97 +744,118 @@
     {
       "path": "services/prefect-integration/tests/conftest.py",
       "type": "conftest",
-      "size": 14636,
+      "size": 16588,
       "endpoints": []
     },
     {
       "path": "services/compliance-service/tests/conftest.py",
       "type": "conftest",
-      "size": 3478,
+      "size": 4107,
       "endpoints": []
     },
     {
       "path": "services/worker/tests/conftest.py",
       "type": "conftest",
-      "size": 2302,
+      "size": 3321,
+      "endpoints": []
+    },
+    {
+      "path": "services/dq-service/tests/conftest.py",
+      "type": "conftest",
+      "size": 3566,
       "endpoints": []
     },
     {
       "path": "services/semantic-service/tests/conftest.py",
       "type": "conftest",
-      "size": 1298,
-      "endpoints": []
+      "size": 1860,
+      "endpoints": [
+        "localhost:3031",
+        "localhost:8081",
+        "localhost:8086"
+      ]
     },
     {
       "path": "services/odh-integration/tests/conftest.py",
       "type": "conftest",
-      "size": 4174,
-      "endpoints": []
+      "size": 4686,
+      "endpoints": [
+        "localhost:8080",
+        "localhost:8081",
+        "localhost:8082",
+        "localhost:8083"
+      ]
     },
     {
       "path": "cli/tests/conftest.py",
       "type": "conftest",
-      "size": 10204,
+      "size": 6812,
       "endpoints": []
     },
     {
       "path": "cli/tests/integration/conftest.py",
       "type": "conftest",
-      "size": 5845,
+      "size": 5585,
       "endpoints": []
     },
     {
       "path": "cli/tests/e2e/conftest.py",
       "type": "conftest",
-      "size": 1393,
+      "size": 1111,
       "endpoints": []
     },
     {
       "path": "cli/tests/security/conftest.py",
       "type": "conftest",
-      "size": 1890,
+      "size": 1107,
       "endpoints": []
     },
     {
       "path": "cli/tests/dimensions/conftest.py",
       "type": "conftest",
-      "size": 1476,
+      "size": 792,
       "endpoints": []
     },
     {
       "path": "cli/tests/use_cases/conftest.py",
       "type": "conftest",
-      "size": 6286,
+      "size": 14941,
       "endpoints": []
     },
     {
       "path": "cli/build/lib/tests/conftest.py",
       "type": "conftest",
-      "size": 5797,
+      "size": 6716,
       "endpoints": []
     },
     {
       "path": "cli/build/lib/tests/security/conftest.py",
       "type": "conftest",
-      "size": 1890,
+      "size": 1107,
       "endpoints": []
     },
     {
       "path": "cli/build/lib/tests/dimensions/conftest.py",
       "type": "conftest",
-      "size": 1476,
+      "size": 792,
       "endpoints": []
     },
     {
       "path": "cli/build/lib/tests/use_cases/conftest.py",
       "type": "conftest",
-      "size": 5410,
+      "size": 14941,
+      "endpoints": []
+    },
+    {
+      "path": "tests/performance/conftest.py",
+      "type": "conftest",
+      "size": 3577,
       "endpoints": []
     },
     {
       "path": "tests/prefect/conftest.py",
       "type": "conftest",
-      "size": 3245,
+      "size": 3144,
       "endpoints": [
         "localhost:4200",
         "http://localhost:4200/api"
@@ -759,118 +864,128 @@
     {
       "path": "tests/integration/conftest.py",
       "type": "conftest",
-      "size": 2350,
+      "size": 2098,
       "endpoints": []
     },
     {
       "path": "tests/e2e/conftest.py",
       "type": "conftest",
-      "size": 105651,
+      "size": 90331,
       "endpoints": [
-        "/api/v1/auth/login/,",
-        "/api/v1/contracts/{contract_id}/validate/",
+        "/api/v1/compliance/runs/",
         "/api/v1/dq/runs/",
-        "/api/v1/files/{file_id}/complete/",
-        "/api/v1/datasets/",
-        "/api/v1/assets/{asset_id}/activate/",
         "/api/v1/contracts/",
-        "/api/v1/assets/{asset_id}/contracts/",
+        "/api/v1/contracts/{contract_id}/validate/",
+        "/api/v1/files/{file_id}/complete/",
         "/api/v1/files/init/",
+        "/api/v1/auth/login/,",
         "localhost:8000",
-        "/api/v1/compliance/runs/"
+        "/api/v1/assets/{asset_id}/activate/",
+        "/api/v1/datasets/",
+        "/api/v1/assets/{asset_id}/contracts/"
       ]
     },
     {
       "path": "tests/pact/conftest.py",
       "type": "conftest",
-      "size": 864,
+      "size": 359,
       "endpoints": []
     },
     {
       "path": "tests/concurrency/conftest.py",
       "type": "conftest",
-      "size": 777,
+      "size": 768,
       "endpoints": []
     },
     {
       "path": "tests/security/conftest.py",
       "type": "conftest",
-      "size": 1854,
+      "size": 1811,
       "endpoints": []
     },
     {
       "path": "tests/sdk_python/conftest.py",
       "type": "conftest",
-      "size": 23409,
+      "size": 18729,
       "endpoints": [
         "localhost:8000",
         "/api/v1/auth/login/"
       ]
     },
     {
+      "path": "tests/schema/conftest.py",
+      "type": "conftest",
+      "size": 2020,
+      "endpoints": []
+    },
+    {
       "path": "tests/scripts/conftest.py",
       "type": "conftest",
-      "size": 233,
+      "size": 232,
       "endpoints": []
     },
     {
       "path": "tests/smoke/conftest.py",
       "type": "conftest",
-      "size": 10283,
+      "size": 4431,
       "endpoints": [
         "localhost:8001",
-        "/api/v1/auth/register/",
         "/api/v1/auth/login/"
       ]
     },
     {
       "path": "tests/resilience/conftest.py",
       "type": "conftest",
-      "size": 422,
+      "size": 438,
       "endpoints": []
     },
     {
       "path": "tests/isolation/conftest.py",
       "type": "conftest",
-      "size": 3064,
+      "size": 3043,
+      "endpoints": []
+    },
+    {
+      "path": "tests/integration/databricks_e2e/conftest.py",
+      "type": "conftest",
+      "size": 2061,
       "endpoints": []
     },
     {
       "path": "tests/e2e/_guards/conftest.py",
       "type": "conftest",
-      "size": 429,
+      "size": 302,
       "endpoints": []
     },
     {
       "path": "sdk/python/tests/conftest.py",
       "type": "conftest",
-      "size": 35010,
+      "size": 18840,
       "endpoints": [
-        "/api/v1/auth/me/",
         "/api/v1/auth/refresh/",
-        "/api/v1/tenants/{id}/",
-        "/api/v1/auth/login/",
         "/api/v1/tenants/{tenant_id}/",
-        "/api/v1/ml/models/?status=TRAINED&limit=1",
-        "/api/v1/health/"
+        "/api/v1/auth/login/",
+        "/api/v1/tenants/{id}/",
+        "/api/v1/health/",
+        "/api/v1/auth/me/"
       ]
     },
     {
       "path": "sdk/python/tests/security/conftest.py",
       "type": "conftest",
-      "size": 1967,
+      "size": 1875,
       "endpoints": []
     },
     {
       "path": "sdk/python/tests/dimensions/conftest.py",
       "type": "conftest",
-      "size": 1549,
+      "size": 1534,
       "endpoints": []
     },
     {
       "path": "sdk/python/tests/use_cases/conftest.py",
       "type": "conftest",
-      "size": 5618,
+      "size": 5600,
       "endpoints": [
         "/api/v1/auth/me/"
       ]
@@ -880,217 +995,217 @@
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "TenantFactory",
-      "line_number": 24,
+      "line_number": 26,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "TenantConfigFactory",
-      "line_number": 38,
+      "line_number": 40,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "UserFactory",
-      "line_number": 60,
+      "line_number": 64,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "EmailDeliveryFactory",
-      "line_number": 74,
+      "line_number": 78,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "JobFactory",
-      "line_number": 89,
+      "line_number": 93,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "ScheduledIngestionFactory",
-      "line_number": 109,
+      "line_number": 114,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "ScheduledIngestionRunFactory",
-      "line_number": 123,
+      "line_number": 128,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "SchemaVersionFactory",
-      "line_number": 136,
+      "line_number": 141,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DataClassificationFactory",
-      "line_number": 154,
+      "line_number": 161,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "RetentionPolicyFactory",
-      "line_number": 166,
+      "line_number": 173,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "AccessRequestFactory",
-      "line_number": 178,
+      "line_number": 185,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DatasetSnapshotFactory",
-      "line_number": 191,
+      "line_number": 198,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "SearchIndexFactory",
-      "line_number": 203,
+      "line_number": 210,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "SearchAnalyticsFactory",
-      "line_number": 215,
+      "line_number": 222,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "WebhookFactory",
-      "line_number": 227,
+      "line_number": 234,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "WebhookDeliveryFactory",
-      "line_number": 240,
+      "line_number": 247,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DataObservabilityMetricFactory",
-      "line_number": 253,
+      "line_number": 260,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DataIncidentFactory",
-      "line_number": 266,
+      "line_number": 273,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "AccessPolicyFactory",
-      "line_number": 280,
+      "line_number": 287,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "FieldAccessPolicyFactory",
-      "line_number": 292,
+      "line_number": 299,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "AccessLogFactory",
-      "line_number": 304,
+      "line_number": 311,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "AccessCertificationFactory",
-      "line_number": 317,
+      "line_number": 324,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DQAnomalyFactory",
-      "line_number": 330,
+      "line_number": 337,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DQTrendFactory",
-      "line_number": 343,
+      "line_number": 350,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DQAlertingRuleFactory",
-      "line_number": 356,
+      "line_number": 363,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "IngestionTemplateFactory",
-      "line_number": 369,
+      "line_number": 376,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "DatasetFactoryEnhanced",
-      "line_number": 388,
+      "line_number": 394,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "AssetFactoryEnhanced",
-      "line_number": 407,
+      "line_number": 415,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "ContractFactoryEnhanced",
-      "line_number": 423,
+      "line_number": 431,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories_boy.py",
       "class_name": "ScheduledIngestionFactoryEnhanced",
-      "line_number": 437,
+      "line_number": 445,
       "methods": [],
       "method_count": 0
     },
     {
       "file_path": "tests/factories.py",
       "class_name": "UserFactory",
-      "line_number": 28,
+      "line_number": 23,
       "methods": [
         "create_user",
         "__call__"
@@ -1100,7 +1215,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "TenantFactory",
-      "line_number": 68,
+      "line_number": 55,
       "methods": [
         "create_tenant",
         "__call__"
@@ -1110,7 +1225,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "TenantConfigFactory",
-      "line_number": 117,
+      "line_number": 99,
       "methods": [
         "create_tenant_config",
         "create_tenant_config_with_all_fields"
@@ -1120,7 +1235,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "EmailDeliveryFactory",
-      "line_number": 205,
+      "line_number": 187,
       "methods": [
         "create_email_delivery",
         "create_email_delivery_with_all_statuses",
@@ -1131,7 +1246,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "JobFactory",
-      "line_number": 307,
+      "line_number": 287,
       "methods": [
         "create_job",
         "create_job_with_all_types",
@@ -1141,8 +1256,18 @@
     },
     {
       "file_path": "tests/factories.py",
+      "class_name": "AssetFactory",
+      "line_number": 603,
+      "methods": [
+        "create",
+        "__new__"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "tests/factories.py",
       "class_name": "WorkflowDefinitionFactory",
-      "line_number": 461,
+      "line_number": 445,
       "methods": [
         "create_workflow_definition"
       ],
@@ -1151,7 +1276,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "WorkflowInstanceFactory",
-      "line_number": 491,
+      "line_number": 475,
       "methods": [
         "create_workflow_instance"
       ],
@@ -1160,7 +1285,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "WorkflowStepFactory",
-      "line_number": 522,
+      "line_number": 506,
       "methods": [
         "create_workflow_step"
       ],
@@ -1169,7 +1294,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "ValidationResultFactory",
-      "line_number": 549,
+      "line_number": 533,
       "methods": [
         "create_valid_result",
         "create_invalid_result"
@@ -1179,7 +1304,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "RuleExecutionContextFactory",
-      "line_number": 574,
+      "line_number": 560,
       "methods": [
         "create_context"
       ],
@@ -1188,7 +1313,7 @@
     {
       "file_path": "tests/factories.py",
       "class_name": "OrchestrationRuleExecutionContextFactory",
-      "line_number": 591,
+      "line_number": 577,
       "methods": [
         "create_context"
       ],
@@ -1197,7 +1322,7 @@
     {
       "file_path": "hub/apps/datasets/tests/factories.py",
       "class_name": "DatasetFactory",
-      "line_number": 18,
+      "line_number": 19,
       "methods": [
         "create_dataset",
         "create_dataset_with_complex_schema"
@@ -1216,7 +1341,7 @@
     {
       "file_path": "hub/apps/scheduled_ingestion/tests/factories.py",
       "class_name": "ScheduledIngestionRunFactory",
-      "line_number": 86,
+      "line_number": 85,
       "methods": [
         "create_scheduled_ingestion_run"
       ],
@@ -1225,7 +1350,7 @@
     {
       "file_path": "hub/apps/contracts/tests/factories.py",
       "class_name": "ContractFactoryEnhanced",
-      "line_number": 23,
+      "line_number": 26,
       "methods": [
         "create_hub_contract_json",
         "create_contract",
@@ -1236,7 +1361,7 @@
     {
       "file_path": "hub/apps/files/tests/factories.py",
       "class_name": "FileFactory",
-      "line_number": 17,
+      "line_number": 19,
       "methods": [
         "create_file",
         "create_file_with_all_statuses",
@@ -1247,7 +1372,7 @@
     {
       "file_path": "hub/apps/assets/tests/factories.py",
       "class_name": "AssetFactory",
-      "line_number": 16,
+      "line_number": 17,
       "methods": [
         "create_asset",
         "create_active_asset",
@@ -1259,7 +1384,7 @@
     {
       "file_path": "hub/apps/tenants/tests/factories.py",
       "class_name": "TenantFactory",
-      "line_number": 32,
+      "line_number": 41,
       "methods": [
         "create_tenant"
       ],
@@ -1268,7 +1393,7 @@
     {
       "file_path": "hub/apps/tenants/tests/factories.py",
       "class_name": "TenantConfigFactory",
-      "line_number": 56,
+      "line_number": 65,
       "methods": [
         "create_config"
       ],
@@ -1277,7 +1402,7 @@
     {
       "file_path": "hub/apps/tenants/tests/factories.py",
       "class_name": "SubscriptionFactory",
-      "line_number": 77,
+      "line_number": 86,
       "methods": [
         "create_subscription"
       ],
@@ -1286,7 +1411,7 @@
     {
       "file_path": "hub/apps/versioning/tests/factories.py",
       "class_name": "DatasetVersionFactory",
-      "line_number": 20,
+      "line_number": 19,
       "methods": [
         "create_dataset_version"
       ],
@@ -1295,7 +1420,7 @@
     {
       "file_path": "hub/apps/versioning/tests/factories.py",
       "class_name": "SchemaVersionFactory",
-      "line_number": 73,
+      "line_number": 72,
       "methods": [
         "create_schema_version"
       ],
@@ -1360,31 +1485,7 @@
     {
       "file": "tests/conftest.py",
       "type": "conftest",
-      "endpoint": "localhost:8082",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/conftest.py",
-      "type": "conftest",
       "endpoint": "localhost:8080",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/conftest.py",
-      "type": "conftest",
-      "endpoint": "http://localhost:8080",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/conftest.py",
-      "type": "conftest",
-      "endpoint": "http://localhost:8081",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/conftest.py",
-      "type": "conftest",
-      "endpoint": "localhost:8081",
       "context": "fixture"
     },
     {
@@ -1396,11 +1497,107 @@
     {
       "file": "tests/conftest.py",
       "type": "conftest",
+      "endpoint": "localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
       "endpoint": "localhost:8083",
       "context": "fixture"
     },
     {
       "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:3031",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8086",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8086",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8083",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8083",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
       "type": "conftest",
       "endpoint": "http://localhost:8082",
       "context": "fixture"
@@ -1414,13 +1611,7 @@
     {
       "file": "tests/e2e/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/auth/login/,",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/e2e/conftest.py",
-      "type": "conftest",
-      "endpoint": "/api/v1/contracts/{contract_id}/validate/",
+      "endpoint": "/api/v1/compliance/runs/",
       "context": "fixture"
     },
     {
@@ -1432,31 +1623,19 @@
     {
       "file": "tests/e2e/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/files/{file_id}/complete/",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/e2e/conftest.py",
-      "type": "conftest",
-      "endpoint": "/api/v1/datasets/",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/e2e/conftest.py",
-      "type": "conftest",
-      "endpoint": "/api/v1/assets/{asset_id}/activate/",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/e2e/conftest.py",
-      "type": "conftest",
       "endpoint": "/api/v1/contracts/",
       "context": "fixture"
     },
     {
       "file": "tests/e2e/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/assets/{asset_id}/contracts/",
+      "endpoint": "/api/v1/contracts/{contract_id}/validate/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/files/{file_id}/complete/",
       "context": "fixture"
     },
     {
@@ -1468,13 +1647,31 @@
     {
       "file": "tests/e2e/conftest.py",
       "type": "conftest",
+      "endpoint": "/api/v1/auth/login/,",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
       "endpoint": "localhost:8000",
       "context": "fixture"
     },
     {
       "file": "tests/e2e/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/compliance/runs/",
+      "endpoint": "/api/v1/assets/{asset_id}/activate/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/datasets/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/assets/{asset_id}/contracts/",
       "context": "fixture"
     },
     {
@@ -1498,19 +1695,7 @@
     {
       "file": "tests/smoke/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/auth/register/",
-      "context": "fixture"
-    },
-    {
-      "file": "tests/smoke/conftest.py",
-      "type": "conftest",
       "endpoint": "/api/v1/auth/login/",
-      "context": "fixture"
-    },
-    {
-      "file": "sdk/python/tests/conftest.py",
-      "type": "conftest",
-      "endpoint": "/api/v1/auth/me/",
       "context": "fixture"
     },
     {
@@ -1528,25 +1713,25 @@
     {
       "file": "sdk/python/tests/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/auth/login/",
-      "context": "fixture"
-    },
-    {
-      "file": "sdk/python/tests/conftest.py",
-      "type": "conftest",
       "endpoint": "/api/v1/tenants/{tenant_id}/",
       "context": "fixture"
     },
     {
       "file": "sdk/python/tests/conftest.py",
       "type": "conftest",
-      "endpoint": "/api/v1/ml/models/?status=TRAINED&limit=1",
+      "endpoint": "/api/v1/auth/login/",
       "context": "fixture"
     },
     {
       "file": "sdk/python/tests/conftest.py",
       "type": "conftest",
       "endpoint": "/api/v1/health/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/me/",
       "context": "fixture"
     },
     {
@@ -1585,30 +1770,46 @@
       "api.example.com"
     ],
     "tests/conftest.py": [
-      "localhost:8082",
       "localhost:8080",
-      "http://localhost:8080",
-      "http://localhost:8081",
-      "localhost:8081",
       "http://localhost:8083",
+      "localhost:8082",
+      "http://localhost:8080",
+      "localhost:8081",
       "localhost:8083",
+      "http://localhost:8081",
+      "http://localhost:8082"
+    ],
+    "services/semantic-service/tests/conftest.py": [
+      "localhost:3031",
+      "localhost:8081",
+      "http://localhost:8086",
+      "localhost:8086"
+    ],
+    "services/odh-integration/tests/conftest.py": [
+      "localhost:8080",
+      "http://localhost:8083",
+      "localhost:8082",
+      "http://localhost:8080",
+      "localhost:8081",
+      "localhost:8083",
+      "http://localhost:8081",
       "http://localhost:8082"
     ],
     "tests/prefect/conftest.py": [
       "localhost:4200"
     ],
     "tests/e2e/conftest.py": [
-      "/api/v1/auth/login/,",
-      "/api/v1/contracts/{contract_id}/validate/",
+      "/api/v1/compliance/runs/",
       "/api/v1/dq/runs/",
-      "/api/v1/files/{file_id}/complete/",
-      "/api/v1/datasets/",
-      "/api/v1/assets/{asset_id}/activate/",
       "/api/v1/contracts/",
-      "/api/v1/assets/{asset_id}/contracts/",
+      "/api/v1/contracts/{contract_id}/validate/",
+      "/api/v1/files/{file_id}/complete/",
       "/api/v1/files/init/",
+      "/api/v1/auth/login/,",
       "localhost:8000",
-      "/api/v1/compliance/runs/"
+      "/api/v1/assets/{asset_id}/activate/",
+      "/api/v1/datasets/",
+      "/api/v1/assets/{asset_id}/contracts/"
     ],
     "tests/sdk_python/conftest.py": [
       "localhost:8000",
@@ -1616,17 +1817,15 @@
     ],
     "tests/smoke/conftest.py": [
       "localhost:8001",
-      "/api/v1/auth/register/",
       "/api/v1/auth/login/"
     ],
     "sdk/python/tests/conftest.py": [
-      "/api/v1/auth/me/",
       "/api/v1/auth/refresh/",
       "/api/v1/tenants/{id}/)",
-      "/api/v1/auth/login/",
       "/api/v1/tenants/{tenant_id}/",
-      "/api/v1/ml/models/?status=TRAINED&limit=1",
-      "/api/v1/health/"
+      "/api/v1/auth/login/",
+      "/api/v1/health/",
+      "/api/v1/auth/me/"
     ],
     "sdk/python/tests/use_cases/conftest.py": [
       "/api/v1/auth/me/"

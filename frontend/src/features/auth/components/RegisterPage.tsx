@@ -17,7 +17,6 @@ export function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tenantId, setTenantId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,7 +38,6 @@ export function RegisterPage() {
         email,
         password,
         name,
-        tenant_id: tenantId ? tenantId : null,
       });
 
       setSuccess('Account created. Redirecting to sign in…');
@@ -104,20 +102,6 @@ export function RegisterPage() {
               required
               autoComplete="new-password"
               minLength={8}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="tenant_id">
-              Tenant ID <span style={{ color: 'var(--color-neutral-700)' }}>(optional)</span>
-            </label>
-            <input
-              id="tenant_id"
-              type="text"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              placeholder="UUID"
-              autoComplete="off"
             />
           </div>
 

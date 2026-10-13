@@ -16,9 +16,12 @@ Fallback order (standardized):
 All multi-tenant list/detail views MUST filter by this tenant; see docs/TENANT_ISOLATION.md.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from django.http import HttpRequest
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
 
 
 def get_request_tenant_id(request: HttpRequest) -> str | None:
@@ -44,7 +47,7 @@ def get_request_tenant_id(request: HttpRequest) -> str | None:
     if hasattr(request, "tenant") and request.tenant:
         return str(request.tenant.id)
 
-    # 3–5. From request.user (session auth / force_authenticate)
+    # 3-5. From request.user (session auth / force_authenticate)
     user = getattr(request, "user", None) or getattr(request, "_force_auth_user", None)
     if not user:
         return None
@@ -105,9 +108,10 @@ def get_request_tenant(request: HttpRequest) -> tuple[str | None, Optional["Tena
 
     try:
         tenant = Tenant.objects.get(id=tenant_id_str)
-        return tenant_id_str, tenant
     except Tenant.DoesNotExist:
         return tenant_id_str, None
+    else:
+        return tenant_id_str, tenant
 
 
 class tenant_context:

@@ -96,14 +96,20 @@ class ScanFileLegalBasisTest(TestCase):
         mock_response.status_code = 200
         mock_response.json.return_value = {"overall_status": "PASS"}
 
-        with patch.object(
-            client, "_request_with_retry", return_value=mock_response,
-        ):
-            with patch.object(
-                client._circuit_breaker, "call",
+        with (
+            patch.object(
+                client,
+                "_request_with_retry",
+                return_value=mock_response,
+            ),
+            patch.object(
+                client._circuit_breaker,
+                "call",
                 side_effect=lambda fn, fallback=None: fn(),
-            ) as mock_cb_call:
-                client.scan_file(
-                    file_content=b"x", file_format="csv",
-                )
-                mock_cb_call.assert_called_once()
+            ) as mock_cb_call,
+        ):
+            client.scan_file(
+                file_content=b"x",
+                file_format="csv",
+            )
+            mock_cb_call.assert_called_once()

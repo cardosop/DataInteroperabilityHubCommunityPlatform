@@ -42,7 +42,7 @@ def _create_secret(client, name: str, data: dict[str, Any]) -> None:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def sm_client():
     """Yield a moto-mocked Secrets Manager client with test secrets populated."""
     with mock_aws():

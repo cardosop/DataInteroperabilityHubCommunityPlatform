@@ -12,6 +12,7 @@ import time
 import unittest
 import uuid
 from datetime import datetime
+from typing import ClassVar
 
 import httpx
 import pytest
@@ -44,7 +45,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
 
     # Names/IDs of packages created on the CKAN instance during setUpClass
     # so tearDownClass can clean them up.  Stored as a list of package names.
-    _seeded_package_names: list[str] = []
+    _seeded_package_names: ClassVar[list[str]] = []
     _seeded_tagged_package_name: str | None = None
     _seeded_empty_package_name: str | None = None
 
@@ -77,7 +78,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         # following Django's own pattern for setUpTestData().  If any
         # exception (including SkipTest) is raised after atomics are opened,
         # tearDownClass is never called — we must roll back atomics here.
-        try:
+        def _setup() -> None:
             # Create connector using centralized utility
             cls.connector = create_test_connector(verify_connection=True)
 
@@ -87,22 +88,31 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             # Cache connector URL for backward compatibility
             cls.ckan_url = cls.connector.base_url
 
-            # Cache a test package ID for get_listing and list_resources tests
+            # Cache a test package ID for get_listing and list_resources tests.
+            # Solr search results can include phantom entries (packages
+            # deleted after seeding but not yet purged from the index) —
+            # verify each candidate resolves via package_show before using it.
             cls.test_package_id = None
             try:
-                listings = cls.connector.list_listings(limit=1)
-                if listings:
-                    cls.test_package_id = listings[0].marketplace_id
+                listings = cls.connector.list_listings(limit=20)
+                for candidate in listings:
+                    try:
+                        cls.connector.get_listing(candidate.marketplace_id)
+                        cls.test_package_id = candidate.marketplace_id
+                        break
+                    except NotFoundError:
+                        continue
             except (HubConnectionError, ValueError) as e:
                 # CKAN instance unreachable or returned malformed response —
                 # leave test_package_id as None so dependent tests will skip.
                 logger = logging.getLogger(__name__)
-                logger.debug(
-                    "Could not fetch initial listing for test fixture: %s", e
-                )
+                logger.debug("Could not fetch initial listing for test fixture: %s", e)
 
             # --- Seed test data on the CKAN instance ---
             cls._seed_ckan_test_fixtures()
+
+        try:
+            _setup()
         except Exception:
             cls._rollback_atomics(cls.cls_atomics)
             raise
@@ -314,9 +324,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         on unrelated packages as the instance grows.
         """
         ghost_term = f"zzz-no-match-{uuid.uuid4().hex}"
-        listings = self.connector.list_listings(
-            filters={"fq": f"name:{ghost_term}"}, limit=10
-        )
+        listings = self.connector.list_listings(filters={"fq": f"name:{ghost_term}"}, limit=10)
 
         self.assertIsInstance(listings, list)
         # Should return empty list, not raise an error
@@ -459,15 +467,14 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             listing = self.connector.get_listing(tagged_name)
             self.assertIsInstance(listing, MarketplaceListing)
             self.assertIsInstance(
-                listing.tags, list,
-                f"Tags should be a list, got {type(listing.tags)}"
+                listing.tags, list, f"Tags should be a list, got {type(listing.tags)}"
             )
-            self.assertGreater(len(listing.tags), 0,
-                "Seeded tagged package should have at least one tag")
+            self.assertGreater(
+                len(listing.tags), 0, "Seeded tagged package should have at least one tag"
+            )
             for tag in listing.tags:
                 self.assertIsInstance(
-                    tag, str,
-                    f"Each tag should be a string, got {type(tag)}: {tag!r}"
+                    tag, str, f"Each tag should be a string, got {type(tag)}: {tag!r}"
                 )
             return
 
@@ -480,13 +487,11 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             if listing.tags:
                 tag_found = True
                 self.assertIsInstance(
-                    listing.tags, list,
-                    f"Tags should be a list, got {type(listing.tags)}"
+                    listing.tags, list, f"Tags should be a list, got {type(listing.tags)}"
                 )
                 for tag in listing.tags:
                     self.assertIsInstance(
-                        tag, str,
-                        f"Each tag should be a string, got {type(tag)}: {tag!r}"
+                        tag, str, f"Each tag should be a string, got {type(tag)}: {tag!r}"
                     )
                 break
 
@@ -510,13 +515,15 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
 
         if listing.created_at is not None:
             self.assertIsInstance(
-                listing.created_at, datetime,
-                f"created_at should be a datetime, got {type(listing.created_at)}"
+                listing.created_at,
+                datetime,
+                f"created_at should be a datetime, got {type(listing.created_at)}",
             )
         if listing.updated_at is not None:
             self.assertIsInstance(
-                listing.updated_at, datetime,
-                f"updated_at should be a datetime, got {type(listing.updated_at)}"
+                listing.updated_at,
+                datetime,
+                f"updated_at should be a datetime, got {type(listing.updated_at)}",
             )
 
     def test_listing_url_generation(self):
@@ -531,18 +538,17 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         listing = self.connector.get_listing(self.test_package_id)
 
         self.assertIsNotNone(
-            listing.url,
-            f"Listing URL should not be None for package {self.test_package_id}"
+            listing.url, f"Listing URL should not be None for package {self.test_package_id}"
         )
         assert listing.url is not None  # type narrow for type checker
         self.assertIsInstance(listing.url, str)
         self.assertTrue(
-            listing.url.startswith("http"),
-            f"URL should start with http, got: {listing.url!r}"
+            listing.url.startswith("http"), f"URL should start with http, got: {listing.url!r}"
         )
         self.assertIn(
-            listing.marketplace_id, listing.url,
-            f"URL should contain marketplace_id '{listing.marketplace_id}', got: {listing.url!r}"
+            listing.marketplace_id,
+            listing.url,
+            f"URL should contain marketplace_id '{listing.marketplace_id}', got: {listing.url!r}",
         )
 
     def test_pagination_consistency(self):
@@ -583,10 +589,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         except HubConnectionError:
             handled = True
         except Exception as e:
-            self.fail(
-                f"Unexpected exception for negative limit: "
-                f"{type(e).__name__}: {e}"
-            )
+            self.fail(f"Unexpected exception for negative limit: {type(e).__name__}: {e}")
         self.assertTrue(handled, "Should get result or HubConnectionError")
 
     def test_error_handling_invalid_offset(self):
@@ -606,10 +609,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         except HubConnectionError:
             handled = True
         except Exception as e:
-            self.fail(
-                f"Unexpected exception for negative offset: "
-                f"{type(e).__name__}: {e}"
-            )
+            self.fail(f"Unexpected exception for negative offset: {type(e).__name__}: {e}")
         self.assertTrue(handled, "Should get result or HubConnectionError")
 
     def test_connection_resilience(self):
@@ -661,7 +661,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
     def test_get_listing_with_none_id(self):
         """get_listing(None) raises ValueError (source line 452)."""
         with self.assertRaises(ValueError):
-            self.connector.get_listing(None)  # type: ignore[arg-type]
+            self.connector.get_listing(None)
 
     def test_list_resources_with_empty_id(self):
         """list_resources('') raises ValueError (via get_listing validation)."""
@@ -671,7 +671,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
     def test_list_resources_with_none_id(self):
         """list_resources(None) raises ValueError (via get_listing validation)."""
         with self.assertRaises(ValueError):
-            self.connector.list_resources(None)  # type: ignore[arg-type]
+            self.connector.list_resources(None)
 
     def test_list_listings_with_zero_limit(self):
         """Test list_listings() edge case with zero limit"""

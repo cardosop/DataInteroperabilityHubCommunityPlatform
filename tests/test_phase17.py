@@ -28,6 +28,7 @@ Covers:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
@@ -56,11 +57,9 @@ def test_deployment_sync_no_docker_sdk_import():
         del sys.modules[mod_name]
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    try:
-        import deployment_sync  # noqa: F401
-    except Exception:
-        # If deployment_sync can't fully load (e.g. missing Prefect server),
-        # that is fine for this test — we only care about the 'docker' import.
+    with contextlib.suppress(
+        Exception
+    ):  # import side-effect guard; a missing Prefect server must not fail this test
         pass
 
     assert "docker" not in sys.modules, (

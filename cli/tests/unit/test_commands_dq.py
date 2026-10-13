@@ -1,12 +1,21 @@
 """
 Unit tests for DQ CLI commands.
 
-Tests: run, get, list, list-rules, list-runs commands.
+Tests: run, get, list, alerts commands.
+
+The backend (hub/apps/dq/urls.py) exposes only ``runs``, ``alerting-rules``
+and ``quality`` — there is no ``rules`` endpoint and no ``list-runs``
+subcommand; ``dq list`` lists runs and ``dq alerts --list`` lists rules.
 """
 
 import json
 
 from datahub_cli.main import cli
+from tests.fixtures.test_data import fresh_id
+
+# Unique per test process (and per xdist worker) so a static literal
+# can never collide across parallel runs — Phase 216.X.2.
+ASSET_ID = fresh_id("asset")
 
 
 class TestDQRun:
@@ -21,13 +30,13 @@ class TestDQRun:
             "job": "job-1",
         }
 
-        result = runner.invoke(cli, ["dq", "run", "--asset-id", "asset-1"])
+        result = runner.invoke(cli, ["dq", "run", "--asset-id", ASSET_ID])
 
         assert result.exit_code == 0
         assert "dq-run-1" in result.output
         assert "PENDING" in result.output
         mock_api_client.post.assert_called_once_with(
-            "dq/runs/", json_data={"profile_key": "intake_basic_gx", "asset_id": "asset-1"}
+            "dq/runs/", json_data={"profile_key": "intake_basic_gx", "asset_id": ASSET_ID}
         )
 
     def test_run_dq_on_dataset(self, runner, mock_api_client):
@@ -49,7 +58,7 @@ class TestDQRun:
         """Test run with JSON output"""
         mock_api_client.post.return_value = {"id": "dq-run-3", "status": "COMPLETED"}
 
-        result = runner.invoke(cli, ["dq", "run", "--asset-id", "asset-1", "--format", "json"])
+        result = runner.invoke(cli, ["dq", "run", "--asset-id", ASSET_ID, "--format", "json"])
 
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -66,7 +75,7 @@ class TestDQRun:
         """Test run handles API error"""
         mock_api_client.post.side_effect = Exception("Service unavailable")
 
-        result = runner.invoke(cli, ["dq", "run", "--asset-id", "asset-1"])
+        result = runner.invoke(cli, ["dq", "run", "--asset-id", ASSET_ID])
 
         assert result.exit_code != 0
         assert "Failed to run DQ check" in result.output
@@ -109,24 +118,28 @@ class TestDQGet:
 
 
 class TestDQList:
-    """Test dq list command"""
+    """Test dq list commands"""
 
     def test_list_rules(self, runner, mock_api_client):
-        """Test listing DQ rules"""
+        """Test listing DQ alerting rules"""
         mock_api_client.get.return_value = {
-            "results": [{"id": "rule-1", "name": "not_null_check", "rule_type": "NOT_NULL"}]
+            "results": [
+                {"id": "rule-1", "asset_id": ASSET_ID, "threshold": 80.0, "status": "ACTIVE"}
+            ]
         }
 
-        result = runner.invoke(cli, ["dq", "list-rules"])
+        result = runner.invoke(cli, ["dq", "alerts", "--list"])
 
         assert result.exit_code == 0
-        assert "not_null_check" in result.output
+        assert "rule-1" in result.output
+        mock_api_client.get.assert_called_once_with("dq/alerting-rules/")
 
     def test_list_runs(self, runner, mock_api_client):
         """Test listing DQ runs"""
         mock_api_client.get.return_value = {"results": [{"id": "dq-run-1", "status": "COMPLETED"}]}
 
-        result = runner.invoke(cli, ["dq", "list-runs"])
+        result = runner.invoke(cli, ["dq", "list"])
 
         assert result.exit_code == 0
         assert "dq-run-1" in result.output
+        mock_api_client.get.assert_called_once_with("dq/runs/", params={"limit": 20, "offset": 0})

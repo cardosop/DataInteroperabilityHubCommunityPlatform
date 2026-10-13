@@ -20,8 +20,7 @@ from pathlib import Path
 from django.test import TestCase
 
 try:
-    import jsonschema
-    from jsonschema import Draft202012Validator, ValidationError, validate
+    from jsonschema import ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
 except ImportError:

@@ -129,7 +129,6 @@ export async function pollForSearchResult(
 
   let lastMismatch = 'no attempts made (0 ms budget?)';
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const rows = await fetcher();
     const result = findInSearchResults(rows, expected);
@@ -160,11 +159,22 @@ async function extractBearerHeaders(
   override?: Record<string, string>,
 ): Promise<Record<string, string>> {
   if (override !== undefined) return override;
-  const token = await page.evaluate<string | null>(
-    () =>
-      (globalThis as unknown as { localStorage?: { getItem: (k: string) => string | null } })
-        .localStorage?.getItem('access_token') ?? null,
-  );
+  // Phase 11.1 — the access_token lives in JS module memory; localStorage
+  // holds it only transiently (every SPA-side refresh rotation removes it in
+  // the same tick). Probe window.__getAccessToken (the sanctioned surface,
+  // client.ts) first, fall back to localStorage for pages that predate it.
+  // Same contract as verifySemantic.ts / verifyViaApi.ts — see batch3
+  // contract/dataset-create 401s for the localStorage-only failure mode.
+  const token = await page.evaluate<string | null>(() => {
+    const w = globalThis as unknown as {
+      localStorage?: { getItem: (k: string) => string | null };
+      __getAccessToken?: () => string | null;
+    };
+    if (typeof w.__getAccessToken === 'function') {
+      return w.__getAccessToken();
+    }
+    return w.localStorage?.getItem('access_token') ?? null;
+  });
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
 }
@@ -203,7 +213,7 @@ export async function verifySearchable(
       try {
         preview = (await res.text()).slice(0, 400);
       } catch {
-        /* ignore — preview is best-effort */
+        /* intentional: the preview read is best-effort; the error message below carries the verdict —  ignore — preview is best-effort */
       }
       throw new Error(
         `verifySearchable: GET ${url} returned ${res.status()}. Body preview: ${preview}`,

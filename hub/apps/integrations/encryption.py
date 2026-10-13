@@ -189,7 +189,6 @@ def encrypt_json_field(data: dict[str, Any]) -> str:
             try:
                 ciphertext = _kms_encrypt(json_bytes)
                 logger.debug("kms_encrypt_success")
-                return ciphertext  # "aws-kms:..."
             except Exception as e:
                 logger.warning(
                     "kms_encrypt_fallback",
@@ -197,6 +196,8 @@ def encrypt_json_field(data: dict[str, Any]) -> str:
                     error_type=type(e).__name__,
                 )
                 reset_kms_client()
+            else:
+                return ciphertext  # "aws-kms:..."
 
         # Fernet fallback
         fernet = _get_fernet()
@@ -244,7 +245,7 @@ def decrypt_json_field(encrypted_str: str) -> dict[str, Any]:
             f"Encrypted data must be a string, got {type(encrypted_str).__name__}"
         )
 
-    try:
+    def _decrypt() -> dict[str, Any]:
         # AWS KMS ciphertext detection
         if encrypted_str.startswith(_AWS_KMS_PREFIX):
             decrypted_bytes = _kms_decrypt(encrypted_str)
@@ -282,6 +283,9 @@ def decrypt_json_field(encrypted_str: str) -> dict[str, Any]:
                 f"Decrypted data must be a dict, got {type(data).__name__}",
             )
         return data
+
+    try:
+        return _decrypt()
     except binascii.Error as e:
         raise EncryptionError(
             f"Failed to decode base64: {e!s}",

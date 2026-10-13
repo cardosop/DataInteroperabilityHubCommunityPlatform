@@ -15,7 +15,7 @@ import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -34,7 +34,7 @@ if LOCUST_AVAILABLE:
     sys.path.insert(0, str(project_root))
     from tests.performance.helpers import PerformanceTestHelper
 
-    def create_odps_document(product_id: str = None) -> dict:
+    def create_odps_document(product_id: str | None = None) -> dict:
         """Create a valid ODPS 4.1 document for testing"""
         if not product_id:
             product_id = f"load-test-product-{random.randint(10000, 99999)}"
@@ -142,7 +142,7 @@ if LOCUST_AVAILABLE:
                         error_data = response.json()
                         error_msg = error_data.get("error", "Unknown error")
                         response.failure(f"Server error {response.status_code}: {error_msg}")
-                    except:
+                    except (json.JSONDecodeError, AttributeError):
                         response.failure(f"Server error: {response.status_code}")
                 else:
                     response.failure(f"Unexpected status: {response.status_code}")

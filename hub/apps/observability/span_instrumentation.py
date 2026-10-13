@@ -13,13 +13,15 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from functools import wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +95,7 @@ def add_span_attributes(attributes: dict[str, Any]):
                 # Convert value to appropriate type
                 if value is None:
                     continue
-                elif (
-                    isinstance(value, bool)
-                    or isinstance(value, (int, float))
-                    or isinstance(value, str)
-                ):
+                elif isinstance(value, (bool, int, float, str)):
                     span.set_attribute(key, value)
                 else:
                     span.set_attribute(key, str(value))

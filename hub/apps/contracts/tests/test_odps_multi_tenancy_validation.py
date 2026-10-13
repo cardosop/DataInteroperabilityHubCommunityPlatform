@@ -104,7 +104,6 @@ class ODPSMultiTenancyTestBase(ContractsTestBase):
             name="Asset A",
             description="Asset for Tenant A",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user_a,
         )
 
@@ -114,7 +113,6 @@ class ODPSMultiTenancyTestBase(ContractsTestBase):
             name="Asset B",
             description="Asset for Tenant B",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user_b,
         )
 
@@ -124,7 +122,6 @@ class ODPSMultiTenancyTestBase(ContractsTestBase):
             name="Asset C",
             description="Asset for Tenant C",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user_c,
         )
 
@@ -467,7 +464,7 @@ class MultiTenantConcurrentOperationsTest(ODPSMultiTenancyTestBase, TransactionT
 
         # Create ODPS and ODCS contracts for each tenant sequentially
         contracts = {}
-        for tenant_id, tenant_obj, _user_obj, asset_obj, service_odps, service_contract in [
+        for tenant_id, _tenant_obj, _user_obj, asset_obj, service_odps, service_contract in [
             (
                 "a",
                 self.tenant_a,
@@ -1081,7 +1078,13 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"productID": "test-large", "name": "Test Large", "description": large_description}},
+                "details": {
+                    "en": {
+                        "productID": "test-large",
+                        "name": "Test Large",
+                        "description": large_description,
+                    }
+                },
                 "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
@@ -1101,7 +1104,9 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"productID": "test-none", "name": "Test None", "description": None}},
+                "details": {
+                    "en": {"productID": "test-none", "name": "Test None", "description": None}
+                },
                 "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }

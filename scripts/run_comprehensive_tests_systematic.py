@@ -70,7 +70,7 @@ def get_all_apps() -> list[str]:
                     )
                     apps.append(path)
             return sorted(apps)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"Error getting apps: {e}")
     return []
 
@@ -120,8 +120,6 @@ def run_django_tests(app_path: str, timeout: int = 1800) -> dict[str, any]:
             }
         )
 
-        return stats
-
     except subprocess.TimeoutExpired:
         return {
             "app": app_path,
@@ -131,7 +129,7 @@ def run_django_tests(app_path: str, timeout: int = 1800) -> dict[str, any]:
             "status": "TIMEOUT",
             "output": f"Test execution timed out after {timeout} seconds",
         }
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return {
             "app": app_path,
             "duration": time.time() - start_time,
@@ -140,6 +138,8 @@ def run_django_tests(app_path: str, timeout: int = 1800) -> dict[str, any]:
             "status": "ERROR",
             "error": str(e),
         }
+    else:
+        return stats
 
 
 def parse_test_output(output: str) -> dict[str, int]:

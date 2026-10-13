@@ -21,6 +21,7 @@ from datetime import timedelta
 
 import structlog
 from django_rq import job
+from requests.exceptions import RequestException
 
 logger = structlog.get_logger(__name__)
 
@@ -108,7 +109,7 @@ def sync_prefect_flow_run_status(
             )
             _schedule_retry(flow_run_id, resource_id, resource_type, attempt + 1)
             return
-        logger.error(
+        logger.exception(
             "prefect_status_sync_connection_exhausted",
             flow_run_id=flow_run_id,
             attempt=attempt,
@@ -347,11 +348,12 @@ def _check_flow_run_status(base_url: str, flow_run_id: str, requests_mod):
             return "COMPLETED"
         if prefect_state in ("FAILED", "CRASHED", "CANCELLED", "CANCELLING"):
             return "FAILED"
-        return None
-    except Exception as exc:
+    except (RequestException, ValueError) as exc:
         logger.debug(
             "prefect_reconcile_check_error",
             flow_run_id=flow_run_id,
             error=str(exc),
         )
+        return None
+    else:
         return None

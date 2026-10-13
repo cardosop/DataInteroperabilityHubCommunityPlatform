@@ -295,8 +295,7 @@ class TestAssetCachingUtilities(TestCase):
         cached = get_cached_asset_detail(fake_asset_id)
         self.assertIsNone(
             cached,
-            "After invalidating a non-existent key, the key must "
-            "still not exist in cache.",
+            "After invalidating a non-existent key, the key must still not exist in cache.",
         )
 
     def test_invalidate_asset_caches_handles_empty_cache_gracefully(self):
@@ -568,15 +567,13 @@ class TestAssetCachingIntegration(TestCase):
         self.assertGreater(
             len(data.get("results", [])),
             0,
-            "Domain filter must return at least the marketing asset "
-            "just created.",
+            "Domain filter must return at least the marketing asset just created.",
         )
         for asset in data["results"]:
             self.assertEqual(
                 asset.get("domain"),
                 "marketing",
-                "Every asset returned under ?domain=marketing must "
-                "have domain='marketing'.",
+                "Every asset returned under ?domain=marketing must have domain='marketing'.",
             )
 
     def test_list_view_different_filters_use_different_cache_entries(self):

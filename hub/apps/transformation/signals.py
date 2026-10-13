@@ -26,7 +26,7 @@ def trigger_transformation_on_dataset_version(
     sender,
     instance,
     created,
-    **kwargs,
+    **_kwargs,
 ):
     """
     Trigger event-based transformation pipelines when a new
@@ -53,35 +53,40 @@ def trigger_transformation_on_dataset_version(
         dataset_id = str(instance.pk)
         asset_id_str = str(asset_id)
 
+        # Phase P.9 — the pipeline query + iteration are tenant-scoped;
+        # post_save fires outside the request cycle, so scope per the
+        # RLS contract.
+        from hub.apps.tenants.request_tenant import tenant_context
         from hub.apps.transformation.models import (
             PipelineStatus,
             TransformationPipeline,
         )
 
-        # Find ACTIVE pipelines that have this asset as source
-        pipelines = TransformationPipeline.objects.filter(
-            tenant_id=tenant_id,
-            status=PipelineStatus.ACTIVE,
-            metadata__source_asset_id=asset_id_str,
-        )
-
-        if not pipelines.exists():
-            return
-
-        logger.info(
-            "transformation_trigger_dataset_version dataset_id=%s asset_id=%s pipeline_count=%d",
-            dataset_id,
-            asset_id_str,
-            pipelines.count(),
-        )
-
-        for pipeline in pipelines:
-            _enqueue_pipeline_execution(
-                pipeline_id=str(pipeline.id),
-                asset_id=asset_id_str,
+        with tenant_context(tenant_id):
+            # Find ACTIVE pipelines that have this asset as source
+            pipelines = TransformationPipeline.objects.filter(
                 tenant_id=tenant_id,
-                dataset_id=dataset_id,
+                status=PipelineStatus.ACTIVE,
+                metadata__source_asset_id=asset_id_str,
             )
+
+            if not pipelines.exists():
+                return
+
+            logger.info(
+                "transformation_trigger_dataset_version dataset_id=%s asset_id=%s pipeline_count=%d",
+                dataset_id,
+                asset_id_str,
+                pipelines.count(),
+            )
+
+            for pipeline in pipelines:
+                _enqueue_pipeline_execution(
+                    pipeline_id=str(pipeline.id),
+                    asset_id=asset_id_str,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                )
 
     except Exception as exc:
         logger.warning(
@@ -113,23 +118,29 @@ def _enqueue_pipeline_execution(
 
         def _publish():
             try:
-                publisher.publish(
-                    event_type="transformation.pipeline.triggered",
-                    data={
-                        "pipeline_id": pipeline_id,
-                        "asset_id": asset_id,
-                        "tenant_id": tenant_id,
-                        "dataset_id": dataset_id,
-                        "trigger": "dataset_version_created",
-                    },
-                    tags=[
-                        "transformation",
-                        "pipeline",
-                        "triggered",
-                        "dataset_version",
-                    ],
-                    tenant_id=tenant_id,
-                )
+                # Phase P.9 — event-bus persistence writes tenant-scoped
+                # Event rows; on_commit runs outside the request cycle,
+                # so scope per the RLS contract.
+                from hub.apps.tenants.request_tenant import tenant_context
+
+                with tenant_context(tenant_id):
+                    publisher.publish(
+                        event_type="transformation.pipeline.triggered",
+                        data={
+                            "pipeline_id": pipeline_id,
+                            "asset_id": asset_id,
+                            "tenant_id": tenant_id,
+                            "dataset_id": dataset_id,
+                            "trigger": "dataset_version_created",
+                        },
+                        tags=[
+                            "transformation",
+                            "pipeline",
+                            "triggered",
+                            "dataset_version",
+                        ],
+                        tenant_id=tenant_id,
+                    )
                 logger.info(
                     "transformation_pipeline_triggered pipeline_id=%s asset_id=%s dataset_id=%s",
                     pipeline_id,

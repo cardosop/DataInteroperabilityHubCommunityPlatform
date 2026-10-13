@@ -19,6 +19,9 @@ import uuid
 
 from rest_framework import status
 
+from hub.apps.audit.models import AuditEvent
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.billing.tests.plan_fixtures import get_enterprise_plan
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, User, UserRole, UserStatus
@@ -738,23 +741,42 @@ class JourneyTA003MonitorTenantUsageTests(E2ETestBase):
         self.assertGreaterEqual(len(users), 5)
 
 
+@pytest.mark.journey("JOURNEY-TA-BILLING-UPGRADE")
 class JourneyTA004ManageTenantBillingTests(E2ETestBase):
-    """JOURNEY-TA-004: Manage Tenant Billing (if exists)"""
+    """JOURNEY-TA-004 / JOURNEY-TA-BILLING-UPGRADE: Manage Tenant Billing.
+
+    Real plan-upgrade journey through the wire API (Phase 17 change-plan
+    endpoint; service contract pinned by
+    hub/apps/billing/tests/test_services.py::test_update_subscription_success):
+      1. View the current subscription (GET subscription/current/)
+      2. Browse available plans (GET billing/plans/)
+      3. Upgrade the plan (POST subscription/current/change-plan/) — the
+         subscription AND the tenant plan flip, and a PLAN_CHANGED audit
+         event records the old/new slugs
+      4. Negative paths: same plan, unknown plan, non-admin actor,
+         unauthenticated actor
+    """
+
+    CURRENT_SUB_URL = "/api/v1/billing/subscription/current/"
+    CHANGE_PLAN_URL = "/api/v1/billing/subscription/current/change-plan/"
+    PLANS_URL = "/api/v1/billing/plans/"
 
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
 
+        uid = uuid.uuid4().hex[:8]
+
         # Create tenant and tenant admin user
         self.tenant = Tenant.objects.create(
-            name=f"Billing Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"billing-tenant-{uuid.uuid4().hex[:8]}",
+            name=f"Billing Tenant {uid}",
+            slug=f"billing-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.tenant_admin = User.objects.create_user(
-            email="billingadmin@test-tenant.com",
+            email=f"billingadmin-{uid}@test-tenant.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -768,30 +790,148 @@ class JourneyTA004ManageTenantBillingTests(E2ETestBase):
         )
         UserRole.objects.create(user=self.tenant_admin, role=self.tenant_admin_role)
 
+        # Non-admin actor for the permission negative paths
+        self.data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        self.data_provider = User.objects.create_user(
+            email=f"billingdp-{uid}@test-tenant.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        UserRole.objects.create(user=self.data_provider, role=self.data_provider_role)
+
         # Authenticate as tenant admin
         self.client.force_authenticate(user=self.tenant_admin)
 
-    def test_billing_not_implemented(self):
-        """
-        Test that billing management is not yet implemented
-        This is a placeholder test that documents the current state
-        """
-        # Billing management is not yet implemented
-        # This test documents that we've checked for billing functionality
-        # and confirms it doesn't exist yet
+        # The seeder must have provisioned exactly the ACTIVE subscription
+        # this journey upgrades.
+        self.active_subscription = (
+            Subscription.objects.filter(tenant=self.tenant, status=SubscriptionStatus.ACTIVE)
+            .order_by("-created_at")
+            .first()
+        )
+        self.assertIsNotNone(
+            self.active_subscription,
+            "ensure_tenant_has_active_subscription must provision an ACTIVE subscription",
+        )
 
-        # Note: TenantViewSet requires platform admin permissions, not tenant admin
-        # So we can't access it directly. Instead, we verify tenant admin can manage
-        # tenant config (which is the main tenant admin capability)
-        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    def test_view_current_subscription_matches_seeded_plan(self):
+        """GET current subscription → the seeder's plan, tenant-scoped."""
+        response = self.client.get(self.CURRENT_SUB_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, get_response_data(response))
+        data = get_response_data(response) or {}
+        self.assertEqual(data["plan_slug"], self.active_subscription.plan.slug)
+        self.assertEqual(data["plan_tier"], self.active_subscription.plan.tier)
+        self.assertEqual(data["status"], SubscriptionStatus.ACTIVE.value)
+        self.assertEqual(str(data["tenant"]), str(self.tenant.id))
 
-        # Note: When billing API is implemented, we would test:
-        # - Get billing information
-        # - Update payment method
-        # - View billing history
-        # - Update subscription plan
-        # etc.
+    def test_list_billing_plans_includes_upgrade_target(self):
+        """GET billing/plans/ lists the enterprise upgrade target as active."""
+        enterprise = get_enterprise_plan()
+        response = self.client.get(f"{self.PLANS_URL}?page_size=100")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, get_response_data(response))
+        results = (get_response_data(response) or {}).get("results", [])
+        slugs = {plan["slug"] for plan in results}
+        self.assertIn(enterprise.slug, slugs)
+        # Only active plans are advertised — the target must be subscribable
+        target = next(plan for plan in results if plan["slug"] == enterprise.slug)
+        self.assertTrue(target["is_active"])
+
+    def test_upgrade_plan_changes_subscription_and_tenant(self):
+        """JOURNEY-TA-BILLING-UPGRADE: change-plan flips subscription AND tenant plan.
+
+        Mirrors hub/apps/billing/tests/test_services.py::test_update_subscription_success
+        through the real wire API.
+        """
+        enterprise = get_enterprise_plan()
+        old_plan = self.active_subscription.plan
+
+        response = self.client.post(
+            self.CHANGE_PLAN_URL, {"plan_slug": enterprise.slug}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, get_response_data(response))
+        data = get_response_data(response) or {}
+        self.assertEqual(data["plan_slug"], enterprise.slug)
+        self.assertEqual(data["plan_name"], enterprise.name)
+        # The SAME subscription row is upgraded, not replaced
+        self.assertEqual(data["id"], str(self.active_subscription.id))
+
+        # DB flip (service-level contract, test_services.py:199-201)
+        self.active_subscription.refresh_from_db()
+        self.assertEqual(self.active_subscription.plan_id, enterprise.id)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.plan_id, enterprise.id)
+
+        # The wire reflects the upgrade on the next read
+        response = self.client.get(self.CURRENT_SUB_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, get_response_data(response))
+        self.assertEqual((get_response_data(response) or {})["plan_slug"], enterprise.slug)
+
+        # PLAN_CHANGED audit records the old/new slugs
+        self.verify_audit_log(
+            resource_type="SUBSCRIPTION",
+            action="PLAN_CHANGED",
+            resource_id=str(self.active_subscription.id),
+            actor_user=self.tenant_admin,
+        )
+        event = (
+            AuditEvent.objects.filter(
+                resource_type="SUBSCRIPTION",
+                action="PLAN_CHANGED",
+                resource_id=str(self.active_subscription.id),
+                result="SUCCESS",
+            )
+            .order_by("-timestamp")
+            .first()
+        )
+        self.assertIsNotNone(event, "PLAN_CHANGED audit event must be emitted")
+        details = event.details_json or {}
+        self.assertEqual(details.get("old_plan_slug"), old_plan.slug)
+        self.assertEqual(details.get("new_plan_slug"), enterprise.slug)
+
+    def test_change_plan_to_same_plan_rejected(self):
+        """POST change-plan with the CURRENT plan → 400."""
+        response = self.client.post(
+            self.CHANGE_PLAN_URL,
+            {"plan_slug": self.active_subscription.plan.slug},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Already on this plan", (get_response_data(response) or {}).get("error", ""))
+
+    def test_change_plan_to_unknown_plan_rejected(self):
+        """POST change-plan with a nonexistent slug → 400."""
+        response = self.client.post(
+            self.CHANGE_PLAN_URL,
+            {"plan_slug": f"no-such-plan-{uuid.uuid4().hex[:8]}"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("not found or inactive", (get_response_data(response) or {}).get("error", ""))
+
+    def test_change_plan_requires_tenant_admin(self):
+        """DATA_PROVIDER (no TENANT_ADMIN) → 403 and no mutation."""
+        original_plan = self.active_subscription.plan
+        self.client.force_authenticate(user=self.data_provider)
+        response = self.client.post(
+            self.CHANGE_PLAN_URL, {"plan_slug": "enterprise"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("error", get_response_data(response) or {})
+        self.active_subscription.refresh_from_db()
+        self.assertEqual(self.active_subscription.plan_id, original_plan.id)
+
+    def test_change_plan_unauthenticated_returns_401(self):
+        """Anonymous POST change-plan → 401."""
+        self.client.logout()
+        response = self.client.post(
+            self.CHANGE_PLAN_URL, {"plan_slug": "enterprise"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class TenantAdminUseCasesTests(E2ETestBase):

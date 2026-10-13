@@ -31,7 +31,8 @@ SCRIPT_PATH = SCRIPTS_DIR / "audit_pinned_cves.py"
 
 def _load_module():
     spec = importlib.util.spec_from_file_location("audit_pinned_cves", SCRIPT_PATH)
-    assert spec and spec.loader, "audit_pinned_cves.py missing"
+    assert spec, "audit_pinned_cves.py missing"
+    assert spec.loader, "audit_pinned_cves.py missing"
     module = importlib.util.module_from_spec(spec)
     # Register before exec so `@dataclass` can resolve the module lazily —
     # the dataclass decorator looks up ``cls.__module__`` in ``sys.modules``
@@ -41,7 +42,7 @@ def _load_module():
     return module
 
 
-@pytest.fixture()
+@pytest.fixture
 def mod():
     return _load_module()
 

@@ -43,7 +43,7 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
     if not compliance_run_id:
         raise ValueError("Compliance run ID is required")
 
-    try:
+    def _run() -> dict:
         # Import here to avoid circular imports
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
         from hub.apps.compliance.service_client import ComplianceServiceClient
@@ -53,7 +53,7 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
         try:
             compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         except ComplianceRun.DoesNotExist:
-            raise ValueError(f"Compliance run {compliance_run_id} not found")
+            raise ValueError(f"Compliance run {compliance_run_id} not found") from None
 
         # Check if compliance service is available
         compliance_client = ComplianceServiceClient()
@@ -101,6 +101,8 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
             "compliance_run_id": str(compliance_run.id),
         }
 
+    try:
+        result = _run()
     except ConnectionError:
         raise  # Re-raise connection errors
     except ValueError:
@@ -108,3 +110,5 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
     except Exception as e:
         # Wrap other exceptions
         raise JobExecutionError(f"Compliance run execution failed: {e!s}") from e
+    else:
+        return result

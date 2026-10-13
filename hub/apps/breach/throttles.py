@@ -8,7 +8,7 @@ class BreachTenantRateThrottle(SimpleRateThrottle):
 
     scope = "breach_tenant"
 
-    def get_cache_key(self, request, view):
+    def get_cache_key(self, request, view):  # DRF throttle contract
         tenant = getattr(request, "tenant", None)
         if tenant is None:
             tenant = getattr(getattr(request, "user", None), "tenant", None)

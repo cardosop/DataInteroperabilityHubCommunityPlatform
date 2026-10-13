@@ -68,18 +68,18 @@ class ScheduledIngestionSerializerDecryptionTest(TestCase):
         ingestion = self._create_ingestion(self.plaintext_config)
         # After save(), source_config is {"_encrypted": "..."}
         ingestion.refresh_from_db()
-        self.assertIn("_encrypted", ingestion.source_config)
+        assert "_encrypted" in ingestion.source_config
 
         serializer = ScheduledIngestionSerializer(ingestion)
         data = serializer.data
 
         # API response should have decrypted config with sensitive fields masked
         sc = data["source_config"]
-        self.assertNotIn("_encrypted", sc)
-        self.assertEqual(sc["bucket"], "my-bucket")
-        self.assertEqual(sc["region"], "us-east-1")
+        assert "_encrypted" not in sc
+        assert sc["bucket"] == "my-bucket"
+        assert sc["region"] == "us-east-1"
         # Sensitive fields should be masked
-        self.assertEqual(sc["secret_key"], "***masked***")
+        assert sc["secret_key"] == "***masked***"
 
     def test_to_representation_handles_legacy_plaintext(self):
         """Legacy plaintext source_config (pre-encryption) should pass through."""
@@ -94,8 +94,8 @@ class ScheduledIngestionSerializerDecryptionTest(TestCase):
         data = serializer.data
 
         sc = data["source_config"]
-        self.assertEqual(sc["bucket"], "legacy-bucket")
-        self.assertEqual(sc["region"], "eu-west-1")
+        assert sc["bucket"] == "legacy-bucket"
+        assert sc["region"] == "eu-west-1"
 
     def test_to_representation_handles_empty_config(self):
         """Empty source_config should return empty dict."""
@@ -107,7 +107,7 @@ class ScheduledIngestionSerializerDecryptionTest(TestCase):
 
         serializer = ScheduledIngestionSerializer(ingestion)
         data = serializer.data
-        self.assertEqual(data["source_config"], {})
+        assert data["source_config"] == {}
 
     def test_to_representation_masks_sensitive_fields(self):
         """Sensitive fields (password, api_key, token, etc.) should be masked."""
@@ -125,9 +125,9 @@ class ScheduledIngestionSerializerDecryptionTest(TestCase):
         sc = serializer.data["source_config"]
 
         # Non-sensitive fields visible
-        self.assertEqual(sc["host"], "db.example.com")
+        assert sc["host"] == "db.example.com"
         # Sensitive fields masked
-        self.assertEqual(sc["password"], "***masked***")
-        self.assertEqual(sc["api_key"], "***masked***")
-        self.assertEqual(sc["token"], "***masked***")
-        self.assertEqual(sc["connection_string"], "***masked***")
+        assert sc["password"] == "***masked***"
+        assert sc["api_key"] == "***masked***"
+        assert sc["token"] == "***masked***"
+        assert sc["connection_string"] == "***masked***"

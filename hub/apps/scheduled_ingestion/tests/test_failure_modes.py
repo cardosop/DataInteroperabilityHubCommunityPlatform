@@ -158,39 +158,30 @@ class EmptyDataWarnAuditTest(TestCase):
             )
 
         # The dataset IS created (260.7.F contract: warning, not fail).
-        self.assertIn("dataset_id", result)
+        assert "dataset_id" in result
         dataset = Dataset.objects.get(id=result["dataset_id"])
-        self.assertEqual(
-            dataset.row_count or 0,
-            0,
-            "260.7.F contract: empty-data dataset must have row_count=0",
+        assert (dataset.row_count or 0) == 0, (
+            "260.7.F contract: empty-data dataset must have row_count=0"
         )
         # Asset auto-created (per scheduled_ingestion.auto_create_asset=True);
         # File row created (no rejection).
-        self.assertIsNotNone(dataset.asset_id)
-        self.assertIsNotNone(dataset.file_id)
-        self.assertTrue(File.objects.filter(pk=dataset.file_id).exists())
+        assert dataset.asset_id is not None
+        assert dataset.file_id is not None
+        assert File.objects.filter(pk=dataset.file_id).exists()
 
         # Audit event emitted with WARNING severity + TENANT_ADMIN audience.
-        self.assertEqual(
-            _audit_count(
-                tenant=tenant,
-                action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
-            ),
-            before_audit_count + 1,
-            "260.7.F contract: empty-data must emit exactly one WARN audit",
-        )
+        assert (
+            _audit_count(tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN")
+            == before_audit_count + 1
+        ), "260.7.F contract: empty-data must emit exactly one WARN audit"
         audit = _last_audit_for_action(
             tenant=tenant,
             action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
         )
-        self.assertEqual(audit.result, "WARNING")
-        self.assertEqual(audit.details_json.get("audience"), "TENANT_ADMIN")
-        self.assertEqual(
-            audit.details_json.get("dataset_id"),
-            str(dataset.id),
-        )
-        self.assertEqual(audit.details_json.get("row_count"), 0)
+        assert audit.result == "WARNING"
+        assert audit.details_json.get("audience") == "TENANT_ADMIN"
+        assert audit.details_json.get("dataset_id") == str(dataset.id)
+        assert audit.details_json.get("row_count") == 0
 
     @pytest.mark.integration
     def test_non_empty_csv_does_NOT_emit_empty_data_warn(self):
@@ -213,14 +204,10 @@ class EmptyDataWarnAuditTest(TestCase):
                 user_id=str(user.id),
             )
 
-        self.assertEqual(
-            _audit_count(
-                tenant=tenant,
-                action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
-            ),
-            before_audit_count,
-            "non-empty CSV must NOT trigger empty-data warning",
-        )
+        assert (
+            _audit_count(tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN")
+            == before_audit_count
+        ), "non-empty CSV must NOT trigger empty-data warning"
 
 
 # ---------------------------------------------------------------------------
@@ -253,8 +240,8 @@ class SchemaIncompatibleRejectionTest(TestCase):
                 user_id=str(user.id),
             )
         v1 = Dataset.objects.get(id=r1["dataset_id"])
-        self.assertIn("id", {f["name"] for f in v1.schema_json["fields"]})
-        self.assertIn("name", {f["name"] for f in v1.schema_json["fields"]})
+        assert "id" in {f["name"] for f in v1.schema_json["fields"]}
+        assert "name" in {f["name"] for f in v1.schema_json["fields"]}
 
         # Second run: same asset, but the source removed the ``name``
         # column. Should be REJECTED.
@@ -277,41 +264,31 @@ class SchemaIncompatibleRejectionTest(TestCase):
             )
 
         # The exception carries the typed code + the missing-fields detail.
-        self.assertEqual(cm.exception.code, "SCHEMA_INCOMPATIBLE")
-        self.assertIn("name", cm.exception.details["missing_fields"])
+        assert cm.exception.code == "SCHEMA_INCOMPATIBLE"
+        assert "name" in cm.exception.details["missing_fields"]
 
         # NO new Dataset / File row was created. Pre-existing v1 row
         # is preserved; the count is unchanged.
-        self.assertEqual(
-            Dataset.objects.filter(tenant=tenant).count(),
-            before_dataset_count,
-            "rejection must NOT create a new dataset row",
+        assert Dataset.objects.filter(tenant=tenant).count() == before_dataset_count, (
+            "rejection must NOT create a new dataset row"
         )
-        self.assertEqual(
-            File.objects.filter(tenant=tenant).count(),
-            before_file_count,
-            "rejection must NOT create a new file row",
+        assert File.objects.filter(tenant=tenant).count() == before_file_count, (
+            "rejection must NOT create a new file row"
         )
 
         # Audit event emitted with FAILURE severity + TENANT_ADMIN audience.
-        self.assertEqual(
-            _audit_count(
-                tenant=tenant,
-                action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
-            ),
-            before_failure_audit + 1,
+        assert (
+            _audit_count(tenant=tenant, action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED")
+            == before_failure_audit + 1
         )
         audit = _last_audit_for_action(
             tenant=tenant,
             action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
         )
-        self.assertEqual(audit.result, "FAILURE")
-        self.assertEqual(audit.details_json.get("audience"), "TENANT_ADMIN")
-        self.assertIn("name", audit.details_json.get("missing_fields", []))
-        self.assertEqual(
-            audit.details_json.get("prior_dataset_id"),
-            str(v1.id),
-        )
+        assert audit.result == "FAILURE"
+        assert audit.details_json.get("audience") == "TENANT_ADMIN"
+        assert "name" in audit.details_json.get("missing_fields", [])
+        assert audit.details_json.get("prior_dataset_id") == str(v1.id)
 
     @pytest.mark.integration
     def test_adding_field_is_compatible_no_rejection(self):
@@ -347,19 +324,15 @@ class SchemaIncompatibleRejectionTest(TestCase):
             )
 
         # The 2nd run succeeded: dataset version=2 created.
-        self.assertIn("dataset_id", r2)
+        assert "dataset_id" in r2
         v2 = Dataset.objects.get(id=r2["dataset_id"])
-        self.assertEqual(v2.version, 2)
+        assert v2.version == 2
 
         # No schema-incompat audit fired.
-        self.assertEqual(
-            _audit_count(
-                tenant=tenant,
-                action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
-            ),
-            before_failure_audit,
-            "adding a field must NOT trigger SCHEMA_INCOMPATIBLE",
-        )
+        assert (
+            _audit_count(tenant=tenant, action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED")
+            == before_failure_audit
+        ), "adding a field must NOT trigger SCHEMA_INCOMPATIBLE"
 
     @pytest.mark.integration
     def test_first_run_no_prior_version_skips_compat_check(self):
@@ -385,15 +358,11 @@ class SchemaIncompatibleRejectionTest(TestCase):
                 user_id=str(user.id),
             )
 
-        self.assertIn("dataset_id", r)
-        self.assertEqual(
-            _audit_count(
-                tenant=tenant,
-                action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
-            ),
-            before_failure_audit,
-            "first-version ingestion has no prior to compare against",
-        )
+        assert "dataset_id" in r
+        assert (
+            _audit_count(tenant=tenant, action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED")
+            == before_failure_audit
+        ), "first-version ingestion has no prior to compare against"
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +433,7 @@ class SourceUnreachableAuditTest(TestCase):
 
         class _Factory:
             @staticmethod
-            def get_connector(source_type):
+            def get_connector(_source_type):
                 return _UnreachableConnector()
 
         with patch(
@@ -495,31 +464,21 @@ class SourceUnreachableAuditTest(TestCase):
                 )
             # The original connector exception propagates (the audit
             # emission is observability, not flow control).
-            self.assertIn("Connection timed out", str(cm.exception))
+            assert "Connection timed out" in str(cm.exception)
 
         # Audit event emitted with FAILURE severity + TENANT_ADMIN audience.
-        self.assertEqual(
-            _audit_count(
-                tenant=tenant,
-                action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
-            ),
-            before_audit + 1,
-            "260.7.F contract: source-unreachable must emit exactly one FAILURE audit",
-        )
+        assert (
+            _audit_count(tenant=tenant, action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE")
+            == before_audit + 1
+        ), "260.7.F contract: source-unreachable must emit exactly one FAILURE audit"
         audit = _last_audit_for_action(
             tenant=tenant,
             action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
         )
-        self.assertEqual(audit.result, "FAILURE")
-        self.assertEqual(audit.details_json.get("audience"), "TENANT_ADMIN")
-        self.assertEqual(
-            audit.details_json.get("file_path"),
-            "data/unreachable.csv",
-        )
-        self.assertIn(
-            "Connection timed out",
-            audit.details_json.get("error_message", ""),
-        )
+        assert audit.result == "FAILURE"
+        assert audit.details_json.get("audience") == "TENANT_ADMIN"
+        assert audit.details_json.get("file_path") == "data/unreachable.csv"
+        assert "Connection timed out" in audit.details_json.get("error_message", "")
         # The failed-files state was also recorded — audit emission is
         # ADDITIVE, not replacing the existing failure path.
         # NOTE: orchestration mutates ``instance.state_data`` IN MEMORY
@@ -530,9 +489,8 @@ class SourceUnreachableAuditTest(TestCase):
         # mutation with the DB version (pre-mutation), masking the
         # in-memory recording the workflow relies on.
         failed = wi.state_data.get("failed_files_during_loop", [])
-        self.assertTrue(
-            any(f["file_path"] == "data/unreachable.csv" for f in failed),
-            "260.7.F audit emission must NOT regress failed-files state recording",
+        assert any(f["file_path"] == "data/unreachable.csv" for f in failed), (
+            "260.7.F audit emission must NOT regress failed-files state recording"
         )
 
 
@@ -552,17 +510,16 @@ class FailureModeAuditEventConstantsTest(TestCase):
     def test_three_constants_exist(self):
         from hub.apps.audit import event_types
 
-        self.assertEqual(
-            event_types.SCHEDULED_INGESTION_SOURCE_UNREACHABLE,
-            "SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
+        assert (
+            event_types.SCHEDULED_INGESTION_SOURCE_UNREACHABLE
+            == "SCHEDULED_INGESTION_SOURCE_UNREACHABLE"
         )
-        self.assertEqual(
-            event_types.SCHEDULED_INGESTION_EMPTY_DATA_WARN,
-            "SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+        assert (
+            event_types.SCHEDULED_INGESTION_EMPTY_DATA_WARN == "SCHEDULED_INGESTION_EMPTY_DATA_WARN"
         )
-        self.assertEqual(
-            event_types.SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED,
-            "SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
+        assert (
+            event_types.SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED
+            == "SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED"
         )
 
     @pytest.mark.integration
@@ -574,8 +531,6 @@ class FailureModeAuditEventConstantsTest(TestCase):
             "SCHEDULED_INGESTION_EMPTY_DATA_WARN",
             "SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
         ):
-            self.assertIn(
-                name,
-                event_types.__all__,
-                f"Phase 260.7.F constant {name!r} must be in event_types.__all__",
+            assert name in event_types.__all__, (
+                f"Phase 260.7.F constant {name!r} must be in event_types.__all__"
             )

@@ -57,8 +57,9 @@ class CostTrackingServiceTest(TestCase):
         # Both paths always include storage and api_calls
         self.assertIn("storage", categories)
         self.assertIn("api_calls", categories)
-        self.assertGreater(len(categories), 2,
-                          f"Expected more than 2 categories, got: {categories}")
+        self.assertGreater(
+            len(categories), 2, f"Expected more than 2 categories, got: {categories}"
+        )
 
     def test_get_cost_summary_storage_cost_scales_with_usage(self):
         """Storage cost increases with storage usage."""

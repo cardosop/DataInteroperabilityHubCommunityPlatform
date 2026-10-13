@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import ClassVar
 
 import pytest
 from django.test import SimpleTestCase
@@ -16,7 +17,7 @@ from hub.apps.regulation_policies.registry import (
 
 
 class DsarDeadlineComputeFreezeTimeTests(SimpleTestCase):
-    databases: set[str] = set()
+    databases: ClassVar[set[str]] = set()
 
     @freeze_time("2026-03-10T09:30:00Z")
     @pytest.mark.unit

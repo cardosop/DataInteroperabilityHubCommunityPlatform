@@ -12,11 +12,13 @@ Tests all security aspects of marketplace integration:
 All tests use real implementations - no mocks or stubs.
 """
 
+import importlib
 import time
 import uuid
 
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.management import call_command
 from django.db import IntegrityError
 from django.test import TestCase
 from rest_framework import status
@@ -24,6 +26,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.encryption import EncryptionError, decrypt_json_field, encrypt_json_field
@@ -33,9 +36,26 @@ from hub.apps.integrations.models import (
     MarketplaceMapping,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.rate_limiting.service import check_rate_limit
-from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+
+# Phase 313.H.3 — rate_limiting is paid-layer; core-only test runs have no
+# such app. Both absence forms are caught so the rate-limit tests below
+# degrade to a skip instead of crashing collection. GATE-29 — the paid
+# modules are imported dynamically (no static paid import in the core tree).
+try:
+    check_rate_limit = importlib.import_module("hub.apps.rate_limiting.service").check_rate_limit
+except (RuntimeError, ModuleNotFoundError):
+    check_rate_limit = (
+        None  # The plan fixture is paid-layer too; planless tenants inherit the seeded
+    )
+# default plan's limits and the connection-creation tests would trip
+# "Plan limit exceeded for max_marketplace_connections" (Phase Q review,
+# 2026-08-23). Core-only runs skip the plan-dependent tests.
+try:
+    get_pro_plan = importlib.import_module("hub.apps.billing.tests.plan_fixtures").get_pro_plan
+except (RuntimeError, ModuleNotFoundError):
+    get_pro_plan = None
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantPlan
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 # Validation-like exceptions: service/Django/DRF ValidationError, ValueError (input validation), IntegrityError (DB constraint)
 _VALIDATION_LIKE = (
@@ -54,10 +74,10 @@ def _is_optional_connector_failure(exc: BaseException) -> bool:
     msg = str(exc).lower()
     if "snowflake" in msg and ("not available" in msg or "not installed" in msg):
         return True
-    if "not available" in msg or "not installed" in msg or "not found" in msg:
-        return True
-    return False
+    return bool("not available" in msg or "not installed" in msg or "not found" in msg)
 
+
+import contextlib
 
 from django.contrib.auth import get_user_model
 
@@ -191,7 +211,6 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         with self.assertRaises((ValueError, Exception)):
             connector.authenticate(config)
 
-@pytest.mark.skip(reason="Snowflake connector module not available")
     def test_snowflake_connector_authentication_with_valid_credentials(self):
         """Test Snowflake connector authentication with valid credentials"""
         try:
@@ -203,6 +222,7 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
             if not SNOWFLAKE_AVAILABLE:  # noqa: skip-in-body — runtime service dependency
                 pytest.skip("snowflake-connector-python not installed")
         except ImportError:
+            pass
 
         factory = MarketplaceConnectorFactory()
         config = {"account": "test-account", "user": "test-user", "token": "test-token"}
@@ -222,7 +242,6 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         self.assertIsNotNone(connector)
         self.assertTrue(hasattr(connector, "authenticate"))
 
-@pytest.mark.skip(reason="Snowflake connector module not available")
     def test_snowflake_connector_authentication_with_invalid_credentials(self):
         """Test Snowflake connector authentication with invalid credentials"""
         try:
@@ -234,6 +253,7 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
             if not SNOWFLAKE_AVAILABLE:  # noqa: skip-in-body — runtime service dependency
                 pytest.skip("snowflake-connector-python not installed")
         except ImportError:
+            pass
 
         factory = MarketplaceConnectorFactory()
         config = {
@@ -256,14 +276,10 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         with self.assertRaises((ValueError, Exception)):
             connector.authenticate(config)
 
-@pytest.mark.skip(reason="f'AWS Data Exchange connector not available: {e}'")
     def test_aws_connector_authentication_with_valid_credentials(self):
         """Test AWS Data Exchange connector authentication with valid credentials"""
-        try:
-            from hub.apps.integrations.connectors.aws_data_exchange_connector import (
-                AWSDataExchangeConnector,
-            )
-        except ImportError as e:
+        with contextlib.suppress(ImportError):
+            pass
 
         factory = MarketplaceConnectorFactory()
         config = {
@@ -287,14 +303,10 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         self.assertIsNotNone(connector)
         self.assertTrue(hasattr(connector, "authenticate"))
 
-@pytest.mark.skip(reason="f'AWS Data Exchange connector not available: {e}'")
     def test_aws_connector_authentication_with_invalid_credentials(self):
         """Test AWS Data Exchange connector authentication with invalid credentials"""
-        try:
-            from hub.apps.integrations.connectors.aws_data_exchange_connector import (
-                AWSDataExchangeConnector,
-            )
-        except ImportError as e:
+        with contextlib.suppress(ImportError):
+            pass
 
         factory = MarketplaceConnectorFactory()
         config = {
@@ -317,14 +329,10 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         with self.assertRaises((ValueError, Exception)):
             connector.authenticate(config)
 
-@pytest.mark.skip(reason="f'GCP Marketplace connector not available: {e}'")
     def test_gcp_connector_authentication_with_valid_credentials(self):
         """Test GCP Marketplace connector authentication with valid credentials"""
-        try:
-            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
-                GCPMarketplaceConnector,
-            )
-        except ImportError as e:
+        with contextlib.suppress(ImportError):
+            pass
 
         factory = MarketplaceConnectorFactory()
         config = {"project_id": "test-project", "use_adc": True}
@@ -344,14 +352,10 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         self.assertIsNotNone(connector)
         self.assertTrue(hasattr(connector, "authenticate"))
 
-@pytest.mark.skip(reason="f'GCP Marketplace connector not available: {e}'")
     def test_gcp_connector_authentication_with_invalid_credentials(self):
         """Test GCP Marketplace connector authentication with invalid credentials"""
-        try:
-            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
-                GCPMarketplaceConnector,
-            )
-        except ImportError as e:
+        with contextlib.suppress(ImportError):
+            pass
 
         factory = MarketplaceConnectorFactory()
         # GCP connector requires credentials_json or use_adc; pass invalid JSON to test auth failure
@@ -381,6 +385,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        call_command("seed_default_plans")
         self.client = APIClient()
 
         # Create tenant 1
@@ -453,7 +458,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
         self.assertEqual(retrieved1.id, connection1.id)
 
         # Tenant 2 cannot access tenant 1's connection
-        with self.assertRaises(Exception):  # Should raise NotFoundError
+        with self.assertRaises(NotFoundError):  # get_connection raises NotFoundError
             self.service2.get_connection(
                 connection_id=str(connection1.id), tenant_id=str(self.tenant2.id)
             )
@@ -496,7 +501,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
         self.assertEqual(retrieved1.id, sync_job1.id)
 
         # Tenant 2 cannot access tenant 1's sync job
-        with self.assertRaises(Exception):  # Should raise NotFoundError
+        with self.assertRaises(NotFoundError):  # get_sync_job raises NotFoundError
             self.service2.get_sync_job(
                 sync_job_id=str(sync_job1.id), tenant_id=str(self.tenant2.id)
             )
@@ -615,12 +620,22 @@ class MarketplaceInputValidationSecurityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        call_command("seed_default_plans")
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
+        # The SQL-injection payload loops create up to 6 connections for
+        # this tenant; the FREE plan caps at 3 (seed_default_plans), so
+        # the 4th create would fail the plan-limit gate and mask the
+        # injection-safety assertion this suite is actually about. Assign
+        # the PRO plan (10) — plan economics are not this suite's subject.
+        pro_plan = TenantPlan.objects.filter(slug="pro", is_active=True).first()
+        if pro_plan is not None:
+            self.tenant.plan = pro_plan
+            self.tenant.save(update_fields=["plan", "updated_at"])
         self.user = User.objects.create_user(
             email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
@@ -844,11 +859,15 @@ class MarketplaceCredentialEncryptionSecurityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        call_command("seed_default_plans")
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
+            # The connections API is feature-gated per tenant (285.5.2.1);
+            # enable it so the API-response tests reach the serializer.
+            marketplace_integrations_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
@@ -1006,6 +1025,7 @@ class MarketplaceRateLimitingSecurityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        call_command("seed_default_plans")
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
@@ -1139,6 +1159,7 @@ class MarketplaceSecureConfigurationStorageTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        call_command("seed_default_plans")
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",

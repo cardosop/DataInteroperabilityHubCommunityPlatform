@@ -39,14 +39,18 @@ the simplest correct implementation is to re-parse the active rows.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
 
 # The maximum subclass-walk depth per the spec ("depth ≤ 2").
 MAX_SUBCLASS_DEPTH = 2
+
 
 @dataclass(frozen=True)
 class ExpansionBridge:
@@ -213,18 +217,26 @@ def _iris_for_token(graph, token: str, *, RDFS, SKOS):
 
     # 1. By rdfs:label literal.
     for s, _, o in graph.triples((None, RDFS.label, None)):
-        if isinstance(o, Literal) and str(o).strip().lower() == target:
-            if isinstance(s, URIRef) and s not in seen:
-                seen.add(s)
-                yield s
+        if (
+            isinstance(o, Literal)
+            and str(o).strip().lower() == target
+            and isinstance(s, URIRef)
+            and s not in seen
+        ):
+            seen.add(s)
+            yield s
 
     # 2. By skos:prefLabel literal — convention many ontologies use
     #    instead of (or alongside) rdfs:label.
     for s, _, o in graph.triples((None, SKOS.prefLabel, None)):
-        if isinstance(o, Literal) and str(o).strip().lower() == target:
-            if isinstance(s, URIRef) and s not in seen:
-                seen.add(s)
-                yield s
+        if (
+            isinstance(o, Literal)
+            and str(o).strip().lower() == target
+            and isinstance(s, URIRef)
+            and s not in seen
+        ):
+            seen.add(s)
+            yield s
 
     # 3. By IRI local name fallback — concepts that don't carry an
     #    explicit label still match by their fragment / trailing

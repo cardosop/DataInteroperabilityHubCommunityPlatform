@@ -31,7 +31,7 @@ class Command(BaseCommand):
             help="Show detailed information for each service",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         service_name = options.get("service")
         verbose = options.get("verbose", False)
 

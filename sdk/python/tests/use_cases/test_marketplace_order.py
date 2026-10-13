@@ -120,11 +120,18 @@ def _create_and_activate_asset(creds: PersonaCredentials) -> dict:
             f"{prereq_resp.status_code}: {prereq_resp.text[:300]}"
         )
 
-        # Step 3: Activate the asset (DRAFT -> ACTIVE)
+        # Step 3: Activate the asset (DRAFT -> ACTIVE).
+        # The prerequisites response is the serialized asset — its
+        # version is authoritative: the assets_force_version_increment_trg
+        # trigger (assets migration 0017) bumps the row version on EVERY
+        # UPDATE, so the create-time version can be stale by the time
+        # activation runs (ASSET_CONCURRENT_MODIFICATION 409).
+        prereq_body = prereq_resp.json()
+        activate_version = prereq_body.get("version", version)
         activate_resp = api_post(
             f"/assets/{asset_id}/activate/",
             current_creds,
-            json={"version": version},
+            json={"version": activate_version},
             timeout=15,
         )
         if (
@@ -169,7 +176,7 @@ def test_publish_listing():
         json={
             "title": listing_name,
             "short_description": "Automated test marketplace listing",
-            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -206,7 +213,7 @@ def test_listing_appears_in_catalog():
         json={
             "title": listing_name,
             "short_description": "Test listing for catalog verification",
-            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -253,7 +260,7 @@ def test_subscribe_to_listing():
         json={
             "title": listing_name,
             "short_description": "Test listing for catalog verification",
-            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -302,7 +309,7 @@ def test_subscriber_can_access_asset():
     before subscribing and GRANTED after.
     """
     # Provider in tenant-b, consumer in default tenant
-    dpo = provision_persona("data_mesh_domain_owner", tenant_slug="tenant-b")
+    dpo = provision_persona("data_mesh_domain_owner", tenant_slug="tenant-b")  # noqa: PHASE216-STATIC-ID
     dc = _dc_creds()  # auditor in default tenant
 
     # Publisher: create activated asset + listing in tenant-b
@@ -315,8 +322,12 @@ def test_subscriber_can_access_asset():
         json={
             "title": fresh_id("access-listing"),
             "short_description": "Test listing for access verification",
-            "asset_id": asset_id,
-            "pricing_model": "FREE",
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
+            # FREE_AUTO_APPROVE (117B.1): the order approves + fulfills
+            # synchronously, creating the entitlement this test verifies.
+            # Plain FREE leaves the order REQUESTED (governance approval
+            # required) and the subscriber correctly stays denied.
+            "pricing_model": "FREE_AUTO_APPROVE",
         },
         timeout=15,
     )
@@ -374,7 +385,7 @@ def test_unsubscribed_user_cannot_access_private_asset():
     """
     # Provider in a secondary tenant so the asset is cross-tenant
     # relative to the consumer in the default tenant.
-    dpo = provision_persona("data_mesh_domain_owner", tenant_slug="tenant-b")
+    dpo = provision_persona("data_mesh_domain_owner", tenant_slug="tenant-b")  # noqa: PHASE216-STATIC-ID
     dc = _dc_creds()  # auditor in the default tenant
 
     # Step 1: Provider creates and activates an asset in tenant-b.
@@ -394,7 +405,7 @@ def test_unsubscribed_user_cannot_access_private_asset():
         json={
             "title": listing_name,
             "short_description": "Access-control test listing",
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -439,7 +450,7 @@ def test_duplicate_subscription_returns_conflict():
         json={
             "title": fresh_id("dup-listing"),
             "short_description": "Test listing for duplicate subscription",
-            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,

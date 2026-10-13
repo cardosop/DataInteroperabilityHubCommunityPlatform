@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.request import Request
 from rest_framework.response import Response
 
 from hub.apps.breach.dashboard import breach_dashboard_summary
@@ -33,7 +32,11 @@ from hub.apps.breach.workflow import (
     transition_incident_status,
 )
 from hub.apps.consent.permissions import IsTenantScoped
-from hub.apps.users.models import User
+
+if TYPE_CHECKING:
+    from rest_framework.request import Request
+
+    from hub.apps.users.models import User
 
 
 def _tenant(request):
@@ -43,10 +46,10 @@ def _tenant(request):
 class BreachIncidentViewSet(viewsets.ModelViewSet):
     """Manage breach incidents for the current tenant."""
 
-    permission_classes = [permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder]
-    throttle_classes = [BreachTenantRateThrottle]
+    permission_classes = (permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder)
+    throttle_classes = (BreachTenantRateThrottle,)
     lookup_field = "id"
-    http_method_names = ["get", "post", "head", "options", "patch"]
+    http_method_names: ClassVar[list[str]] = ["get", "post", "head", "options", "patch"]
 
     def get_queryset(self):
         t = _tenant(self.request)
@@ -59,7 +62,7 @@ class BreachIncidentViewSet(viewsets.ModelViewSet):
             return BreachIncidentCreateSerializer
         return BreachIncidentSerializer
 
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         tenant = _tenant(request)
         if not tenant:
             return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -90,7 +93,9 @@ class BreachIncidentViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["patch"], url_path="status")
-    def transition_status(self, request, id=None):
+    def transition_status(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         inc = self.get_object()
         ser = BreachIncidentStatusSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -114,8 +119,8 @@ class BreachNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     """Manage breach notification records for the current tenant."""
 
     serializer_class = BreachNotificationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder]
-    throttle_classes = [BreachTenantRateThrottle]
+    permission_classes = (permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder)
+    throttle_classes = (BreachTenantRateThrottle,)
     lookup_field = "id"
 
     def get_queryset(self):
@@ -130,7 +135,9 @@ class BreachNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return qs.order_by("regime", "supervisory_authority_id")
 
     @action(detail=True, methods=["post"], url_path="mark-sent")
-    def mark_sent(self, request, id=None):
+    def mark_sent(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         tenant = _tenant(request)
         if not tenant:
             return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -160,8 +167,8 @@ class BreachTenantTemplateOverrideViewSet(
     """Manage breach notification template overrides for the current tenant."""
 
     serializer_class = BreachTenantTemplateOverrideSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder]
-    throttle_classes = [BreachTenantRateThrottle]
+    permission_classes = (permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder)
+    throttle_classes = (BreachTenantRateThrottle,)
     lookup_field = "id"
 
     def get_queryset(self):

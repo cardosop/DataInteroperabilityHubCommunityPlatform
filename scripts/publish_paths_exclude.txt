@@ -28,10 +28,23 @@ services/workflow_engine/
 services/tests/
 infrastructure/
 !infrastructure/postgres/02-pg-hba-host.sh
+!infrastructure/terraform/s3/
+!infrastructure/traefik/traefik.yml
+!infrastructure/traefik/traefik.core.yml
+!infrastructure/traefik/dynamic/
 helm/
 !helm/community/
 k8s/
 monitoring/
+!monitoring/prometheus/prometheus.yml
+!monitoring/prometheus/prometheus-test.yml
+!monitoring/prometheus/prometheus.core.yml
+!monitoring/prometheus/alerts.yml
+!monitoring/prometheus/alerts/
+!monitoring/grafana/dashboards/
+!monitoring/grafana/datasources/
+!monitoring/alertmanager/alertmanager-test.yml
+!monitoring/alertmanager/alertmanager.core.yml
 docker-compose.dev.yml
 docker-compose.staging.yml
 docker-compose.production.yml
@@ -41,6 +54,10 @@ docker-compose.override.memory.yml
 docker-compose.override.test-run.yml
 docker-compose.test.marquez.yml
 docker-compose.test.mvp.yml
+scripts/validate_odps_final_checklist.py
+scripts/provision_smoke_fixtures.py
+scripts/semantic_memento_capacity_test.py
+scripts/performance/profile_p1_endpoints.py
 .env.dev
 .env.staging
 .env.test
@@ -55,6 +72,7 @@ docs/deprecated-doc/
 scripts/publish_public_overlay/
 openspec/
 archive/
+!archive/phase-227-rollout/
 examples/
 backups/
 product-site/
@@ -70,3 +88,18 @@ node_modules/
 awscliv2.zip
 .gcp-sa-test.json
 .claude/
+# W0.4 additions (2026-10-06) — leaked-credential docs and artifact dumps
+# dropped from history by the filter-repo rewrite; the published tree must
+# match the rewritten tree's content.
+docs/MARKETPLACE_AND_CONNECTORS.md
+docs/MARKETPLACE_GCP_GUIDE.md
+docs/MARKETPLACE_ORACLE_GUIDE.md
+docs/docs/MARKETPLACE_AND_CONNECTORS.md
+docs/docs/deprecated-doc/marketplace-originals/
+docs/api-audit/code-examples-audit.json
+docs/docs/api-audit/code-examples-audit.json
+docs/docs/deprecated-doc/api-audit/code-examples-audit.json
+services/api-gateway/TEST_RESULTS.md
+services/api-gateway/TEST_RESULTS_FINAL.md
+openspec/changes/testreview1/
+openspec/changes/workflows1/artifacts/

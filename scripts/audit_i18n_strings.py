@@ -42,7 +42,7 @@ def count_hardcoded_strings() -> tuple[list[dict], int, int]:
         for root, dirs, files in os.walk(scan_dir):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for f in files:
-                if not (f.endswith(".py") or f.endswith(".tsx") or f.endswith(".ts")):
+                if not (f.endswith((".py", ".tsx", ".ts"))):
                     continue
                 path = os.path.join(root, f)
                 try:
@@ -59,7 +59,7 @@ def count_hardcoded_strings() -> tuple[list[dict], int, int]:
                                         }
                                     )
                                     hardcoded_count += 1
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
     return findings, hardcoded_count, total_lines
@@ -73,7 +73,7 @@ def count_i18n_strings() -> int:
             continue
         for root, _dirs, files in os.walk(i18n_dir):
             for f in files:
-                if not (f.endswith(".json") or f.endswith(".ts") or f.endswith(".tsx")):
+                if not (f.endswith((".json", ".ts", ".tsx"))):
                     continue
                 path = os.path.join(root, f)
                 try:
@@ -83,7 +83,7 @@ def count_i18n_strings() -> int:
                     count += len(re.findall(r'"([^"]+)":\s*"', content))
                     # Count TypeScript i18n exports
                     count += len(re.findall(r":\s*['\"](.+?)['\"]", content))
-                except Exception:
+                except (OSError, ValueError):
                     pass
     return count
 

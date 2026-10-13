@@ -397,3 +397,88 @@ def test_detects_tenant_fk_via_kwarg_to(tmp_path: Path) -> None:
     result = _run_linter(repo)
     assert result.returncode == 1
     assert "demo_customerorder" in result.stdout + result.stderr
+
+
+def test_passes_with_semantic_0019_style_list_loop_policy(tmp_path: Path) -> None:
+    """Phase P.9 — the house RLS pattern (semantic/0019): table names bound
+    in a MODULE-LEVEL LIST iterated by an f-string generator; the policy
+    text only ever contains ``ON {t}``. The linter's scalar-binding
+    fallback missed this form and false-FAILed the migration."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    _write_script_copy(repo, SOURCE_SCRIPT)
+    _default_allowlist(repo)
+    (repo / "hub" / "apps" / "demo" / "models.py").write_text(
+        "from django.db import models\n\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo, "base")
+
+    (repo / "hub" / "apps" / "demo" / "models.py").write_text(
+        "from django.db import models\n"
+        "from hub.apps.tenants.models import Tenant\n\n"
+        "class CustomerOrder(models.Model):\n"
+        "    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)\n",
+        encoding="utf-8",
+    )
+    (repo / "hub" / "apps" / "demo" / "migrations" / "0002_rls.py").write_text(
+        "from django.db import migrations\n\n"
+        '_TABLES = [\n    "demo_customerorder",\n]\n\n'
+        '_SQL = "\\n".join(\n'
+        '    f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY; "\n'
+        '    f"DROP POLICY IF EXISTS tenant_isolation ON {t}; "\n'
+        '    f"CREATE POLICY tenant_isolation ON {t} "\n'
+        "    f\"USING (tenant_id::text=current_setting('app.current_tenant_id',true));\"\n"
+        "    for t in _TABLES\n"
+        ")\n\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.RunSQL(_SQL)]\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo, "add tenant model with list-loop policy")
+
+    result = _run_linter(repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_passes_with_baas_0010_style_runpython_list_loop(tmp_path: Path) -> None:
+    """Phase P.9 — the baas/0010 variant: the list is a LOCAL variable
+    inside the RunPython function and the loop is an explicit for-loop."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    _write_script_copy(repo, SOURCE_SCRIPT)
+    _default_allowlist(repo)
+    (repo / "hub" / "apps" / "demo" / "models.py").write_text(
+        "from django.db import models\n\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo, "base")
+
+    (repo / "hub" / "apps" / "demo" / "models.py").write_text(
+        "from django.db import models\n"
+        "from hub.apps.tenants.models import Tenant\n\n"
+        "class CustomerOrder(models.Model):\n"
+        "    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)\n",
+        encoding="utf-8",
+    )
+    (repo / "hub" / "apps" / "demo" / "migrations" / "0002_rls.py").write_text(
+        "from django.db import migrations\n\n"
+        "def _apply_rls(apps, schema_editor):\n"
+        '    tables = ["demo_customerorder"]\n'
+        "    for t in tables:\n"
+        "        schema_editor.execute(\n"
+        '            f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY; "\n'
+        '            f"DROP POLICY IF EXISTS tenant_isolation ON {t}; "\n'
+        '            f"CREATE POLICY tenant_isolation ON {t} "\n'
+        "            f\"USING (tenant_id::text=current_setting('app.current_tenant_id',true));\"\n"
+        "        )\n\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.RunPython(_apply_rls)]\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo, "add tenant model with runpython list-loop policy")
+
+    result = _run_linter(repo)
+    assert result.returncode == 0, result.stdout + result.stderr

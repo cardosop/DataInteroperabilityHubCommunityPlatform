@@ -47,9 +47,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (redis.RedisError, ValueError):
         return None
+    else:
+        return client
 
 
 class TestCacheTags(TestCase):
@@ -227,7 +228,7 @@ class TestCacheWarming(ContractsTransactionTestBase):
             keys = self.redis_client.keys("cache_tag:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_warm_frequently_accessed_contracts(self):
@@ -712,7 +713,7 @@ class TestEnhancedCachingIntegration(TestCase):
                 except Exception as e:
                     errors.append((contract_id, str(e)))
 
-        # Run concurrent operations — 3 threads × 10 contracts = 30 writes total
+        # Run concurrent operations — 3 threads x 10 contracts = 30 writes total
         threads = [threading.Thread(target=cache_contracts) for _ in range(3)]
         for thread in threads:
             thread.start()

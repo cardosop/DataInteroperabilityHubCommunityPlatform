@@ -57,9 +57,10 @@ def _parse_redis_host_port(url: str) -> tuple[str, int]:
         if ":" in host_port:
             host, port_str = host_port.rsplit(":", 1)
             return (host, int(port_str))
-        return (host_port, 6379)
     except (ValueError, IndexError):
         return ("localhost", 6379)
+    else:
+        return (host_port, 6379)
 
 
 def _resolve_redis_host_port(port: int) -> tuple[str, int]:
@@ -83,8 +84,10 @@ def _redis_is_available(port: int) -> bool:
     host, resolved_port = _resolve_redis_host_port(port)
     try:
         r = redis.Redis(
-            host=host, port=resolved_port,
-            decode_responses=True, socket_connect_timeout=2,
+            host=host,
+            port=resolved_port,
+            decode_responses=True,
+            socket_connect_timeout=2,
         )
         return r.ping()
     except (redis.ConnectionError, ConnectionError, OSError):
@@ -106,8 +109,7 @@ def _require_redis_fleet():
             "Redis fleet not available; run inside docker compose or set "
             "PYTEST_DOCKER_COMPOSE_RUNTIME=1 and start docker compose services"
         )
-    missing = [name for name, port in REDIS_PORTS.items()
-               if not _redis_is_available(port)]
+    missing = [name for name, port in REDIS_PORTS.items() if not _redis_is_available(port)]
     if missing:
         pytest.skip(
             f"Redis instance(s) not reachable: {missing}. "
@@ -146,15 +148,18 @@ def test_docker_compose_configs():
                 errors.append(f"{redis_name} should be defined in docker-compose.yml")
 
     # Test 2: Port mapping (omitted: label check — labels are optional per project)
-    redis_ports = {"redis-cache": 6379, "redis-queue": 6380, "redis-events": 6381, "redis-channels": 6382}
+    redis_ports = {
+        "redis-cache": 6379,
+        "redis-queue": 6380,
+        "redis-events": 6381,
+        "redis-channels": 6382,
+    }
     if "main" in configs:
         services = configs.get("main", {}).get("services", {})
         for redis_name, expected_port in redis_ports.items():
             if redis_name in services:
                 ports = services[redis_name].get("ports", [])
-                has_correct_mapping = any(
-                    str(expected_port) in str(p) for p in ports
-                )
+                has_correct_mapping = any(str(expected_port) in str(p) for p in ports)
                 if not has_correct_mapping:
                     errors.append(
                         f"{redis_name} should have port mapping {expected_port}:6379 (current: {ports})"
@@ -230,8 +235,10 @@ def test_redis_connectivity():
         host, resolved_port = _resolve_redis_host_port(port)
         try:
             r = redis.Redis(
-                host=host, port=resolved_port,
-                decode_responses=True, socket_connect_timeout=3,
+                host=host,
+                port=resolved_port,
+                decode_responses=True,
+                socket_connect_timeout=3,
             )
             result = r.ping()
             if not result:
@@ -258,7 +265,9 @@ def test_redis_isolation():
         cache_client = redis.Redis(host=cache_host, port=cache_port, decode_responses=True, db=0)
         queue_client = redis.Redis(host=queue_host, port=queue_port, decode_responses=True, db=0)
         events_client = redis.Redis(host=events_host, port=events_port, decode_responses=True, db=0)
-        channels_client = redis.Redis(host=channels_host, port=channels_port, decode_responses=True, db=0)
+        channels_client = redis.Redis(
+            host=channels_host, port=channels_port, decode_responses=True, db=0
+        )
 
         # Set a test key in cache
         test_key = "test_isolation_key"

@@ -7,4 +7,6 @@ class OrchestrationConfig(AppConfig):
 
     def ready(self):
         """Initialize orchestration app when Django starts"""
-        from . import business_rules  # noqa: F401 — preload @register_rule
+        from . import (
+            business_rules,
+        )

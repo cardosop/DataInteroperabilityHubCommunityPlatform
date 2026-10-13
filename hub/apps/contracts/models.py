@@ -401,7 +401,7 @@ class MigrationCheckpoint(models.Model):
             models.UniqueConstraint(
                 fields=["migration_name", "contract"],
                 name="unique_checkpoint_per_migration_per_contract",
-            )
+            ),
         ]
         indexes = [
             models.Index(
@@ -558,7 +558,7 @@ class SecurityAuditLog(models.Model):
             raise ValueError("Security audit logs are immutable and cannot be updated")
         super().save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
+    def delete(self, *_args, **_kwargs):
         """Override delete to prevent deletion"""
         raise ValueError("Security audit logs are immutable and cannot be deleted")
 

@@ -9,6 +9,7 @@ import logging
 import os
 from unittest.mock import MagicMock, patch
 
+import httpx
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -26,14 +27,12 @@ def check_service_health(service_url: str, timeout: int = 5) -> bool:
         True if service is healthy, False otherwise
     """
     try:
-        import httpx
-
         health_url = f"{service_url.rstrip('/')}/health"
         response = httpx.get(health_url, timeout=timeout)
         if response.status_code == 200:
             data = response.json()
             return data.get("status") == "healthy"
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, KeyError) as e:
         logger.debug(f"Service health check failed for {service_url}: {e}")
     return False
 
@@ -161,7 +160,9 @@ def should_use_real_services() -> bool:
     return use_real
 
 
-def get_service_mock_or_real(service_name: str, default_url: str, mock_class=None):
+def get_service_mock_or_real(
+    service_name: str, default_url: str, mock_class=None
+):  # documented keyword API of a shared testing helper
     """
     Get either a real service client or a mock, depending on availability.
 

@@ -30,7 +30,7 @@
 version: 1
 entries:
   - file: hub/apps/contracts/views_security.py
-    line: 154
+    line: 155
     reason: |
       Cross-tenant rejection guard for SecurityAuditLogViewSet
       (Phase 260.A.4). Read is followed by a strict mismatch check;
@@ -38,7 +38,7 @@ entries:
       Test: hub/apps/contracts/tests/test_security_audit_log_tenant_isolation.py.
 
   - file: hub/apps/baas/views.py
-    line: 51
+    line: 59
     reason: |
       Cross-tenant rejection guard for BaaS query-param sites
       (Phase 260.A.4). `_resolve_tenant_id_from_query` rejects with
@@ -47,7 +47,7 @@ entries:
       Test: hub/apps/baas/tests/test_views.py.
 
   - file: hub/apps/auth/views.py
-    line: 1665
+    line: 2070
     reason: |
       Explicit tenant-switch flow (`switch_tenant` view). The user
       is actively choosing a target tenant from their membership
@@ -57,7 +57,7 @@ entries:
       tenant scoping.
 
   - file: hub/apps/auth/sso_views.py
-    line: 77
+    line: 69
     reason: |
       SSO callback cross-tenant rejection guard (Phase 260.A.2).
       `_resolve_callback_tenant_id` rejects body tenant_id that
@@ -66,7 +66,7 @@ entries:
       Test: hub/apps/auth/tests/test_sso_state_binding.py.
 
   - file: hub/apps/auth/sso_views.py
-    line: 93
+    line: 85
     reason: |
       Pre-auth SSO login-URL flow. The query param identifies which
       tenant's SSO configuration to use BEFORE any session exists;
@@ -75,7 +75,7 @@ entries:
       forward to the callback, where it is consumed (260.A.2).
 
   - file: hub/apps/mesh/views.py
-    line: 275
+    line: 283
     reason: |
       Cross-tenant rejection guard for mesh DomainViewSet.create
       — reads body tenant_id solely to reject divergence from the
@@ -84,7 +84,7 @@ entries:
       raised here is the rejection signal.
 
   - file: hub/apps/semantic/views.py
-    line: 693
+    line: 722
     reason: |
       Cross-tenant rejection guard for semantic.ingest_rdf
       (Phase 260.A.1). Read followed by strict mismatch check;
@@ -92,3 +92,68 @@ entries:
       returns on divergence. Tenant scope from
       `get_request_tenant_id(request)`.
       Test: hub/apps/semantic/tests/test_ingest_rdf_tenant_isolation.py.
+
+  - file: hub/apps/audit/views.py
+    line: 707
+    reason: |
+      Cross-tenant rejection guard for the Merkle chain verification
+      endpoint. Non-admin requests are rejected with 403 unless the
+      query tenant_id matches the authenticated tenant; PLATFORM_ADMIN
+      may explicitly verify another tenant's chain (forensic access).
+      Tenant scope otherwise comes from get_request_tenant_id(request).
+
+  - file: hub/apps/platform/views.py
+    line: 136
+    reason: |
+      Platform-admin-only usage dashboard (permission_classes =
+      [IsAuthenticated, IsPlatformAdmin]). The query param is a LIST
+      FILTER over the tenants the admin is already entitled to see
+      (O(1) single-tenant lookup for integration tests); it never
+      sets tenant scope — per-tenant RLS context is entered via
+      tenant_context() for each returned tenant.
+
+  - file: hub/apps/databricks_admin/sso_views.py
+    line: 109
+    reason: |
+      Pre-auth Databricks SSO workspaces-chooser flow (0b.10). The
+      query param identifies which tenant's SSO configuration to
+      list BEFORE any session exists; there is no authenticated
+      tenant to cross-check against. The signed state token carries
+      the tenant identity forward into the callback, where it is
+      consumed (not the client-supplied value). 403 when the
+      tenant's SSO flag is off.
+
+  - file: hub/apps/databricks_admin/sso_views.py
+    line: 147
+    reason: |
+      Pre-auth Databricks SSO login-URL flow (0b.10). The query param
+      identifies which tenant's SSO configuration to use BEFORE any
+      session exists; there is no authenticated tenant to cross-check
+      against. The signed state token carries the tenant identity
+      forward into the callback, where it is consumed (not the
+      client-supplied value).
+
+  - file: hub/apps/core/events/views.py
+    line: 324
+    reason: |
+      Cross-tenant rejection guard for event replay (W1.2b). The
+      client-supplied tenant_id is read ONLY to reject a non-platform
+      admin whose target diverges from the authenticated tenant
+      (403 CROSS_TENANT_FORBIDDEN); the replay scope itself is the
+      request tenant. PLATFORM_ADMIN keeps the explicit forensic
+      cross-tenant replay.
+      Test: hub/apps/core/events/tests/test_event_replay.py
+      (test_tenant_admin_cannot_replay_a_foreign_tenants_events).
+
+  - file: hub/apps/auth/views.py
+    line: 1520
+    reason: |
+      Register cross-tenant rejection guard (W1.1 in-flight — provisional
+      anchor owned by the W1.1 workstream; re-anchor when that change
+      lands). The client tenant_id is read only to reject divergence
+      from the authenticated tenant.
+  - file: hub/apps/auth/views.py
+    line: 1521
+    reason: |
+      Register cross-tenant rejection guard (query-param leg of the
+      W1.1 in-flight guard; see the line-1519 entry).

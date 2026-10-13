@@ -115,7 +115,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="auditeventretentionpolicy",
             constraint=models.UniqueConstraint(
-                fields=("tenant", "event_type"),
+                fields=["tenant", "event_type"],
                 name="audit_evt_ret_tenant_evt_uniq",
             ),
         ),

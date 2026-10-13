@@ -156,6 +156,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initialize: async () => {
+    // Phase P.7 — mark the store loading until /auth/me/ resolves so
+    // ProtectedRoute renders a spinner instead of bouncing to /login
+    // while a stale access token is being refreshed.  Without this, the
+    // first navigation after a cold start (stored token revoked/expired)
+    // raced the refresh and redirected authenticated users to /login
+    // (measured 2026-08-28 in the ml-model-lifecycle E2E).
+    set({ isLoading: true });
+    const seqAtStart = authService.getUserWriteSeq();
     const INIT_MAX_MS = 60_000; // Safety: never hang > 60s; backend down/proxy issues can block indefinitely
     const safetyTimeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Auth initialization timeout')), INIT_MAX_MS)
@@ -184,12 +192,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw error;
       }
       const freshUser = await response.json() as User;
-      authService.setUser(freshUser);
-      set({
-        user: freshUser,
-        isAuthenticated: true,
-        isLoading: false,
-      });
+      // Clobber guard: this fetch started BEFORE any newer user write.
+      // If a profile PATCH (or any setUser) landed while the request was
+      // in flight, the store already holds NEWER state — applying this
+      // pre-write response would revert the edit (JOURNEY-AUTH-PROFILE
+      // intermittent header staleness under batch load, 2026-10-03).
+      if (authService.getUserWriteSeq() === seqAtStart) {
+        authService.setUser(freshUser);
+        set({
+          user: freshUser,
+          isAuthenticated: true,
+          isLoading: false,
+        });
+      } else {
+        set({ isAuthenticated: true, isLoading: false });
+      }
       syncTenantIdGetter(get);
       // Auth succeeded — enable the 401 interceptor's hard redirect.
       // Authenticated users whose session becomes unrecoverable should
@@ -371,7 +388,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           is_active: merged.is_active ?? current?.is_active ?? true,
         } as User;
       } else {
-        user = await authService.fetchAndStoreUser();
+        const seqAtStart = authService.getUserWriteSeq();
+        user = await authService.fetchUser();
+        // Clobber guard — a newer user write (e.g. profile PATCH) landed
+        // while this fetch was in flight; keep the newer store state
+        // instead of reverting to the pre-write response.
+        if (authService.getUserWriteSeq() !== seqAtStart) return;
       }
       authService.setUser(user);
       if (user.feature_tenant_switch_enabled === false) {

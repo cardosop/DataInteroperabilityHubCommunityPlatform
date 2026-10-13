@@ -4,7 +4,7 @@ Versioning operations for DataHub SDK.
 Provides methods for querying version history, schema evolution, time-travel queries, and version comparison.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -30,7 +30,7 @@ class VersioningAPI:
         dataset_id: str,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get version history for dataset.
 
@@ -52,7 +52,7 @@ class VersioningAPI:
         self,
         dataset_id: str,
         version_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get specific version details.
 
@@ -68,9 +68,9 @@ class VersioningAPI:
     async def get_schema_evolution(
         self,
         dataset_id: str,
-        from_version_id: Optional[str] = None,
-        to_version_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        from_version_id: str | None = None,
+        to_version_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get schema evolution between versions.
 
@@ -82,7 +82,7 @@ class VersioningAPI:
         Returns:
             Schema evolution data with changes
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if from_version_id:
             params["from_version_id"] = from_version_id
         if to_version_id:
@@ -93,9 +93,9 @@ class VersioningAPI:
     async def time_travel_query(
         self,
         dataset_id: str,
-        timestamp: Optional[str] = None,
-        version_number: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        timestamp: str | None = None,
+        version_number: int | None = None,
+    ) -> dict[str, Any]:
         """
         Time-travel query to get dataset state at specific time or version.
 
@@ -110,7 +110,7 @@ class VersioningAPI:
         Note:
             Either timestamp or version_number must be provided.
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if timestamp:
             params["timestamp"] = timestamp
         if version_number is not None:
@@ -123,7 +123,7 @@ class VersioningAPI:
         dataset_id: str,
         version1_id: str,
         version2_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Compare two versions of a dataset.
 

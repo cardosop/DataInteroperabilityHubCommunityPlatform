@@ -1,0 +1,197 @@
+# Dynamic Routes Configuration for Traefik — TEMPLATE
+#
+# This file is the authoritative source for production.  It is rendered at
+# deploy time via:
+#
+#   envsubst < routes.yml.tmpl > routes.yml
+#
+# Required environment variables (set in .env.production / CI secrets):
+#   ALLOWED_ORIGINS_REGEX     — pipe-delimited regex of allowed CORS origins
+#                               e.g. "https://app\.example\.com|https://hub\.example\.com"
+#   TRAEFIK_DASHBOARD_USERS   — htpasswd-format credentials for the dashboard
+#                               generate with: htpasswd -nb admin <password>
+#                               e.g. "admin:$apr1$..."  (escape $ as $$ in .env files)
+#   TRAEFIK_DASHBOARD_IP_ALLOWLIST — comma-separated IP/CIDR trusted for dashboard access
+#                               e.g. "10.0.0.0/8,192.168.1.0/24"
+#   TRAEFIK_DASHBOARD_HOST    — hostname for the dashboard router
+#                               e.g. "traefik.internal.example.com"
+
+http:
+  routers:
+    # API Gateway - Main Entry Point for all API requests
+    # Routes all /api/v1/* requests to FastAPI API Gateway
+    # FastAPI Gateway handles: API key auth, rate limiting, usage tracking, and routing to backend services
+    # Priority 100 so /api/v1 is matched before the frontend catch-all
+    api-gateway:
+      rule: "PathPrefix(`/api/v1`)"
+      entryPoints:
+        - websecure
+      service: api-gateway-service
+      middlewares:
+        - cors-middleware
+        - tracing-middleware
+      tls:
+        certResolver: letsencrypt
+      priority: 100
+
+    # Host-based API Gateway route (for backward compatibility)
+    api-gateway-host:
+      rule: "Host(`api.hub.local`) || Host(`api.hub.example.com`)"
+      entryPoints:
+        - websecure
+      service: api-gateway-service
+      middlewares:
+        - cors-middleware
+        - tracing-middleware
+      tls:
+        certResolver: letsencrypt
+      priority: 90
+
+    # Frontend - Single entrypoint: non-API paths (e.g. /) go to frontend service
+    # Priority 10 so API routes (priority 100/90) are matched first
+    frontend:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - websecure
+      service: frontend-service
+      middlewares:
+        - cors-middleware
+        - tracing-middleware
+      tls:
+        certResolver: letsencrypt
+      priority: 10
+
+    # Traefik Dashboard — protected by basicAuth + IP allowlist.
+    # Accessible at https://${TRAEFIK_DASHBOARD_HOST}/dashboard/
+    # Priority 200 to ensure it matches before the catch-all frontend router.
+    traefik-dashboard:
+      rule: "Host(`${TRAEFIK_DASHBOARD_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      entryPoints:
+        - websecure
+      service: api@internal
+      middlewares:
+        - dashboard-ip-allowlist
+        - dashboard-auth
+      tls:
+        certResolver: letsencrypt
+      priority: 200
+
+  services:
+    # API service — Traefik routes /api/v1/* directly to the Django api-service.
+    # The old api-gateway FastAPI service was removed; auth, rate limiting, and
+    # routing are now handled by api-service middleware.
+    api-gateway-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service:8000"
+
+    # Frontend Service - Serves the SPA when Traefik is single entrypoint
+    frontend-service:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:80"
+
+    # Direct backend reference — kept alongside api-gateway-service for
+    # transitional compatibility.  Both route to the same Django service.
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service:8000"
+
+    contract-service:
+      loadBalancer:
+        servers:
+          - url: "http://contract-service:8001"
+
+    asset-service:
+      loadBalancer:
+        servers:
+          - url: "http://asset-service:8002"
+
+    dataset-service:
+      loadBalancer:
+        servers:
+          - url: "http://dataset-service:8003"
+
+    search-service:
+      loadBalancer:
+        servers:
+          - url: "http://search-service:8085"
+
+    observability-service:
+      loadBalancer:
+        servers:
+          - url: "http://observability-service:8086"
+
+    webhook-service:
+      loadBalancer:
+        servers:
+          - url: "http://webhook-service:8087"
+
+    semantic-service:
+      loadBalancer:
+        servers:
+          - url: "http://semantic-service:8081"
+
+    dq-service:
+      loadBalancer:
+        servers:
+          - url: "http://dq-service:8083"
+
+    compliance-service:
+      loadBalancer:
+        servers:
+          - url: "http://compliance-service:8082"
+
+  middlewares:
+    # CORS Middleware — explicit allowed origins only (no wildcard in production).
+    # ALLOWED_ORIGINS_REGEX must be a pipe-delimited regex of trusted origins.
+    # Example: "https://app\.example\.com|https://hub\.example\.com"
+    cors-middleware:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+          - PATCH
+        accessControlAllowOriginListRegex:
+          - "${ALLOWED_ORIGINS_REGEX}"
+        accessControlAllowHeaders:
+          - "Authorization"
+          - "Content-Type"
+          - "X-Tenant-Id"
+          - "X-Request-Id"
+        # NOTE: accessControlAllowCredentials is intentionally omitted here.
+        # Browsers reject credentials (cookies/Authorization headers) when the server
+        # responds with a non-exact origin (regex-matched). To support credentialed
+        # requests, configure the upstream API service to echo the validated
+        # request Origin in Access-Control-Allow-Origin and set
+        # Access-Control-Allow-Credentials: true at the application layer.
+        accessControlMaxAge: 86400
+        addVaryHeader: true
+
+    # Dashboard IP Allowlist — only trusted CIDRs may reach the dashboard.
+    # TRAEFIK_DASHBOARD_IP_ALLOWLIST: comma-separated CIDRs, e.g. "10.0.0.0/8,192.168.0.0/16"
+    dashboard-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+          - "${TRAEFIK_DASHBOARD_IP_ALLOWLIST}"
+
+    # Dashboard Basic Auth — htpasswd-format credentials.
+    # TRAEFIK_DASHBOARD_USERS: "admin:$apr1$..." (use $$ to escape $ in docker-compose env_file)
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "${TRAEFIK_DASHBOARD_USERS}"
+        realm: "Traefik Dashboard"
+        removeHeader: true
+
+    # Tracing Middleware - For distributed tracing
+    tracing-middleware:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-For: ""
+        customResponseHeaders:
+          X-Service-Name: "traefik"

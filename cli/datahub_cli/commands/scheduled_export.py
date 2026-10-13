@@ -76,7 +76,7 @@ def list_exports(status: str | None, limit: int, offset: int, output_format: str
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list scheduled exports: {e}")
+        raise click.ClickException(f"Failed to list scheduled exports: {e}") from e
 
 
 @scheduled_export.command("get")
@@ -121,7 +121,7 @@ def get_export(export_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get scheduled export: {e}")
+        raise click.ClickException(f"Failed to get scheduled export: {e}") from e
 
 
 @scheduled_export.command("create")
@@ -158,19 +158,22 @@ def create_export(
     output_format: str,
 ):
     """Create scheduled export"""
-    try:
+
+    def _parse_params() -> tuple[dict, dict, dict]:
         # Parse JSON strings
         try:
             destination_config_dict = json.loads(destination_config)
         except json.JSONDecodeError:
             raise click.ClickException(
                 f"Invalid JSON in --destination-config: {destination_config}"
-            )
+            ) from None
 
         try:
             schedule_config_dict = json.loads(schedule_config)
         except json.JSONDecodeError:
-            raise click.ClickException(f"Invalid JSON in --schedule-config: {schedule_config}")
+            raise click.ClickException(
+                f"Invalid JSON in --schedule-config: {schedule_config}"
+            ) from None
 
         if "cron" not in schedule_config_dict:
             raise click.ClickException("schedule_config must include 'cron' field")
@@ -178,7 +181,11 @@ def create_export(
         try:
             source_scope_dict = json.loads(source_scope)
         except json.JSONDecodeError:
-            raise click.ClickException(f"Invalid JSON in --source-scope: {source_scope}")
+            raise click.ClickException(f"Invalid JSON in --source-scope: {source_scope}") from None
+        return destination_config_dict, schedule_config_dict, source_scope_dict
+
+    try:
+        destination_config_dict, schedule_config_dict, source_scope_dict = _parse_params()
 
         # Build request data
         data = {
@@ -200,7 +207,7 @@ def create_export(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create scheduled export: {e}")
+        raise click.ClickException(f"Failed to create scheduled export: {e}") from e
 
 
 @scheduled_export.command("update")
@@ -227,7 +234,8 @@ def update_export(
     output_format: str,
 ):
     """Update scheduled export"""
-    try:
+
+    def _build_update_data() -> dict:
         data = {}
 
         if name:
@@ -238,22 +246,30 @@ def update_export(
             except json.JSONDecodeError:
                 raise click.ClickException(
                     f"Invalid JSON in --destination-config: {destination_config}"
-                )
+                ) from None
         if schedule_config:
             try:
                 data["schedule_config"] = json.loads(schedule_config)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --schedule-config: {schedule_config}")
+                raise click.ClickException(
+                    f"Invalid JSON in --schedule-config: {schedule_config}"
+                ) from None
         if source_scope:
             try:
                 data["source_scope"] = json.loads(source_scope)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --source-scope: {source_scope}")
+                raise click.ClickException(
+                    f"Invalid JSON in --source-scope: {source_scope}"
+                ) from None
         if status:
             data["status"] = status
 
         if not data:
             raise click.ClickException("At least one field must be provided for update")
+        return data
+
+    try:
+        data = _build_update_data()
 
         result = api_client.patch(f"scheduled-exports/{export_id}/", json_data=data)
 
@@ -266,7 +282,7 @@ def update_export(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update scheduled export: {e}")
+        raise click.ClickException(f"Failed to update scheduled export: {e}") from e
 
 
 @scheduled_export.command("trigger")
@@ -294,7 +310,7 @@ def trigger_export(export_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to trigger scheduled export: {e}")
+        raise click.ClickException(f"Failed to trigger scheduled export: {e}") from e
 
 
 @scheduled_export.command("runs")
@@ -348,7 +364,7 @@ def list_runs(export_id: str, status: str | None, limit: int, offset: int, outpu
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list runs: {e}")
+        raise click.ClickException(f"Failed to list runs: {e}") from e
 
 
 @scheduled_export.command("run-detail")
@@ -385,4 +401,25 @@ def get_run_detail(export_id: str, run_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get run details: {e}")
+        raise click.ClickException(f"Failed to get run details: {e}") from e
+
+
+@scheduled_export.command("delete")
+@click.argument("export_id")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
+def delete_export(export_id: str, confirm: bool):
+    """Delete a scheduled export"""
+    if not confirm and not click.confirm(
+        f"Are you sure you want to delete scheduled export {export_id}?"
+    ):
+        click.echo("Cancelled.")
+        return
+
+    try:
+        # DELETE /api/v1/scheduled-exports/{id}/ (DRF destroy)
+        api_client.delete(f"scheduled-exports/{export_id}/")
+        click.echo(f"Scheduled export {export_id} deleted.")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to delete scheduled export: {e}") from e

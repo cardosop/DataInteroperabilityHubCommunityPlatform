@@ -14,6 +14,7 @@ Tests follow TDD approach and fix root causes.
 """
 
 import json
+import threading
 import time
 import uuid
 
@@ -88,7 +89,7 @@ class ODPSIntegrationTestBase(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         retry_delay * (2**attempt)
                     )  # INTENTIONAL: e2e/integration test polling real services
 
@@ -99,6 +100,27 @@ class ODPSIntegrationTestBase(TestCase):
                 if attempt == max_retries - 1:
                     raise
                 continue
+
+        # Plan limits require the FREE plan, but this TestCase's setUp runs
+        # inside the test's atomic transaction — a direct seed stays
+        # uncommitted and invisible to plan_limit_service lookups on other
+        # connections (and flushes from earlier classes wipe tenant_plans).
+        # Seed on a helper thread so its autocommit connection real-commits.
+        from django.core.management import call_command
+
+        seed_errors = []
+
+        def _seed_committed():
+            try:
+                call_command("seed_default_plans")
+            except Exception as exc:
+                seed_errors.append(str(exc))
+
+        seed_thread = threading.Thread(target=_seed_committed)
+        seed_thread.start()
+        seed_thread.join()
+        if seed_errors:
+            self.skipTest(f"seed_default_plans failed: {seed_errors[0]}")
 
         # Initialize services
         self.contract_service = ContractService(
@@ -781,6 +803,7 @@ class DataQualityServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # DQ run requires a job — create one first
         from hub.apps.jobs.models import Job, JobStatus, JobType
+
         job = Job.objects.create(
             tenant=self.tenant,
             created_by=self.user,

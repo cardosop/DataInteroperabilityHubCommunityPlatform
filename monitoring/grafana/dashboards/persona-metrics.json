@@ -1,0 +1,214 @@
+{
+  "title": "Persona Metrics \u2014 Phase 280.A.2.2",
+  "description": "Per-persona UX metrics: TTFA (Time to First Action), checkout time, approval latency, error-recovery rate. 6 personas: CPO, DPO, DE, DC, MPA, DEV.",
+  "tags": [
+    "persona",
+    "ux",
+    "phase-278",
+    "phase-280"
+  ],
+  "timezone": "browser",
+  "refresh": "1m",
+  "panels": [
+    {
+      "id": 1,
+      "title": "TTFA \u2014 Time to First Action (P95, 30m)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ttfa_duration_seconds_bucket[30m])) by (le, persona))",
+          "legendFormat": "{{persona}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineInterpolation": "smooth"
+          }
+        }
+      },
+      "description": "Time from page load to first meaningful action (click, search, navigate). Lower is better. Target: <30s for all personas."
+    },
+    {
+      "id": 2,
+      "title": "Marketplace Checkout Time (P95, 30m)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(checkout_duration_seconds_bucket[30m])) by (le, persona))",
+          "legendFormat": "{{persona}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineInterpolation": "smooth"
+          }
+        }
+      },
+      "description": "Time from 'Place Order' click to order confirmation visible. Lower is better. Target: <2 min for DC persona."
+    },
+    {
+      "id": 3,
+      "title": "Approval Latency (P50/P95, 30m)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(approval_duration_seconds_bucket[30m])) by (le, persona))",
+          "legendFormat": "P50 {{persona}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(approval_duration_seconds_bucket[30m])) by (le, persona))",
+          "legendFormat": "P95 {{persona}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineInterpolation": "smooth"
+          }
+        }
+      },
+      "description": "Time from access request submission to approval decision. Lower is better. Target: P95 < 4h for CPO/MPA personas."
+    },
+    {
+      "id": 4,
+      "title": "Error-Recovery Rate (%, 30m)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(error_recovery_success_total[30m])) by (persona) / sum(rate(error_recovery_attempt_total[30m])) by (persona) * 100",
+          "legendFormat": "{{persona}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineInterpolation": "smooth"
+          }
+        }
+      },
+      "description": "Percentage of error encounters where the user successfully recovered (retried, followed action-link, dismissed). Higher is better. Target: >80% for all personas."
+    },
+    {
+      "id": 5,
+      "title": "Per-Persona Active Users (1h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "count by (persona) (count_over_time(persona_active_users_total[1h]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "colorMode": "palette-classic"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "TTFA by Persona (table)",
+      "type": "table",
+      "gridPos": {
+        "x": 6,
+        "y": 16,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ttfa_duration_seconds_bucket[1h])) by (le, persona))",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Marketplace Conversion Funnel (24h)",
+      "type": "bargauge",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(marketplace_listing_viewed_total[24h])) by (persona)",
+          "legendFormat": "Viewed \u2014 {{persona}}"
+        },
+        {
+          "expr": "sum(increase(marketplace_preview_opened_total[24h])) by (persona)",
+          "legendFormat": "Previewed \u2014 {{persona}}"
+        },
+        {
+          "expr": "sum(increase(marketplace_order_placed_total[24h])) by (persona)",
+          "legendFormat": "Ordered \u2014 {{persona}}"
+        }
+      ],
+      "description": "Marketplace funnel: listing views \u2192 previews \u2192 orders. Conversion health indicator per persona."
+    },
+    {
+      "id": 8,
+      "title": "Approval Inbox Health (1h)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(approval_inbox_item_action_total{action=\"approve\"}[1h])) by (persona)",
+          "legendFormat": "Approved \u2014 {{persona}}"
+        },
+        {
+          "expr": "sum(increase(approval_inbox_item_action_total{action=\"reject\"}[1h])) by (persona)",
+          "legendFormat": "Rejected \u2014 {{persona}}"
+        },
+        {
+          "expr": "sum(increase(approval_inbox_bulk_action_total[1h])) by (persona)",
+          "legendFormat": "Bulk \u2014 {{persona}}"
+        }
+      ],
+      "description": "Approval inbox activity: individual approve/reject + bulk operations."
+    }
+  ]
+}

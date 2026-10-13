@@ -20,12 +20,12 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
+    DataHubError,
     NotFoundError,
     ODPSExportError,
     ODPSLinkingError,
@@ -33,7 +33,7 @@ from datahub_interoperability.errors import (
 )
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -57,10 +57,16 @@ def real_api_config():
             "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
         )
 
-    return DataHubClientConfig(base_url=api_base_url, api_token=api_key)
+    return DataHubClientConfig(
+        base_url=api_base_url,
+        api_token=api_key,
+        # ODPS product creation is workflow-backed and takes 60-120s —
+        # the 30s default read-times-out before the server responds.
+        timeout=120.0,
+    )
 
 
-def create_valid_odps_json(product_id: str = None, include_marketplace: bool = True) -> str:
+def create_valid_odps_json(product_id: str | None = None, include_marketplace: bool = True) -> str:
     """Create a valid ODPS JSON document"""
     if product_id is None:
         product_id = f"test-product-{uuid.uuid4().hex[:8]}"
@@ -160,13 +166,17 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures gracefully
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(
-                    result.get("error", "")
-                ).lower() or "Product creation failed" in str(result.get("error", "")):
-                    pytest.skip(
-                        f"Workflow execution failed. This may indicate a workflow configuration issue. Error: {result.get('error')}"
-                    )
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and (
+                    "workflow" in str(result.get("error", "")).lower()
+                    or "Product creation failed" in str(result.get("error", ""))
+                )
+            ):
+                pytest.skip(
+                    f"Workflow execution failed. This may indicate a workflow configuration issue. Error: {result.get('error')}"
+                )
 
             # Verify response structure
             assert "odps_contract" in result or "id" in result, (
@@ -174,10 +184,7 @@ class TestODPSCompleteWorkflows:
             )
 
             # Extract ODPS contract ID
-            if "odps_contract" in result:
-                odps_id = result["odps_contract"]["id"]
-            else:
-                odps_id = result["id"]
+            odps_id = result["odps_contract"]["id"] if "odps_contract" in result else result["id"]
 
             assert odps_id is not None, f"Could not extract ODPS ID from: {result}"
 
@@ -292,9 +299,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             odps_id = create_result.get("id")
@@ -399,9 +409,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "id" in result or "odps_contract" in result, (
                 f"Create with link should return contract: {result}"
@@ -441,9 +454,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -490,9 +506,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -535,9 +554,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -586,9 +608,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -648,9 +673,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -706,9 +734,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -811,9 +842,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             odps_id = create_result.get("id")
@@ -893,9 +927,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             odps_id = create_result.get("id")
@@ -974,9 +1011,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             odps_id = create_result.get("id")
@@ -1101,9 +1141,12 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Extract ODPS ID
             if "odps_contract" in create_result:
@@ -1125,11 +1168,12 @@ class TestODPSCompleteWorkflows:
                 # If it succeeds, that's OK - version validation may be lenient
             except (ODPSValidationError, ODPSExportError) as e:
                 # Expected error for invalid version
-                assert (
+                if not (
                     "version" in str(e).lower()
                     or "invalid" in str(e).lower()
                     or "error" in str(e).lower()
-                )
+                ):
+                    pytest.fail(f"ODPS export error message not actionable: {str(e)[:200]}")
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -1183,7 +1227,7 @@ class TestODPSCompleteWorkflows:
             # May succeed with "no link to unlink" message or fail with error
             # Either way, should handle gracefully
             assert unlink_result is not None
-        except (NotFoundError, ODPSLinkingError, Exception) as e:
+        except (NotFoundError, ODPSLinkingError, DataHubError, ValueError, AssertionError) as e:
             # Expected error for no link or rate limiting
             error_str = str(e).lower()
             if "rate limit" in error_str:
@@ -1222,13 +1266,17 @@ class TestODPSCompleteWorkflows:
             )
 
             # Handle workflow failures
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(
-                    create_result.get("error", "")
-                ).lower() or "Product creation failed" in str(create_result.get("error", "")):
-                    pytest.skip(
-                        f"Step 1 failed - Workflow execution failed: {create_result.get('error')}"
-                    )
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and (
+                    "workflow" in str(create_result.get("error", "")).lower()
+                    or "Product creation failed" in str(create_result.get("error", ""))
+                )
+            ):
+                pytest.skip(
+                    f"Step 1 failed - Workflow execution failed: {create_result.get('error')}"
+                )
 
             # Verify response structure
             assert "odps_contract" in create_result or "id" in create_result, (

@@ -121,59 +121,55 @@ class ReverseLookupAnalyzer:
 
         # Check keyword arguments first (most common: kwargs={'key': 'value'})
         for keyword in node.keywords:
-            if keyword.arg == "kwargs":
-                if isinstance(keyword.value, ast.Dict):
-                    for key_node, value_node in zip(keyword.value.keys, keyword.value.values):
-                        if isinstance(key_node, ast.Constant):
-                            key = key_node.value
-                        elif hasattr(ast, "Str") and isinstance(key_node, ast.Str):
-                            key = key_node.s
-                        else:
-                            continue
-                        # Extract value - handle both constants and expressions
-                        if isinstance(value_node, ast.Constant):
-                            value = value_node.value
-                        elif hasattr(ast, "Str") and isinstance(value_node, ast.Str):
-                            value = value_node.s
-                        elif isinstance(value_node, ast.Call):
-                            # Handle function calls like str(self.domain1.id)
-                            # Convert to string representation for analysis
-                            if (
-                                isinstance(value_node.func, ast.Name)
-                                and value_node.func.id == "str"
-                            ):
-                                if value_node.args and isinstance(
-                                    value_node.args[0], ast.Attribute
-                                ):
-                                    # str(self.domain1.id) -> 'str(self.domain1.id)'
-                                    attr = value_node.args[0]
-                                    if isinstance(attr.value, ast.Attribute):
-                                        value = f"str({attr.value.attr}.{attr.attr})"
-                                    elif isinstance(attr.value, ast.Name):
-                                        value = f"str({attr.value.id}.{attr.attr})"
-                                    else:
-                                        value = "str(...)"
+            if keyword.arg == "kwargs" and isinstance(keyword.value, ast.Dict):
+                for key_node, value_node in zip(
+                    keyword.value.keys, keyword.value.values, strict=False
+                ):
+                    if isinstance(key_node, ast.Constant):
+                        key = key_node.value
+                    elif hasattr(ast, "Str") and isinstance(key_node, ast.Str):
+                        key = key_node.s
+                    else:
+                        continue
+                    # Extract value - handle both constants and expressions
+                    if isinstance(value_node, ast.Constant):
+                        value = value_node.value
+                    elif hasattr(ast, "Str") and isinstance(value_node, ast.Str):
+                        value = value_node.s
+                    elif isinstance(value_node, ast.Call):
+                        # Handle function calls like str(self.domain1.id)
+                        # Convert to string representation for analysis
+                        if isinstance(value_node.func, ast.Name) and value_node.func.id == "str":
+                            if value_node.args and isinstance(value_node.args[0], ast.Attribute):
+                                # str(self.domain1.id) -> 'str(self.domain1.id)'
+                                attr = value_node.args[0]
+                                if isinstance(attr.value, ast.Attribute):
+                                    value = f"str({attr.value.attr}.{attr.attr})"
+                                elif isinstance(attr.value, ast.Name):
+                                    value = f"str({attr.value.id}.{attr.attr})"
                                 else:
                                     value = "str(...)"
                             else:
-                                value = f"{value_node.func.id if isinstance(value_node.func, ast.Name) else '...'}(...)"
-                        elif isinstance(value_node, ast.Attribute):
-                            # Handle attribute access like self.domain1.id
-                            if isinstance(value_node.value, ast.Attribute):
-                                value = f"{value_node.value.attr}.{value_node.attr}"
-                            elif isinstance(value_node.value, ast.Name):
-                                value = f"{value_node.value.id}.{value_node.attr}"
-                            else:
-                                value = "..."
+                                value = "str(...)"
                         else:
-                            # For other expressions, use string representation from source
-                            continue
-                        kwargs[key] = value
+                            value = f"{value_node.func.id if isinstance(value_node.func, ast.Name) else '...'}(...)"
+                    elif isinstance(value_node, ast.Attribute):
+                        # Handle attribute access like self.domain1.id
+                        if isinstance(value_node.value, ast.Attribute):
+                            value = f"{value_node.value.attr}.{value_node.attr}"
+                        elif isinstance(value_node.value, ast.Name):
+                            value = f"{value_node.value.id}.{value_node.attr}"
+                        else:
+                            value = "..."
+                    else:
+                        # For other expressions, use string representation from source
+                        continue
+                    kwargs[key] = value
 
         # Also check if second argument is a dict (less common: reverse('name', {'key': 'value'}))
         if len(node.args) > 1 and isinstance(node.args[1], ast.Dict) and not kwargs:
             # Extract kwargs from dict
-            for key_node, value_node in zip(node.args[1].keys, node.args[1].values):
+            for key_node, value_node in zip(node.args[1].keys, node.args[1].values, strict=False):
                 if isinstance(key_node, ast.Constant):
                     key = key_node.value
                 elif hasattr(ast, "Str") and isinstance(key_node, ast.Str):
@@ -405,7 +401,7 @@ class ReverseLookupAnalyzer:
         try:
             with open(urls_file, encoding="utf-8") as f:
                 urls_content = f.read()
-        except Exception:
+        except OSError:
             return patterns
 
         # Extract basenames from router.register() calls

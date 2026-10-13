@@ -4,7 +4,7 @@ from hub.apps.core.management.admin_db import (
     MANAGEMENT_DB_ALIAS_ENV,
     MANAGEMENT_DB_MODE_ENV,
     prepare_manage_argv,
-)  # type: ignore[import-not-found]  # test: edge-case type exercise
+)  # test: edge-case type exercise
 
 
 @pytest.mark.unit

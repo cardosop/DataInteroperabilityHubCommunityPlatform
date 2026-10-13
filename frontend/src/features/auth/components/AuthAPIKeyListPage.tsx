@@ -45,7 +45,7 @@ export function AuthAPIKeyListPage() {
     setError(null);
     try {
       const data = await authService.listAuthApiKeys({ page, page_size: 20 });
-      setKeys(data.results);
+      setKeys(data.results ?? []);
       setTotalPages(data.total_pages);
     } catch (err) {
       setError(normalizeError(err));
@@ -136,9 +136,7 @@ export function AuthAPIKeyListPage() {
               <tr key={key.id}>
                 <td>{key.name}</td>
                 <td>{key.scopes?.length ? key.scopes.join(', ') : '—'}</td>
-                <td>
-                  {key.expires_at ? new Date(key.expires_at).toLocaleDateString() : 'Never'}
-                </td>
+                <td>{key.expires_at ? new Date(key.expires_at).toLocaleDateString() : 'Never'}</td>
                 <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}</td>
                 <td>{new Date(key.created_at).toLocaleString()}</td>
                 <td>

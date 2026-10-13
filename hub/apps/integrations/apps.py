@@ -14,8 +14,11 @@ class IntegrationsConfig(AppConfig):
 
     def ready(self):
         """Import signal handlers and register connectors when app is ready"""
-        import hub.apps.integrations.signals  # noqa: F401
-        from . import business_rules  # noqa: F401 — preload @register_rule
+        import hub.apps.integrations.signals
+
+        from . import (
+            business_rules,
+        )
 
         # Register marketplace connectors
         self._register_connectors()

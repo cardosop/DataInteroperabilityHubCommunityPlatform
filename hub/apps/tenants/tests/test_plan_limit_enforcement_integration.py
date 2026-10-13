@@ -7,6 +7,7 @@ Tests use real DB, no mocks/stubs per Phase 25 requirements.
 import contextlib
 import uuid
 
+import psycopg2
 import pytest
 from django.contrib.auth import get_user_model
 from django.db.transaction import TransactionManagementError
@@ -27,17 +28,51 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
     """Integration tests for plan limit enforcement"""
 
     @classmethod
-    def tearDownClass(cls):
+    def setUpClass(cls):
+        # TransactionTestCase._post_teardown → flush can leave the database
+        # connection in a stale state.  The conftest's _setUpClass_recovered
+        # hook provides a first line of defense; this is a second check
+        # specific to when this class follows a heavy TransactionTestCase
+        # on the shared test DB.
+        from django.db import connection as db_conn
+
+        healthy = False
         try:
+            raw = db_conn.connection
+            if raw is not None:
+                with raw.cursor() as c:
+                    c.execute("SELECT 1")
+                healthy = True
+        except psycopg2.DatabaseError:
+            healthy = False
+        if not healthy:
+            db_conn.connection = None
+            db_conn.closed_in_transaction = False
+            db_conn.in_atomic_block = False
+            db_conn.needs_rollback = False
+            db_conn.savepoint_ids = []
+            db_conn.atomic_blocks = []
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        # TransactionTestCase truncates tables outside an atomic
+        # block; the subsequent set_rollback(False) raises a
+        # cosmetic error.  The database is already clean.
+        with contextlib.suppress(TransactionManagementError):
             super().tearDownClass()
-        except TransactionManagementError:
-            # TransactionTestCase truncates tables outside an atomic
-            # block; the subsequent set_rollback(False) raises a
-            # cosmetic error.  The database is already clean.
-            pass
 
     def setUp(self):
         """Set up test data"""
+        # Plan-limit ENFORCEMENT machinery lives in the paid billing
+        # limit_registry (check_limit no-ops to unlimited in core-only
+        # deployments by design).
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest(
+                "plan-limit enforcement is paid-layer (billing limit_registry) — absent in core-only mode"
+            )
         # TransactionTestCase._fixture_teardown may leave the default
         # connection with a closed psycopg2 object.  Only touch the
         # 'default' alias — other aliases (admin, baas) are restricted
@@ -131,17 +166,18 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
     def test_dataset_creation_enforces_limit(self):
         """Test dataset creation enforces plan limit"""
         # Create datasets up to limit
-        from hub.apps.files.models import File, FileStatus
+        from hub.apps.files.models import File, FileScanStatus, FileStatus
 
         # Create files first (must be ACTIVE for dataset creation)
-        file_defaults = dict(
-            tenant=self.tenant,
-            content_type="text/csv",
-            size=1000,
-            status=FileStatus.ACTIVE,
-            created_by=self.user,
-            content_sha256="abc123",
-        )
+        file_defaults = {
+            "tenant": self.tenant,
+            "content_type": "text/csv",
+            "size": 1000,
+            "status": FileStatus.ACTIVE,
+            "scan_status": FileScanStatus.CLEAN,
+            "created_by": self.user,
+            "content_sha256": "abc123",
+        }
         file1 = File.objects.create(name="file1.csv", storage_path="file1.csv", **file_defaults)
         file2 = File.objects.create(name="file2.csv", storage_path="file2.csv", **file_defaults)
         file3 = File.objects.create(name="file3.csv", storage_path="file3.csv", **file_defaults)

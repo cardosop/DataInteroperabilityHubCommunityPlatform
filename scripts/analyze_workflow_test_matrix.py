@@ -62,10 +62,9 @@ class WorkflowAnalyzer:
                 tree = ast.parse(content)
 
                 for node in ast.walk(tree):
-                    if isinstance(node, ast.ClassDef):
-                        if "Workflow" in node.name:
-                            return node.name
-        except Exception as e:
+                    if isinstance(node, ast.ClassDef) and "Workflow" in node.name:
+                        return node.name
+        except (OSError, SyntaxError, ValueError) as e:
             print(f"Error parsing {file_path}: {e}")
         return None
 
@@ -89,7 +88,7 @@ class WorkflowAnalyzer:
                                             return item.value.value
                                         elif isinstance(item.value, ast.Str):  # Python < 3.8
                                             return item.value.s
-        except Exception as e:
+        except (OSError, SyntaxError, ValueError) as e:
             print(f"Error extracting workflow name from {file_path}: {e}")
         return None
 
@@ -188,7 +187,7 @@ class WorkflowAnalyzer:
                     api_path = "/api/v1/marketplace/"
                 elif "scheduled_ingestion" in parts:
                     api_path = "/api/v1/scheduled-ingestions/"
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             pass
 
         return func_name, api_path

@@ -8,7 +8,7 @@ Votes are accumulated as lightweight **fragments** tagged with the same snapshot
 savepoint identifiers Django records for ``on_commit`` callbacks. Hooks installed via
 :class:`install_dataset_orphan_file_hooks` discard fragments when a matching
 ``savepoint_rollback`` or full ``rollback`` occurs, avoiding stale merges after partial
-txn aborts (same contract as Django’s ``run_on_commit`` queue).
+txn aborts (same contract as Django`s ``run_on_commit`` queue).
 
 MVP tenancy policy (260.1.B / D260.4): only **within-tenant** ``Dataset`` rows act as the
  refcount; there is **no cross-tenant** dedup across ``content_sha256``.

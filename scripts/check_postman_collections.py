@@ -20,7 +20,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -52,7 +52,7 @@ class PostmanCollectionChecker:
     """Checks Postman collections for accuracy and validity"""
 
     # Postman collection schema URLs
-    POSTMAN_SCHEMAS = [
+    POSTMAN_SCHEMAS: ClassVar[list[str]] = [
         "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
     ]
@@ -115,7 +115,7 @@ class PostmanCollectionChecker:
                         elif isinstance(methods, str):
                             self.known_endpoints[normalized].add(methods.upper())
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"Warning: Error loading endpoint inventory: {e}", file=sys.stderr)
 
     def normalize_endpoint(self, endpoint: str) -> str:
@@ -162,8 +162,9 @@ class PostmanCollectionChecker:
                 if "_postman_id" in info or "_postman_id" in data:
                     return True
 
+        except (OSError, json.JSONDecodeError):
             return False
-        except (json.JSONDecodeError, Exception):
+        else:
             return False
 
     def find_collection_files(self) -> list[dict[str, Any]]:
@@ -190,7 +191,7 @@ class PostmanCollectionChecker:
                             "name": json_file.stem,
                         }
                     )
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error checking {json_file}: {e}", file=sys.stderr)
 
         self.collections = collections

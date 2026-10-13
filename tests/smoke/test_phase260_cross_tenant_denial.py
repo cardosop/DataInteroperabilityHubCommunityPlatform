@@ -51,10 +51,10 @@ Required env vars (provided by ``conftest.py``)
 Optional env vars
 -----------------
 ``SMOKE_PHASE260_DRIVE_ITERATIONS``
-    Number of cross-tenant attempts (default: 30 — 10× the staging
+    Number of cross-tenant attempts (default: 30 — 10x the staging
     worker count to make worker fan-out near-certain).
 ``SMOKE_PHASE260_POLL_ITERATIONS``
-    Number of ``/metrics/`` polls per snapshot (default: 12 — 4× the
+    Number of ``/metrics/`` polls per snapshot (default: 12 — 4x the
     staging worker count to ensure we see at least one worker that
     handled a denial).
 ``SMOKE_PHASE260_DRIVE_JITTER_MS``
@@ -275,7 +275,7 @@ class TestPhase260CrossTenantDenialMetric:
             # locality.
             if DRIVE_JITTER_MS > 0 and i + 1 < METRIC_DRIVE_ITERATIONS:
                 sleep_seconds = (DRIVE_JITTER_MS + random.randint(0, DRIVE_JITTER_MS)) / 1000.0
-                time.sleep(sleep_seconds)  # noqa: sleep-needed — polling loop
+                time.sleep(sleep_seconds)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         after, after_diag = _read_counter_max(base_url, timeout)
 

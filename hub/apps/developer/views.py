@@ -5,12 +5,15 @@ REST API views for developer experience endpoints (plugins, SDK documentation).
 """
 
 import logging
+import re
+from datetime import UTC, datetime
 
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Plugin, PluginStatus, SDKDocumentation
@@ -19,17 +22,29 @@ from .serializers import PluginSerializer, SDKDocumentationSerializer
 logger = logging.getLogger(__name__)
 
 
-class PluginViewSet(viewsets.ReadOnlyModelViewSet):
+class PluginViewSet(viewsets.ModelViewSet):
     """
-    Read-only ViewSet for plugin marketplace.
+    Plugin marketplace ViewSet.
 
-    Public endpoint - no authentication required.
+    Reads (list/retrieve/marketplace) are public — the plugin marketplace
+    is a public surface (AllowAny).  Writes (create/update/destroy and the
+    test/validate/publish/deploy lifecycle actions) require authentication.
+
+    Lifecycle: ``create`` starts a plugin at ALPHA (invisible to the
+    public marketplace list), ``validate`` promotes ALPHA -> BETA when all
+    checks pass, ``publish`` promotes to AVAILABLE (marketplace-visible),
+    and ``deploy`` records a deployment entry in the plugin's metadata.
     """
 
     queryset = Plugin.objects.filter(status=PluginStatus.AVAILABLE)
     serializer_class = PluginSerializer
-    permission_classes = [AllowAny]
+    permission_classes = (AllowAny,)
     lookup_field = "id"
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def initial(self, request, *args, **kwargs):
         from rest_framework.exceptions import PermissionDenied
@@ -95,8 +110,176 @@ class PluginViewSet(viewsets.ReadOnlyModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    def create(self, request, *_args, **_kwargs):
+        """Create a plugin. New plugins start at ALPHA — invisible to the
+        public marketplace until ``publish`` promotes them to AVAILABLE.
+        The client cannot set ``status`` directly; lifecycle actions own
+        status transitions."""
+        data = request.data.copy()
+        data.pop("status", None)
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.validated_data["status"] = PluginStatus.ALPHA
+        plugin = serializer.save()
+        return Response(self.get_serializer(plugin).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *_args, **kwargs):
+        """Update plugin fields; ``status`` transitions stay lifecycle-owned."""
+        data = request.data.copy()
+        data.pop("status", None)
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        plugin = serializer.save()
+        return Response(self.get_serializer(plugin).data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _run_plugin_checks(plugin: Plugin) -> list[dict]:
+        """Static integrity checks for the plugin lifecycle.
+
+        Checks are additive and stateless — ``test`` reports them,
+        ``validate`` gates the ALPHA -> BETA promotion on them.
+        """
+        metadata = plugin.metadata_json or {}
+        entrypoint = metadata.get("entrypoint")
+        dependencies = metadata.get("dependencies")
+        checks = [
+            {
+                "name": "entrypoint",
+                "passed": bool(isinstance(entrypoint, str) and entrypoint.strip()),
+            },
+            {
+                "name": "dependencies",
+                "passed": isinstance(dependencies, list)
+                and all(isinstance(dep, str) for dep in dependencies),
+            },
+            {
+                "name": "version_format",
+                "passed": bool(re.fullmatch(r"\d+\.\d+\.\d+", plugin.version or "")),
+            },
+        ]
+        return checks
+
+    def _get_lifecycle_plugin(self, pk):
+        """Lifecycle actions must reach ALPHA/BETA plugins, which the
+        public marketplace queryset (AVAILABLE-only) hides."""
+        return get_object_or_404(Plugin, pk=pk)
+
+    @action(detail=True, methods=["post"], url_path="test")
+    def test_plugin(self, _request, id=None):  # noqa: PT019 — DRF @action method, not a pytest test
+        """
+        Run integrity checks on a plugin and report the results.
+
+        POST /api/v1/developer/plugins/{id}/test/
+        """
+        plugin = self._get_lifecycle_plugin(id)
+        checks = self._run_plugin_checks(plugin)
+        return Response(
+            {
+                "status": "tested",
+                "plugin_id": str(plugin.id),
+                "passed": all(check["passed"] for check in checks),
+                "checks": checks,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="validate")
+    def validate_plugin(self, _request, id=None):
+        """
+        Validate a plugin and promote ALPHA -> BETA when all checks pass.
+
+        POST /api/v1/developer/plugins/{id}/validate/
+        """
+        plugin = self._get_lifecycle_plugin(id)
+        checks = self._run_plugin_checks(plugin)
+        failed = [check for check in checks if not check["passed"]]
+        if failed:
+            return Response(
+                {
+                    "error": "validation_failed",
+                    "failed_checks": failed,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if plugin.status == PluginStatus.ALPHA:
+            plugin.status = PluginStatus.BETA
+            plugin.save(update_fields=["status", "updated_at"])
+
+        return Response(
+            {
+                "status": "validated",
+                "plugin_id": str(plugin.id),
+                "plugin_status": plugin.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="publish")
+    def publish_plugin(self, _request, id=None):
+        """
+        Publish a plugin to the marketplace (status -> AVAILABLE).
+
+        POST /api/v1/developer/plugins/{id}/publish/
+        """
+        plugin = self._get_lifecycle_plugin(id)
+        if plugin.status == PluginStatus.DEPRECATED:
+            return Response(
+                {"error": "deprecated_plugins_cannot_be_published"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if plugin.status != PluginStatus.AVAILABLE:
+            plugin.status = PluginStatus.AVAILABLE
+            plugin.save(update_fields=["status", "updated_at"])
+
+        return Response(
+            {
+                "status": "published",
+                "plugin_id": str(plugin.id),
+                "plugin_status": plugin.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="deploy")
+    def deploy_plugin(self, request, id=None):
+        """
+        Record a deployment of a published plugin in its metadata.
+
+        POST /api/v1/developer/plugins/{id}/deploy/
+        """
+        plugin = self._get_lifecycle_plugin(id)
+        if plugin.status != PluginStatus.AVAILABLE:
+            return Response(
+                {
+                    "error": "plugin_not_published",
+                    "detail": "publish the plugin before deploying it",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        metadata = dict(plugin.metadata_json or {})
+        metadata["deployment"] = {
+            "deployed_at": datetime.now(UTC).isoformat(),
+            "mode": request.data.get("mode", "local"),
+        }
+        plugin.metadata_json = metadata
+        plugin.save(update_fields=["metadata_json", "updated_at"])
+
+        return Response(
+            {
+                "status": "deployed",
+                "plugin_id": str(plugin.id),
+                "deployment": metadata["deployment"],
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=["get"], url_path="marketplace")
-    def marketplace(self, request):
+    def marketplace(self, _request):
         """
         List plugins available in marketplace.
 
@@ -107,7 +290,7 @@ class PluginViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({"results": serializer.data}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="marketplace/usage")
-    def marketplace_usage(self, request):
+    def marketplace_usage(self, _request):
         """
         Get plugin marketplace usage statistics.
 
@@ -128,7 +311,9 @@ class PluginViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     @action(detail=True, methods=["post"], url_path="execute")
-    def execute(self, request, id=None):
+    def execute(
+        self, _request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Execute a plugin (placeholder).
 
@@ -154,7 +339,7 @@ class SDKDocumentationViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = SDKDocumentation.objects.filter(is_active=True)
     serializer_class = SDKDocumentationSerializer
-    permission_classes = [AllowAny]
+    permission_classes = (AllowAny,)
     lookup_field = "id"
 
     def get_queryset(self):
@@ -194,7 +379,7 @@ class SDKDocumentationViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["Developer Experience"],
     )
-    def list(self, request, *args, **kwargs):
+    def list(self, request, *_args, **_kwargs):
         """
         Get SDK documentation and examples.
 
@@ -262,9 +447,9 @@ class DocumentationViewSet(viewsets.ViewSet):
     GET /api/v1/developer/documentation/
     """
 
-    permission_classes = [AllowAny]
+    permission_classes = (AllowAny,)
 
-    def list(self, request):
+    def list(self, _request):
         """Get developer documentation (SDK docs summary)."""
         docs = SDKDocumentation.objects.filter(is_active=True).order_by("language", "-version")
         data = {
@@ -287,9 +472,9 @@ class PortalViewSet(viewsets.ViewSet):
     GET /api/v1/developer/portal/
     """
 
-    permission_classes = [AllowAny]
+    permission_classes = (AllowAny,)
 
-    def list(self, request):
+    def list(self, _request):
         """Get developer portal info."""
         return Response(
             {
@@ -304,9 +489,9 @@ class PortalViewSet(viewsets.ViewSet):
 class APIKeysViewSet(viewsets.ViewSet):
     """API key management - GET list, POST create."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
 
-    def list(self, request):
+    def list(self, _request):
         """List API keys (placeholder).
 
         GET /api/v1/developer/api-keys/
@@ -319,7 +504,7 @@ class APIKeysViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK,
         )
 
-    def create(self, request):
+    def create(self, _request):
         """Generate API key (placeholder)."""
         return Response(
             {
@@ -330,17 +515,9 @@ class APIKeysViewSet(viewsets.ViewSet):
         )
 
 
-class APIUsageViewSet(viewsets.ViewSet):
-    """API usage - GET /api/v1/developer/api-usage/"""
-
-    permission_classes = [AllowAny]
-
-    def list(self, request):
-        """Get API usage stats (placeholder)."""
-        return Response(
-            {
-                "usage": [],
-                "limits": {},
-            },
-            status=status.HTTP_200_OK,
-        )
+# NOTE: the developer ``api-usage`` registration was REMOVED (Phase 313
+# single identity — D2). The placeholder ViewSet shadowed the real BaaS
+# APIUsageViewSet (same ``api-usage`` basename) so ``reverse("api-usage-list")``
+# never reached the implementation that actually lists usage records. The
+# real endpoint lives under the paid BaaS app and enforces authentication,
+# tenant isolation, filters, and standard pagination.

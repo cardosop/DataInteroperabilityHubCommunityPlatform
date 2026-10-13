@@ -253,7 +253,7 @@ class TestFixturesAndFactoriesChecker(unittest.TestCase):
         report = self.report
         factory_classes = report["factory_classes"]
 
-        factory_files = set(f["file_path"] for f in factory_classes)
+        factory_files = {f["file_path"] for f in factory_classes}
 
         # Check for known factory files
         known_factories = [
@@ -372,7 +372,7 @@ class TestFixturesAndFactoriesCheckerIntegration(unittest.TestCase):
             report = json.load(f)
 
         factory_classes = report["factory_classes"]
-        factory_files = set(f["file_path"] for f in factory_classes)
+        factory_files = {f["file_path"] for f in factory_classes}
 
         for file_path_str in list(factory_files)[:10]:  # Test first 10
             file_path = project_root / file_path_str
@@ -436,7 +436,7 @@ class TestFixturesAndFactoriesCheckerIntegration(unittest.TestCase):
             report = json.load(f)
 
         factory_classes = report["factory_classes"]
-        factory_files = set(f["file_path"] for f in factory_classes)
+        factory_files = {f["file_path"] for f in factory_classes}
 
         # Test first 5 factory files
         import ast
@@ -620,7 +620,7 @@ class TestFixturesAndFactoriesCheckerIntegration(unittest.TestCase):
             report = json.load(f)
 
         factory_classes = report["factory_classes"]
-        factory_files = set(f["file_path"] for f in factory_classes)
+        factory_files = {f["file_path"] for f in factory_classes}
 
         # Factory files should be in tests or app tests directories
         expected_locations = ["tests/", "/tests/factories", "tests/factories"]

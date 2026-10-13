@@ -9,7 +9,6 @@ from django.contrib.auth import get_user_model as _get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -106,9 +105,7 @@ class TestExecuteWarehouseEndpoint:
         """Returns 403 with ``WAREHOUSE_DQ_DISABLED`` when warehouse_dq_enabled is False."""
         self.tenant.warehouse_dq_enabled = False
         self.tenant.save()
-        resp = self.client.post(
-            WAREHOUSE_RUN_URL, self._valid_payload(), format="json"
-        )
+        resp = self.client.post(WAREHOUSE_RUN_URL, self._valid_payload(), format="json")
         assert resp.status_code == status.HTTP_403_FORBIDDEN
         payload = resp.json()
         assert payload.get("error") == "WAREHOUSE_DQ_DISABLED"
@@ -117,7 +114,5 @@ class TestExecuteWarehouseEndpoint:
     def test_returns_401_for_unauthenticated(self):
         """Returns 401 when not authenticated."""
         client = APIClient()
-        resp = client.post(
-            WAREHOUSE_RUN_URL, self._valid_payload(), format="json"
-        )
+        resp = client.post(WAREHOUSE_RUN_URL, self._valid_payload(), format="json")
         assert resp.status_code == status.HTTP_401_UNAUTHORIZED

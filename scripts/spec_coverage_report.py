@@ -26,7 +26,7 @@ def find_spec_markers(root_dir: str) -> dict:
                 try:
                     with open(filepath) as f:
                         content = f.read()
-                except Exception:
+                except (OSError, ValueError):
                     continue
 
                 # Find @pytest.mark.spec("...") markers

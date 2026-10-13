@@ -17,6 +17,7 @@ _USE_DEFAULT_INSTANCE: object = object()
 
 import httpx
 
+from hub.apps.core.services.base import ConnectionError as HubConnectionError
 from hub.apps.integrations.base import DataMarketplaceConnector
 from hub.apps.integrations.config.marketplace_instances import (
     MarketplaceInstanceConfig,
@@ -37,8 +38,8 @@ def _load_env_file() -> None:
     if env_file.exists():
         try:
             with open(env_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
+                for raw_line in f:
+                    line = raw_line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         key, value = line.split("=", 1)
                         # Remove 'export ' prefix if present
@@ -46,7 +47,7 @@ def _load_env_file() -> None:
                         value = value.strip().strip('"').strip("'")
                         # Support both CKAN_* (for actual CKAN instances) and DADOS_GOV_BR_* (for dados.gov.br Swagger API)
                         # Also support deprecated CKAN_DADOS_GOV_BR_API_KEY for backward compatibility
-                        if key.startswith("CKAN_") or key.startswith("DADOS_GOV_BR_"):
+                        if key.startswith(("CKAN_", "DADOS_GOV_BR_")):
                             os.environ[key] = value
                             logger.debug(f"Loaded marketplace env var from .env.test.ckan: {key}")
         except (OSError, UnicodeDecodeError, ValueError) as e:
@@ -256,11 +257,11 @@ def create_test_connector(
         logger.debug(
             f"Created test connector for {config.name} (connector_type={config.connector_type})"
         )
-        return connector
-
-    except (ImportError, ValueError, httpx.RequestError, HubConnectionError, KeyError) as e:
-        logger.error(f"Failed to create test connector: {e}")
+    except (ImportError, ValueError, httpx.RequestError, HubConnectionError, KeyError):
+        logger.exception("Failed to create test connector")
         return None
+    else:
+        return connector
 
 
 def verify_marketplace_connection(connector: DataMarketplaceConnector) -> bool:
@@ -298,12 +299,13 @@ def verify_marketplace_connection(connector: DataMarketplaceConnector) -> bool:
             logger.debug(f"Connection verified for {base_url}")
         else:
             logger.warning(f"Connection test returned False for {base_url}")
-        return result
     except Exception as e:
         logger.warning(
             f"Connection verification failed for {getattr(connector, 'base_url', 'unknown')}: {e}"
         )
         return False
+    else:
+        return result
 
 
 def marketplace_available(instance_name: str | None | object = _USE_DEFAULT_INSTANCE) -> bool:

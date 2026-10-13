@@ -12,6 +12,7 @@ import { useAuthStore } from '../auth/store/authStore';
 import { PricingCard } from './PricingCard';
 import { PricingComparison } from './PricingComparison';
 import { fetchPublicPricing } from './pricingService';
+import { buildStructuredData } from './structuredData';
 import type { PublicPricingResponse } from '../../shared/types/billing';
 
 type PageState = 'loading' | 'loaded' | 'error' | 'empty';
@@ -53,31 +54,7 @@ export const PricingPage: React.FC = () => {
     return [...(data.base_plans || []), ...(data.ml_plans || [])];
   }, [data]);
 
-  const structuredData = useMemo(() => {
-    if (!data?.base_plans?.length) return null;
-    const starter = data.base_plans.find(p => p.plan.order >= 1) || data.base_plans[0];
-    const paidPrices = data.base_plans
-      .filter(p => p.plan.price_amount_cents > 0)
-      .map(p => p.plan.price_amount_cents);
-    const allPrices = data.base_plans.map(p => p.plan.price_amount_cents);
-    return {
-      '@context': 'https://schema.org',
-      '@type': 'SoftwareApplication',
-      name: 'Meshant',
-      applicationCategory: 'DataInteroperabilityPlatform',
-      operatingSystem: 'Web',
-      offers: {
-        '@type': 'AggregateOffer',
-        priceCurrency: starter.plan.price_currency,
-        lowPrice: paidPrices.length
-          ? (Math.min(...paidPrices) / 100).toString()
-          : '0',
-        highPrice: allPrices.length
-          ? (Math.max(...allPrices) / 100).toString()
-          : '0',
-      },
-    };
-  }, [data]);
+  const structuredData = useMemo(() => buildStructuredData(data), [data]);
 
   return (
     <main className="pricing-page" id="pricing-page">
@@ -136,8 +113,11 @@ export const PricingPage: React.FC = () => {
 
       {state === 'loaded' && data && (
         <>
-          {/* BASE plans */}
-          {data.base_plans.length > 0 && (
+          {/* BASE plans — `?.length ?? 0` mirrors the empty-state logic
+              above: a partial response (e.g. ml plans only) must render
+              what it has, never throw on the missing list
+              (close-test-coverage-gaps 3.2). */}
+          {(data.base_plans?.length ?? 0) > 0 && (
             <section className="pricing-page__section" aria-labelledby="base-plans-heading">
               <h2 id="base-plans-heading">Platform Plans</h2>
               <div className="pricing-cards">
@@ -157,7 +137,7 @@ export const PricingPage: React.FC = () => {
           )}
 
           {/* ML add-on plans */}
-          {data.ml_plans.length > 0 && (
+          {(data.ml_plans?.length ?? 0) > 0 && (
             <section className="pricing-page__section" aria-labelledby="ml-plans-heading">
               <h2 id="ml-plans-heading">ML / AI Add-ons</h2>
               <p className="pricing-page__note">

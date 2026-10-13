@@ -4,6 +4,7 @@ Access Request Workflows
 Handles access request creation, approval workflows, and access grant management.
 """
 
+from datetime import datetime
 from typing import Any
 
 import structlog
@@ -41,12 +42,12 @@ class AccessRequestWorkflow:
         asset_id: str | None = None,
         dataset_id: str | None = None,
         file_id: str | None = None,
-        reason: str = None,
+        reason: str | None = None,
         requested_access_type: str = "READ",
         requires_approval: bool = True,
         approvers: list[str] | None = None,
         approval_workflow: list[dict[str, Any]] | None = None,
-        expires_at: timezone.datetime | None = None,
+        expires_at: datetime | None = None,
     ) -> AccessRequest:
         """
         Create an access request using the workflow engine.

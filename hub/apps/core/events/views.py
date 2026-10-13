@@ -6,6 +6,7 @@ REST API endpoints for event replay and dead letter queue functionality.
 
 import uuid
 
+import redis
 import structlog
 from django.core.cache import cache
 from django.db import transaction
@@ -82,7 +83,7 @@ class EventReplayResponseSerializer(serializers.Serializer):
     )
 
 
-def _check_replay_rate_limit(request, tenant_id: str | None):
+def _check_replay_rate_limit(_request, tenant_id: str | None):
     """
     Check rate limit for event replay.
 
@@ -167,19 +168,19 @@ def _check_event_duplicate(event_id: str) -> bool:
     if redis_client:
         try:
             exists = redis_client.exists(replay_key)
-            return exists > 0
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(
                 "event_replay_duplicate_check_redis_error",
                 event_id=event_id,
                 error=str(e),
                 message="Redis error, falling back to Django cache",
             )
+        else:
+            return exists > 0
 
     # Fallback to Django cache if Redis is unavailable
     try:
         cached_value = cache.get(replay_key)
-        return cached_value is not None
     except Exception as e:
         logger.warning(
             "event_replay_duplicate_check_cache_error",
@@ -188,6 +189,8 @@ def _check_event_duplicate(event_id: str) -> bool:
             message="Cache unavailable, cannot check for duplicate replays",
         )
         return False
+    else:
+        return cached_value is not None
 
 
 def _mark_event_replayed(event_id: str):
@@ -209,14 +212,15 @@ def _mark_event_replayed(event_id: str):
     if redis_client:
         try:
             redis_client.setex(replay_key, ttl, "1")
-            return
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(
                 "event_replay_mark_redis_error",
                 event_id=event_id,
                 error=str(e),
                 message="Redis error, falling back to Django cache",
             )
+        else:
+            return
 
     # Fallback to Django cache if Redis is unavailable
     try:
@@ -317,18 +321,43 @@ def replay_events(request):
 
     # Get request parameters
     event_type = serializer.validated_data.get("event_type")
-    tenant_id = serializer.validated_data.get("tenant_id")
+    client_tenant_id = serializer.validated_data.get("tenant_id")
     start_time = serializer.validated_data.get("start_time")
     end_time = serializer.validated_data.get("end_time")
     limit = serializer.validated_data.get("limit", 100)
 
-    # Get tenant_id from request if not provided
-    if not tenant_id:
-        tenant = getattr(request, "tenant", None)
-        if tenant:
-            tenant_id = str(tenant.id)
-        elif hasattr(request.user, "tenant"):
-            tenant_id = str(request.user.tenant.id)
+    # W1.2b (oss-release-remediation): the replay scope is the
+    # AUTHENTICATED tenant — the client-supplied tenant_id was previously
+    # used as the scope directly, letting a TENANT_ADMIN replay ANY
+    # tenant's events (the cross-tenant leak class). A client tenant_id
+    # is honored only for PLATFORM_ADMIN (explicit forensic cross-tenant
+    # replay); anything else is rejected 403. (Audit emission for this
+    # enforcement point lands with the W1.19 sweep — the core boundary
+    # forbids the observability import here.)
+    tenant = getattr(request, "tenant", None)
+    scope_tenant_id = str(tenant.id) if tenant else None
+    if not scope_tenant_id:
+        user_tenant_id = getattr(request.user, "tenant_id", None)
+        scope_tenant_id = str(user_tenant_id) if user_tenant_id else None
+    if client_tenant_id and (
+        not scope_tenant_id or str(client_tenant_id) != str(scope_tenant_id)
+    ):
+        if not getattr(request.user, "is_platform_admin", False):
+            return Response(
+                {
+                    "error": {
+                        "code": "CROSS_TENANT_FORBIDDEN",
+                        "message": (
+                            "Replay scope must be the authenticated "
+                            "tenant; cross-tenant replay requires "
+                            "PLATFORM_ADMIN."
+                        ),
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        scope_tenant_id = str(client_tenant_id)
+    tenant_id = scope_tenant_id
 
     # Check rate limit
     is_allowed, rate_limit_response = _check_replay_rate_limit(request, tenant_id)
@@ -507,7 +536,7 @@ class DLQEntrySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DeadLetterQueue
-        fields = [
+        fields = (
             "id",
             "event_type",
             "subscriber",
@@ -518,7 +547,7 @@ class DLQEntrySerializer(serializers.ModelSerializer):
             "created_at",
             "resolved_at",
             "resolved_by",
-        ]
+        )
         read_only_fields = fields
 
 
@@ -529,7 +558,7 @@ class DLQListView(ListAPIView):
     GET /api/v1/events/dlq/
     """
 
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = (IsAuthenticated, IsAdmin)
     serializer_class = DLQEntrySerializer
     pagination_class = StandardPageNumberPagination
 
@@ -606,7 +635,7 @@ class DLQRetryView(APIView):
     POST /api/v1/events/dlq/{id}/retry/
     """
 
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = (IsAuthenticated, IsAdmin)
 
     @extend_schema(
         summary="Retry dead letter queue entry",
@@ -675,7 +704,7 @@ class DLQResolveView(APIView):
     POST /api/v1/events/dlq/{id}/resolve/
     """
 
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = (IsAuthenticated, IsAdmin)
 
     @extend_schema(
         summary="Resolve dead letter queue entry",

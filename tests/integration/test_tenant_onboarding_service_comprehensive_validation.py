@@ -240,6 +240,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             self.assertEqual(assets_response.status_code, status.HTTP_200_OK)
             for asset in assets_response.data.get("results", []):
                 self.assertEqual(
-                    asset.get("tenant_id"), tenant_id,
-                    f"Asset {asset.get('id')} should belong to tenant {tenant_id}"
+                    asset.get("tenant_id"),
+                    tenant_id,
+                    f"Asset {asset.get('id')} should belong to tenant {tenant_id}",
                 )

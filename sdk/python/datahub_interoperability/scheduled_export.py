@@ -5,7 +5,7 @@ Provides methods for managing scheduled data export workflows.
 Uses real hub API - no mocks/stubs.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -30,11 +30,11 @@ class ScheduledExportAPI:
         self,
         name: str,
         destination_type: str,
-        destination_config: Dict[str, Any],
-        schedule_config: Dict[str, Any],
-        source_scope: Dict[str, Any],
+        destination_config: dict[str, Any],
+        schedule_config: dict[str, Any],
+        source_scope: dict[str, Any],
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create scheduled export.
 
@@ -49,7 +49,7 @@ class ScheduledExportAPI:
         Returns:
             Created scheduled export data
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "name": name,
             "destination_type": destination_type,
             "destination_config": destination_config,
@@ -64,8 +64,8 @@ class ScheduledExportAPI:
         self,
         page: int = 1,
         page_size: int = 50,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """
         List scheduled exports.
 
@@ -77,7 +77,7 @@ class ScheduledExportAPI:
         Returns:
             Paginated response with scheduled exports
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -86,7 +86,7 @@ class ScheduledExportAPI:
 
         return await self.client.get("scheduled-exports/", params=params)
 
-    async def get(self, export_id: str) -> Dict[str, Any]:
+    async def get(self, export_id: str) -> dict[str, Any]:
         """
         Get scheduled export by ID.
 
@@ -102,7 +102,7 @@ class ScheduledExportAPI:
         self,
         export_id: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update scheduled export (partial update supported).
 
@@ -124,7 +124,7 @@ class ScheduledExportAPI:
         """
         await self.client.delete(f"scheduled-exports/{export_id}/")
 
-    async def trigger(self, export_id: str) -> Dict[str, Any]:
+    async def trigger(self, export_id: str) -> dict[str, Any]:
         """
         Manually trigger scheduled export.
 
@@ -141,7 +141,7 @@ class ScheduledExportAPI:
         export_id: str,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get run history for scheduled export.
 
@@ -159,7 +159,7 @@ class ScheduledExportAPI:
         }
         return await self.client.get(f"scheduled-exports/{export_id}/runs/", params=params)
 
-    async def get_run(self, export_id: str, run_id: str) -> Dict[str, Any]:
+    async def get_run(self, export_id: str, run_id: str) -> dict[str, Any]:
         """
         Get specific run details.
 

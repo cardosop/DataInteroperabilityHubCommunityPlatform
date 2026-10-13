@@ -45,6 +45,29 @@ class ServiceDependency:
     call_locations: list[tuple[str, int]]  # (file_path, line_number)
 
 
+# Ordered (patterns, service-name) table for identify_source_service().
+# Iteration preserves the first-match-wins semantics of the original
+# if/elif chain.
+_SOURCE_SERVICE_PATTERNS = (
+    (("/services/worker", "/worker/"), "worker-service"),
+    (("/services/api", "/api/"), "api-service"),
+    (("/services/datacontract",), "datacontract-service"),
+    (("/services/dq",), "dq-service"),
+    (("/services/compliance",), "compliance-service"),
+    (("/services/semantic",), "semantic-service"),
+    (("/services/search",), "search-service"),
+    (("/services/observability",), "observability-service"),
+    (("/services/webhook",), "webhook-service"),
+    (("/services/workflow-engine",), "workflow-engine-service"),
+    (("/services/workflow-registry",), "workflow-registry-service"),
+    (("/services/event-bus",), "event-bus-health-service"),
+    (("/services/event-schema-registry",), "event-schema-registry-service"),
+    (("/hub/apps",), "api-service"),
+    (("/cli",), "cli"),
+    (("/sdk",), "sdk"),
+)
+
+
 class InterServiceCommunicationSearcher:
     """Searches for inter-service communication patterns"""
 
@@ -148,40 +171,10 @@ class InterServiceCommunicationSearcher:
         """Identify the source service from file path"""
         path_lower = file_path.lower()
 
-        # Check for service directories
-        if "/services/worker" in path_lower or "/worker/" in path_lower:
-            return "worker-service"
-        elif "/services/api" in path_lower or "/api/" in path_lower:
-            return "api-service"
-        elif "/services/datacontract" in path_lower:
-            return "datacontract-service"
-        elif "/services/dq" in path_lower:
-            return "dq-service"
-        elif "/services/compliance" in path_lower:
-            return "compliance-service"
-        elif "/services/semantic" in path_lower:
-            return "semantic-service"
-        elif "/services/search" in path_lower:
-            return "search-service"
-        elif "/services/observability" in path_lower:
-            return "observability-service"
-        elif "/services/webhook" in path_lower:
-            return "webhook-service"
-        elif "/services/workflow-engine" in path_lower:
-            return "workflow-engine-service"
-        elif "/services/workflow-registry" in path_lower:
-            return "workflow-registry-service"
-        elif "/services/event-bus" in path_lower:
-            return "event-bus-health-service"
-        elif "/services/event-schema-registry" in path_lower:
-            return "event-schema-registry-service"
-        elif "/hub/apps" in path_lower:
-            # Hub apps are part of API service
-            return "api-service"
-        elif "/cli" in path_lower:
-            return "cli"  # CLI is external
-        elif "/sdk" in path_lower:
-            return "sdk"  # SDK is external
+        # Check for service directories (first match wins).
+        for patterns, service in _SOURCE_SERVICE_PATTERNS:
+            if any(pattern in path_lower for pattern in patterns):
+                return service
 
         return "unknown"
 
@@ -280,24 +273,23 @@ class InterServiceCommunicationSearcher:
                     # This is indirect communication: API → Redis → Worker
                     if re.search(
                         r"enqueue|queue\.enqueue|rq\.enqueue|get_queue", line, re.IGNORECASE
-                    ):
+                    ) and ("/hub/apps" in str(py_file) or "/api/" in str(py_file)):
                         # Check if this is in API service code (API enqueuing jobs for worker)
-                        if "/hub/apps" in str(py_file) or "/api/" in str(py_file):
-                            # This represents API → Worker communication via Redis
-                            self.service_calls.append(
-                                ServiceCall(
-                                    file_path=str(py_file.relative_to(self.root_dir)),
-                                    line_number=i,
-                                    source_service="api-service",
-                                    target_service="worker-service",
-                                    endpoint="redis-queue",
-                                    method="ENQUEUE",
-                                    client_type="redis-rq",
-                                    context=self._get_context(lines, i),
-                                )
+                        # This represents API → Worker communication via Redis
+                        self.service_calls.append(
+                            ServiceCall(
+                                file_path=str(py_file.relative_to(self.root_dir)),
+                                line_number=i,
+                                source_service="api-service",
+                                target_service="worker-service",
+                                endpoint="redis-queue",
+                                method="ENQUEUE",
+                                client_type="redis-rq",
+                                context=self._get_context(lines, i),
                             )
+                        )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def search_external_to_api_calls(self):
@@ -349,7 +341,7 @@ class InterServiceCommunicationSearcher:
                                     )
                                 )
 
-                except Exception as e:
+                except (OSError, UnicodeDecodeError) as e:
                     print(f"Error processing {py_file}: {e}")
 
     def search_api_to_external_calls(self):
@@ -415,7 +407,7 @@ class InterServiceCommunicationSearcher:
                                 )
                                 break
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def search_service_client_usage(self):
@@ -437,26 +429,25 @@ class InterServiceCommunicationSearcher:
                 for i, line in enumerate(lines, 1):
                     # Look for service client instantiation or method calls
                     for client_class, service_name in self.service_client_classes.items():
-                        if client_class in line:
-                            # Check if it's instantiation or method call
-                            if "=" in line or "(" in line:
-                                endpoint = self.extract_endpoint_from_line(line, lines[i : i + 10])
-                                method = self._extract_method_from_line(line)
+                        # Check if it's instantiation or method call
+                        if client_class in line and ("=" in line or "(" in line):
+                            endpoint = self.extract_endpoint_from_line(line, lines[i : i + 10])
+                            method = self._extract_method_from_line(line)
 
-                                self.service_calls.append(
-                                    ServiceCall(
-                                        file_path=str(py_file.relative_to(self.root_dir)),
-                                        line_number=i,
-                                        source_service=source_service,
-                                        target_service=service_name,
-                                        endpoint=endpoint or "unknown",
-                                        method=method,
-                                        client_type=client_class,
-                                        context=self._get_context(lines, i, context_lines=10),
-                                    )
+                            self.service_calls.append(
+                                ServiceCall(
+                                    file_path=str(py_file.relative_to(self.root_dir)),
+                                    line_number=i,
+                                    source_service=source_service,
+                                    target_service=service_name,
+                                    endpoint=endpoint or "unknown",
+                                    method=method,
+                                    client_type=client_class,
+                                    context=self._get_context(lines, i, context_lines=10),
                                 )
+                            )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def map_dependencies(self):
@@ -498,8 +489,8 @@ class InterServiceCommunicationSearcher:
             return "httpx"
         elif "requests" in line.lower():
             return "requests"
-        elif any(client_class in line for client_class in self.service_client_classes.keys()):
-            for client_class in self.service_client_classes.keys():
+        elif any(client_class in line for client_class in self.service_client_classes):
+            for client_class in self.service_client_classes:
                 if client_class in line:
                     return client_class
         return "unknown"
@@ -541,11 +532,9 @@ class InterServiceCommunicationSearcher:
                     ]
                 ),
                 "services_involved": sorted(
-                    list(
-                        set(
-                            [c.source_service for c in self.service_calls]
-                            + [c.target_service for c in self.service_calls]
-                        )
+                    set(
+                        [c.source_service for c in self.service_calls]
+                        + [c.target_service for c in self.service_calls]
                     )
                 ),
             },

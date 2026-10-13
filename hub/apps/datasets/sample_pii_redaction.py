@@ -62,9 +62,7 @@ def _scalar_string_contains_pii_pattern(value: str) -> bool:
         return True
     if _CARD_RE.search(probe):
         return True
-    if _SSN_RE.search(probe):
-        return True
-    return False
+    return bool(_SSN_RE.search(probe))
 
 
 def redact_sample_cell(field_name: str, value: Any) -> Any:

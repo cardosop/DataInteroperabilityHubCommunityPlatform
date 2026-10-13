@@ -2,7 +2,9 @@
 Phase 260.2.D — single choke-point for “may this File back a new Dataset?”.
 
 Mirrors ``FileViewSet.download`` / ``DatasetService`` semantics: block ``INFECTED``
-and ``PENDING_SCAN`` only (``SCAN_UNAVAILABLE`` / ``SCAN_ERROR`` / ``CLEAN`` may proceed).
+and ``PENDING_SCAN``; ``SCAN_UNAVAILABLE`` follows ``SCAN_UNAVAILABLE_POLICY``
+(W1.18 — ``allow`` proceeds, ``block`` raises 503 ``FILE_SCAN_UNAVAILABLE``).
+``SCAN_ERROR`` / ``CLEAN`` may proceed.
 """
 
 from __future__ import annotations
@@ -37,4 +39,22 @@ def validate_file_allows_dataset_creation(file_obj: File) -> None:
                 "scan_status": file_obj.scan_status,
             },
             http_status=403,
+        )
+    # W1.18 — ClamAV outage policy (SCAN_UNAVAILABLE_POLICY=block).
+    from hub.apps.files.scan_policy import (
+        audit_scan_unavailable_blocked,
+        scan_unavailable_blocked,
+    )
+
+    if scan_unavailable_blocked(file_obj):
+        audit_scan_unavailable_blocked(file_obj)
+        raise ValidationError(
+            "File has not been malware-scanned (scan service unavailable) and "
+            "the current policy blocks unscanned files.",
+            code="FILE_SCAN_UNAVAILABLE",
+            details={
+                "file_id": str(file_obj.id),
+                "scan_status": file_obj.scan_status,
+            },
+            http_status=503,
         )

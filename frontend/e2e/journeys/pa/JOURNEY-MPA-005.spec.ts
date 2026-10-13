@@ -30,9 +30,16 @@ test.describe('JOURNEY-MPA-005: Manage Connector Marketplace @critical', () => {
 
   test.describe('Failure', () => {
     test('connection detail with non-existent id shows error', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/integrations/connections/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        await getPlatformAdminUser(),
+        '/integrations/connections/00000000-0000-0000-0000-000000000000',
+        {
+          timeout: 65000,
+          contentSelector:
+            '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"], h1',
+        }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         waitAfterLoad: 8000,

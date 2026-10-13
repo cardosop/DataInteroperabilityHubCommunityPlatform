@@ -25,7 +25,19 @@ SENSITIVE_PATTERNS = [
 ]
 
 # Keys that must NOT appear in public API info (only allow documented public keys)
-API_INFO_ALLOWED_KEYS = {"name", "version", "base_url", "documentation", "endpoints"}
+# current_version/supported_versions/links/deprecated_endpoints are intentionally
+# exposed by the api_info view (APIVersionManager + public docs links).
+API_INFO_ALLOWED_KEYS = {
+    "name",
+    "version",
+    "base_url",
+    "documentation",
+    "endpoints",
+    "current_version",
+    "supported_versions",
+    "links",
+    "deprecated_endpoints",
+}
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -77,24 +89,26 @@ class AllowAnyPublicEndpointsTest(TestCase):
         self._assert_no_sensitive_data_in_text(text, "api_not_found")
 
     def test_semantic_ontology_unauthenticated_returns_public_or_error_only(self):
-        """GET /api/v1/semantic/ontology unauthenticated must return ontology or 503, no user/tenant data."""
+        """GET /api/v1/semantic/ontology unauthenticated returns 401 (not public) — no user/tenant data.
+
+        The ontology endpoints are no longer AllowAny: the semantic layer is
+        auth-gated (IsAuthenticated + IsTenantAdmin). The secure contract for
+        unauthenticated callers is 401.
+        """
         response = self.client.get("/api/v1/semantic/ontology")
-        # 200 (ontology content) or 503 (service unavailable) are acceptable
-        self.assertIn(
-            response.status_code, (status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE)
-        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         text = response.content.decode("utf-8", errors="replace")
         self._assert_no_sensitive_data_in_text(text, "semantic/ontology")
-        if response.status_code == 200:
-            # Should be Turtle or similar; no email/token
-            self._assert_no_sensitive_data_in_text(text, "semantic/ontology body")
 
     def test_semantic_jsonld_context_unauthenticated_returns_public_or_error_only(self):
-        """GET /api/v1/semantic/context.jsonld unauthenticated must return JSON-LD context or 503, no user/tenant data."""
+        """GET /api/v1/semantic/context.jsonld unauthenticated returns 401 (not public) — no user/tenant data.
+
+        The context endpoint is no longer AllowAny: the semantic layer is
+        auth-gated (IsAuthenticated + IsTenantAdmin). The secure contract for
+        unauthenticated callers is 401.
+        """
         response = self.client.get("/api/v1/semantic/context.jsonld")
-        self.assertIn(
-            response.status_code, (status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE)
-        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         text = response.content.decode("utf-8", errors="replace")
         self._assert_no_sensitive_data_in_text(text, "semantic/context")
 
@@ -130,7 +144,7 @@ class AllowAnyPublicEndpointsTest(TestCase):
         email = f"allowany-{uuid.uuid4().hex[:8]}@example.com"
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "AllowAny User"},
+            {"email": email, "password": "SecurePass123!", "name": "AllowAny User"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

@@ -28,12 +28,12 @@ class DLQSyncStatusTest(TestCase):
     def test_dlq_sync_status_field_exists(self):
         """ScheduledIngestionRun must have dlq_sync_status field."""
         field_names = [f.name for f in ScheduledIngestionRun._meta.get_fields()]
-        self.assertIn("dlq_sync_status", field_names)
+        assert "dlq_sync_status" in field_names
 
     def test_dlq_sync_status_default_is_pending(self):
         """Default dlq_sync_status should be PENDING."""
         field = ScheduledIngestionRun._meta.get_field("dlq_sync_status")
-        self.assertEqual(field.default, "PENDING")
+        assert field.default == "PENDING"
 
     def test_lifecycle_sets_synced_on_success(self):
         """worker_run_lifecycle sets dlq_sync_status=SYNCED after successful DLQ sync."""
@@ -66,7 +66,7 @@ class DLQSyncStatusTest(TestCase):
         )
         _execute_dlq_sync(str(si.id), str(run.id))
         run.refresh_from_db()
-        self.assertEqual(run.dlq_sync_status, "SYNCED")
+        assert run.dlq_sync_status == "SYNCED"
 
     def test_lifecycle_sets_failed_on_exception(self):
         """worker_run_lifecycle sets dlq_sync_status=FAILED when DLQ sync raises."""
@@ -102,11 +102,13 @@ class DLQSyncStatusTest(TestCase):
             "hub.apps.scheduled_ingestion.dead_letter_queue"
             ".DeadLetterQueueManager.sync_from_ingestion_state"
         )
-        with _patch(_dlq_sync, side_effect=RuntimeError("sync failed")):
-            with self.assertRaises(RuntimeError):
-                _execute_dlq_sync(str(si.id), str(run.id))
+        with (
+            _patch(_dlq_sync, side_effect=RuntimeError("sync failed")),
+            self.assertRaises(RuntimeError),
+        ):
+            _execute_dlq_sync(str(si.id), str(run.id))
         run.refresh_from_db()
-        self.assertEqual(run.dlq_sync_status, "FAILED")
+        assert run.dlq_sync_status == "FAILED"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -152,7 +154,7 @@ class DLQSyncRecoveryCommandTest(TestCase):
         out = StringIO()
         call_command("retry_failed_dlq_sync", stdout=out)
         run.refresh_from_db()
-        self.assertEqual(run.dlq_sync_status, "SYNCED")
+        assert run.dlq_sync_status == "SYNCED"
         mock_sync.assert_called_once()
 
     def test_recovery_skips_recent_failures(self):
@@ -161,7 +163,7 @@ class DLQSyncRecoveryCommandTest(TestCase):
         out = StringIO()
         call_command("retry_failed_dlq_sync", stdout=out)
         run.refresh_from_db()
-        self.assertEqual(run.dlq_sync_status, "FAILED")
+        assert run.dlq_sync_status == "FAILED"
 
     def test_recovery_skips_synced_runs(self):
         """SYNCED runs should not be retried."""
@@ -169,4 +171,4 @@ class DLQSyncRecoveryCommandTest(TestCase):
         out = StringIO()
         call_command("retry_failed_dlq_sync", stdout=out)
         run.refresh_from_db()
-        self.assertEqual(run.dlq_sync_status, "SYNCED")
+        assert run.dlq_sync_status == "SYNCED"

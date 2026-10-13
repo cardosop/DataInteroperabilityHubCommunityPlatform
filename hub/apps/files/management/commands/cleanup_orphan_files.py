@@ -28,7 +28,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError
 from django.utils import timezone
+from redis.exceptions import RedisError
+
+from hub.apps.core.services.base import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +137,7 @@ class Command(BaseCommand):
             help="Limit to a single tenant UUID.",
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         dry_run = bool(opts.get("dry_run"))
         no_dry_run = bool(opts.get("no_dry_run"))
         batch_size = int(opts.get("batch_size") or DEFAULT_BATCH_SIZE)
@@ -161,7 +165,7 @@ class Command(BaseCommand):
 
         try:
             redis_client = get_redis_client()
-        except Exception as exc:
+        except RedisError as exc:
             self.stderr.write(self.style.ERROR(f"Redis unavailable: {exc}"))
             sys.exit(2)
 
@@ -245,7 +249,7 @@ class Command(BaseCommand):
                 dry_run=dry_run,
                 correlation_id=correlation_id,
                 orphan_cleanup_candidate_qs=orphan_cleanup_candidate_qs,
-                file_service_factory=lambda: FileService(
+                file_service_factory=lambda tid=tid: FileService(
                     tenant_id=tid,
                     user_id=None,
                 ),
@@ -326,7 +330,7 @@ class Command(BaseCommand):
                             None,
                         )
                         successes += 1
-                    except Exception as exc:
+                    except (NotFoundError, ValidationError, DatabaseError) as exc:
                         logger.warning(
                             "cleanup_orphan_files_delete_failed tenant=%s file=%s error=%s",
                             tenant_id_str,

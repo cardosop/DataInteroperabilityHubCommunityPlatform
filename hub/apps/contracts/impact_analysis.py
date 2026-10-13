@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 
 from .models import Contract
 
@@ -108,7 +110,7 @@ class ImpactAnalyzer:
         """
         try:
             source_contract = Contract.objects.get(id=contract_id)
-        except (Contract.DoesNotExist, Exception):
+        except (Contract.DoesNotExist, ValidationError, DatabaseError):
             return {"error": "Contract not found", "contract_id": contract_id}
 
         if tenant_id is not None:
@@ -237,7 +239,7 @@ class ImpactAnalyzer:
                 model_name=dependent.get("model_name"),
                 field_name=dependent.get("field_name"),
                 depth=node.depth + 1,
-                path=node.path + [dependent_contract_id],
+                path=[*node.path, dependent_contract_id],
             )
 
             # Add metadata
@@ -309,19 +311,20 @@ class ImpactAnalyzer:
                         ref_namespace = ref.get("namespace")
 
                         # Match contract reference
-                        if ref_name == source_contract_name:
-                            if not source_namespace or ref_namespace == source_namespace:
-                                dependents.append(
-                                    {
-                                        "contract_id": contract.id,
-                                        "contract_name": hub_contract.get("info", {}).get("name"),
-                                        "resource_type": "CONTRACT",
-                                        "reference_type": "CONTRACT",
-                                        "reference_path": f"{ref_namespace}/{ref_name}"
-                                        if ref_namespace
-                                        else ref_name,
-                                    }
-                                )
+                        if ref_name == source_contract_name and (
+                            not source_namespace or ref_namespace == source_namespace
+                        ):
+                            dependents.append(
+                                {
+                                    "contract_id": contract.id,
+                                    "contract_name": hub_contract.get("info", {}).get("name"),
+                                    "resource_type": "CONTRACT",
+                                    "reference_type": "CONTRACT",
+                                    "reference_path": f"{ref_namespace}/{ref_name}"
+                                    if ref_namespace
+                                    else ref_name,
+                                }
+                            )
 
             # Check model-level lineage
             models_list = hub_contract.get("models", [])
@@ -423,7 +426,7 @@ class ImpactAnalyzer:
         except Contract.DoesNotExist:
             node.metadata["asset_criticality"] = "MEDIUM"
             node.metadata["asset_usage_frequency"] = "MEDIUM"
-        except Exception as e:
+        except (DatabaseError, AttributeError) as e:
             logger.warning(
                 "Failed to get asset metadata for impact scoring",
                 contract_id=node.contract_id,
@@ -575,7 +578,7 @@ class ImpactScorer:
                     return "MEDIUM"
                 else:
                     return "LOW"
-        except (Contract.DoesNotExist, Exception):
+        except (Contract.DoesNotExist, ValidationError, DatabaseError, AttributeError):
             pass
 
         return "MEDIUM"  # Default
@@ -595,7 +598,7 @@ class ImpactScorer:
                     return "MEDIUM"
                 else:
                     return "LOW"
-        except (Contract.DoesNotExist, Exception):
+        except (Contract.DoesNotExist, ValidationError, DatabaseError, AttributeError):
             pass
 
         return "MEDIUM"  # Default

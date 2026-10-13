@@ -13,7 +13,7 @@ module implements the engineering-grade tiered policy:
   inference, no sampled metadata. Most real-world tenants land here.
 
 * **SAMPLE tier** — files between ``DATASET_INFERENCE_FULL_READ_BYTES``
-  and ``DATASET_INFERENCE_MAX_BYTES`` (default 50 MB – 1 GB),
+  and ``DATASET_INFERENCE_MAX_BYTES`` (default 50 MB - 1 GB),
   TEXT formats only: ranged read of the first
   ``DATASET_INFERENCE_SAMPLE_BYTES`` (default 50 MB), truncated to
   the last clean format boundary (last newline) so the parser
@@ -43,7 +43,7 @@ the right long-term fix and are tracked under 260.5.F.3.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from django.conf import settings
 
@@ -58,7 +58,7 @@ INFERENCE_FULL_READ_BYTES_DEFAULT: int = 50 * 1024 * 1024  # 50 MB
 
 # When a TEXT-format file exceeds the FULL_READ threshold, the
 # storage fetch reads only this many bytes. 50 MB of typical CSV
-# is ~2.5 M rows — more than 250× the 10 K-row sample the
+# is ~2.5 M rows — more than 250x the 10 K-row sample the
 # downstream inference helper actually uses.
 INFERENCE_SAMPLE_BYTES_DEFAULT: int = 50 * 1024 * 1024  # 50 MB
 
@@ -74,7 +74,7 @@ INFERENCE_MAX_BYTES_DEFAULT: int = 1 * 1024 * 1024 * 1024  # 1 GB
 _TEXT_SAMPLEABLE_FORMATS: frozenset = frozenset({"CSV", "JSON"})
 
 
-class InferenceMode(str, Enum):
+class InferenceMode(StrEnum):
     """Read mode the dispatch layer should use for this file."""
 
     FULL_READ = "FULL_READ"

@@ -26,7 +26,9 @@ def _disconnect_semantic_signals():
 
         post_save.disconnect(contract_saved, sender=Contract)
         post_save.disconnect(asset_saved, sender=Asset)
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError, RuntimeError):
+        # RuntimeError = private core mode (semantic uninstalled);
+        # ImportError covers the public tree.
         pass
 
 
@@ -62,6 +64,26 @@ class ConcurrencyTestBase(TransactionTestCase):
             name=f"Concurrency Asset {unique}",
             status=AssetStatus.ACTIVE,
         )
+
+        # TenantSuspensionMiddleware blocks POST/PUT/PATCH/DELETE for tenants
+        # without an active subscription (403 subscription_inactive) — the
+        # API-level concurrency tests below exercise writes, so provision
+        # one up front.
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        # Contract deletion requires the TENANT_ADMIN role ("does not have
+        # required role (TENANT_ADMIN) for contract deletion") — the delete
+        # concurrency tests exercise the real API, so assign it.
+        from hub.apps.users.models import Role, UserRole
+
+        role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 

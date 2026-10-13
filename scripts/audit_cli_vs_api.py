@@ -5,7 +5,7 @@
 Audits every CLI command against the backend API surface and reports
 which API prefixes are NOT yet exposed via CLI commands.
 
-Produces a per-prefix gap report feeding Phase 3–5 work assignments.
+Produces a per-prefix gap report feeding Phase 3-5 work assignments.
 
 Usage:
   python scripts/audit_cli_vs_api.py                 # human-readable
@@ -39,7 +39,7 @@ def extract_cli_commands() -> dict[str, set[str]]:
 
         try:
             content = py_file.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         # Find @click.command() decorated functions
@@ -72,7 +72,7 @@ def extract_api_endpoints() -> dict[str, set[str]]:
             continue
         try:
             content = url_file.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         for m in re.finditer(
@@ -82,7 +82,7 @@ def extract_api_endpoints() -> dict[str, set[str]]:
             pattern = m.group(1)
             rel = str(url_file.relative_to(PROJECT_ROOT))
             if "hub/apps/" in rel:
-                app = rel.split("hub/apps/")[1].split("/")[0]
+                app = rel.split("hub/apps/")[1].split("/", maxsplit=1)[0]
                 endpoints[app].add(pattern)
 
     return dict(endpoints)

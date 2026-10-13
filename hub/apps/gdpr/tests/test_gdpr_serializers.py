@@ -171,7 +171,8 @@ class DataExportJobSerializerTest(TestCase):
         # DataExportJobSerializer has 11 fields; 10 are read-only (status is writable)
         expected_ro = 10
         self.assertEqual(
-            read_only_count, expected_ro,
+            read_only_count,
+            expected_ro,
             f"Expected {expected_ro} read-only fields out of {total}; got {read_only_count}",
         )
         # Verify the one field that IS writable
@@ -370,7 +371,8 @@ class ErasureRequestSerializerTest(TestCase):
         total = len(serializer.fields)
         # ErasureRequestSerializer — ALL 12 fields are in read_only_fields
         self.assertEqual(
-            read_only_count, total,
+            read_only_count,
+            total,
             f"ErasureRequestSerializer has NO writable fields; "
             f"all {total} must be read-only. Got {read_only_count}/{total} read-only.",
         )

@@ -2,11 +2,9 @@
 Phase 216.2.5 — SSO login lifecycle.
 
 Validates SSO initiation and callback flows. The backend provides
-provider-specific endpoints:
+OIDC-only endpoints (the SAML stub is deleted — W1.5/D4):
   - GET /auth/sso/oidc/login-url/   (OIDC initiation)
   - POST /auth/sso/oidc/callback/   (OIDC callback)
-  - GET /auth/sso/saml/login-url/   (SAML initiation)
-  - POST /auth/sso/saml/callback/   (SAML callback)
 """
 
 from urllib.parse import parse_qs, urlparse
@@ -28,7 +26,12 @@ def test_sso_initiation_returns_redirect():
     """GET /auth/sso/oidc/login-url/ should return 200 with a redirect_url
     pointing at an OIDC authorization endpoint.
 
-    If the SSO provider is not configured, a 400/404 is acceptable.
+    The e2e tenant has no OIDC provider configured by default, so this
+    test configures a mock provider on the tenant's ``TenantConfig`` via
+    the in-process ORM (same shared-DB pattern as the billing quota
+    test), asserts the 200 login-URL shape, and restores the previous
+    config afterwards.  When the tenant is genuinely not configurable
+    (e.g. a deployment without ORM access) the test skips.
     """
     base = api_base_url()
     # SSO endpoints require tenant_id to look up SSO config.
@@ -44,41 +47,71 @@ def test_sso_initiation_returns_redirect():
     tenant_id = me_resp.json().get("tenant") or me_resp.json().get("tenant_id")  # noqa: PHASE216-STATIC-ID
     assert tenant_id, f"No tenant_id in /auth/me/ response: {me_resp.json()}"
 
-    resp = requests.get(
-        f"{base}/auth/sso/oidc/login-url/",
-        params={
-            "tenant_id": tenant_id,  # noqa: PHASE216-STATIC-ID
-            "redirect_uri": "https://meshant-internal.example.com/auth/callback",
-        },
-        allow_redirects=False,
-        timeout=15,
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    from django.db import (
+        DatabaseError,
+        IntegrityError,
+        InterfaceError,
+        OperationalError,
     )
 
-    if resp.status_code == 404:
-        pytest.skip("SSO OIDC endpoint not found (404)")
+    from hub.apps.tenants.models import TenantConfig
 
-    if resp.status_code == 400:
-        body = resp.text[:200]
-        # SSO not configured for this tenant is expected on staging
-        if "not configured" in body.lower() or "no sso" in body.lower():
-            pytest.skip(f"SSO OIDC not configured for tenant: {body}")
-        # Otherwise it's a real validation error — let it fail
+    oidc_config = {
+        "authorization_endpoint": "https://mock-idp.example.com/authorize",
+        "client_id": "e2e-test-oidc-client",
+    }
+    try:
+        config, _created = TenantConfig.objects.get_or_create(
+            tenant_id=tenant_id,
+            defaults={"sso_config": {}},
+        )
+        original_sso = config.sso_config or {}
+        config.sso_config = {**original_sso, "oidc": oidc_config}
+        config.save()
+    except (
+        DjangoValidationError,
+        IntegrityError,
+        InterfaceError,
+        OperationalError,
+        DatabaseError,
+    ) as exc:
+        pytest.skip(f"Could not configure OIDC SSO for the e2e tenant via ORM: {exc}")
 
-    if resp.status_code == 302:
-        location = resp.headers.get("Location", "")
-        assert location, "302 redirect has no Location header"
-        assert "http" in location.lower(), f"Redirect Location is not a URL: {location}"
-    elif resp.status_code == 200:
+    try:
+        resp = requests.get(
+            f"{base}/auth/sso/oidc/login-url/",
+            params={
+                "tenant_id": tenant_id,  # noqa: PHASE216-STATIC-ID
+                "redirect_uri": "https://meshant-internal.example.com/auth/callback",
+            },
+            allow_redirects=False,
+            timeout=15,
+        )
+
+        if resp.status_code == 404:
+            pytest.skip("SSO OIDC endpoint not found (404)")
+
+        assert resp.status_code == 200, (
+            f"SSO initiation returned {resp.status_code}: {resp.text[:300]}"
+        )
         body = resp.json()
         redirect_url = (
-            body.get("redirect_url") or body.get("authorization_url") or body.get("login_url")
+            body.get("login_url") or body.get("redirect_url") or body.get("authorization_url")
         )
         assert redirect_url, f"200 response missing redirect/authorization URL: {body}"
         parsed = urlparse(redirect_url)
+        assert parsed.netloc == "mock-idp.example.com", (
+            f"Login URL points at the wrong IdP: {redirect_url}"
+        )
         query = parse_qs(parsed.query)
         assert query.get("state"), f"OIDC login URL missing state query parameter: {redirect_url}"
-    else:
-        pytest.fail(f"SSO initiation returned unexpected {resp.status_code}: {resp.text[:300]}")
+        assert query.get("client_id") == ["e2e-test-oidc-client"], (
+            f"OIDC login URL carries the wrong client_id: {redirect_url}"
+        )
+    finally:
+        config.sso_config = original_sso
+        config.save()
 
 
 def test_sso_initiation_unknown_provider_returns_error():

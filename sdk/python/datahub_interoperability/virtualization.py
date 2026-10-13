@@ -4,7 +4,7 @@ Virtualization operations for DataHub SDK.
 Provides methods for managing virtual datasets, query executions, and topology.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 from .errors import ConflictError, NotFoundError, ValidationError
@@ -105,12 +105,12 @@ class VirtualizationAPI:
         name: str,
         query: str,
         query_type: str,
-        description: Optional[str] = None,
-        schema: Optional[Dict[str, Any]] = None,
-        sources: Optional[list] = None,
-        version: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        description: str | None = None,
+        schema: dict[str, Any] | None = None,
+        sources: list | None = None,
+        version: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create a virtual dataset.
 
@@ -138,7 +138,7 @@ class VirtualizationAPI:
         if not query_type or not query_type.strip():
             raise ValidationError("query_type is required and cannot be empty")
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "name": name.strip(),
             "query": query.strip(),
             "query_type": query_type.strip().upper(),
@@ -171,24 +171,24 @@ class VirtualizationAPI:
                 if e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
                 elif e.http_status == 409:
                     raise ConflictError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     async def list_datasets(
         self,
-        status: Optional[str] = None,
-        query_type: Optional[str] = None,
-        owner: Optional[str] = None,
-        created_by: Optional[str] = None,
-        search: Optional[str] = None,
-        ordering: Optional[str] = None,
+        status: str | None = None,
+        query_type: str | None = None,
+        owner: str | None = None,
+        created_by: str | None = None,
+        search: str | None = None,
+        ordering: str | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List virtual datasets with optional filtering and pagination.
 
@@ -212,7 +212,7 @@ class VirtualizationAPI:
         self._validate_page_params(page, page_size)
 
         # Build query parameters
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -241,10 +241,10 @@ class VirtualizationAPI:
             if isinstance(e, DataHubError) and e.http_status == 400:
                 raise ValidationError(
                     str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                )
+                ) from None
             raise
 
-    async def get_dataset(self, dataset_id: str) -> Dict[str, Any]:
+    async def get_dataset(self, dataset_id: str) -> dict[str, Any]:
         """
         Get virtual dataset by ID.
 
@@ -275,25 +275,25 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     async def update_dataset(
         self,
         dataset_id: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        query: Optional[str] = None,
-        query_type: Optional[str] = None,
-        schema: Optional[Dict[str, Any]] = None,
-        sources: Optional[list] = None,
-        version: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        name: str | None = None,
+        description: str | None = None,
+        query: str | None = None,
+        query_type: str | None = None,
+        schema: dict[str, Any] | None = None,
+        sources: list | None = None,
+        version: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """
         Update virtual dataset (partial update supported).
 
@@ -318,7 +318,7 @@ class VirtualizationAPI:
         self._validate_dataset_id(dataset_id)
 
         # Build update data (only include provided fields)
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if name is not None:
             if not name.strip():
@@ -361,11 +361,11 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     async def delete_dataset(self, dataset_id: str) -> None:
@@ -396,11 +396,11 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     # Query Execution Methods
@@ -408,12 +408,12 @@ class VirtualizationAPI:
     async def execute_query(
         self,
         dataset_id: str,
-        query: Optional[str] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-        execution_mode: Optional[str] = None,
+        query: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        execution_mode: str | None = None,
         force_async: bool = False,
-        timeout_seconds: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        timeout_seconds: int | None = None,
+    ) -> dict[str, Any]:
         """
         Execute a query on a virtual dataset.
 
@@ -449,7 +449,7 @@ class VirtualizationAPI:
         self._validate_dataset_id(dataset_id)
 
         # Build request data
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if query is not None:
             if not query.strip():
@@ -490,20 +490,20 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     async def list_query_executions(
         self,
-        dataset_id: Optional[str] = None,
-        status: Optional[str] = None,
+        dataset_id: str | None = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List query executions with optional filtering and pagination.
 
@@ -533,7 +533,7 @@ class VirtualizationAPI:
                 raise ValidationError(f"status must be one of {valid_statuses}, got: {status}")
 
         # Build query parameters
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -554,10 +554,10 @@ class VirtualizationAPI:
             if isinstance(e, DataHubError) and e.http_status == 400:
                 raise ValidationError(
                     str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                )
+                ) from None
             raise
 
-    async def get_query_execution(self, execution_id: str) -> Dict[str, Any]:
+    async def get_query_execution(self, execution_id: str) -> dict[str, Any]:
         """
         Get query execution by ID.
 
@@ -604,14 +604,14 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Query execution with ID '{execution_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
-    async def cancel_query_execution(self, execution_id: str) -> Dict[str, Any]:
+    async def cancel_query_execution(self, execution_id: str) -> dict[str, Any]:
         """
         Cancel a running or pending query execution.
 
@@ -648,23 +648,23 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Query execution with ID '{execution_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     # Execution cannot be cancelled (already completed, failed, etc.)
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     async def get_query_result(
         self,
         execution_id: str,
         format: str = "json",
-        page: Optional[int] = None,
-        page_size: Optional[int] = None,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        page: int | None = None,
+        page_size: int | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
         """
         Get query execution result in specified format.
 
@@ -747,7 +747,7 @@ class VirtualizationAPI:
             raise ValidationError("limit must be between 1 and 1000")
 
         # Build query parameters
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "output_format": format_lower,  # Use output_format to avoid DRF content negotiation conflict
         }
 
@@ -828,12 +828,12 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Query execution with ID '{execution_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     # Execution not completed or other validation error
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
             raise
 
     # Topology Methods
@@ -841,7 +841,7 @@ class VirtualizationAPI:
     async def get_topology(
         self,
         include_health_metrics: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get complete virtualization topology including all virtual datasets, relationships, and health metrics.
 
@@ -859,7 +859,7 @@ class VirtualizationAPI:
             ValidationError: If request is invalid
             ServerError: If server error occurs
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "include_health_metrics": str(include_health_metrics).lower(),
         }
 
@@ -875,7 +875,7 @@ class VirtualizationAPI:
                 if e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
                 elif e.http_status >= 500:
                     error_code = getattr(e, "code", None)
                     if not isinstance(error_code, str):
@@ -885,13 +885,13 @@ class VirtualizationAPI:
                         code=error_code,
                         http_status=e.http_status,
                         request_id=getattr(e, "request_id", None),
-                    )
+                    ) from None
             raise
 
     async def get_dataset_topology(
         self,
         dataset_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get topology view for a specific virtual dataset including its relationships and health metrics.
 
@@ -926,11 +926,11 @@ class VirtualizationAPI:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
                         getattr(e, "request_id", None),
-                    )
+                    ) from None
                 elif e.http_status == 400:
                     raise ValidationError(
                         str(e), getattr(e, "request_id", None), getattr(e, "details", None)
-                    )
+                    ) from None
                 elif e.http_status >= 500:
                     error_code = getattr(e, "code", None)
                     if not isinstance(error_code, str):
@@ -940,5 +940,5 @@ class VirtualizationAPI:
                         code=error_code,
                         http_status=e.http_status,
                         request_id=getattr(e, "request_id", None),
-                    )
+                    ) from None
             raise

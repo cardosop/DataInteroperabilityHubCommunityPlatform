@@ -1,0 +1,353 @@
+groups:
+  - name: lineage_alerts
+    interval: 30s
+    rules:
+      # =====================================================================
+      # Phase 228 (REQ-LIN-007 / 228.0.5 / 228.0.20 / 228.0.21 DoD.5)
+      # =====================================================================
+      # The lineage feature relies on three load-bearing signals — read
+      # latency, edge-write rate, and the SCD Type 2 invariant. These
+      # alerts wire those signals to the on-call rotation so a regression
+      # in any of them surfaces before customer impact.
+      #
+      # Routing convention: ``severity`` ∈ {info, warning, critical} +
+      # ``component=lineage`` for alertmanager grouping. Same shape as
+      # the existing ODCS / ODPS / Mesh alert files in this directory so
+      # the alertmanager dispatch rules don't need a new branch.
+      # ---------------------------------------------------------------------
+
+      # ---- Read-side latency ----------------------------------------------
+      # The dashboard panel "p50 / p95 / p99 latency" (228.0.20 panel 2)
+      # tracks this. Alert when the p99 of full-lineage reads exceeds
+      # 1 s sustained over 5 minutes — that's the budget for the Lineage
+      # tab on the contract detail page (above 1 s users abandon).
+      - alert: LineageQueryHighP99Latency
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le, detail) (rate(lineage_query_duration_seconds_bucket{detail="full"}[5m]))
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: lineage
+        annotations:
+          summary: "Lineage full-read p99 > 1s (detail={{ $labels.detail }})"
+          description: |
+            Lineage full-read latency p99 is {{ $value | humanizeDuration }}
+            for detail={{ $labels.detail }}. The budget is 1s; sustained
+            breach indicates a read-path regression (relational index
+            fragmentation, JSON-fallback path stuck on, or an N+1 in the
+            visualization renderer). Runbook:
+            docs/runbooks/lineage-edge-sync-drift.md.
+          runbook: "docs/runbooks/lineage-edge-sync-drift.md"
+
+      # ---- Edge-write rate (regression detector) --------------------------
+      # The signal handler emits ``lineage_edge_writes_total{operation}``
+      # on every contract save. A sustained ``operation=remove`` rate
+      # spike (>5x the rolling 1h baseline) usually indicates a runaway
+      # contract-rewrite job; ``operation=add`` should be roughly
+      # symmetric with ``remove`` over time, so an asymmetry > 20% over
+      # 30m flags a stuck close-without-reopen state.
+      - alert: LineageEdgeRemoveRateSpike
+        expr: |
+          (
+            sum(rate(lineage_edge_writes_total{operation="remove"}[5m]))
+            /
+            clamp_min(sum(rate(lineage_edge_writes_total{operation="remove"}[1h])), 0.001)
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: lineage
+        annotations:
+          summary: "Lineage edge-remove rate spiked > 5x baseline"
+          description: |
+            Edge-remove rate is {{ $value | humanize }}× the 1h baseline.
+            Likely cause: a runaway contract-rewrite job is closing edges
+            faster than they're reopening. Investigate via:
+            ``rate(lineage_edge_writes_total[5m]) by (operation, tenant_id)``.
+            Runbook: docs/runbooks/lineage-edge-sync-drift.md.
+          runbook: "docs/runbooks/lineage-edge-sync-drift.md"
+
+      # ---- SCD Type 2 invariant — sync handler crashed silently ----------
+      # If the signal handler is failing, ``add`` rate drops to zero
+      # while contract-save rate stays normal. The handler's structured
+      # log emits ``lineage_sync_handler_failed`` on raise but Prometheus
+      # doesn't tail logs — so we detect the symptom: zero adds for 30m
+      # while contracts are being saved.
+      - alert: LineageSyncHandlerSilent
+        expr: |
+          (
+            sum(rate(lineage_edge_writes_total[10m])) == 0
+          ) and (
+            sum(rate(http_requests_total{route=~"/api/v1/contracts/.*", method="POST"}[10m])) > 0
+          )
+        for: 30m
+        labels:
+          severity: critical
+          component: lineage
+        annotations:
+          summary: "Lineage sync handler appears silent (no edge writes despite contract POSTs)"
+          description: |
+            Zero ``lineage_edge_writes_total`` writes in 10 minutes while
+            contracts are being POSTed. The post_save signal handler may
+            have crashed silently or the on_commit hook is suppressed
+            (e.g., a long-running test transaction holding the connection).
+            Page the data-platform on-call. Runbook:
+            docs/runbooks/lineage-edge-sync-drift.md §"Cause 1 — Signal
+            handler raised silently mid-batch".
+          runbook: "docs/runbooks/lineage-edge-sync-drift.md"
+
+      # ---- Cross-tenant access burst — possible enumeration ---------------
+      # Phase 228 F1 ships cross-tenant lineage browse with the audit
+      # trail (LINEAGE_VIEWED_CROSS_TENANT). A sustained spike in cross-
+      # tenant reads from one consumer indicates either an enthusiastic
+      # marketplace browser (legitimate) or an enumeration attack
+      # (malicious). The alert is INFO so it doesn't page; it lands in
+      # the security channel for investigation.
+      - alert: LineageCrossTenantAccessBurst
+        expr: |
+          sum(rate(lineage_query_total{cross_tenant="true"}[5m])) > 10
+        for: 10m
+        labels:
+          severity: info
+          component: lineage
+          team: security
+        annotations:
+          summary: "Cross-tenant lineage access > 10/s sustained"
+          description: |
+            Cross-tenant lineage reads are sustained above 10/s for 10
+            minutes ({{ $value }}/s). Cross-reference the
+            ``LINEAGE_VIEWED_CROSS_TENANT`` audit log to identify the
+            consumer tenant; rate-limit if the consumer is enumerating
+            without an active Entitlement.
+
+      # ---- Backfill drift detector ----------------------------------------
+      # The ``backfill_lineage_edges --dry-run`` post-run verification
+      # reports DRIFT (>0.1%) when open-edge count diverges from the
+      # JSON-lineage-entry count. The verification step is run nightly
+      # by the operator (see docs/runbooks/lineage-edge-sync-drift.md);
+      # the alert below is the safety net for when the operator misses
+      # the cron output.
+      #
+      # We instrument the drift via a lightweight gauge ``lineage_drift_pct``
+      # that the nightly cron emits via the pushgateway — until that
+      # exporter ships, the alert is dormant (no gauge → no firing).
+      - alert: LineageEdgeBackfillDrift
+        expr: |
+          lineage_drift_pct > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: lineage
+        annotations:
+          summary: "Lineage edge drift > 1% (json vs LineageEdge)"
+          description: |
+            Open-edge count diverges from JSON-lineage-entry count by
+            {{ $value | humanize }}%. Re-run backfill:
+            ``python manage.py backfill_lineage_edges
+            --resume-key=drift-correction-$(date +%F)``.
+            Runbook: docs/runbooks/lineage-edge-sync-drift.md.
+          runbook: "docs/runbooks/lineage-edge-sync-drift.md"
+
+      # =====================================================================
+      # Phase 228 F5 (REQ-LIN-F5-001 / 228.F5.DoD.5) — point-in-time
+      # snapshots surface. These alerts gate the F5 7-day soak: any of
+      # them firing during the soak window resets the clock per
+      # docs/runbooks/lineage-snapshots-dod-evidence.md §"DoD.5".
+      # ---------------------------------------------------------------------
+
+      # ---- F5 visualization endpoint 5xx rate ------------------------------
+      # The point-in-time visualization endpoint shares the same view
+      # function as the live one, so a 5xx spike on the as_of/version
+      # branch surfaces in the same per-route HTTP histogram. We alert
+      # on the AGGREGATE because the as_of/version branch is a small
+      # sub-fraction of total visualization traffic — a per-branch
+      # threshold would be too noisy.
+      - alert: LineageVisualizationHigh5xx
+        expr: |
+          (
+            sum(rate(http_requests_total{route=~".*/contracts/.*/lineage/visualization/.*",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{route=~".*/contracts/.*/lineage/visualization/.*"}[5m])), 0.0001)
+          ) > 0.001
+        for: 10m
+        labels:
+          severity: warning
+          component: lineage
+          phase: "228.F5"
+        annotations:
+          summary: "Lineage visualization 5xx rate > 0.1% (DoD.5 stop-condition)"
+          description: |
+            HTTP 5xx rate on the lineage visualization endpoint is
+            {{ $value | humanizePercentage }} sustained for 10 minutes.
+            DoD.5 stop-condition: any 5xx > 0.1% during the F5 soak
+            window invalidates the soak. Runbook:
+            docs/runbooks/lineage-snapshots-dod-evidence.md §"DoD.5".
+
+      # ---- F5 diff endpoint 5xx rate ---------------------------------------
+      - alert: LineageDiffEndpointHigh5xx
+        expr: |
+          (
+            sum(rate(http_requests_total{route=~".*/contracts/.*/lineage/diff/.*",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{route=~".*/contracts/.*/lineage/diff/.*"}[5m])), 0.0001)
+          ) > 0.001
+        for: 10m
+        labels:
+          severity: warning
+          component: lineage
+          phase: "228.F5"
+        annotations:
+          summary: "Lineage diff endpoint 5xx rate > 0.1% (DoD.5 stop-condition)"
+          description: |
+            HTTP 5xx rate on /lineage/diff/ is
+            {{ $value | humanizePercentage }} sustained for 10 minutes.
+            Same stop-condition as visualization. Runbook:
+            docs/runbooks/lineage-snapshots-dod-evidence.md §"DoD.5".
+
+      # ---- F5 traffic absent during soak -----------------------------------
+      # If the flag is ON but nobody is using the feature, the soak
+      # is meaningless. This alert paints "F5 cohort traffic is
+      # zero" so the oncall can confirm the canary is actually
+      # exercising the surface.
+      - alert: LineageSnapshotsTrafficAbsent
+        expr: |
+          sum(rate(lineage_time_travel_queries_total[1h])) == 0
+        for: 24h
+        labels:
+          severity: info
+          component: lineage
+          phase: "228.F5"
+        annotations:
+          summary: "F5 point-in-time queries == 0 for 24h (soak invalid)"
+          description: |
+            ``lineage_time_travel_queries_total`` rate has been zero
+            for 24 hours. Either the canary cohort isn't exercising
+            the feature OR the capability flag is OFF. Confirm via:
+            ``kubectl exec -n hub-staging deploy/api -- python
+            manage.py f5_soak_status --soak-start-file=/data/dod5-start.txt``
+
+      # =====================================================================
+      # Phase 228 X (REQ-LIN-X-007 / 228.X.7) — four spec-named alerts.
+      # Spec names take precedence; existing alerts above remain as
+      # finer-grained companions.
+      # ---------------------------------------------------------------------
+
+      # ---- 228.X.7.1 LineageQueryHighLatency ------------------------------
+      # Spec-named alias of LineageQueryHighP99Latency above. We ship
+      # the spec-named alert separately so synthetic-firing tests can
+      # match by exact name without coupling to the older naming.
+      - alert: LineageQueryHighLatency
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le, detail) (rate(lineage_query_duration_seconds_bucket[5m]))
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: lineage
+          phase: "228.X"
+        annotations:
+          summary: "Lineage query p99 latency > 1s sustained 5m (REQ-LIN-X-007)"
+          description: |
+            Spec-named alert. Aggregate p99 across all detail tiers
+            exceeded 1s for 5m. Companion: LineageQueryHighP99Latency
+            scoped to detail="full". Runbook:
+            docs/runbooks/lineage-edge-sync-drift.md.
+
+      # ---- 228.X.7.2 LineageEdgeSyncDrift ---------------------------------
+      # Spec-named alias of LineageEdgeBackfillDrift; pages on the same
+      # JSON-vs-LineageEdge divergence.
+      - alert: LineageEdgeSyncDrift
+        expr: |
+          (
+            abs(
+              sum(lineage_edge_writes_total{operation="add"})
+              - sum(lineage_edge_writes_total{operation="remove"})
+              - on() group_left() sum(lineage_jsonb_entries_total)
+            )
+            / clamp_min(sum(lineage_jsonb_entries_total), 1)
+          ) > 0.01
+        for: 30m
+        labels:
+          severity: warning
+          component: lineage
+          phase: "228.X"
+        annotations:
+          summary: "Lineage edge sync drift > 1% (REQ-LIN-X-007)"
+          description: |
+            JSONB-source-of-truth and LineageEdge index drifted >1%
+            for 30m. Re-run backfill:
+            ``python manage.py backfill_lineage_edges
+            --resume-key=drift-correction-$(date +%F)``.
+            Runbook: docs/runbooks/lineage-edge-sync-drift.md.
+
+      # ---- 228.X.7.3 OpenLineageDLQGrowing --------------------------------
+      # The openlineage_dlq_depth gauge (Phase 228 F4) emits per-sweep.
+      # Page when the pending count grows for 1h.
+      - alert: OpenLineageDLQGrowing
+        expr: |
+          increase(openlineage_dlq_depth{permanently_failed="false"}[1h]) > 0
+          and openlineage_dlq_depth{permanently_failed="false"} > 50
+        for: 1h
+        labels:
+          severity: warning
+          component: openlineage
+          phase: "228.X"
+        annotations:
+          summary: "OpenLineage DLQ depth growing for 1h (REQ-LIN-X-007)"
+          description: |
+            ``openlineage_dlq_depth{permanently_failed="false"}`` is
+            growing AND exceeds 50 pending rows. Replay:
+            ``python manage.py replay_openlineage_dlq --max=500``.
+            Runbook: docs/runbooks/openlineage-dlq-replay.md.
+
+      # ---- 228.X.7.4 LineageNotificationFailureRate -----------------------
+      # Phase 228 F3 (lineage notifications) emits
+      # ``lineage_notification_dispatch_total{result}``. Page on
+      # error-rate > 5% sustained 15m.
+      - alert: LineageNotificationFailureRate
+        expr: |
+          (
+            sum(rate(lineage_notification_dispatch_total{result="failed"}[5m]))
+            /
+            clamp_min(sum(rate(lineage_notification_dispatch_total[5m])), 0.0001)
+          ) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+          component: lineage
+          phase: "228.X"
+        annotations:
+          summary: "Lineage notification failure rate > 5% (REQ-LIN-X-007)"
+          description: |
+            Lineage-impact notification dispatcher is dropping >5%
+            of attempts for 15m. Inspect the dispatcher logs +
+            confirm Redis / SES are healthy. Runbook:
+            docs/runbooks/lineage-notification-storm.md.
+
+      # ---- Lineage edge archive growth -------------------------------------
+      # Tied to REQ-LIN-F5-005 / 228.F5.8: the 1.5x invariant. If the
+      # invariant trips outside the quarterly check, page on-call.
+      - alert: LineageEdgeRowGrowthInvariantBreached
+        expr: |
+          (
+            (sum(lineage_edge_writes_total{operation="add"})
+             - sum(lineage_edge_writes_total{operation="remove"}))
+            / clamp_min(sum(lineage_edge_writes_total{operation="add"}), 1)
+          ) > 1.5
+        for: 1h
+        labels:
+          severity: warning
+          component: lineage
+          phase: "228.F5"
+        annotations:
+          summary: "LineageEdge growth factor > 1.5x (REQ-LIN-F5-005)"
+          description: |
+            Hot-tier row count exceeded 1.5× the open-edge state.
+            Run ``python manage.py archive_lineage_edges --before=<12mo-ago>``
+            to compress. Runbook:
+            docs/runbooks/lineage-archive-job-failure.md.

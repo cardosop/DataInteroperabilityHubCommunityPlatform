@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+from django.template import TemplateDoesNotExist, TemplateSyntaxError
 from django.template.loader import render_to_string
 
 # Optional import for HTML to text conversion
@@ -48,7 +50,7 @@ def render_email_template(
         try:
             render_to_string(candidate, ctx)
             text_template_name = candidate
-        except Exception:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured):
             pass  # .txt counterpart doesn't exist — fall through
 
     if text_template_name:

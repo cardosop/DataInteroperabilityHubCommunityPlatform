@@ -36,8 +36,11 @@ import ast
 import re
 import sys
 import tokenize
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

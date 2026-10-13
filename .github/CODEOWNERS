@@ -20,7 +20,6 @@ hub/apps/files/          @meshant/data-platform-eng @meshant/asset-creation-eng
 
 # Contracts & lineage
 hub/apps/contracts/      @meshant/data-platform-eng @meshant/contracts-eng
-hub/apps/lineage/        @meshant/data-platform-eng @meshant/contracts-eng
 
 # Marketplace & billing
 hub/apps/marketplace/    @meshant/data-platform-eng @meshant/billing-eng
@@ -50,6 +49,7 @@ hub/apps/integrations/   @meshant/data-platform-eng @meshant/integrations-eng
 
 # Warehouse connectivity
 hub/apps/warehouses/     @meshant/data-platform-eng @meshant/warehouse-eng
+hub/apps/databricks_admin/  @meshant/data-platform-eng @meshant/warehouse-eng
 
 # Auth & users
 hub/apps/auth/           @meshant/data-platform-eng @meshant/auth-eng
@@ -96,8 +96,13 @@ hub/apps/core/           @meshant/data-platform-eng @meshant/orchestration-eng
 cli/                     @meshant/data-platform-eng @meshant/dev-tooling-eng
 
 # ── SDKs ─────────────────────────────────────────────────────────────
+# W18 (Phase T.6): sdk/python/ is the real Python SDK tree (the old
+# sdk/py/ rule matched nothing — no codeowner, no required reviewer).
+# sdk/typescript/ is the canonical TS SDK tree; sdk/js/ is kept owned
+# while the release pipeline still publishes from it.
+sdk/python/              @meshant/data-platform-eng @meshant/dev-tooling-eng
 sdk/js/                  @meshant/data-platform-eng @meshant/dev-tooling-eng
-sdk/py/                  @meshant/data-platform-eng @meshant/dev-tooling-eng
+sdk/typescript/          @meshant/data-platform-eng @meshant/dev-tooling-eng
 
 # ── Frontend ─────────────────────────────────────────────────────────
 frontend/src/            @meshant/data-platform-eng @meshant/frontend-eng
@@ -131,3 +136,18 @@ scripts/                 @meshant/data-platform-eng @meshant/infra-eng
 # ── Security ─────────────────────────────────────────────────────────
 SECURITY.md              @meshant/data-platform-eng @meshant/compliance-eng
 INCIDENT_RESPONSE.md     @meshant/data-platform-eng @meshant/compliance-eng
+
+# ── Shared contract surfaces (Phase 3.4, 2026-08-21) ─────────────────
+# A change to ANY of these breaks the paid layer or the public tree —
+# review is mandatory, never optional. Last-order-wins: these rules
+# override the broad scripts/ rule above for the pinned files.
+hub/apps/core/commercial_hooks.py                     @meshant/data-platform-eng @meshant/infra-eng
+tests/unit/test_commercial_hooks_api_contract.py      @meshant/data-platform-eng @meshant/infra-eng
+hub/apps/api/capabilities.py                          @meshant/data-platform-eng @meshant/infra-eng
+hub/apps/api/tests/test_capabilities.py               @meshant/data-platform-eng @meshant/infra-eng
+hub/apps/contracts/services/contract_service.py       @meshant/data-platform-eng @meshant/contracts-eng
+frontend/src/app/routes/paidRouteGating.ts            @meshant/data-platform-eng @meshant/infra-eng
+frontend/src/app/routes/paidRouteDrift.test.tsx       @meshant/data-platform-eng @meshant/infra-eng
+scripts/check_core_boundary.py                        @meshant/data-platform-eng @meshant/infra-eng
+scripts/core_boundary_allowlist.txt                   @meshant/data-platform-eng @meshant/infra-eng
+scripts/core_guard_exceptions.txt                     @meshant/data-platform-eng @meshant/infra-eng

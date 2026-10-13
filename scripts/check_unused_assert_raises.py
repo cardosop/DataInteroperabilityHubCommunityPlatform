@@ -53,9 +53,11 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
 def _enclosing_function(tree: ast.AST, lineno: int) -> ast.AST | None:
     """Find the function/method node that contains *lineno*."""
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.lineno <= lineno <= node.end_lineno:
-                return node
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.lineno <= lineno <= node.end_lineno
+        ):
+            return node
     return None
 
 
@@ -90,10 +92,7 @@ def _var_used_outside_with(
 
 def _node_inside(node: ast.AST, container: ast.AST) -> bool:
     """Return True if *node* is somewhere inside *container*'s AST subtree."""
-    for child in ast.walk(container):
-        if child is node:
-            return True
-    return False
+    return any(child is node for child in ast.walk(container))
 
 
 def _node_inside_with_body(node: ast.AST, with_node: ast.With) -> bool:
@@ -129,10 +128,7 @@ def _var_used_in_enclosing_function(
 
 def _is_optional_vars_target(node: ast.Name, with_node: ast.With) -> bool:
     """Return True if *node* is the ``as cm`` target in the with statement."""
-    for item in with_node.items:
-        if item.optional_vars is node:
-            return True
-    return False
+    return any(item.optional_vars is node for item in with_node.items)
 
 
 class ViolationFinder(ast.NodeVisitor):

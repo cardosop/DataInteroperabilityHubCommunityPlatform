@@ -9,6 +9,7 @@ Classification:
 
 import json
 import re
+import tempfile
 from pathlib import Path
 
 # Patterns to find mocks/stubs
@@ -68,7 +69,7 @@ def find_mock_usage(file_path: Path) -> list[dict]:
     """Find all mock/stub usage in a file."""
     try:
         content = file_path.read_text(encoding="utf-8")
-    except Exception as e:
+    except (OSError, ValueError) as e:
         return [{"error": str(e)}]
 
     results = []
@@ -94,7 +95,7 @@ def find_mock_usage(file_path: Path) -> list[dict]:
     return results
 
 
-def classify_mock(line: str, full_content: str, line_num: int) -> str:
+def classify_mock(_line: str, full_content: str, line_num: int) -> str:
     """Classify a mock as external boundary or internal."""
     # Get context around the line
     start = max(0, line_num - 10)
@@ -190,8 +191,12 @@ def main():
         print(f"  Unknown (needs review): {len(results['unknown_needs_review'])}")
         print(f"  Errors: {len(results['errors'])}")
 
-    # Save detailed results
-    output_file = project_root / "mock_audit_results.json"
+    # Save detailed results. W0.10 (oss-release-remediation): the default
+    # target is the system TEMP dir, never the repo root — a diagnostic
+    # run must not litter the tree with an untracked 7k-line artifact
+    # (the G8 DO-NOT-COMMIT class). The printed path tells the operator
+    # where the results landed.
+    output_file = Path(tempfile.gettempdir()) / "mock_audit_results.json"
     with open(output_file, "w") as f:
         json.dump(all_results, f, indent=2)
 

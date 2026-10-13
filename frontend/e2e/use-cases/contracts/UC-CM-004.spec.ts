@@ -22,7 +22,7 @@ test.describe('UC-CM-004: Manage Activity Feed @critical', () => {
       await loginAndNavigateToRoute(page, user, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -33,14 +33,14 @@ test.describe('UC-CM-004: Manage Activity Feed @critical', () => {
       const url = page.url();
       if (url.includes('/403') || url.includes('/unavailable')) {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 10000 });
         return;
       }
 
-      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       if (isCapabilityGated) {
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -84,7 +84,7 @@ test.describe('UC-CM-004: Manage Activity Feed @critical', () => {
       await loginAndNavigateToRoute(page, user, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -95,14 +95,14 @@ test.describe('UC-CM-004: Manage Activity Feed @critical', () => {
       const url = page.url();
       if (url.includes('/403') || url.includes('/unavailable')) {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 10000 });
         return;
       }
 
-      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       if (isCapabilityGated) {
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 

@@ -27,7 +27,9 @@ class ApiConfig(AppConfig):
         # Register deploy-only system checks. Importing the module triggers
         # @register() side-effects. Checks are gated with deploy=True so they
         # only fire on `manage.py check --deploy`, not during migrate/collectstatic.
-        from hub.apps.api import checks  # noqa: F401
+        from hub.apps.api import (
+            checks,
+        )
 
         # Only validate in non-migration contexts
         if self._should_validate():
@@ -74,7 +76,4 @@ class ApiConfig(AppConfig):
         from hub.apps.core.utils.test_mode import should_skip_initialization
 
         # Skip during tests, migrations, and other management commands
-        if should_skip_initialization():
-            return False
-
-        return True
+        return not should_skip_initialization()

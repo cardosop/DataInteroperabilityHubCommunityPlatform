@@ -14,10 +14,12 @@ Follows engineering best practices:
 - Follows DRY, SOLID, and clean code principles
 """
 
+import importlib
 import json
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -38,12 +40,28 @@ from hub.apps.orchestration.workflows import (
     DataMeshWorkflow,
     DataQualityCheckWorkflow,
     DatasetCreationWorkflow,
-    MarketplacePublicationWorkflow,
-    ProductCreationWorkflow,
     ScheduledIngestionWorkflow,
     VersionCreationWorkflow,
     VirtualizationWorkflow,
 )
+
+# Phase 313.1 — paid workflows (marketplace_publication, product_creation)
+# moved out of core orchestration.workflows into their owning app. Import
+# them dynamically so core-only test runs degrade to a skip instead of a
+# collection crash (same 313.H.3 pattern as the marketplace security tests).
+try:
+    MarketplacePublicationWorkflow = importlib.import_module(
+        "hub.apps.marketplace.workflows.marketplace_publication"
+    ).MarketplacePublicationWorkflow
+except (RuntimeError, ModuleNotFoundError):
+    MarketplacePublicationWorkflow = None
+
+try:
+    ProductCreationWorkflow = importlib.import_module(
+        "hub.apps.marketplace.workflows.product_creation"
+    ).ProductCreationWorkflow
+except (RuntimeError, ModuleNotFoundError):
+    ProductCreationWorkflow = None
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
 from hub.apps.users.models import UserStatus
@@ -102,11 +120,14 @@ class FunctionalityVerificationTest(TestCase):
             AssetCreationWorkflow,
             DatasetCreationWorkflow,
             VersionCreationWorkflow,
-            MarketplacePublicationWorkflow,
-            ProductCreationWorkflow,
             DataMeshWorkflow,
             VirtualizationWorkflow,
         ]
+        # Paid workflows are registered only when the marketplace app is
+        # present (full mode); core-only runs skip them.
+        for paid_workflow in (MarketplacePublicationWorkflow, ProductCreationWorkflow):
+            if paid_workflow is not None:
+                workflow_classes.append(paid_workflow)
 
         for workflow_class in workflow_classes:
             if hasattr(workflow_class, "register_tasks"):
@@ -177,6 +198,8 @@ class FunctionalityVerificationTest(TestCase):
 
     def test_marketplace_publication_workflow(self):
         """MarketplacePublicationWorkflow must be importable."""
+        if MarketplacePublicationWorkflow is None:
+            pytest.skip("marketplace is paid-layer — absent from core-only runs")  # noqa: skip-in-body
         self.assertTrue(
             hasattr(MarketplacePublicationWorkflow, "register_tasks")
             or hasattr(MarketplacePublicationWorkflow, "WORKFLOW_NAME"),
@@ -184,6 +207,8 @@ class FunctionalityVerificationTest(TestCase):
 
     def test_product_creation_workflow(self):
         """ProductCreationWorkflow must be importable."""
+        if ProductCreationWorkflow is None:
+            pytest.skip("marketplace is paid-layer — absent from core-only runs")  # noqa: skip-in-body
         self.assertTrue(
             hasattr(ProductCreationWorkflow, "register_tasks")
             or hasattr(ProductCreationWorkflow, "WORKFLOW_NAME"),
@@ -370,7 +395,6 @@ class FunctionalityVerificationTest(TestCase):
         # Test metrics endpoint - may return 503 if OpenTelemetry not initialized
         response = self.client.get("/metrics/")
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,

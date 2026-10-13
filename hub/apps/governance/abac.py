@@ -277,23 +277,17 @@ class ABACEngine:
                 attributes["file_name"] = "new_file"
                 attributes["file_status"] = "PENDING"
         elif resource_type == "ML_MODEL":
-            from hub.apps.ml.models import MLModel
+            # ML-model attributes resolve through the commercial hook
+            # (the paid ml app registers the provider); core-only mode
+            # has no provider → no enrichment.
+            from hub.apps.core.commercial_hooks import get_ml_model_attributes
 
-            try:
-                ml_model = MLModel.objects.get(
-                    id=resource_id,
-                    tenant_id=tenant_id,
-                )
-                attributes["ml_model_name"] = ml_model.odh_model_name
-                attributes["ml_model_type"] = ml_model.model_type
-                attributes["ml_model_status"] = ml_model.status
-                attributes["ml_model_version"] = ml_model.odh_model_version
-                if ml_model.asset_id:
-                    attributes["ml_model_asset_id"] = str(
-                        ml_model.asset_id,
-                    )
-            except MLModel.DoesNotExist:
-                pass
+            ml_attributes = get_ml_model_attributes(
+                resource_id=resource_id,
+                tenant_id=tenant_id,
+            )
+            if ml_attributes:
+                attributes.update(ml_attributes)
 
         return attributes
 
@@ -340,7 +334,9 @@ class ABACEngine:
         if cached is not None:
             # Return cached policy IDs, then fetch policies
             policy_ids = cached
-            policies = list(AccessPolicy.objects.filter(id__in=policy_ids).order_by("priority", "created_at"))
+            policies = list(
+                AccessPolicy.objects.filter(id__in=policy_ids).order_by("priority", "created_at")
+            )
         else:
             # Build query
             from django.db.models import Q
@@ -371,7 +367,9 @@ class ABACEngine:
                 )
 
             # Use select_related/prefetch_related to optimize query
-            policies = list(queryset.select_related("tenant", "created_by").order_by("priority", "created_at"))
+            policies = list(
+                queryset.select_related("tenant", "created_by").order_by("priority", "created_at")
+            )
 
             # Cache policy IDs with TTL (handle cache failures gracefully)
             try:

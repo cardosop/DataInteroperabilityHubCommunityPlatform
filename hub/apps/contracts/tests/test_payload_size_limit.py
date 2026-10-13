@@ -56,7 +56,7 @@ _MIB = 1024 * 1024
 # Phase 227 L8.3 fix: the production cap ``PAYLOAD_LIMIT_BYTES``
 # uses **decimal megabytes** (2,000,000 bytes), not binary mebibytes
 # (2,097,152 bytes). The original boundary tests multiplied by
-# ``_MIB`` which produced 1.99 × 1,048,576 ≈ 2,086,666 bytes — that
+# ``_MIB`` which produced 1.99 x 1,048,576 ≈ 2,086,666 bytes — that
 # exceeds the 2,000,000-byte cap and the "just under" test fired
 # the 413 path (false negative). Use a separate decimal constant
 # for cap-boundary tests.

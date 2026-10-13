@@ -2,8 +2,8 @@
 Pytest configuration and fixtures for CLI tests.
 """
 
-import os
-from unittest.mock import patch
+from contextlib import ExitStack
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,8 +12,8 @@ import pytest
 # is defined in tests/fixtures/cleanup_registry.py but pytest only
 # auto-discovers fixtures declared in conftest.py modules, so we
 # re-export it here. (F401 is intentional: the import IS the wiring.)
-from tests.fixtures.cleanup_registry import (  # noqa: F401
-    cleanup_registry,
+from tests.fixtures.cleanup_registry import (
+    cleanup_registry,  # noqa: F401  # re-export: pytest only discovers fixtures in conftest.py
     drain_persona_teardown_callbacks,
 )
 
@@ -40,36 +40,30 @@ def pytest_sessionfinish(session, exitstatus):
             )
 
 
-# ── Optional Django bootstrap ──────────────────────────────────────────────
-# The CLI test suite is designed to run standalone (without Django), but some
-# test files import Django models to verify cross-package contracts.  When
-# Django *is* available in the environment we configure it early so those
-# tests don't have to set up settings themselves.
-#
-# We distinguish three outcomes:
-#  1. Django not installed          → skip silently (standalone CLI mode)
-#  2. Django installed + config OK  → proceed with Django available
-#  3. Django installed + config bad → surface the error (it's a real bug)
-try:
-    import django
-except ImportError:
-    django = None  # type: ignore[assignment]
+# ── Django bootstrap ───────────────────────────────────────────────────────
+# Deliberately NOT done here.  Importing ``hub.settings`` opens a real
+# PostgreSQL connection, so bootstrapping Django for every CLI session made
+# the pure-mock unit batches and the meta/guard batch unrunnable on any host
+# without a database.  Only ``integration/``, ``e2e/`` and ``use_cases/``
+# need Django; each of those directories' conftest calls
+# ``tests._django_bootstrap.ensure_django()``, which pytest imports only when
+# it actually collects from that directory.
 
-if django is not None:
-    # Only configure if not already configured (e.g. by pytest-django)
-    from django.conf import settings
 
-    if not settings.configured:
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
-        try:
-            django.setup()
-        except RuntimeError as exc:
-            # Django raises RuntimeError when setup() is called a second
-            # time (e.g. pytest-django already called it).  That is safe.
-            # Any *other* exception during setup is a real configuration
-            # error and MUST propagate.
-            if "populate()" not in str(exc):
-                raise
+@pytest.fixture
+def runner():
+    """Click ``CliRunner`` for invoking the CLI in-process.
+
+    Twelve modules under ``tests/unit/`` request a ``runner`` fixture that
+    was never defined anywhere — no ``tests/unit/conftest.py`` exists and
+    this file did not provide one — so all 115 of their tests errored at
+    setup with ``fixture 'runner' not found`` and had never executed.
+    Modules that declare their own ``runner`` shadow this one, so adding
+    it here is additive.
+    """
+    from click.testing import CliRunner
+
+    return CliRunner()
 
 
 @pytest.fixture
@@ -94,10 +88,36 @@ def mock_config(temp_config_dir):
     return config
 
 
+# Transport methods on ``APIClient`` that a test may need to intercept.
+_API_CLIENT_METHODS = ("get", "post", "patch", "delete", "get_stream", "request")
+
+
 @pytest.fixture
 def mock_api_client():
-    """Create a mock API client"""
-    with patch("datahub_cli.api_client.api_client") as mock_client:
+    """Mock the shared ``api_client`` singleton.
+
+    All 52 modules under ``datahub_cli/commands/`` do
+    ``from ..api_client import api_client``, binding the *instance* at
+    import time.  Patching only the module attribute
+    (``datahub_cli.api_client.api_client``) therefore rebound a name none
+    of them read, so commands invoked through ``runner.invoke`` fell
+    through to the real client and issued live HTTP requests — tests that
+    "passed" did so against whatever backend happened to answer.
+
+    Patch the transport methods on the singleton itself so both binding
+    styles are intercepted, and keep the module attribute patched for any
+    caller that resolves it lazily.  Both routes share one ``MagicMock``,
+    so ``mock_api_client.get.assert_called_once_with(...)`` sees the call
+    regardless of how the command reached the client.
+    """
+    from datahub_cli import api_client as api_client_module
+
+    real_client = api_client_module.api_client
+    mock_client = MagicMock()
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(api_client_module, "api_client", mock_client))
+        for method in _API_CLIENT_METHODS:
+            stack.enter_context(patch.object(real_client, method, getattr(mock_client, method)))
         yield mock_client
 
 

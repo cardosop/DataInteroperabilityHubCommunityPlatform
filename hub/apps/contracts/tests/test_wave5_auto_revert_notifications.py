@@ -621,7 +621,6 @@ class FinalWarningDriverSafetyTests(TestCase):
     def test_audit_output_writes_jsonl_artefact(self, tmp_path=None):
         """``--audit-output`` writes a per-dispatch JSONL audit trail
         for cross-checking against ``EmailDelivery`` rows."""
-        import tempfile
 
         tenant = _create_tenant("JSONL")
         admin = _create_user("jsonl@example.com", tenant)
@@ -777,9 +776,6 @@ class AssetAutoRevertNotificationTests(TestCase):
         roll back the asset demotion — the demotion is the load-
         bearing operation; notifications are best-effort."""
         from hub.apps.assets.models import AssetStatus
-        from hub.apps.contracts.notifications import (
-            asset_auto_revert_warning,  # noqa: F401 — ensures module loadable
-        )
 
         tenant = _create_tenant("FAIL")
         admin = _create_user("fail@example.com", tenant)

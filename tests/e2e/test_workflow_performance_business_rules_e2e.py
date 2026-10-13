@@ -13,6 +13,7 @@ Run: docker compose exec api-service python -m pytest \
 
 import statistics
 import time
+from typing import ClassVar
 
 import pytest
 
@@ -20,13 +21,13 @@ pytestmark = [pytest.mark.slow, pytest.mark.e2e]
 from django.core.cache import cache
 from django.test import override_settings
 
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
 from hub.apps.orchestration.models import (
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
 )
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 
 
@@ -34,7 +35,7 @@ from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 class TestWorkflowPerformanceBusinessRulesE2E(WorkflowE2ETestBase):
     """E2E performance tests for workflow execution with business rules (6.5)."""
 
-    workflow_classes = [ProductCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ProductCreationWorkflow]
 
     def _create_simple_workflow_definition(self, name: str, num_steps: int = 3):
         dsl_json = {
@@ -112,7 +113,7 @@ class TestWorkflowPerformanceBusinessRulesE2E(WorkflowE2ETestBase):
 
         # Per-step budget: <20 ms covers 4 validation passes at ≤5 ms each.
         # This is generous for Docker/CI noise while still catching regressions
-        # (a 10× slowdown would push per-step to >37 ms).
+        # (a 10x slowdown would push per-step to >37 ms).
         self.assertLess(
             per_step_overhead_ms,
             20.0,

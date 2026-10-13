@@ -3,6 +3,7 @@ Synchronization tests: critical sections, serialization of updates.
 Real DB; no mocks.
 """
 
+import contextlib
 import threading
 
 from django.db import connection, transaction
@@ -49,10 +50,10 @@ class SynchronizationTest(ConcurrencyTestBase):
                 with lock:
                     versions.append(-1)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [
             threading.Thread(target=update_version, args=(1,)),
@@ -79,30 +80,36 @@ class SynchronizationTest(ConcurrencyTestBase):
                 original_spec_type=OriginalSpecType.ODPS,
                 original_spec_version="4.1",
                 status=ContractStatus.ACTIVE,
-                version=1,
+                version=_i + 1,  # unique_contract_version_per_asset: distinct per row
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
             contracts.append(c)
         results: list[bool] = []
         lock = threading.Lock()
 
-        def update_one(contract_id) -> None:
+        def update_one(contract_id, idx) -> None:
             try:
                 connection.ensure_connection()
                 with transaction.atomic():
-                    Contract.objects.filter(id=contract_id, tenant=self.tenant).update(version=2)
+                    # Distinct target versions keep the per-asset unique
+                    # constraint satisfied across the 4 concurrent updates.
+                    Contract.objects.filter(id=contract_id, tenant=self.tenant).update(
+                        version=100 + idx
+                    )
                 with lock:
                     results.append(True)
             except Exception:
                 with lock:
                     results.append(False)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
-        threads = [threading.Thread(target=update_one, args=(c.id,)) for c in contracts]
+        threads = [
+            threading.Thread(target=update_one, args=(c.id, i)) for i, c in enumerate(contracts)
+        ]
         for t in threads:
             t.start()
         for t in threads:

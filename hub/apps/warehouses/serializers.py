@@ -1,5 +1,7 @@
 """Serializers for warehouse connections and ACLs (Phase 275)."""
 
+from typing import ClassVar
+
 from rest_framework import serializers
 
 from .models import WarehouseConnection, WarehouseConnectionACL, WarehouseType
@@ -15,7 +17,7 @@ class WarehouseConnectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WarehouseConnection
-        fields = [
+        fields = (
             "id",
             "tenant",
             "name",
@@ -27,9 +29,9 @@ class WarehouseConnectionSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "tenant", "created_at", "updated_at"]
-        extra_kwargs = {
+        )
+        read_only_fields = ("id", "tenant", "created_at", "updated_at")
+        extra_kwargs: ClassVar[dict] = {
             "config": {"write_only": True},
         }
 
@@ -39,14 +41,14 @@ class WarehouseConnectionCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WarehouseConnection
-        fields = [
+        fields = (
             "name",
             "warehouse_type",
             "config",
             "region",
             "private_endpoint_url",
             "is_active",
-        ]
+        )
 
     def validate_warehouse_type(self, value):
         valid = [c[0] for c in WarehouseType.choices]
@@ -68,5 +70,5 @@ class WarehouseConnectionTestResultSerializer(serializers.Serializer):
 class WarehouseConnectionACLSerializer(serializers.ModelSerializer):
     class Meta:
         model = WarehouseConnectionACL
-        fields = ["id", "tenant", "connection", "user", "role", "created_at"]
-        read_only_fields = ["id", "tenant", "created_at"]
+        fields = ("id", "tenant", "connection", "user", "role", "created_at")
+        read_only_fields = ("id", "tenant", "created_at")

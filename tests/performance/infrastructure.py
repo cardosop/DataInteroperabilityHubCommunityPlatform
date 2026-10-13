@@ -158,7 +158,7 @@ class PerformanceCollector:
         Args:
             filepath: Path to output file
         """
-        metric_names = set(m.name for m in self.metrics)
+        metric_names = {m.name for m in self.metrics}
         baselines = {}
 
         for name in metric_names:

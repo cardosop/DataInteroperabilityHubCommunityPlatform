@@ -7,14 +7,15 @@ Tracking access patterns, anomaly detection, and security event tracking.
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import Count, Q
-from django.db.utils import ProgrammingError
+from django.db.utils import DatabaseError, ProgrammingError
 from django.utils import timezone
 
 logger = structlog.get_logger(__name__)
@@ -157,7 +158,7 @@ class AccessAnalyticsService:
                 # Check for anomalies asynchronously (in production, use background job)
                 AccessAnalyticsService._check_anomalies(access_log)
 
-        except Exception as e:
+        except (DatabaseError, ValueError, ObjectDoesNotExist) as e:
             # Table may not exist in test DB before governance migrations
             if isinstance(e, ProgrammingError) and "does not exist" in str(e):
                 logger.debug(
@@ -219,8 +220,8 @@ class AccessAnalyticsService:
         tenant_id: str | None = None,
         user_id: str | None = None,
         resource_type: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """
         Get access patterns for analysis.
@@ -290,8 +291,8 @@ class AccessAnalyticsService:
     @staticmethod
     def get_anomalies(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """
@@ -347,8 +348,8 @@ class AccessAnalyticsService:
     @staticmethod
     def get_security_events(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """
@@ -405,8 +406,8 @@ class AccessAnalyticsService:
     @staticmethod
     def get_analytics_dashboard(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> dict[str, Any]:
         """
         Get complete access analytics dashboard.

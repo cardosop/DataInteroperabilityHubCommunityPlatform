@@ -9,6 +9,8 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useDebouncedValue } from '../../../shared/hooks/useDebouncedValue';
 import { useDatasets } from '../hooks/useDatasets';
+import { StatusBadge } from '../../../shared/components/StatusBadge';
+import { DatasetStatus } from '../../../shared/types/datasets';
 import './DatasetListPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -16,6 +18,9 @@ export function DatasetListPage() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [assetIdFilter, setAssetIdFilter] = useState('');
+  // Phase 260.4.A.3 — RETIRED datasets are hidden by default; the toggle
+  // opts them back in via ?include_retired=true.
+  const [showRetired, setShowRetired] = useState(false);
   // PR 5.3: debounce the asset-id text filter; input stays controlled by raw state.
   const debouncedAssetId = useDebouncedValue(assetIdFilter, 300);
   const filters = {
@@ -23,6 +28,7 @@ export function DatasetListPage() {
     page_size: 50,
     ordering: '-created_at',
     asset_id: debouncedAssetId.trim() || undefined,
+    include_retired: showRetired || undefined,
   };
   const { data, isLoading, error, refetch } = useDatasets(filters);
   const handleCreateDataset = () => navigate('/datasets/create');
@@ -96,6 +102,9 @@ export function DatasetListPage() {
                   >
                     <td>
                       <strong>{dataset.name}</strong>
+                      {dataset.status === DatasetStatus.RETIRED && (
+                        <StatusBadge status="RETIRED" className="dataset-list-retired-badge" />
+                      )}
                     </td>
                     <td>
                       {assetId ? (
@@ -164,6 +173,18 @@ export function DatasetListPage() {
           className="dataset-list-filter-input"
           aria-label="Filter by Asset ID"
         />
+        <label className="dataset-list-show-retired">
+          <input
+            type="checkbox"
+            data-testid="dataset-list-show-retired-toggle"
+            checked={showRetired}
+            onChange={(e) => {
+              setShowRetired(e.target.checked);
+              setPage(1);
+            }}
+          />
+          Show retired
+        </label>
       </div>
       {mainContent}
     </div>

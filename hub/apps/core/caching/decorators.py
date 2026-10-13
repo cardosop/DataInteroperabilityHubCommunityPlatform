@@ -103,10 +103,7 @@ def cache_result(
                 cache_key = key_generator(func, *args, **kwargs)
             else:
                 base_key = _default_key_generator(func, *args, **kwargs)
-                if key_prefix:
-                    cache_key = generate_cache_key(key_prefix, base_key)
-                else:
-                    cache_key = base_key
+                cache_key = generate_cache_key(key_prefix, base_key) if key_prefix else base_key
 
             # Try to get from cache
             # Use a sentinel to distinguish between "cached None" and "not cached"
@@ -159,10 +156,7 @@ def cache_result(
                 if result is not None or cache_none:
                     try:
                         cache_ttl = ttl or get_cache_ttl(cache_key)
-                        if result is None:
-                            cache_value = {"__cached_none__": True}
-                        else:
-                            cache_value = result
+                        cache_value = {"__cached_none__": True} if result is None else result
                         django_cache.set(cache_key, cache_value, timeout=cache_ttl)
                         logger.debug(
                             "cache_set",
@@ -203,10 +197,7 @@ def cache_result(
                         pass
 
                 # Lock holder didn't populate cache in time — compute ourselves
-                try:
-                    result = func(*args, **kwargs)
-                except Exception:
-                    raise
+                result = func(*args, **kwargs)
 
                 if result is not None or cache_none:
                     try:

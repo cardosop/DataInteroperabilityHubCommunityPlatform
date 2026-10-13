@@ -100,7 +100,7 @@ test.describe('226.G2 — Compliance run cancel state transition @critical @life
     });
     if (!runRes.ok()) {
       test.skip(
-        true,
+        !runRes.ok(),
         `Could not create compliance run (status=${runRes.status()} body=${(await runRes.text()).slice(0, 200)}). ` +
           `Likely missing tenant compliance config — unblock by ensuring tenant default regimes are seeded.`,
       );

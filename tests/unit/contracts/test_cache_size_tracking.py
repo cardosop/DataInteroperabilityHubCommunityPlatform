@@ -45,7 +45,9 @@ class CacheSizeTrackingTest(TestCase):
         """Test that cache size limit metric exists and accepts ref_type label."""
         self.assertIsNotNone(odps_ref_cache_size_limit)
         try:
-            odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type="external").set(1000)
+            odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type="external").set(
+                1000
+            )
         except Exception as e:
             self.fail(f"Cache size limit metric should accept tenant_id and ref_type labels: {e}")
 
@@ -106,8 +108,9 @@ class CacheSizeTrackingTest(TestCase):
 
         # Verify writes counter was incremented
         new_writes = int(self.resolver._redis_client.get(stats_key) or 0)
-        self.assertEqual(new_writes, initial_writes + 1,
-            "_track_cache_write should increment writes counter")
+        self.assertEqual(
+            new_writes, initial_writes + 1, "_track_cache_write should increment writes counter"
+        )
 
     # ── eviction tests (fixed: real LRU eviction verification) ──
 
@@ -128,8 +131,7 @@ class CacheSizeTrackingTest(TestCase):
 
         # After eviction, LRU index should be smaller
         new_size = self.resolver._redis_client.llen(lru_key)
-        self.assertLess(new_size, 1050,
-            "Eviction should reduce the LRU index size below the limit")
+        self.assertLess(new_size, 1050, "Eviction should reduce the LRU index size below the limit")
 
     # ── metric value tests (unchanged — already correct) ──
 
@@ -137,7 +139,9 @@ class CacheSizeTrackingTest(TestCase):
         """Test that cache size limit metric is set to correct value (1000)."""
         self.assertEqual(self.resolver.cache_max_entries, 1000)
         try:
-            odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type="external").set(1000)
+            odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type="external").set(
+                1000
+            )
         except Exception as e:
             self.fail(f"Cache size limit metric should accept value 1000: {e}")
 
@@ -155,6 +159,8 @@ class CacheSizeTrackingTest(TestCase):
         ref_types = ["external"]
         for ref_type in ref_types:
             try:
-                odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type=ref_type).set(1000)
+                odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type=ref_type).set(
+                    1000
+                )
             except Exception as e:
                 self.fail(f"Cache size limit metric should support ref_type '{ref_type}': {e}")

@@ -91,7 +91,7 @@ def _add_trace_context_to_logs():
     try:
         from opentelemetry import trace
 
-        def add_trace_context_processor(logger, method_name, event_dict):
+        def add_trace_context_processor(_logger, _method_name, event_dict):
             """Add trace context to log entries."""
             span = trace.get_current_span()
             if span and span.get_span_context().is_valid:
@@ -116,7 +116,7 @@ def _add_trace_context_to_logs():
         pass
 
 
-def get_tracer(name: str = None):
+def get_tracer(name: str | None = None):
     """
     Get OpenTelemetry tracer.
 

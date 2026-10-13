@@ -37,8 +37,7 @@ class AuditorPermissionMixin:
                     from rest_framework.exceptions import PermissionDenied
 
                     raise PermissionDenied(
-                        "AUDITOR role has read-only access. "
-                        "Cannot perform write operations."
+                        "AUDITOR role has read-only access. Cannot perform write operations."
                     )
 
         return True

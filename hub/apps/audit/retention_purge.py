@@ -90,15 +90,17 @@ For each tenant (+ the platform chain via ``tenant_id IS NULL``):
 Chain integrity is preserved by Phase 234.1's verifier: the gaps
 introduced by this sweep are reported as informational ``erasure_gap``
 entries (not ``prev_link_mismatch`` tamper signals) per the
-234.1 × 232.2 × 234.4 cross-spec contract.
+234.1 x 232.2 x 234.4 cross-spec contract.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 import structlog
 from django.db import transaction
@@ -247,7 +249,7 @@ def _emit_purge_meta_audit(
             resource_type="JOB",
             result="SUCCESS",
         ).inc()
-    except Exception:  # pragma: no cover — observability never gates audit
+    except Exception:
         pass
 
     return event

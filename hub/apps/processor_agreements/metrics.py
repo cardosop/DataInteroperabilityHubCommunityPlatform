@@ -37,7 +37,7 @@ try:
         ["tenant_id"],
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     processor_agreement_created_total = _MetricStub()
     processor_agreement_signed_total = _MetricStub()
     processor_agreement_expired_total = _MetricStub()

@@ -55,7 +55,7 @@ test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API @critical'
         page.url().includes('/transformation') &&
         (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -67,7 +67,7 @@ test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API @critical'
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });

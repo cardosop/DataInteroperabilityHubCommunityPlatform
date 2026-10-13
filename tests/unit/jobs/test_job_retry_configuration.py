@@ -109,8 +109,8 @@ class JobRetryConfigurationTest(TestCase):
         delay_2 = calculate_retry_delay(2, job_type=JobType.DQ_RUN)
         delay_4 = calculate_retry_delay(4, job_type=JobType.DQ_RUN)
 
-        self.assertEqual(delay_0, 30)   # 30 * 3^0 = 30
-        self.assertEqual(delay_1, 90)   # 30 * 3^1 = 90
+        self.assertEqual(delay_0, 30)  # 30 * 3^0 = 30
+        self.assertEqual(delay_1, 90)  # 30 * 3^1 = 90
         self.assertEqual(delay_2, 270)  # 30 * 3^2 = 270
         self.assertEqual(delay_4, 600, "Must cap at max_delay=600")  # 30*3^4=2430→600
 

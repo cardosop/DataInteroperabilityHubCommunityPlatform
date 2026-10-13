@@ -36,7 +36,7 @@ class MarketplacePurchaseE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Provider tenant (seller) - needs subscription for listing creation
         self.provider_tenant = Tenant.objects.create(
@@ -184,9 +184,7 @@ class MarketplacePurchaseE2ETest(TestCase):
 
         # Step 10: Consumer can access asset data
         # (In real flow, this would be via asset download/access endpoints)
-        asset_response = self.consumer_client.get(
-            f"/api/v1/assets/{self.asset.id}/"
-        )
+        asset_response = self.consumer_client.get(f"/api/v1/assets/{self.asset.id}/")
         self.assertIn(
             asset_response.status_code,
             [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
@@ -195,7 +193,8 @@ class MarketplacePurchaseE2ETest(TestCase):
         if asset_response.status_code == status.HTTP_200_OK:
             asset_data = get_response_data(asset_response) or {}
             self.assertEqual(
-                str(asset_data.get("id")), str(self.asset.id),
+                str(asset_data.get("id")),
+                str(self.asset.id),
                 "Asset data should contain the correct asset id",
             )
         # For E2E test, we verify the entitlement exists

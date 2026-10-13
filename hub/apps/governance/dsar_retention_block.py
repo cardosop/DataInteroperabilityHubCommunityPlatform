@@ -34,9 +34,7 @@ def _scope_matches_cell(
         return True
     if rt == "DATASET" and dataset_id and rid is not None and str(rid) == str(dataset_id):
         return True
-    if rt == "FILE" and file_id and rid is not None and str(rid) == str(file_id):
-        return True
-    return False
+    return bool(rt == "FILE" and file_id and rid is not None and str(rid) == str(file_id))
 
 
 def _scopes_match(scope: Any, *, asset_id, dataset_id, file_id) -> bool:

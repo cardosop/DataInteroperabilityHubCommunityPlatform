@@ -16,6 +16,34 @@
 # - Test-specific configuration
 # Note: version is obsolete in Compose V2 and is ignored.
 
+# Single source of truth for the paid/commercial layer of the TEST stack
+# (compose x- extension — ignored by the engine, read by the overlay parity
+# test and by docker-compose.test.core.yml's design contract). Every service
+# listed here MUST carry `profiles: ["paid-excluded"]` in
+# docker-compose.test.core.yml — the parity test fails loudly otherwise.
+x-paid-services:
+  - postgres-baas-test
+  - redis-baas-test
+  - clamav-test
+  - fuseki-test
+  - datacontract-service-test
+  - dq-service-test
+  - compliance-service-test
+  - compliance-rq-worker-test
+  - semantic-service-test
+  - prefect-server-test
+  - prefect-db-test
+  - ensure-prefect-work-pool
+  - prefect-worker-test
+  - prefect-integration-service-test
+  - ckan-test
+  - ckan-test-db-test
+  - ckan-test-solr-test
+  - ckan-test-redis-test
+  - odh-training-operator-test
+  - odh-inference-scheduler-test
+  - traefik-test
+
 services:
   # PostgreSQL Database for Testing
   # Kept stable for full batch run. Exit 137 = OOM kill; reduce shared_buffers/work_mem or
@@ -63,6 +91,9 @@ services:
       -c max_connections=500
       -c statement_timeout=300s
       -c idle_in_transaction_session_timeout=300s
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
 
   # One-off: ensure hub_test database exists (handles volumes created without POSTGRES_DB=hub_test)
   ensure-test-db:
@@ -103,8 +134,18 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
       POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       REDIS_URL: redis://redis-cache-test:6379/0
+      # Split Redis URLs — settings falls back to localhost for each missing
+      # var, which is unreachable from this container at seed time.
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
       PYTHONPATH: /app
       DJANGO_SETTINGS_MODULE: hub.settings
+      # Without this, settings falls back to .env.dev's ENVIRONMENT=staging
+      # and the paid-config validation (STRIPE/BAAS/ODH guards) fails the
+      # migrate+seed manage.py runs.
+      ENVIRONMENT: test
     depends_on:
       redis-cache-test:
         condition: service_healthy
@@ -131,7 +172,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_CACHE_TEST_PORT:-6379}:6379"
+      - "${REDIS_CACHE_TEST_PORT:-6479}:6379"
     volumes:
       - redis-cache-test-data:/data
     healthcheck:
@@ -153,17 +194,19 @@ services:
   redis-queue-test:
     image: redis:7-alpine
     container_name: hub-test-redis-queue
+    # Phase T.4 (W16 infra prerequisite) — AOF removed: the appendonly
+    # file corrupted once under I/O load on this host (the two Redis
+    # services WITHOUT the flag were unaffected). RDB-only persistence
+    # is the durable-enough posture for the test stack.
     command: >
       redis-server
-      --appendonly yes
-      --appendfsync everysec
       --maxmemory ${REDIS_QUEUE_MAX_MEMORY:-512mb}
       --maxmemory-policy noeviction
       --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_QUEUE_TEST_PORT:-6380}:6379"
+      - "${REDIS_QUEUE_TEST_PORT:-6480}:6379"
     volumes:
       - redis-queue-test-data:/data
     healthcheck:
@@ -195,7 +238,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_EVENTS_TEST_PORT:-6381}:6379"
+      - "${REDIS_EVENTS_TEST_PORT:-6481}:6379"
     volumes:
       - redis-events-test-data:/data
     healthcheck:
@@ -225,7 +268,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_CHANNELS_TEST_PORT:-6382}:6379"
+      - "${REDIS_CHANNELS_TEST_PORT:-6482}:6379"
     volumes:
       - redis-channels-test-data:/data
     healthcheck:
@@ -377,8 +420,14 @@ services:
     container_name: hub-test-clamav
     ports:
       - "127.0.0.1:${CLAMAV_TEST_PORT:-13310}:3310"
-    volumes:
-      - clamav-test-db:/var/lib/clamav
+    volumes: []
+    # Signature DB in RAM: loading ~950MB from the slow local HDD stalls
+    # clamd for minutes on every start (the host disk is the known
+    # bottleneck — see jbd2 stall notes). tmpfs makes DB loads and
+    # self-checks RAM-fast; the cost is a freshclam re-download (~2-5 min)
+    # after each container recreate.
+    tmpfs:
+      - /var/lib/clamav:size=2g
     deploy:
       resources:
         limits:
@@ -405,20 +454,50 @@ services:
     image: stain/jena-fuseki:4.8.0
     container_name: hub-test-fuseki
     user: root
+    # Phase P.1: the upstream entrypoint writes shiro.ini ONLY when the
+    # persisted file does not exist — the first password on a named volume
+    # wins forever. The prefix re-syncs it to the current ADMIN_PASSWORD on
+    # every start (idempotent; no-op on fresh volumes). Without it, every
+    # authenticated write 401s after a password rotation (measured: 40
+    # semantic test failures). See scripts/fuseki_password_sync.sh.
+    # Note: the trailing fuseki-server argument re-supplies the image CMD,
+    # which an entrypoint override replaces (the upstream entrypoint forks
+    # `exec "$@" &` — with an empty $@ the server never starts).
+    entrypoint:
+      ["sh", "-c", "/scripts/fuseki_password_sync.sh && exec /docker-entrypoint.sh /jena-fuseki/fuseki-server"]
     environment:
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
+      # MUST be started with the same env-file as semantic-service-test
+      # (canonical: `--env-file .env.test`, see Makefile.core CORE_COMPOSE).
+      # Recreating one service without it auto-loads `.env` (random
+      # FUSEKI_ADMIN_PASSWORD) → the sync script converges shiro.ini to the
+      # wrong password → semantic writes 401 → mappings DEGRADED → 19 test
+      # skips (batch 10-2i, 2026-10-02). .env.test pins the value explicitly.
       ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
       ENVIRONMENT: test
       DEBUG: "True"
       LOG_LEVEL: DEBUG
       # Phase 18.5: reduce heap — FTS migrated to PostgreSQL, Fuseki is ODPS-only
-      JVM_ARGS: "-Xmx2g -Xms512m -XX:+UseG1GC"
+      # Batch 10-2i incident (2026-10-02): after ~3 days uptime the JVM
+      # (Temurin 17.0.7) recovered from a SIGSEGV in JIT-compiled code and
+      # every RDF parse then failed with "a fault occurred in a recent
+      # unsafe memory access operation in compiled Java code" (semantic
+      # mappings DEGRADED → 19 test skips). The container's 4G cgroup also
+      # charges the 1G /fuseki tmpfs, so cap native memory explicitly so
+      # exhaustion fails cleanly (OOM) instead of faulting in compiled code.
+      JVM_ARGS: "-Xmx2g -Xms512m -XX:+UseG1GC -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=256m"
     ports:
       - "${FUSEKI_TEST_PORT:-3031}:3030"
     volumes:
-      - fuseki-test-data:/fuseki
       # Phase 21: named-graph dataset config (ja:unionDefaultGraph false)
       - ./infrastructure/fuseki/config.ttl:/fuseki/configuration/hub.ttl
+      - ./scripts/fuseki_password_sync.sh:/scripts/fuseki_password_sync.sh:ro
+    # Test Fuseki data is ephemeral — keep it on tmpfs so SPARQL UPDATE
+    # fsyncs don't hit the host HDD (measured 7–30s per single-triple
+    # insert on this host, breaking sync perf tests). The dataset is
+    # re-created on demand by the semantic service's ensure_dataset_exists.
+    tmpfs:
+      - /fuseki:size=1g
     healthcheck:
       test: ["CMD-SHELL", "curl -f -s -o /dev/null --connect-timeout 5 'http://127.0.0.1:3030/$$/ping' || exit 1"]
       interval: 15s
@@ -485,6 +564,11 @@ services:
       context: .
       dockerfile: services/datacontract-service/Dockerfile
     container_name: hub-test-datacontract
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "${DATACONTRACT_TEST_PORT:-8093}:8080"
     volumes:
@@ -533,6 +617,11 @@ services:
       context: .
       dockerfile: services/dq-service/Dockerfile
     container_name: hub-test-dq
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "${DQ_TEST_PORT:-8084}:8083"
     volumes:
@@ -584,11 +673,17 @@ services:
       context: .
       dockerfile: services/compliance-service/Dockerfile
     container_name: hub-test-compliance
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "${COMPLIANCE_TEST_PORT:-8085}:8082"
     volumes:
       - ./services/compliance-service/main.py:/app/main.py:ro
       - ./services/compliance-service/async_scanner.py:/app/async_scanner.py:ro
+      # Phase 270.C strict-mode/tenant-scoping work touches report generation —
+      # mounted so host edits reach the container without image rebuilds.
+      - ./services/compliance-service/compliance_report.py:/app/compliance_report.py:ro
       - ./services/shared/auth.py:/app/shared/auth.py:ro
       - ./services/shared/middleware.py:/app/shared/middleware.py:ro
       - ./services/shared/__init__.py:/app/shared/__init__.py:ro
@@ -637,6 +732,11 @@ services:
       context: .
       dockerfile: services/compliance-service/Dockerfile
     container_name: hub-test-compliance-rq-worker
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: on-failure  # auto-restart on crash; warm-shutdown (exit 0) is a one-shot stop
     command: ["rq", "worker", "compliance-scan", "--url", "redis://redis-queue-test:6379/0"]
     networks:
@@ -652,6 +752,13 @@ services:
         condition: service_healthy
       compliance-service-test:
         condition: service_healthy
+    # RQ workers expose no HTTP port — liveness = the worker process running.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'rq worker' > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -667,6 +774,11 @@ services:
       context: .
       dockerfile: services/semantic-service/Dockerfile
     container_name: hub-test-semantic
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "${SEMANTIC_TEST_PORT:-8086}:8081"
     volumes:
@@ -695,6 +807,11 @@ services:
       FUSEKI_URL: http://fuseki-test:3030
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
       FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      # Phase P.1: Fuseki write latency on a loaded host was measured at up
+      # to 36s for a 6-triple UPDATE — the client's hardcoded 30s timeout
+      # turned those writes into httpx.ReadTimeout and DEGRADED mappings.
+      # Matches SEMANTIC_SERVICE_TIMEOUT above.
+      FUSEKI_HTTP_TIMEOUT: "60"
       HUB_DOMAIN: ${HUB_DOMAIN:-test.hub.example.com}
       ENVIRONMENT: test
       DEBUG: "True"
@@ -729,6 +846,11 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     container_name: hub-test-api
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
     init: true
     restart: on-failure
     command: ["gunicorn", "hub.asgi:application", "--config", "gunicorn.conf.py"]
@@ -747,9 +869,75 @@ services:
       # Without this, root-owned .pyc files in __pycache__ persist across runs
       # and prevent source changes on the host from taking effect in the container.
       PYTHONDONTWRITEBYTECODE: "1"
+      # In-container probe port. .env.test carries API_TEST_PORT=8001, which
+      # is the HOST-side mapping (host 8001 -> container 8000). Probes that
+      # run INSIDE this container (envpolicy.api_available, E2E suites) must
+      # target the gunicorn port inside the container, so override the
+      # host-side value here. Host-side suites keep their own 8001 default.
+      API_TEST_PORT: "8000"
       # Ensure ENVIRONMENT=test so _user_lookup_alias() returns "default"
       # and RLS BYPASSRLS/admin-specific paths are not used for test login.
       ENVIRONMENT: test
+      # Workflow-backed endpoints (ODPS product-first flow) can exceed the
+      # 120s gunicorn default on this host — a worker kill surfaces to the
+      # client as "server closed the connection unexpectedly". The local
+      # DE-1 budget is 300s; match it.
+      GUNICORN_TIMEOUT: "300"
+      # R2 E2E root cause — disable worker recycling in the test stack.
+      # gunicorn.conf.py defaults to max_requests=1000 (±100 jitter): every
+      # ~1000 requests each worker is killed mid-flight, resetting any
+      # in-flight connection. E2E batches issue thousands of requests, so
+      # workers recycle constantly and random tests die with NETWORK_ERROR
+      # (observed live in the clean-lane batch-7 run: sessions list fetch
+      # reset at 16:47). 0 = never recycle — the memory-accumulation guard
+      # matters for long-lived prod, not short-lived test batches.
+      GUNICORN_MAX_REQUESTS: "0"
+      # Webhook delivery runs INLINE in the API container (the E2E contract
+      # documented in e2e/features/webhook-delivery.spec.ts: the delivery
+      # executor POSTs to http://localhost:8000 — the API's OWN listener —
+      # which is only reachable from inside this container). Without this
+      # the API defaults WEBHOOK_ASYNC_DELIVERY=True (settings.py), delivery
+      # is enqueued to the RQ worker, and the worker's localhost:8000 is
+      # the worker itself → connection refused → every delivery FAILED.
+      # Sync mode also drives the inline retry loop that the
+      # forced-failure subflow (retry + DLQ on persistent 503) depends on.
+      WEBHOOK_ASYNC_DELIVERY: "False"
+      # Smoke-suite admin persona — the E2E platform admin provisioned by
+      # `manage.py ensure_e2e_user_roles` into the shared test DB (same
+      # non-secret values as the E2E persona definitions). Enables the
+      # authenticated smoke tests (admin_session) against the test stack.
+      SMOKE_ADMIN_EMAIL: ${SMOKE_ADMIN_EMAIL:-e2e_platform@example.com}
+      SMOKE_ADMIN_PASSWORD: ${SMOKE_ADMIN_PASSWORD:-TestPass123}
+      # Phase 260.2.B — mirror staging: the DoD.7 PE-as-CSV smoke test
+      # SKIPs when this is off, silently un-exercising the magic-byte gate.
+      MAGIC_BYTE_VALIDATION_ENABLED: ${MAGIC_BYTE_VALIDATION_ENABLED:-true}
+      # DR restore-readiness checks (tests/disaster_recovery/): the test
+      # stack's S3-compatible MinIO doubles as the backup bucket target.
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-hub-backups}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-test-backup-encryption-key-0123456789abcdef}
+      # Phase 231/250 smoke scenario gates — fixtures with deterministic IDs
+      # seeded by `manage.py seed_smoke_fixtures` (see migrate-test-dbs.sh).
+      SMOKE_PHASE231_GATE_ENABLED: ${SMOKE_PHASE231_GATE_ENABLED:-1}
+      SMOKE_PHASE231_CRITICAL_LISTING_ID: ${SMOKE_PHASE231_CRITICAL_LISTING_ID:-aaaaaaaa-1111-4111-8111-111111111111}
+      SMOKE_PHASE250_FEDERATED_IMPORT_ENABLED: ${SMOKE_PHASE250_FEDERATED_IMPORT_ENABLED:-1}
+      SMOKE_PHASE250_FEDERATED_SOURCE_LISTING_ID: ${SMOKE_PHASE250_FEDERATED_SOURCE_LISTING_ID:-bbbbbbbb-2222-4222-8222-222222222222}
+      # Observability: export OTLP spans to the test-stack Tempo; expose
+      # the Tempo/Loki query URLs for the smoke reachability checks.
+      # Service name + sampler rate must be set so the OTel config tests
+      # (tests/preprod01/test_otel_config.py) run instead of skipping.
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-hub-api}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+      # CSP header for the preprod security-header tests; kept compatible
+      # with the test-stack schema docs UI (inline styles/scripts allowed).
+      CSP_DEFAULT_SRC: "'self','unsafe-inline'"
+      # HSTS: the test stack has no TLS edge, so tests simulate it via
+      # X-Forwarded-Proto: https; the API must then emit the header itself
+      # (defense in depth behind the real Traefik edge on staging/prod).
+      SECURE_HSTS_SECONDS: ${SECURE_HSTS_SECONDS:-31536000}
+      TRUST_X_FORWARDED_PROTO: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo-test:4317}
+      TEMPO_URL: ${TEMPO_URL:-http://tempo-test:3200}
+      LOKI_URL: ${LOKI_URL:-http://loki-test:3100}
       # Force create_audit_event(tenant=None) to use the default connection
       # with row_security=off instead of the admin alias (separate psycopg2
       # connection unmanaged by TransactionTestCase/TestCase).  Prevents FK
@@ -837,7 +1025,7 @@ services:
       TEST_DB_SUFFIX: "shared"
       PYTHONPATH: /app
       DJANGO_SETTINGS_MODULE: hub.settings
-      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver
+      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver,host.docker.internal  # host.docker.internal: the containerized k6 load client's view of the host (pilot-readiness 4.4)
       # dlt (data load tool) — suppress verbose output during tests
       DLT_LOG_LEVEL: ERROR
       DLT_DEV_MODE: "false"
@@ -849,16 +1037,18 @@ services:
       # Shared secret for /test/ensure-e2e-* endpoints (must match the
       # value used by the SDK test suite in E2E_TEST_SECRET env var).
       E2E_TEST_SECRET: "e2e-test-secret-for-local-dev"
-      # 9 workers provides sufficient concurrency for sequential E2E suites
-      # (130+ tests making rapid login/logout calls after token invalidation)
-      # while staying within the memory ceiling for batch5 runs on a 61GiB host.
-      # Override via env to reduce: GUNICORN_WORKERS=5 docker compose up
-      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-9}
+      # Single worker by default: the app has no prometheus multiprocess
+      # aggregation, so /metrics/ scrapes hit a RANDOM worker's registry
+      # with GUNICORN_WORKERS>1 and counter assertions (e.g. the 260
+      # cross-tenant metric smoke test) become non-monotonic. One worker
+      # keeps metric tests deterministic in the test stack; override via
+      # env (GUNICORN_WORKERS=9) for concurrency-heavy local runs.
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
       # Real scheduled ingestion/export E2E: uses MinIO (S3-compatible) already in this stack
       REAL_SCHEDULED_E2E: ${REAL_SCHEDULED_E2E:-1}
       # Optional: set STRIPE_SECRET_KEY (e.g. sk_test_...) to run billing Stripe-dependent tests (no mocks)
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_51T412N79Dw5TG33rjI38jWadxupQAkI38O1kW1O6s3H1NFxdFFHwSCc30kZVRoOdEPV2Gvm6o852cJZ15Kkoydkh004dBPAwWK}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_51T412N79Dw5TG33rxbm9F3zSZ1rPxI5En7Tb2n8OL65Cd9wwCdpuiPsIcmi5qQATGzx7pMrGNKKj1pQiwB7w45Hw004ICHrRJe}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       # Optional: set STRIPE_WEBHOOK_SECRET (e.g. whsec_...) so webhook signature test runs (test_stripe_webhook_invalid_signature)
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_test}
       STRIPE_MARKETPLACE_WEBHOOK_SECRET: ${STRIPE_MARKETPLACE_WEBHOOK_SECRET:-whsec_test_marketplace}
@@ -933,13 +1123,17 @@ services:
       timeout: 15s
       retries: 20
       start_period: 180s
-    # 8G limit: parallel E2E batch runs (batches 1+3+4 simultaneously) exhaust 4G under load.
-    # Host has 61GiB RAM; 8G is safe. Increased CPUs from 2→4 to handle concurrent requests.
+    # 12G limit: a full in-container batch (e.g. batch 8-6, 404 tests) runs
+    # pytest in this container next to gunicorn's 9 idle workers (~2.6G).
+    # At 8G the cgroup OOM killer SIGKILL'd pytest around test 327/404
+    # (exit 137) once the staging/dlt tests stopped skipping.  12G still
+    # allows the parallel E2E batches (1+3+4) on the 61GiB host.
+    # Increased CPUs from 2→4 to handle concurrent requests.
     deploy:
       resources:
         limits:
           cpus: "4"
-          memory: 8G
+          memory: 12G
         reservations:
           cpus: "0.5"
           memory: 512M
@@ -955,6 +1149,11 @@ services:
       context: .
       dockerfile: services/worker/Dockerfile
     container_name: hub-test-worker
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
     # Include 'default' to drain legacy jobs enqueued before compliance fix (job_critical routing)
     command: python services/worker/main.py job_critical job_default job_low default
     ports:
@@ -1014,7 +1213,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       PYTHONPATH: /app:/app/compliance_engine
-      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver
+      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver,host.docker.internal  # host.docker.internal: the containerized k6 load client's view of the host (pilot-readiness 4.4)
       CLAMAV_ENABLED: ${CLAMAV_ENABLED:-false}
       CLAMAV_HOST: ${CLAMAV_HOST:-clamav-test}
       CLAMAV_PORT: ${CLAMAV_PORT:-3310}
@@ -1212,10 +1411,21 @@ services:
     build:
       context: .
       dockerfile: services/prefect-integration/Dockerfile
+      args:
+        # Test deps baked in so the in-container pytest suites run without a
+        # runtime `pip install` (Phase P.1 — see test_compose_hermetic_images.py).
+        INSTALL_DEV_DEPS: "true"
     image: hub-test-prefect-integration:latest
     container_name: hub-test-prefect-integration
-    user: root
-    command: sh -c "pip install --quiet sentry-sdk duckdb polars pyarrow pytest pytest-django pytest-asyncio pytest-mock httpx2 && cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    # No `user: root` override — the image is hardened (USER appuser) and the
+    # test deps are baked in at build time (INSTALL_DEV_DEPS), so the service
+    # runs as appuser like the other hardened test services.
+    command: ["sh", "-c", "cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"]
     ports:
       - "${PREFECT_INTEGRATION_TEST_PORT:-8114}:8084"
     volumes:
@@ -1236,6 +1446,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
       # Use shared test DB so prefect-integration sees data created by api-service-test pytest
       POSTGRES_DB: hub_test_test_shared
+      # Same convention as api-service-test/worker-service-test: without this,
+      # hub/settings.py derives a RANDOM uuid test-DB suffix per process and
+      # pytest-django's test DB never exists (every suite run errors on
+      # "database ... does not exist").
+      TEST_DB_SUFFIX: "shared"
       PREFECT_API_URL: http://prefect-server-test:4200/api
       PREFECT_DEPLOYMENT_IMAGE: ${PREFECT_DEPLOYMENT_IMAGE:-hub-test-prefect-integration:latest}
       # Docker network for flow containers (project_hub-test-net; set if compose project name differs)
@@ -1258,6 +1473,14 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       ENVIRONMENT: test
       DEBUG: "True"
+    # Resource limits so the container-hardening smoke check sees a bounded
+    # service (mirrors the clamav/postgres deploy blocks).
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 512m
     depends_on:
       prefect-server-test:
         condition: service_healthy
@@ -1283,7 +1506,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      # Full-mode django.setup() was measured at ~105s inside this container
+      # (2026-08-23, `python -c 'import main'`). The previous 90s budget marked
+      # the service unhealthy before it could bind, and api-service-test
+      # (depends_on: condition: service_healthy) then never started.
+      # Pinned by scripts/tests/test_compose_hermetic_images.py — re-measure
+      # if the import graph changes materially.
+      start_period: 200s
   # Prometheus for Testing
   prometheus-test:
     image: prom/prometheus:v2.53.0
@@ -1504,7 +1733,8 @@ services:
       CKAN_SITE_ID: default
       CKAN___BEAKER__SESSION__SECRET: ckan-test-secret
       # Fixed seed token so .env.test CKAN_TEST_API_KEY stays valid across restarts
-      CKAN_SEED_TOKEN: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJXNFVXNTZLQW5yWjRzSGNQLXlNbTZkX08yS0dSb29VMGxDWlo2bGR3YXRVIiwiaWF0IjoxNzgxODMwMjI0fQ.YHmMeCW-WyivW4j1q2jsTBf3W8aZKIT44g80Rf3cnG4
+      # Re-minted 2026-10-04 (pilot-readiness 1.4 rehearsal); superseded admin tokens revoked.
+      CKAN_SEED_TOKEN: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJ2d1ZvVWNXVzU2RWVoaTdaOVRLZ3FFdzhZNHVHbmpaSWZZN2NQdkVXNjQwIiwiaWF0IjoxNzkxMTYxODU2fQ.2xJeei90JsAU2Gs_aejPM6F5THkwgpkgL6RhEpm_utI  # gitleaks:allow — test-stack CKAN seed token (instance-local, mirrored in .env.test; pilot 1.4)
     ports:
       - "${CKAN_TEST_PORT:-5100}:5000"
     depends_on:
@@ -1649,6 +1879,40 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
+
+  # Tempo (OTLP receiver + query API) — enables the observability smoke
+  # tests and real OTLP span export from api-service-test. In-memory
+  # storage (test-only; no persistence).
+  tempo-test:
+    image: grafana/tempo:2.4.2
+    container_name: hub-test-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infrastructure/observability/tempo-test.yaml:/etc/tempo.yaml:ro
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3200/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Loki (log query API) — enables the observability smoke test's Loki
+  # reachability check. Log SHIPPING stays out of scope for the test
+  # stack (docker log drivers are host-level).
+  loki-test:
+    image: grafana/loki:2.9.6
+    container_name: hub-test-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   postgres-test-data:

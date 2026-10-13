@@ -86,7 +86,6 @@ class ServiceHealthClient:
                     lambda: self.client.request(method, url, **kwargs)
                 )
                 response.raise_for_status()
-                return response
             except httpx.HTTPStatusError as e:
                 # Retry on 5xx errors
                 if e.response.status_code >= 500 and attempt < self.max_retries:
@@ -110,6 +109,8 @@ class ServiceHealthClient:
                     time.sleep(delay)
                     continue
                 raise
+            else:
+                return response
         raise Exception("Max retries exceeded for health check.")
 
     def check_health(
@@ -143,10 +144,11 @@ class ServiceHealthClient:
                     data = response.json()
                     is_healthy = data.get("status") in ["healthy", "ok", "up"]
                     status_message = data.get("service", "unknown")
-                    return is_healthy, status_message
                 except (ValueError, KeyError):
                     # If response is not JSON or doesn't have status, consider 200 as healthy
                     return True, "healthy"
+                else:
+                    return is_healthy, status_message
             else:
                 return False, f"HTTP {response.status_code}"
 
@@ -159,7 +161,7 @@ class ServiceHealthClient:
         except httpx.HTTPStatusError as e:
             logger.debug(f"Health check HTTP error for {service_url}: {e.response.status_code}")
             return False, f"HTTP {e.response.status_code}"
-        except Exception as e:
+        except (httpx.HTTPError, AttributeError) as e:
             logger.debug(f"Health check error for {service_url}: {e}")
             return False, f"error: {str(e)[:50]}"
 

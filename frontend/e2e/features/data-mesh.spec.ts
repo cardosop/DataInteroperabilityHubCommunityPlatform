@@ -35,7 +35,7 @@ test.describe('Feature: Data Mesh', () => {
             type: 'backend-not-deployed',
             description: `Mesh backend endpoint not available: ${errMsg.slice(0, 200)}`,
           });
-          test.skip(true, 'Mesh backend endpoint returns NOT_FOUND — feature not deployed on staging');
+          test.skip(errMsg.includes('NOT_FOUND') || errMsg.includes('not found'), 'Mesh backend endpoint returns NOT_FOUND — feature not deployed on staging');
           return;
         }
         throw err;

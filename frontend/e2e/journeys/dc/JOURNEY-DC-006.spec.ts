@@ -21,13 +21,13 @@ test.describe('JOURNEY-DC-006: Use Natural Language Search', () => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
-        contentSelector: '.search-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.search-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
       const onSearch = url.includes('/search');
       if (onLogin) {
-        test.skip(true, 'Auth gated — skipping success assertion');
+        test.skip(onLogin, 'Auth gated — skipping success assertion');
         return;
       }
       expect(onSearch).toBe(true);
@@ -42,13 +42,13 @@ test.describe('JOURNEY-DC-006: Use Natural Language Search', () => {
       await loginAndNavigateToRoute(page, consumer, '/ai/search', {
         timeout: 60000,
         contentSelector:
-          '.ai-search-page, .ai-search-header, .ai-search-input-section, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+          '.ai-search-page, .ai-search-header, .ai-search-input-section, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
       const onAISearch = page.url().includes('/ai/search');
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onAISearch).toBe(true);
@@ -79,13 +79,13 @@ test.describe('JOURNEY-DC-006: Use Natural Language Search', () => {
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 90000,
         contentSelector:
-          '.search-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
+          '.search-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       expect(page.url()).toContain('/search');
       await loginAndNavigateToRoute(page, consumer, '/ai/search', {
         timeout: 90000,
         contentSelector:
-          '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
+          '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       expect(
         page.url().includes('/ai/search') ||

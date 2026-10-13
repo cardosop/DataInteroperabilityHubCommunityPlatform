@@ -210,7 +210,7 @@ class DjangoAPIExtractor:
                 action_methods = [m.strip().strip("\"'") for m in match.group(1).split(",")]
                 methods.extend(action_methods)
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"Error reading view file {view_file}: {e}")
 
         return list(set(methods)) if methods else ["GET"]
@@ -499,7 +499,7 @@ class DjangoAPIExtractor:
                                     f"Found custom action: {method.upper()} {action_path} ({action_name})"
                                 )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing views file {views_file}: {e}")
 
     def _find_viewset_base_path(self, viewset_name: str, views_file: Path) -> str | None:
@@ -526,7 +526,7 @@ class DjangoAPIExtractor:
                         router_prefix = prefix_match.group(1)
                         # Determine full path
                         return self._determine_url_prefix(urls_file, router_prefix)
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 continue
 
         return None

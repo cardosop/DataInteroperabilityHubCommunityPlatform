@@ -23,7 +23,7 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 
-import { NON_MVP_PATHS } from '../../features/shell/utils/mvpNav';
+import { MVP_GATE_PASS_THROUGH_PATHS, NON_MVP_PATHS } from '../../features/shell/utils/mvpNav';
 import { MvpGatedRoute } from '../../shared/components/MvpGatedRoute';
 import { appRoutes } from './routes';
 
@@ -42,7 +42,8 @@ type RouteLike = {
 function* walkRoutes(
   routes: RouteLike[],
   parentPath = '',
-): Generator<{ fullPath: string; element: React.ReactNode }> {
+  parentAncestors: React.ReactNode[] = [],
+): Generator<{ fullPath: string; element: React.ReactNode; ancestors: React.ReactNode[] }> {
   for (const route of routes) {
     let here = parentPath;
     if (route.path !== undefined) {
@@ -50,11 +51,14 @@ function* walkRoutes(
       // Avoid double slashes when parent is '/'
       here = parentPath.replace(/\/$/, '') + seg;
     }
+    const ancestors = route.element !== undefined && route.element !== null
+      ? [...parentAncestors, route.element]
+      : parentAncestors;
     if (route.element !== undefined && route.element !== null) {
-      yield { fullPath: here || '/', element: route.element };
+      yield { fullPath: here || '/', element: route.element, ancestors };
     }
     if (route.children) {
-      yield* walkRoutes(route.children, here);
+      yield* walkRoutes(route.children, here, ancestors);
     }
   }
 }
@@ -100,11 +104,23 @@ describe('MVP gate drift — routes.tsx ↔ NON_MVP_PATHS consistency', () => {
   });
 
   it('forward drift: every NON_MVP_PATHS route has <MvpGatedRoute> as outermost wrapper', () => {
+    // A path can be yielded twice (the parent route and its index child
+    // share the parent's full path), and a child route can be covered by
+    // a PARENT gate (e.g. /integrations gates /integrations/connections).
+    // Pass when the route itself OR any covering ancestor carries
+    // <MvpGatedRoute> outermost.
     const failures: string[] = [];
-    for (const { fullPath, element } of allRoutes) {
-      if (!NON_MVP_PATHS.has(fullPath)) continue;
-      if (!isOutermostMvpGated(element)) {
-        failures.push(fullPath);
+    for (const path of NON_MVP_PATHS) {
+      const occurrences = allRoutes.filter((r) => r.fullPath === path);
+      if (occurrences.length === 0) {
+        failures.push(`${path} (no route)`);
+        continue;
+      }
+      const gated = occurrences.some((r) =>
+        [r.element, ...r.ancestors].some(isOutermostMvpGated),
+      );
+      if (!gated) {
+        failures.push(path);
       }
     }
     expect(
@@ -119,8 +135,17 @@ describe('MVP gate drift — routes.tsx ↔ NON_MVP_PATHS consistency', () => {
     const dead: string[] = [];
     for (const { fullPath, element } of allRoutes) {
       if (!isOutermostMvpGated(element)) continue;
-      // Allow exact match OR ancestor-in-NON_MVP_PATHS OR /ai/* prefix.
-      if (!isPathOrAncestorInNonMvp(fullPath)) {
+      // Allow exact match OR ancestor-in-NON_MVP_PATHS OR /ai/* prefix
+      // OR the gate covers a gated DESCENDANT (e.g. the /integrations
+      // gate exists for /integrations/connections) OR the documented
+      // pass-through set (313.H.4).
+      const covered =
+        isPathOrAncestorInNonMvp(fullPath) ||
+        [...NON_MVP_PATHS].some(
+          (p) => p.startsWith(`${fullPath}/`) || p === fullPath,
+        ) ||
+        MVP_GATE_PASS_THROUGH_PATHS.has(fullPath);
+      if (!covered) {
         dead.push(fullPath);
       }
     }
@@ -128,7 +153,8 @@ describe('MVP gate drift — routes.tsx ↔ NON_MVP_PATHS consistency', () => {
       dead,
       `Routes wrapped in <MvpGatedRoute> but not covered by NON_MVP_PATHS ` +
         `(dead gates that confuse the sidebar): ${JSON.stringify(dead)}. ` +
-        `Either add the path to NON_MVP_PATHS in mvpNav.ts, or remove the wrapper.`,
+        `Either add the path to NON_MVP_PATHS in mvpNav.ts, add it to ` +
+        `MVP_GATE_PASS_THROUGH_PATHS (documented pass-through), or remove the wrapper.`,
     ).toEqual([]);
   });
 

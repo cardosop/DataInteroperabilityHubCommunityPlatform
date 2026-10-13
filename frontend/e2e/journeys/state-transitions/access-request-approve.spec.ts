@@ -96,7 +96,7 @@ test.describe('226.G2 — Access request approve state transition @critical @lif
     });
     if (!arRes.ok()) {
       test.skip(
-        true,
+        !arRes.ok(),
         `Could not create access request (status=${arRes.status()} body=${(await arRes.text()).slice(0, 200)})`,
       );
       return;

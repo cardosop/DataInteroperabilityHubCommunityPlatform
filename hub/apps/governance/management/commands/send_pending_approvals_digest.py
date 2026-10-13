@@ -7,6 +7,7 @@ digest, and sends email notifications via the existing email service.
 """
 
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError
 
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
@@ -15,7 +16,7 @@ from hub.apps.tenants.models import Tenant, TenantStatus
 class Command(BaseCommand):
     help = "Phase 272.5 — daily pending-approvals email digest per tenant/approver"
 
-    def handle(self, **options):
+    def handle(self, **_options):
         active_tenants = Tenant.objects.filter(status=TenantStatus.ACTIVE)
         sent = 0
 
@@ -80,5 +81,5 @@ class Command(BaseCommand):
                 resource_type="ACCESS_REQUEST",
                 resource_id=None,
             )
-        except Exception:
+        except DatabaseError:
             self.stderr.write(f"Failed to send digest to {user.email}")

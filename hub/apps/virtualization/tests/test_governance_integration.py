@@ -26,7 +26,6 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
-
 class VirtualizationGovernanceIntegrationTest(TestCase):
     """Integration tests using real GovernanceService (no mocks)"""
 
@@ -310,7 +309,8 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
 
         # Create DATA_PROVIDER role
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant, name="DATA_PROVIDER",
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
             defaults={"description": "Data provider role"},
         )
         UserRole.objects.get_or_create(user=self.user, role=role)

@@ -13,7 +13,6 @@
 
 import { expect, test } from '@playwright/test';
 // Phase 226 B1d — dual-channel verification after profile update.
-import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 import {
   clearAuthStorage,
   getProfileIsolationTestUser,
@@ -36,7 +35,7 @@ test.describe('JOURNEY-AUTH-PROFILE: User Edits Profile', () => {
         .first()
         .waitFor({ state: 'visible', timeout: 45000 });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session lost during navigation');
+        test.skip(page.url().includes('/login'), 'Auth session lost during navigation');
         return;
       }
 
@@ -103,7 +102,7 @@ test.describe('JOURNEY-AUTH-PROFILE: User Edits Profile', () => {
         'input[name="display_name"], input[id="profile-display_name"]'
       );
       if ((await displayNameInput.count()) === 0) {
-        test.skip(true, 'Profile display_name input not found — page structure may differ');
+        test.skip((await displayNameInput.count()) === 0, 'Profile display_name input not found — page structure may differ');
         return;
       }
       await displayNameInput.fill('');
@@ -137,7 +136,7 @@ test.describe('JOURNEY-AUTH-PROFILE: User Edits Profile', () => {
         .first()
         .waitFor({ state: 'visible', timeout: 45000 });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session lost during navigation');
+        test.skip(page.url().includes('/login'), 'Auth session lost during navigation');
         return;
       }
       const nameInput = page.locator('input[name="display_name"], input[id="profile-display_name"]');

@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]

@@ -3,6 +3,8 @@ Workflow recovery tests: failure handling, state consistency after failure,
 and rollback/compensation where supported. Real WorkflowEngine and DB; no mocks.
 """
 
+import contextlib
+
 from django.db import connection
 
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
@@ -130,14 +132,14 @@ class WorkflowRecoveryTest(WorkflowConcurrencyTestBase):
             )
             self.assertIn(
                 instance.status,
-                terminal + (WorkflowStatus.RUNNING,),
+                (*terminal, WorkflowStatus.RUNNING),
                 "Instance status must be terminal or RUNNING",
             )
         finally:
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # teardown cleanup: close errors must not mask the worker result
                 connection.close()
-            except Exception:
-                pass  # Ignore connection close errors in teardown
 
     def test_successful_workflow_completes_with_completed_state(self):
         """Successful workflow leaves instance in COMPLETED (recovery baseline)."""

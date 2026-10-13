@@ -3,6 +3,7 @@
 import threading
 from unittest.mock import patch
 
+import redis
 from django.test import TestCase
 
 from hub.apps.core.events.deduplication import (
@@ -24,9 +25,10 @@ class TestAtomicDeduplication(TestCase):
             if client is None:
                 self.skipTest("Redis not available")
             client.ping()
-            return client
-        except Exception:
+        except (ImportError, ValueError, redis.RedisError):
             self.skipTest("Redis not available")
+        else:
+            return client
 
     def _redis_key(self, name):
         """Create a test key and register cleanup."""

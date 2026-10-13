@@ -14,18 +14,14 @@
  */
 
 import { expect, test } from '@playwright/test';
-import {
-  getConsumerTestUser,
-  getTestUser,
-  loginAsPersona,
-} from '../../fixtures/auth';
+import { getConsumerTestUser, getTestUser } from '../../fixtures/auth';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import {
   createListingViaApi,
   placeOrderViaApi,
   publishListingViaApi,
 } from '../../fixtures/api-marketplace';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
   test.setTimeout(120000);
@@ -52,13 +48,16 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
     });
 
     // ── Step 3: DC discovers listing in marketplace UI ───────────────────
-    await loginAsPersona(page, getConsumerTestUser);
-    await page.goto('/marketplace');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector(
-      '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
-      { timeout: 30000 }
-    );
+    // loginAndNavigateToRoute (not loginAsPersona + bare page.goto): its
+    // API-login fast path injects its own tokens, so the reload never
+    // depends on the boot-time refresh — the bare-goto variant can land
+    // on /login (or a capability bounce) and none of the list selectors
+    // ever render (batch b5: 30s waitForSelector timeout).
+    await loginAndNavigateToRoute(page, dcUser, '/marketplace', {
+      timeout: 90000,
+      contentSelector:
+        '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+    });
     test.skip(page.url().includes('/login'), 'DC auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -108,19 +107,17 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
     }
 
     if (!orderId) {
-      test.skip(true, 'Could not place order via UI or API — marketplace cross-tenant access required');
+      test.skip(!orderId, 'Could not place order via UI or API — marketplace cross-tenant access required');
       return;
     }
     expect(orderId).toBeTruthy();
 
     // ── Step 5: DPO sees order in marketplace orders ─────────────────────
-    await loginAsPersona(page, getTestUser);
-    await page.goto('/marketplace/orders');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector(
-      '.order-list-page, .empty-state, [data-testid="empty-state"]',
-      { timeout: 30000 }
-    );
+    await loginAndNavigateToRoute(page, dpoUser, '/marketplace/orders', {
+      timeout: 90000,
+      contentSelector:
+        '.order-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+    });
     test.skip(page.url().includes('/login'), 'DPO auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 

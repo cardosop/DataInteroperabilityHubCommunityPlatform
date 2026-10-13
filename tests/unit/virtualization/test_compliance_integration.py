@@ -10,6 +10,7 @@ Tests compliance checks before query execution:
 Uses REAL ComplianceService (no mocks).
 """
 
+import contextlib
 import uuid
 
 import pytest
@@ -89,14 +90,12 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         )
 
         # Run compliance check (should not raise)
-        try:
+        # Compliance check may fail if service unavailable or asset has no dataset
+        # This is acceptable - the test verifies the method doesn't crash
+        with contextlib.suppress(ValidationError):
             self.service._run_compliance_check_before_query(
                 self.virtual_dataset, execution, str(self.tenant.id)
             )
-        except ValidationError:
-            # Compliance check may fail if service unavailable or asset has no dataset
-            # This is acceptable - the test verifies the method doesn't crash
-            pass
 
         # Verify execution log was updated
         execution.refresh_from_db()
@@ -215,13 +214,12 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         )
 
         # Should log warning but not block execution
-        try:
+        with contextlib.suppress(
+            ValidationError
+        ):  # May fail for other reasons (service unavailable, etc.)
             self.service._run_compliance_check_before_query(
                 problematic_dataset, execution, str(self.tenant.id)
             )
-        except ValidationError:
-            # May fail for other reasons (service unavailable, etc.)
-            pass
 
         # Verify warning was logged
         execution.refresh_from_db()
@@ -271,12 +269,10 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         )
 
         # Try to execute query (will fail at execution but compliance check should run first)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # expected-failure guard: execution fails (no real DB) but the compliance log is what is asserted
             self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution may fail for various reasons (no actual database, etc.)
-            # But compliance check should have run first
-            pass
 
         # Verify execution log contains compliance check entries
         execution.refresh_from_db()

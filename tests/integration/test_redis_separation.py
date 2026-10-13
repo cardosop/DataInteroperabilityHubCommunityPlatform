@@ -20,9 +20,10 @@ def _require_redis(name, get_client_fn):
     try:
         client = get_client_fn()
         client.ping()
-        return client
     except (ConnectionError, TimeoutError, OSError) as e:
         pytest.skip(f"Redis {name} not accessible in this environment: {e}")
+    else:
+        return client
 
 
 @pytest.mark.integration

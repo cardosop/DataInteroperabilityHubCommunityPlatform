@@ -12,7 +12,7 @@ class FreshnessMetricSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DataObservabilityMetric
-        fields = [
+        fields = (
             "id",
             "dataset_id",
             "asset_id",
@@ -22,8 +22,8 @@ class FreshnessMetricSerializer(serializers.ModelSerializer):
             "freshness_sla_seconds",
             "is_stale",
             "recorded_at",
-        ]
-        read_only_fields = ["id", "recorded_at"]
+        )
+        read_only_fields = ("id", "recorded_at")
 
 
 class FreshnessDashboardSerializer(serializers.Serializer):
@@ -38,7 +38,7 @@ class VolumeTrendSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = VolumeTrend
-        fields = [
+        fields = (
             "id",
             "dataset_id",
             "asset_id",
@@ -56,8 +56,8 @@ class VolumeTrendSerializer(serializers.ModelSerializer):
             "anomaly_type",
             "anomaly_score",
             "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
+        )
+        read_only_fields = ("id", "created_at")
 
 
 class VolumeDashboardSerializer(serializers.Serializer):
@@ -72,7 +72,7 @@ class SchemaDriftSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SchemaDrift
-        fields = [
+        fields = (
             "id",
             "dataset_id",
             "asset_id",
@@ -86,8 +86,8 @@ class SchemaDriftSerializer(serializers.ModelSerializer):
             "tolerance_config",
             "is_within_tolerance",
             "detected_at",
-        ]
-        read_only_fields = ["id", "detected_at"]
+        )
+        read_only_fields = ("id", "detected_at")
 
 
 class SchemaDriftDashboardSerializer(serializers.Serializer):

@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 
 try:
-    from channels.testing import WebsocketCommunicator
+    from channels.testing import WebsocketCommunicator  # type: ignore[import-untyped]
 
     CHANNELS_AVAILABLE = True
 except ImportError:
@@ -436,8 +436,12 @@ class TestMiddlewareMessageAuthPassthrough(AsyncWebSocketTransactionTestCase):
         self.assertIsNone(inner_scope.get("user"))
         self.assertEqual(inner_scope["auth_method"], "pending_message_auth")
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     async def test_middleware_deprecation_warning_for_query_param(self):
-        """Middleware should log deprecation warning when token comes via query param."""
+        """Middleware should log deprecation warning when token comes via query param.
+
+        W1.18: the legacy path is OFF by default — this pin opts back in
+        explicitly to pin the deprecated behaviour itself."""
         inner_called = False
         inner_scope = None
 
@@ -521,7 +525,7 @@ class TestIntegrationMiddlewareToConsumer(AsyncWebSocketTransactionTestCase):
 
     async def test_full_flow_message_auth(self):
         """Full integration: connect without token → authenticate via message → subscribe."""
-        from channels.routing import URLRouter
+        from channels.routing import URLRouter  # type: ignore[import-untyped]
 
         app = WebSocketAuthMiddleware(URLRouter(websocket_urlpatterns))
         communicator = WebsocketCommunicator(app, "/ws/events/")
@@ -559,8 +563,10 @@ class TestIntegrationMiddlewareToConsumer(AsyncWebSocketTransactionTestCase):
         finally:
             await communicator.disconnect()
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     async def test_full_flow_deprecated_query_param(self):
-        """Full integration: connect with token in query param (deprecated but works)."""
+        """Full integration: connect with token in query param (deprecated but
+        works when the deployment opts back in — W1.18 default is OFF)."""
         from channels.routing import URLRouter
 
         app = WebSocketAuthMiddleware(URLRouter(websocket_urlpatterns))
@@ -592,3 +598,94 @@ class TestIntegrationMiddlewareToConsumer(AsyncWebSocketTransactionTestCase):
             )
         finally:
             await communicator.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestQueryParamAuthDisabledByDefault(AsyncWebSocketTransactionTestCase):
+    """W1.18 — query-param JWT/API-key auth is OFF by default.
+
+    Tokens in URLs land in nginx access logs, browser history and
+    referrer headers — the shipped default rejects them; deployments
+    opt back in via WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=false.
+    """
+
+    def setUp(self):
+        super().setUp()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+        )
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
+            password="testpass123",
+        )
+        self.user.refresh_from_db()
+
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+        self.token = JWTTokenGenerator.generate_access_token(self.user)
+
+    def test_setting_defaults_to_disabled(self):
+        from django.conf import settings
+
+        assert settings.WEBSOCKET_QUERY_PARAM_AUTH_DISABLED is True
+
+    async def test_middleware_rejects_query_param_with_default_settings(self):
+        """With DEFAULT settings (no override) a ?token= handshake is
+        rejected with close 4001 — the middleware never authenticates."""
+        middleware = WebSocketAuthMiddleware(inner=None)
+
+        scope = {
+            "type": "websocket",
+            "path": "/ws/events/",
+            "query_string": f"token={self.token}".encode(),
+            "headers": [],
+        }
+
+        close_sent = False
+        close_code = None
+
+        async def mock_send(message):
+            nonlocal close_sent, close_code
+            if message.get("type") == "websocket.close":
+                close_sent = True
+                close_code = message.get("code")
+
+        async def mock_receive():
+            return {"type": "websocket.connect"}
+
+        await middleware(scope, mock_receive, mock_send)
+
+        self.assertTrue(close_sent, "Query-param auth must be rejected by default")
+        self.assertEqual(close_code, 4001)
+        self.assertIsNone(scope.get("user"))
+
+    async def test_middleware_rejects_query_param_api_key_with_default_settings(self):
+        middleware = WebSocketAuthMiddleware(inner=None)
+
+        scope = {
+            "type": "websocket",
+            "path": "/ws/events/",
+            "query_string": b"api_key=some-key",
+            "headers": [],
+        }
+
+        close_sent = False
+        close_code = None
+
+        async def mock_send(message):
+            nonlocal close_sent, close_code
+            if message.get("type") == "websocket.close":
+                close_sent = True
+                close_code = message.get("code")
+
+        async def mock_receive():
+            return {"type": "websocket.connect"}
+
+        await middleware(scope, mock_receive, mock_send)
+
+        self.assertTrue(close_sent, "Query-param api_key must be rejected by default")
+        self.assertEqual(close_code, 4001)
+        self.assertIsNone(scope.get("user"))

@@ -337,6 +337,59 @@ export function ComplianceRunResultsViewer({ results }: ComplianceRunResultsView
           </ul>
         </div>
       )}
+
+      {/* Phase 19 — regulatory posture (v2): cross-border /
+          localisation alert states with clear-state fallbacks for
+          pre-v2 payloads. */}
+      <section className="phase19-regulatory-posture" data-testid="phase19-regulatory-posture">
+        <h3>Regulatory posture (v2)</h3>
+        <div
+          data-testid="cross-border-alert-card"
+          className={
+            results.cross_border_alert?.applicable
+              ? 'phase19-alert-card phase19-alert-triggered'
+              : 'phase19-alert-card phase19-alert-clear'
+          }
+        >
+          {results.cross_border_alert?.applicable
+            ? `Cross-border transfer alert: safeguards required under ${
+                (results.cross_border_alert.regulations ?? []).join(', ') ||
+                'the applicable regulations'
+              }.`
+            : 'No cross-border transfer alerts.'}
+        </div>
+
+        {results.regulation_summaries && results.regulation_summaries.length > 0 && (
+          <table data-testid="regulation-summary-table">
+            <thead>
+              <tr>
+                <th>Regulation</th>
+                <th>Status</th>
+                <th>Violations</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.regulation_summaries.map((row, idx) => (
+                <tr key={idx}>
+                  <td>{row.regulation}</td>
+                  <td>{row.status}</td>
+                  <td>{row.violations ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {results.legal_basis_violations && results.legal_basis_violations.length > 0 && (
+          <ul data-testid="legal-basis-violations-list">
+            {results.legal_basis_violations.map((violation, idx) => (
+              <li key={idx}>
+                {violation.regulation} — {violation.basis}: {violation.violation}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

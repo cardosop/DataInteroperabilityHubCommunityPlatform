@@ -15,6 +15,7 @@ from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
+    reset_rate_limits,
 )
 
 # ---------------------------------------------------------------------------
@@ -154,55 +155,118 @@ def test_usage_metering_includes_period():
     if not has_period:
         import warnings
 
-        warnings.warn(f"Billing usage response has no period/cycle information: {body}")
-
-
-@pytest.mark.timeout(300)  # 50 assets × 15s timeout each — needs more than default 60s
-def test_quota_exceeded_returns_402_or_429():
-    """Attempt to exceed a plan limit and verify the API returns an
-    appropriate error (402 Payment Required or 429 Too Many Requests).
-
-    Strategy: create assets in a tight loop until the API rejects one.
-    If the plan has no asset limit or the limit is very high, the test
-    skips gracefully.
-    """
-    creds = provision_persona("data_product_owner")
-    base = api_base_url()
-
-    MAX_ATTEMPTS = 50  # Stop after this many to avoid excessive load
-    hit_limit = False
-
-    for i in range(MAX_ATTEMPTS):
-        resp = requests.post(
-            f"{base}/assets/",
-            headers=_auth_headers(creds.api_key),
-            json={
-                "name": fresh_id("quota-test"),
-                "key": fresh_id("quota-key"),
-                "description": f"Quota test asset #{i}",
-            },
-            timeout=15,
+        warnings.warn(
+            f"Billing usage response has no period/cycle information: {body}",
+            stacklevel=2,
         )
 
-        if resp.status_code in (402, 429, 413):
-            hit_limit = True
-            # Verify the error response is informative
+
+@pytest.mark.timeout(300)
+def test_quota_exceeded_returns_plan_limit_error():
+    """Verify POST /assets/ enforces the tenant plan's ``max_assets`` quota.
+
+    Strategy: pin the persona tenant to a dedicated probe plan with
+    ``max_assets=2`` and create assets until the API rejects one with
+    ``plan_limit_exceeded``, then restore the original plan.
+
+    The tenant is NOT pinned to the shared FREE plan: on this stack the
+    active FREE plan has ``max_assets=100`` (the old "max_assets=5"
+    assumption was drift), so the loop ran straight past the quota until
+    the 60/min asset-creation throttle 429'd it — the test "passed" on
+    the 429 branch without ever exercising the quota path, left ~41
+    orphaned assets behind, and poisoned the throttle bucket for the
+    compliance tests that follow this file (measured 2026-09-20).  A
+    probe plan with ``max_assets=2`` makes the quota trip deterministic
+    (the suite keeps the tenant's asset count above 2), and a 429 here
+    is now a hard failure — the throttle must never mask the quota path.
+    """
+    import uuid
+
+    creds = provision_persona("data_product_owner")
+    base = api_base_url()
+    reset_rate_limits()
+
+    from hub.apps.tenants.models import Tenant, TenantPlan
+
+    tenant = Tenant.objects.get(pk=creds.tenant_id)
+    original_plan = tenant.plan
+    free_plan = TenantPlan.objects.filter(slug="free", is_active=True).first()
+    if free_plan is None:
+        pytest.skip("No active FREE plan available for quota test")
+
+    probe = TenantPlan.objects.create(
+        name=f"E2E Quota Probe {uuid.uuid4().hex[:8]}",
+        slug=f"e2e-quota-probe-{uuid.uuid4().hex[:8]}",
+        tier=free_plan.tier,
+        category=free_plan.category,
+        limits_json={**(free_plan.limits_json or {}), "max_assets": 2},
+        is_active=True,
+    )
+
+    MAX_ATTEMPTS = 10  # quota trips at ≤2 creates; 10 is slack for slow stacks
+    hit_limit = False
+    created_ids: list[str] = []
+    try:
+        tenant.plan = probe
+        tenant.save(update_fields=["plan"])
+
+        for i in range(MAX_ATTEMPTS):
+            resp = requests.post(
+                f"{base}/assets/",
+                headers=_auth_headers(creds.api_key),
+                json={
+                    "name": fresh_id("quota-test"),
+                    "key": fresh_id("quota-key"),
+                    "description": f"Quota test asset #{i}",
+                },
+                timeout=15,
+            )
+
             body = (
                 resp.json()
                 if resp.headers.get("content-type", "").startswith("application/json")
                 else {}
             )
+            if resp.status_code in (200, 201):
+                created_ids.append(str(body.get("id") or ""))
+                continue
+
             body_str = str(body).lower()
-            has_message = any(
-                keyword in body_str for keyword in ["limit", "quota", "exceeded", "upgrade", "plan"]
+            # The plan-limit check raises a DRF ValidationError — the API
+            # answers with code=plan_limit_exceeded ("Plan limit
+            # exceeded for max_assets"), not 402/429.  Detect by content
+            # first so a validation 400 (unrelated) is not mistaken for
+            # the quota path.
+            is_plan_limit = any(
+                keyword in body_str for keyword in ["plan_limit_exceeded", "plan limit"]
             )
-            assert has_message or resp.status_code in (402, 429), (
-                f"Quota error response lacks informative message: {body}"
-            )
-            break
-        elif resp.status_code not in (200, 201):
+            if is_plan_limit:
+                hit_limit = True
+                has_message = any(
+                    keyword in body_str
+                    for keyword in ["limit", "quota", "exceeded", "upgrade", "plan"]
+                )
+                assert has_message, f"Quota error response lacks informative message: {body}"
+                break
+            if resp.status_code in (402, 413):
+                # Alternate quota representations (Payment Required etc.)
+                hit_limit = True
+                break
+            if resp.status_code == 429:
+                pytest.fail(
+                    "Asset-creation throttle fired before the plan quota — "
+                    "the quota path was not exercised"
+                )
             # Unexpected error — might be unrelated to quota
             break
+    finally:
+        tenant.plan = original_plan
+        tenant.save(update_fields=["plan"])
+        probe.delete()
+        headers = _auth_headers(creds.api_key)
+        for asset_id in created_ids:
+            if asset_id:
+                requests.delete(f"{base}/assets/{asset_id}/", headers=headers, timeout=15)
 
     if not hit_limit:
         pytest.skip(
@@ -217,7 +281,7 @@ def test_billing_unauthenticated_returns_401():
 
     plan_resp = requests.get(f"{base}/billing/subscription/current/", timeout=15)
     if plan_resp.status_code == 404:
-        pytest.skip(f"No billing subscription for test tenant (404): {resp.text[:100]}")
+        pytest.skip(f"No billing subscription for test tenant (404): {plan_resp.text[:100]}")
 
     assert plan_resp.status_code == 401, (
         f"Unauthenticated billing/plan returned {plan_resp.status_code}"

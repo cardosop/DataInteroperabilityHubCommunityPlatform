@@ -13,10 +13,13 @@ Pure stdlib — no Django imports.
 
 from __future__ import annotations
 
-import argparse  # noqa: TCH003 — runtime (add_scope_argument)
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import argparse
 
 CORE_SERVICE_DIRS = ("services/api", "services/worker", "services/shared")
 

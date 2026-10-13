@@ -76,6 +76,12 @@ class MonitoringConfigurationsTest:
             self.tests_skipped += 1
             return
 
+        def _check_old_patterns(content):
+            if ("/compliance-runs/" in content or "/dq-runs/" in content) and (
+                "deprecated" not in content.lower()
+            ):
+                raise AssertionError("Should not have old endpoint patterns")
+
         try:
             content = prometheus_config.read_text(encoding="utf-8")
 
@@ -84,9 +90,7 @@ class MonitoringConfigurationsTest:
             assert "api-service" in content, "Should scrape api-service"
 
             # Check for old patterns
-            if "/compliance-runs/" in content or "/dq-runs/" in content:
-                if "deprecated" not in content.lower():
-                    raise AssertionError("Should not have old endpoint patterns")
+            _check_old_patterns(content)
 
             print("✅ PASSED: Prometheus configuration valid")
             self.tests_passed += 1
@@ -127,6 +131,20 @@ class MonitoringConfigurationsTest:
             "job-processing.json",
         ]
 
+        def _check_no_old_patterns():
+            for dashboard_file in dashboard_files:
+                content = dashboard_file.read_text(encoding="utf-8")
+                if "/api/v1/compliance-runs/" in content or "/api/v1/dq-runs/" in content:
+                    dashboard = json.loads(content)
+                    content_str = json.dumps(dashboard)
+                    if (
+                        "/api/v1/compliance-runs/" in content_str
+                        or "/api/v1/dq-runs/" in content_str
+                    ):
+                        raise AssertionError(
+                            f"Dashboard {dashboard_file.name} should not hardcode old endpoint patterns"
+                        )
+
         try:
             # Check key dashboards exist
             for dashboard_name in key_dashboards:
@@ -155,18 +173,7 @@ class MonitoringConfigurationsTest:
                     ), "Should use standardized metric names"
 
             # Check no hardcoded old endpoint patterns
-            for dashboard_file in dashboard_files:
-                content = dashboard_file.read_text(encoding="utf-8")
-                if "/api/v1/compliance-runs/" in content or "/api/v1/dq-runs/" in content:
-                    dashboard = json.loads(content)
-                    content_str = json.dumps(dashboard)
-                    if (
-                        "/api/v1/compliance-runs/" in content_str
-                        or "/api/v1/dq-runs/" in content_str
-                    ):
-                        raise AssertionError(
-                            f"Dashboard {dashboard_file.name} should not hardcode old endpoint patterns"
-                        )
+            _check_no_old_patterns()
 
             print(f"✅ PASSED: All {len(dashboard_files)} dashboards verified")
             self.tests_passed += 1
@@ -197,13 +204,17 @@ class MonitoringConfigurationsTest:
             self.tests_skipped += 1
             return
 
+        def _check_old_patterns(content):
+            if ("/compliance-runs/" in content or "/dq-runs/" in content) and (
+                "deprecated" not in content.lower()
+            ):
+                raise AssertionError("Should not hardcode old endpoint patterns")
+
         try:
             content = metrics_file.read_text(encoding="utf-8")
 
             # Should not have hardcoded old patterns
-            if "/compliance-runs/" in content or "/dq-runs/" in content:
-                if "deprecated" not in content.lower():
-                    raise AssertionError("Should not hardcode old endpoint patterns")
+            _check_old_patterns(content)
 
             # Should use dynamic route/path
             assert (
@@ -245,6 +256,12 @@ class MonitoringConfigurationsTest:
             self.tests_skipped += 1
             return
 
+        def _check_old_patterns(content):
+            if ("/compliance-runs/" in content or "/dq-runs/" in content) and (
+                "deprecated" not in content.lower()
+            ):
+                raise AssertionError("Should not hardcode old endpoint patterns")
+
         try:
             if span_middleware.exists():
                 content = span_middleware.read_text(encoding="utf-8")
@@ -256,9 +273,7 @@ class MonitoringConfigurationsTest:
 
             if tracing_file.exists():
                 content = tracing_file.read_text(encoding="utf-8")
-                if "/compliance-runs/" in content or "/dq-runs/" in content:
-                    if "deprecated" not in content.lower():
-                        raise AssertionError("Should not hardcode old endpoint patterns")
+                _check_old_patterns(content)
 
             print("✅ PASSED: Jaeger operation names use dynamic patterns")
             self.tests_passed += 1
@@ -285,14 +300,19 @@ class MonitoringConfigurationsTest:
             self.tests_skipped += 1
             return
 
+        def _check_old_patterns(content):
+            if (
+                ("request.path" in content.lower() or "path" in content.lower())
+                and ("/compliance-runs/" in content or "/dq-runs/" in content)
+                and "deprecated" not in content.lower()
+            ):
+                raise AssertionError("Should not hardcode old endpoint patterns")
+
         try:
             content = settings_file.read_text(encoding="utf-8")
 
             # If logging uses paths, should not hardcode old patterns
-            if "request.path" in content.lower() or "path" in content.lower():
-                if "/compliance-runs/" in content or "/dq-runs/" in content:
-                    if "deprecated" not in content.lower():
-                        raise AssertionError("Should not hardcode old endpoint patterns")
+            _check_old_patterns(content)
 
             print("✅ PASSED: Log aggregation patterns use dynamic paths")
             self.tests_passed += 1
@@ -361,9 +381,10 @@ class MonitoringConfigurationsTest:
         def check_service(url: str, timeout: int = 2) -> bool:
             try:
                 response = requests.get(url, timeout=timeout)
-                return response.status_code in [200, 401, 403]
-            except Exception:
+            except requests.RequestException:
                 return False
+            else:
+                return response.status_code in [200, 401, 403]
 
         # Test API metrics endpoint
         try:
@@ -388,7 +409,7 @@ class MonitoringConfigurationsTest:
             print(f"❌ FAILED: {e}")
             self.tests_failed += 1
             self.failures.append(f"Service integration: {e}")
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"⚠️  SKIPPED: Service not accessible: {e}")
             self.tests_skipped += 1
 

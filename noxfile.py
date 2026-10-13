@@ -23,7 +23,7 @@ CLI_PYTHON_VERSIONS = ["3.12"]
 
 @nox.session(python=SDK_PYTHON_VERSIONS)
 def sdk_compat(session):
-    """Run SDK tests across Python 3.9–3.12."""
+    """Run SDK tests across Python 3.9-3.12."""
     session.install("-e", "sdk/python/")
     session.install("pytest", "pytest-timeout", "requests", "filelock")
     session.run(

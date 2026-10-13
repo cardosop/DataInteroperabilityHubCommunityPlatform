@@ -387,9 +387,13 @@ class VersionTaggingTest(TestCase):
     def test_add_version_tag_empty_raises(self):
         """add_version_tag with empty string raises ValueError."""
         dataset = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV", version=1, created_by=self.user,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(dataset, is_current=True)
         with self.assertRaises(ValueError):
@@ -571,17 +575,19 @@ class VersionTaggingTest(TestCase):
 
     def test_get_versions_by_tags_empty_list(self):
         """get_versions_by_tags with empty list returns empty list."""
-        result = VersionHistoryManager.get_versions_by_tags(
-            self.asset.id, self.tenant.id, []
-        )
+        result = VersionHistoryManager.get_versions_by_tags(self.asset.id, self.tenant.id, [])
         self.assertEqual(result, [])
 
     def test_set_version_tags_empty_string_raises(self):
         """set_version_tags with an empty string in the list raises ValueError."""
         dataset = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV", version=1, created_by=self.user,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(dataset, is_current=True)
         with self.assertRaises(ValueError):
@@ -590,9 +596,13 @@ class VersionTaggingTest(TestCase):
     def test_set_version_tags_non_string_raises(self):
         """set_version_tags with a non-string element raises ValueError."""
         dataset = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV", version=1, created_by=self.user,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(dataset, is_current=True)
         with self.assertRaises(ValueError):
@@ -970,21 +980,36 @@ class VersionDiffVisualizationTest(TestCase):
     def test_compare_versions_without_data_diff(self):
         """compare_versions with include_data_diff=False omits data_diff."""
         v1 = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
-            row_count=0, format="CSV", version=1, created_by=self.user,
+            row_count=0,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(v1, semantic_version="1.0.0", is_current=False)
 
         file2 = File.objects.create(
-            tenant=self.tenant, name="test2.csv", content_type="text/csv", size=2000,
-            status=FileStatus.ACTIVE, storage_path="test/test2.csv",
-            content_sha256="def456", created_by=self.user,
+            tenant=self.tenant,
+            name="test2.csv",
+            content_type="text/csv",
+            size=2000,
+            status=FileStatus.ACTIVE,
+            storage_path="test/test2.csv",
+            content_sha256="def456",
+            created_by=self.user,
         )
         v2 = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=file2,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=file2,
             schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
-            row_count=100, format="CSV", version=2, created_by=self.user,
+            row_count=100,
+            format="CSV",
+            version=2,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(v2, parent_version=v1)
 
@@ -996,21 +1021,36 @@ class VersionDiffVisualizationTest(TestCase):
     def test_data_diff_zero_row_count_guard(self):
         """data diff with zero old row_count does not divide by zero."""
         v1 = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
-            row_count=0, format="CSV", version=1, created_by=self.user,
+            row_count=0,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(v1, semantic_version="1.0.0", is_current=False)
 
         file2 = File.objects.create(
-            tenant=self.tenant, name="test2.csv", content_type="text/csv", size=2000,
-            status=FileStatus.ACTIVE, storage_path="test/test2.csv",
-            content_sha256="def456", created_by=self.user,
+            tenant=self.tenant,
+            name="test2.csv",
+            content_type="text/csv",
+            size=2000,
+            status=FileStatus.ACTIVE,
+            storage_path="test/test2.csv",
+            content_sha256="def456",
+            created_by=self.user,
         )
         v2 = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=file2,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=file2,
             schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
-            row_count=100, format="CSV", version=2, created_by=self.user,
+            row_count=100,
+            format="CSV",
+            version=2,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(v2, parent_version=v1)
 

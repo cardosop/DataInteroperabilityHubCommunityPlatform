@@ -42,9 +42,10 @@ def _database_reachable():
             (db.get("HOST", "localhost"), int(db.get("PORT", 5432))), timeout=2
         )
         sock.close()
-        return True
     except OSError:
         return False
+    else:
+        return True
 
 
 class VirtualizationServiceExecuteQueryTest(TestCase):
@@ -213,9 +214,11 @@ class VirtualizationServiceExecuteQueryTest(TestCase):
                 parameters={},
             )
         except ValidationError:
-            execution = QueryExecution.objects.filter(
-                virtual_dataset_id=federated_dataset.id
-            ).order_by("-created_at").first()
+            execution = (
+                QueryExecution.objects.filter(virtual_dataset_id=federated_dataset.id)
+                .order_by("-created_at")
+                .first()
+            )
 
         self.assertIsNotNone(
             execution,
@@ -251,9 +254,11 @@ class VirtualizationServiceExecuteQueryTest(TestCase):
             if any(kw in err for kw in ("sparql", "semantic", "fuseki")):
                 self.skipTest(f"SPARQL service not available: {e}")
             # Non-SPARQL errors are unexpected — re-raise
-            execution = QueryExecution.objects.filter(
-                virtual_dataset_id=sparql_dataset.id
-            ).order_by("-created_at").first()
+            execution = (
+                QueryExecution.objects.filter(virtual_dataset_id=sparql_dataset.id)
+                .order_by("-created_at")
+                .first()
+            )
             if execution is None:
                 raise
 

@@ -26,7 +26,12 @@ def _run_profiling():
     """Execute profiling logic (no DB access at import time)."""
     from django.urls import reverse
 
-    from hub.apps.semantic.signals import asset_saved, contract_saved
+    try:
+        from hub.apps.semantic.signals import asset_saved, contract_saved
+    except (RuntimeError, ModuleNotFoundError):
+        # Semantic is paid-layer — profiling without it measures the
+        # non-semantic path (both core-mode absence forms).
+        asset_saved = contract_saved = None  # type: ignore[assignment]
 
     # Disconnect signals to prevent semantic service calls during profiling
     post_save.disconnect(contract_saved, sender=Contract)
@@ -131,7 +136,12 @@ def test_profile_contract_creation():
     """Profile contract creation — verifies the create-contract flow works end-to-end."""
     from django.urls import reverse
 
-    from hub.apps.semantic.signals import asset_saved, contract_saved
+    try:
+        from hub.apps.semantic.signals import asset_saved, contract_saved
+    except (RuntimeError, ModuleNotFoundError):
+        # Semantic is paid-layer — profiling without it measures the
+        # non-semantic path (both core-mode absence forms).
+        asset_saved = contract_saved = None  # type: ignore[assignment]
 
     # Disconnect signals to prevent semantic service calls during profiling
     post_save.disconnect(contract_saved, sender=Contract)
@@ -147,12 +157,14 @@ def test_profile_contract_creation():
     )
 
     role, _ = Role.objects.get_or_create(
-        tenant=tenant, name="DATA_PROVIDER",
+        tenant=tenant,
+        name="DATA_PROVIDER",
         defaults={"description": "Data Provider"},
     )
 
     user = UserFactory.create_user(
-        tenant=tenant, email=f"profile-{int(time.time())}@test.com",
+        tenant=tenant,
+        email=f"profile-{int(time.time())}@test.com",
     )
     UserRole.objects.get_or_create(user=user, role=role)
     ensure_tenant_has_active_subscription(tenant)

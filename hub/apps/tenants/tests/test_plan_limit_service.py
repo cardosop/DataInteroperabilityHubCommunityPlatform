@@ -86,6 +86,12 @@ class PlanLimitServiceTest(TestCase):
         )
 
         self.tenant = _make_tenant(plan=self.free_plan)
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest(
+                "plan-limit enforcement is paid-layer (billing limit_registry) — absent in core-only mode"
+            )
         self.service = PlanLimitService(tenant_id=str(self.tenant.id))
 
     # ── Within limit ──

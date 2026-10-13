@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="processor",
-            constraint=models.UniqueConstraint(fields=("tenant", "name"), name="pa_proc_tnt_name_uniq"),
+            constraint=models.UniqueConstraint(fields=["tenant", "name"], name="pa_proc_tnt_name_uniq"),
         ),
         migrations.AddIndex(
             model_name="processoragreement",

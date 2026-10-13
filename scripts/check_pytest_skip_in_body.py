@@ -65,9 +65,11 @@ class PytestSkipInBodyVisitor(ast.NodeVisitor):
         """Check if the current or previous line has a noqa annotation."""
         for offset in (0, 1):
             idx = lineno - 1 - offset
-            if 0 <= idx < len(self.source_lines):
-                if "# noqa: skip-in-body" in self.source_lines[idx]:
-                    return True
+            if (
+                0 <= idx < len(self.source_lines)
+                and "# noqa: skip-in-body" in self.source_lines[idx]
+            ):
+                return True
         return False
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:

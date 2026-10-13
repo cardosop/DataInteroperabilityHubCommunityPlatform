@@ -11,14 +11,22 @@ from __future__ import annotations
 import contextlib
 import time
 
+import structlog
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import (
+    APIException,
+    NotFound,
+    PermissionDenied,
+    ValidationError,
+)
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from .models import WarehouseConnection, WarehouseConnectionACL
+logger = structlog.get_logger(__name__)
+
+from .models import WarehouseConnection, WarehouseConnectionACL, WarehouseType
 from .serializers import (
     WarehouseConnectionACLSerializer,
     WarehouseConnectionCreateSerializer,
@@ -69,6 +77,23 @@ def _check_warehouse_feature(tenant) -> None:
         )
 
 
+class _WarehouseTypeDisabled(APIException):
+    """Databricks warehouse master flag off (P0 task 0.12)."""
+
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "WAREHOUSE_TYPE_DISABLED_FOR_TENANT"
+    default_detail = "The Databricks warehouse type is not enabled for this tenant"
+
+
+def _check_databricks_warehouse_gate(tenant, warehouse_type: str) -> None:
+    """P0 (openspec add-databricks-control-plane task 0.12) — the Databricks
+    warehouse path requires the (previously unused) master flag."""
+    if warehouse_type != WarehouseType.DATABRICKS:
+        return
+    if not getattr(tenant, "warehouse_databricks_enabled", False):
+        raise _WarehouseTypeDisabled()
+
+
 class WarehouseConnectionViewSet(viewsets.ModelViewSet):
     """CRUD for warehouse connections.
 
@@ -78,7 +103,7 @@ class WarehouseConnectionViewSet(viewsets.ModelViewSet):
     queryset = WarehouseConnection.objects.all()
     serializer_class = WarehouseConnectionSerializer
     permission_classes = [permissions.IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = (ScopedRateThrottle,)
     lookup_field = "id"
 
     def get_queryset(self):
@@ -98,12 +123,32 @@ class WarehouseConnectionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         tenant = _get_tenant(self.request)
         _check_warehouse_feature(tenant)
+        _check_databricks_warehouse_gate(
+            tenant, serializer.validated_data.get("warehouse_type", "")
+        )
         serializer.save(tenant=tenant)
+
+    def perform_update(self, serializer):
+        # P0 (task 0.12) — the master gate must ALSO cover updates: a PATCH
+        # flipping warehouse_type to DATABRICKS would otherwise bypass the
+        # create-time gate entirely.
+        tenant = _get_tenant(self.request)
+        _check_databricks_warehouse_gate(
+            tenant, serializer.validated_data.get("warehouse_type", "")
+        )
+        serializer.save()
 
     # ── Connection test ──────────────────────────────────────────
 
-    @action(detail=True, methods=["post"], url_path="test", throttle_classes=[ScopedRateThrottle])
-    def test_connection(self, request, id=None):
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="test",
+        throttle_classes=[ScopedRateThrottle],
+    )
+    def test_connection(
+        self, _request, id=None
+    ):  # noqa: PT019 — DRF @action method, not a pytest test
         """Probe the warehouse with SELECT 1 and return latency.
 
         POST /api/v1/warehouses/connections/{id}/test/
@@ -175,7 +220,12 @@ class WarehouseConnectionViewSet(viewsets.ModelViewSet):
 
     # ── Schema reflection ─────────────────────────────────────────
 
-    @action(detail=True, methods=["get"], url_path="schema", throttle_classes=[ScopedRateThrottle])
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="schema",
+        throttle_classes=[ScopedRateThrottle],
+    )
     def reflect_schema(self, request, id=None):
         """Reflect the schema of a table in the connected warehouse.
 
@@ -226,7 +276,7 @@ class WarehouseConnectionViewSet(viewsets.ModelViewSet):
                 }
             )
         except Exception as exc:
-            raise ValidationError(str(exc))
+            raise ValidationError(str(exc)) from exc
 
     # ── Residency mismatch audit ──────────────────────────────────
 
@@ -261,6 +311,36 @@ class WarehouseConnectionViewSet(viewsets.ModelViewSet):
         )
 
 
+def _emit_budget_audit(tenant, decision) -> None:
+    """P7 (7.4) — the budget-enforcement audit row (best-effort — an
+    audit-DB outage never blocks the dispatch, the Phase 273 contract)."""
+    try:
+        from hub.apps.audit.utils import create_audit_event
+
+        create_audit_event(
+            resource_type="DATABRICKS_COST_BUDGET",
+            action=decision.code or "WAREHOUSE_COST_BUDGET_EVALUATED",
+            actor_user=None,
+            tenant=tenant,
+            resource_id=str(tenant.id),
+            result="FAILURE" if decision.mode == "block" else "SUCCESS",
+            details={
+                "mode": decision.mode,
+                "consumed": str(decision.consumed),
+                "budget": str(decision.budget),
+                "reason": decision.reason,
+            },
+            infer_tenant_from_actor=False,
+        )
+    except Exception:
+        logger.warning(
+            "budget_audit_failed",
+            tenant_id=str(tenant.id),
+            action=decision.code,
+            exc_info=True,
+        )
+
+
 class LiveQueryViewSet(viewsets.ViewSet):
     """Records API for LIVE_QUERY assets with cursor pagination.
 
@@ -268,7 +348,7 @@ class LiveQueryViewSet(viewsets.ViewSet):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = (ScopedRateThrottle,)
 
     def list(self, request):
         """Query a LIVE_QUERY asset with cursor-based pagination."""
@@ -285,17 +365,50 @@ class LiveQueryViewSet(viewsets.ViewSet):
                 warehouse_connection__isnull=False,
             )
         except Asset.DoesNotExist:
-            raise NotFound("LIVE_QUERY asset not found or has no warehouse connection.")
+            raise NotFound(
+                "LIVE_QUERY asset not found or has no warehouse connection."
+            ) from None
 
         tenant = _get_tenant(request)
         if str(asset.tenant_id) != str(tenant.id):
             raise PermissionDenied("Asset not in your tenant.")
 
-        # Concurrency guard (Phase 275.E — max 50 concurrent queries per tenant).
+        # P7 (add-databricks-cost-guardrails 7.4) — the budget enforcement
+        # at the dispatch surface: BLOCK over budget fails closed with 429
+        # + the audit row and ZERO warehouse work; ALERT lets the query
+        # through and fires the near-exceeded alert. The decision rides the
+        # provider-agnostic budget-gate seam (W4.6): databricks_admin
+        # registers the real enforcer at app-ready; an unregistered seam
+        # (a provider with no budget concept) returns None — no gate.
+        from hub.apps.warehouses.budget_gate import enforce_budget
+
         tid = str(tenant.id)
+        decision = enforce_budget(tid)
+        if decision is not None:
+            if decision.mode in ("block", "alert"):
+                _emit_budget_audit(tenant, decision)
+            if decision.mode == "block":
+                return Response(
+                    {
+                        "code": decision.code,
+                        "message": (
+                            "Warehouse cost budget exceeded "
+                            f"({decision.consumed} / {decision.budget} units "
+                            "in the rolling hour)."
+                        ),
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    headers={"Retry-After": "60"},
+                )
+
+        # Concurrency guard (Phase 275.E — max 50 concurrent queries per tenant).
         if not _acquire_query_slot(tid):
             return Response(
-                {"error": "Too many concurrent warehouse queries.", "retry_after": 5},
+                {
+                    "code": "WAREHOUSE_CONCURRENCY_EXCEEDED",
+                    "message": "Too many concurrent warehouse queries.",
+                    "retry_after": 5,
+                },
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
                 headers={"Retry-After": "5"},
             )
@@ -314,7 +427,7 @@ class LiveQueryViewSet(viewsets.ViewSet):
             try:
                 cursor_offset = int(b64decode(cursor_raw).decode())
             except (ValueError, UnicodeDecodeError):
-                raise ValidationError({"cursor": "Invalid cursor token."})
+                raise ValidationError({"cursor": "Invalid cursor token."}) from None
 
         connection = asset.warehouse_connection
         if not connection.is_active:
@@ -359,7 +472,9 @@ class LiveQueryViewSet(viewsets.ViewSet):
             # Build next cursor.
             next_offset = cursor_offset + len(rows)
             next_cursor = (
-                b64encode(str(next_offset).encode()).decode() if len(rows) == limit else None
+                b64encode(str(next_offset).encode()).decode()
+                if len(rows) == limit
+                else None
             )
 
             response_data = {
@@ -374,7 +489,7 @@ class LiveQueryViewSet(viewsets.ViewSet):
                 from .cache import set_cached_result
 
                 set_cached_result(
-                    str(tenant.id),
+                    tenant_id_str,
                     asset_id,
                     cache_key,
                     {"rows": rows, "cursor": next_cursor, "row_count": len(rows)},
@@ -410,7 +525,10 @@ class LiveQueryViewSet(viewsets.ViewSet):
                     import pyarrow as pa
 
                     table = pa.table(
-                        {str(i): [r[i] for r in rows] for i in range(len(rows[0]) if rows else 0)}
+                        {
+                            str(i): [r[i] for r in rows]
+                            for i in range(len(rows[0]) if rows else 0)
+                        }
                     )
                     sink = pa.BufferOutputStream()
                     with pa.ipc.new_stream(sink, table.schema) as writer:
@@ -428,126 +546,13 @@ class LiveQueryViewSet(viewsets.ViewSet):
                 connector.close()
 
 
-class DeltaShareView(viewsets.ViewSet):
-    """Delta Sharing 1.0 protocol endpoint for LIVE_QUERY assets.
-
-    GET /api/v1/warehouses/share/{asset_id}/ — list tables in share.
-    GET /api/v1/warehouses/share/{asset_id}/query/ — query table data.
-    """
-
-    permission_classes = [permissions.IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
-
-    @action(detail=False, methods=["get"], url_path="(?P<asset_id>[^/.]+)")
-    def list_tables(self, request, asset_id=None):
-        """List tables available in the share for this asset."""
-        from hub.apps.assets.models import Asset, DataStrategy
-
-        try:
-            asset = Asset.objects.get(
-                id=asset_id,
-                data_strategy=DataStrategy.LIVE_QUERY,
-            )
-        except Asset.DoesNotExist:
-            raise NotFound("LIVE_QUERY asset not found.")
-
-        tenant = _get_tenant(request)
-        if str(asset.tenant_id) != str(tenant.id):
-            raise PermissionDenied("Asset not in your tenant.")
-
-        # Emit audit for share access.
-        try:
-            from hub.apps.audit.utils import create_audit_event
-
-            create_audit_event(
-                resource_type="ASSET",
-                action="WAREHOUSE_SHARE_ACCESSED",
-                tenant=asset.tenant,
-                resource_id=str(asset.id),
-            )
-        except Exception:
-            pass
-
-        meta = asset.metadata or {}
-        table_name = meta.get("external_table_ref") or meta.get("table_name") or "unknown"
-        return Response(
-            {
-                "share": {
-                    "name": f"meshant_{asset.id.hex[:8]}",
-                },
-                "tables": [
-                    {
-                        "name": table_name,
-                        "share": f"meshant_{asset.id.hex[:8]}",
-                        "schema": f"meshant_{asset.id.hex[:8]}",
-                    }
-                ],
-            }
-        )
-
-    @action(detail=False, methods=["get"], url_path="(?P<asset_id>[^/.]+)/query")
-    def query_table(self, request, asset_id=None):
-        """Query table data via Delta Sharing protocol."""
-        from hub.apps.assets.models import Asset, DataStrategy
-
-        try:
-            asset = Asset.objects.get(
-                id=asset_id,
-                data_strategy=DataStrategy.LIVE_QUERY,
-                warehouse_connection__isnull=False,
-            )
-        except Asset.DoesNotExist:
-            raise NotFound("LIVE_QUERY asset not found.")
-
-        tenant = _get_tenant(request)
-        if str(asset.tenant_id) != str(tenant.id):
-            raise PermissionDenied("Asset not in your tenant.")
-
-        limit = min(int(request.query_params.get("limit", 100)), 1000)
-
-        connection = asset.warehouse_connection
-        config = connection.get_config()
-        meta = asset.metadata or {}
-        table_name = meta.get("external_table_ref") or meta.get("table_name")
-
-        if not table_name:
-            raise ValidationError("No table name configured for this asset.")
-
-        from .base import get_connector_for_connection
-
-        connector_cls = get_connector_for_connection(connection.warehouse_type)
-        connector = connector_cls(config, tenant_id=str(connection.tenant_id))
-
-        connector.connect()
-        try:
-            result = connector.execute_query(
-                f"SELECT * FROM {table_name} LIMIT {limit}",
-            )
-            rows = [list(row) for row in result.rows]
-        finally:
-            with contextlib.suppress(Exception):
-                connector.close()
-
-        return Response(
-            {
-                "protocol": {"version": 1},
-                "metaData": {
-                    "table": table_name,
-                    "warehouse_type": connection.warehouse_type,
-                    "row_count": len(rows),
-                },
-                "rows": rows,
-            }
-        )
-
-
 class WarehouseConnectionACLViewSet(viewsets.ModelViewSet):
     """CRUD for warehouse connection ACLs. Tenant-scoped."""
 
     queryset = WarehouseConnectionACL.objects.all().order_by("-created_at")
     serializer_class = WarehouseConnectionACLSerializer
     permission_classes = [permissions.IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = (ScopedRateThrottle,)
     lookup_field = "id"
 
     def get_queryset(self):
@@ -557,7 +562,9 @@ class WarehouseConnectionACLViewSet(viewsets.ModelViewSet):
         tenant = _get_tenant(self.request)
         if tenant is None:
             return WarehouseConnectionACL.objects.none()
-        return WarehouseConnectionACL.objects.filter(tenant=tenant).order_by("-created_at")
+        return WarehouseConnectionACL.objects.filter(tenant=tenant).order_by(
+            "-created_at"
+        )
 
     def perform_create(self, serializer):
         tenant = _get_tenant(self.request)

@@ -78,7 +78,7 @@ class ServiceClientAuditor:
 
         return service_client_files
 
-    def extract_base_url(self, node: ast.AST, file_path: Path) -> str:
+    def extract_base_url(self, node: ast.AST, _file_path: Path) -> str:
         """Extract base URL from service client initialization"""
         base_url = "unknown"
 
@@ -87,15 +87,16 @@ class ServiceClientAuditor:
             if isinstance(child, ast.Assign):
                 for target in child.targets:
                     if isinstance(target, ast.Name) and target.id == "base_url":
-                        if isinstance(child.value, ast.Call):
+                        if (
+                            isinstance(child.value, ast.Call)
+                            and isinstance(child.value.func, ast.Name)
+                            and child.value.func.id == "getattr"
+                            and len(child.value.args) >= 2
+                        ):
                             # getattr(settings, 'SEMANTIC_SERVICE_URL', default_url)
-                            if (
-                                isinstance(child.value.func, ast.Name)
-                                and child.value.func.id == "getattr"
-                            ) and len(child.value.args) >= 2:
-                                if isinstance(child.value.args[1], ast.Constant):
-                                    value = child.value.args[1].value
-                                    base_url = str(value) if value is not None else "unknown"
+                            if isinstance(child.value.args[1], ast.Constant):
+                                value = child.value.args[1].value
+                                base_url = str(value) if value is not None else "unknown"
                         elif isinstance(child.value, ast.Constant):
                             value = child.value.value
                             base_url = str(value) if value is not None else "unknown"
@@ -107,10 +108,13 @@ class ServiceClientAuditor:
         for child in ast.walk(node):
             if isinstance(child, ast.Assign):
                 for target in child.targets:
-                    if isinstance(target, ast.Name) and target.id == "default_url":
-                        if isinstance(child.value, ast.Constant):
-                            value = child.value.value
-                            base_url = str(value) if value is not None else "unknown"
+                    if (
+                        isinstance(target, ast.Name)
+                        and target.id == "default_url"
+                        and isinstance(child.value, ast.Constant)
+                    ):
+                        value = child.value.value
+                        base_url = str(value) if value is not None else "unknown"
 
         return base_url
 
@@ -121,19 +125,22 @@ class ServiceClientAuditor:
         for child in ast.walk(node):
             if isinstance(child, ast.Assign):
                 for target in child.targets:
-                    if isinstance(target, ast.Name) and target.id == "client":
-                        if isinstance(child.value, ast.Call):
-                            if isinstance(child.value.func, ast.Attribute):
-                                # httpx.Client(...)
-                                if isinstance(child.value.func.value, ast.Name):
-                                    module = child.value.func.value.id
-                                    attr = child.value.func.attr
-                                    http_client_type = f"{module}.{attr}"
-                                    break
-                            elif isinstance(child.value.func, ast.Name):
-                                # Client(...)
-                                http_client_type = child.value.func.id
+                    if (
+                        isinstance(target, ast.Name)
+                        and target.id == "client"
+                        and isinstance(child.value, ast.Call)
+                    ):
+                        if isinstance(child.value.func, ast.Attribute):
+                            # httpx.Client(...)
+                            if isinstance(child.value.func.value, ast.Name):
+                                module = child.value.func.value.id
+                                attr = child.value.func.attr
+                                http_client_type = f"{module}.{attr}"
                                 break
+                        elif isinstance(child.value.func, ast.Name):
+                            # Client(...)
+                            http_client_type = child.value.func.id
+                            break
 
         return http_client_type
 
@@ -228,21 +235,23 @@ class ServiceClientAuditor:
                 return method_name
 
         # Check if it's client.request(method, ...) or _request_with_retry(method, ...)
-        if isinstance(call_node.func, ast.Attribute):
-            if call_node.func.attr in ["request", "_request_with_retry"]:
-                if len(call_node.args) > 0:
-                    arg = call_node.args[0]
-                    if isinstance(arg, ast.Constant):
-                        value = arg.value
-                        return str(value).upper() if value is not None else "UNKNOWN"
-                    # Python < 3.8 compatibility
-                    elif hasattr(ast, "Str") and isinstance(arg, getattr(ast, "Str", type(None))):
-                        s_value = getattr(arg, "value", None)
-                        return s_value.upper() if s_value else "UNKNOWN"
+        if (
+            isinstance(call_node.func, ast.Attribute)
+            and call_node.func.attr in ["request", "_request_with_retry"]
+            and len(call_node.args) > 0
+        ):
+            arg = call_node.args[0]
+            if isinstance(arg, ast.Constant):
+                value = arg.value
+                return str(value).upper() if value is not None else "UNKNOWN"
+            # Python < 3.8 compatibility
+            elif hasattr(ast, "Str") and isinstance(arg, getattr(ast, "Str", type(None))):
+                s_value = getattr(arg, "value", None)
+                return s_value.upper() if s_value else "UNKNOWN"
 
         return "UNKNOWN"
 
-    def extract_methods(self, class_node: ast.ClassDef, file_path: Path) -> list[dict[str, Any]]:
+    def extract_methods(self, class_node: ast.ClassDef, _file_path: Path) -> list[dict[str, Any]]:
         """Extract methods from service client class"""
         methods = []
 
@@ -275,12 +284,30 @@ class ServiceClientAuditor:
                 # Find HTTP calls in method body (including nested functions)
                 http_calls = []
 
-                def extract_calls_from_node(node: ast.AST):
-                    """Recursively extract HTTP calls from AST node"""
-                    if isinstance(node, ast.Call):
+                def extract_calls_from_node(
+                    node: ast.AST, method_name=method_name, http_calls=http_calls
+                ):
+                    """Recursively extract HTTP calls from AST node.
+
+                    The loop-scoped names are bound as same-name defaults so
+                    the recursive walk sees THIS method's values.
+                    """
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                         # Check if it's _request_with_retry(...)
-                        if isinstance(node.func, ast.Attribute):
-                            if node.func.attr == "_request_with_retry":
+                        if node.func.attr == "_request_with_retry":
+                            http_method = self.extract_http_method_from_call(node)
+                            endpoint = self.extract_endpoint_from_call(node, method_name)
+                            if endpoint:
+                                http_calls.append(
+                                    {
+                                        "http_method": http_method,
+                                        "endpoint": endpoint,
+                                        "line_number": node.lineno,
+                                    }
+                                )
+                        # Check if it's self.client.request(...) or self.client.get(...)
+                        elif isinstance(node.func.value, ast.Attribute):
+                            if node.func.value.attr == "client":
                                 http_method = self.extract_http_method_from_call(node)
                                 endpoint = self.extract_endpoint_from_call(node, method_name)
                                 if endpoint:
@@ -291,34 +318,20 @@ class ServiceClientAuditor:
                                             "line_number": node.lineno,
                                         }
                                     )
-                            # Check if it's self.client.request(...) or self.client.get(...)
-                            elif isinstance(node.func.value, ast.Attribute):
-                                if node.func.value.attr == "client":
-                                    http_method = self.extract_http_method_from_call(node)
-                                    endpoint = self.extract_endpoint_from_call(node, method_name)
-                                    if endpoint:
-                                        http_calls.append(
-                                            {
-                                                "http_method": http_method,
-                                                "endpoint": endpoint,
-                                                "line_number": node.lineno,
-                                            }
-                                        )
-                            # Check if it's client.request(...) or client.get(...)
-                            elif (
-                                isinstance(node.func.value, ast.Name)
-                                and node.func.value.id == "client"
-                            ):
-                                http_method = self.extract_http_method_from_call(node)
-                                endpoint = self.extract_endpoint_from_call(node, method_name)
-                                if endpoint:
-                                    http_calls.append(
-                                        {
-                                            "http_method": http_method,
-                                            "endpoint": endpoint,
-                                            "line_number": node.lineno,
-                                        }
-                                    )
+                        # Check if it's client.request(...) or client.get(...)
+                        elif (
+                            isinstance(node.func.value, ast.Name) and node.func.value.id == "client"
+                        ):
+                            http_method = self.extract_http_method_from_call(node)
+                            endpoint = self.extract_endpoint_from_call(node, method_name)
+                            if endpoint:
+                                http_calls.append(
+                                    {
+                                        "http_method": http_method,
+                                        "endpoint": endpoint,
+                                        "line_number": node.lineno,
+                                    }
+                                )
 
                     # Recursively process child nodes
                     for child in ast.iter_child_nodes(node):

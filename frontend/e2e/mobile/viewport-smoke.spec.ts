@@ -6,8 +6,8 @@
  * Runs only when E2E_MOBILE=1 (opt-in via Playwright project).
  */
 import { test, expect } from "@playwright/test";
-import { getTestUser } from "../../fixtures/auth";
-import { loginAndNavigateToRoute } from "../../fixtures/helpers";
+import { getTestUser } from "../fixtures/auth";
+import { loginAndNavigateToRoute } from "../fixtures/helpers";
 
 const MIN_TOUCH_TARGET = 44;
 

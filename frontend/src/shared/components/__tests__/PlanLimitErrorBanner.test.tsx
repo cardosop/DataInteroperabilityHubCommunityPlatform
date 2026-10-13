@@ -4,7 +4,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import userEvent from '@testing-library/user-event';
 import { PlanLimitErrorBanner } from '../PlanLimitErrorBanner';
 
 function renderWithRouter(props: Parameters<typeof PlanLimitErrorBanner>[0]) {

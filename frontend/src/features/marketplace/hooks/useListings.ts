@@ -3,12 +3,10 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { listingService } from '../services/listingService';
-import type {
-  LineageDetailLevel,
-  ListingLineageGraph,
-} from '../../../shared/types/lineage';
+import type { LineageDetailLevel, ListingLineageGraph } from '../../../shared/types/lineage';
 import type {
   ListingCreateRequest,
   ListingUpdateRequest,
@@ -20,10 +18,7 @@ export function useListings(filters: ListingListFilters = {}) {
     queryKey: ['marketplace', 'listings', 'list', filters],
     queryFn: async () => {
       const data = await listingService.list(filters);
-      if (data === undefined) {
-        return { results: [], count: 0 };
-      }
-      return data;
+      return normalizePaginated(data ?? { results: [], count: 0 });
     },
   });
 }
@@ -33,10 +28,7 @@ export function useSearchListings(query: string, filters: ListingListFilters = {
     queryKey: ['marketplace', 'listings', 'search', query, filters],
     queryFn: async () => {
       const data = await listingService.search(query, filters);
-      if (data === undefined) {
-        return { results: [], count: 0 };
-      }
-      return data;
+      return normalizePaginated(data ?? { results: [], count: 0 });
     },
     enabled: !!query && query.length > 0,
   });
@@ -73,7 +65,9 @@ export function useUpdateListing() {
     errorMessage: 'Failed to update listing',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'listings'] });
-      queryClient.invalidateQueries({ queryKey: ['marketplace', 'listings', 'detail', variables.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'listings', 'detail', variables.id],
+      });
     },
   });
 }
@@ -101,7 +95,8 @@ export function useDownloadListing() {
 
 export function usePreviewListing() {
   return useMutationWithNotification({
-    mutationFn: ({ id, format }: { id: string; format?: string }) => listingService.preview(id, format),
+    mutationFn: ({ id, format }: { id: string; format?: string }) =>
+      listingService.preview(id, format),
     successMessage: 'Listing preview loaded',
     errorMessage: 'Failed to preview listing',
   });
@@ -128,12 +123,11 @@ export function usePreviewListing() {
 export function useListingLineage(
   listingId: string | null,
   detail: LineageDetailLevel = 'summary',
-  maxDepth: number = 3,
+  maxDepth: number = 3
 ) {
   return useQuery<ListingLineageGraph>({
     queryKey: ['marketplace', 'listings', 'lineage', listingId, detail, maxDepth],
-    queryFn: () =>
-      listingService.getLineage(listingId!, { detail, max_depth: maxDepth }),
+    queryFn: () => listingService.getLineage(listingId!, { detail, max_depth: maxDepth }),
     enabled: !!listingId,
     staleTime: 60 * 1000, // mirror server Cache-Control: max-age=60
   });

@@ -79,7 +79,7 @@ def list_pipelines(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list pipelines: {e}")
+        raise click.ClickException(f"Failed to list pipelines: {e}") from e
 
 
 @pipelines.command("get")
@@ -103,14 +103,14 @@ def get_pipeline(pipeline_id: str, output_format: str):
             click.echo(f"Name: {data.get('name')}")
             click.echo(f"Status: {data.get('status')}")
             click.echo(f"Description: {data.get('description', 'N/A')}")
-            if data.get("config"):
-                click.echo(f"Config: {json.dumps(data.get('config'))}")
+            if data.get("pipeline_definition"):
+                click.echo(f"Pipeline definition: {json.dumps(data.get('pipeline_definition'))}")
             click.echo(f"Created: {data.get('created_at')}")
             click.echo(f"Updated: {data.get('updated_at')}")
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get pipeline: {e}")
+        raise click.ClickException(f"Failed to get pipeline: {e}") from e
 
 
 @pipelines.command("create")
@@ -119,7 +119,7 @@ def get_pipeline(pipeline_id: str, output_format: str):
 @click.option(
     "--config",
     "config_json",
-    help="Pipeline config as JSON string",
+    help="Pipeline definition as JSON string (must include 'version' and 'steps')",
 )
 @click.option(
     "--format",
@@ -138,7 +138,8 @@ def create_pipeline(
     if description:
         payload["description"] = description
     if config_json:
-        payload["config"] = json.loads(config_json)
+        # Backend expects ``pipeline_definition`` (TransformationPipelineCreateSerializer).
+        payload["pipeline_definition"] = json.loads(config_json)
 
     try:
         data = api_client.post(
@@ -156,7 +157,7 @@ def create_pipeline(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create pipeline: {e}")
+        raise click.ClickException(f"Failed to create pipeline: {e}") from e
 
 
 @pipelines.command("update")
@@ -188,7 +189,7 @@ def update_pipeline(
     if description is not None:
         payload["description"] = description
     if config_json:
-        payload["config"] = json.loads(config_json)
+        payload["pipeline_definition"] = json.loads(config_json)
     if not payload:
         raise click.ClickException("No fields to update")
 
@@ -205,7 +206,7 @@ def update_pipeline(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update pipeline: {e}")
+        raise click.ClickException(f"Failed to update pipeline: {e}") from e
 
 
 @pipelines.command("delete")
@@ -224,7 +225,7 @@ def delete_pipeline(pipeline_id: str, confirm: bool):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to delete pipeline: {e}")
+        raise click.ClickException(f"Failed to delete pipeline: {e}") from e
 
 
 @pipelines.command("validate")
@@ -258,7 +259,7 @@ def validate_pipeline(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to validate pipeline: {e}")
+        raise click.ClickException(f"Failed to validate pipeline: {e}") from e
 
 
 # ── Runs ─────────────────────────────────────────────────
@@ -326,7 +327,7 @@ def list_runs(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list runs: {e}")
+        raise click.ClickException(f"Failed to list runs: {e}") from e
 
 
 @runs.command("get")
@@ -358,15 +359,17 @@ def get_run(run_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get run: {e}")
+        raise click.ClickException(f"Failed to get run: {e}") from e
 
 
 @runs.command("submit")
-@click.argument("pipeline_id")
+@click.option("--pipeline-id", required=True, help="Pipeline ID to execute")
+@click.option("--asset-id", required=True, help="Source asset ID to transform")
 @click.option(
-    "--params",
-    "params_json",
-    help="Runtime parameters as JSON",
+    "--execution-mode",
+    type=click.Choice(["SYNC", "ASYNC"]),
+    default="ASYNC",
+    help="Execution mode: SYNC or ASYNC",
 )
 @click.option(
     "--format",
@@ -376,17 +379,24 @@ def get_run(run_id: str, output_format: str):
 )
 def submit_run(
     pipeline_id: str,
-    params_json: str | None,
+    asset_id: str,
+    execution_mode: str,
     output_format: str,
 ):
-    """Submit a new transformation run"""
-    payload = {"pipeline_id": pipeline_id}
-    if params_json:
-        payload["params"] = json.loads(params_json)
+    """Submit a new transformation run.
+
+    POST /api/v1/transformation/pipelines/{id}/execute/
+    (``executions/`` is read-only; submission goes through the
+    pipeline's execute action.)
+    """
+    payload = {
+        "asset_id": asset_id,
+        "execution_mode": execution_mode,
+    }
 
     try:
         data = api_client.post(
-            "transformation/executions/",
+            f"transformation/pipelines/{pipeline_id}/execute/",
             json_data=payload,
             timeout=120,
         )
@@ -394,12 +404,12 @@ def submit_run(
             click.echo(json.dumps(data, indent=2))
         else:
             click.echo("Run submitted successfully!")
-            click.echo(f"Run ID: {data.get('id')}")
+            click.echo(f"Run ID: {data.get('execution_id')}")
             click.echo(f"Status: {data.get('status')}")
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to submit run: {e}")
+        raise click.ClickException(f"Failed to submit run: {e}") from e
 
 
 @runs.command("cancel")
@@ -407,14 +417,18 @@ def submit_run(
 def cancel_run(run_id: str):
     """Cancel a running transformation"""
     try:
-        api_client.post(
+        resp = api_client.post(
             f"transformation/executions/{run_id}/cancel/",
         )
-        click.echo(f"Run {run_id} cancelled.")
+        status_val = resp.get("status") if isinstance(resp, dict) else None
+        msg = f"Run {run_id} cancelled."
+        if status_val:
+            msg += f" Status: {status_val}"
+        click.echo(msg)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to cancel run: {e}")
+        raise click.ClickException(f"Failed to cancel run: {e}") from e
 
 
 # ── Plan Limits ──────────────────────────────────────────
@@ -451,4 +465,4 @@ def plan_limits(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get plan limits: {e}")
+        raise click.ClickException(f"Failed to get plan limits: {e}") from e

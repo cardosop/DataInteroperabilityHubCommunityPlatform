@@ -301,7 +301,7 @@ def create_tenant_with_admin_invitation(
         email=admin_email,
         password=None,  # invitee sets their own on redemption
         tenant=tenant,
-        display_name=admin_email.split("@")[0],
+        display_name=admin_email.split("@", maxsplit=1)[0],
         status=UserStatus.INVITED,
         invitation_token=hashed_token,
         invitation_token_expires_at=timezone.now() + timedelta(days=7),
@@ -346,7 +346,7 @@ def create_tenant_with_admin_invitation(
 
         try:
             send_invitation_email.delay(invited_user_id, plaintext_token=plaintext_token)
-        except Exception as exc:  # pragma: no cover — Redis-outage path
+        except Exception as exc:
             logger.warning(
                 "admin_tenant_create_invitation_email_enqueue_failed",
                 extra={
@@ -373,7 +373,7 @@ def create_tenant_with_admin_invitation(
 class AdminTenantCreateView(APIView):
     """PLATFORM_ADMIN endpoint for provisioning a new tenant."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     @extend_schema(
         operation_id="admin_tenant_create",

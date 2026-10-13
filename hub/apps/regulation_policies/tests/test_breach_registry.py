@@ -41,11 +41,11 @@ class BreachRegistryTests(TestCase):
         discovered = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
         d = compute_breach_supervisory_deadline_utc(discovered, ("GDPR", "LGPD"))
         g = breach_statutory_clock_matrix("GDPR")
-        l = breach_statutory_clock_matrix("LGPD")
+        lgpd_matrix = breach_statutory_clock_matrix("LGPD")
         expect_min = discovered + timedelta(
             hours=min(
                 int(g["supervisory_notification_hours"]),
-                int(l["supervisory_notification_hours"]),
+                int(lgpd_matrix["supervisory_notification_hours"]),
             )
         )
         self.assertEqual(d, expect_min)
@@ -54,18 +54,18 @@ class BreachRegistryTests(TestCase):
     def test_merge_sla_windows_uses_strictest_hours_before_deadline(self):
         merged = merge_breach_incident_sla_windows(["GDPR", "LGPD"])
         g = breach_statutory_clock_matrix("GDPR")
-        l = breach_statutory_clock_matrix("LGPD")
+        lgpd_matrix = breach_statutory_clock_matrix("LGPD")
         self.assertEqual(
             merged["sla_warn_hours_before_deadline"],
             min(
                 float(g["sla_warn_hours_before_deadline"]),
-                float(l["sla_warn_hours_before_deadline"]),
+                float(lgpd_matrix["sla_warn_hours_before_deadline"]),
             ),
         )
         self.assertEqual(
             merged["sla_alert_hours_before_deadline"],
             min(
                 float(g["sla_alert_hours_before_deadline"]),
-                float(l["sla_alert_hours_before_deadline"]),
+                float(lgpd_matrix["sla_alert_hours_before_deadline"]),
             ),
         )

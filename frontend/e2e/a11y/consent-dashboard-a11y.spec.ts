@@ -26,7 +26,7 @@ test.describe('A11y axe coverage — ConsentDashboard @a11y @consent', () => {
   });
 
   test('consent dashboard page has no critical a11y violations', async ({ page }) => {
-    await page.goto('/governance/consent-dashboard', { waitUntil: 'domcontentloaded' });
+    await page.goto('/governance/consent/dashboard', { waitUntil: 'domcontentloaded' });
     await assertNoA11yViolations(page);
   });
 });

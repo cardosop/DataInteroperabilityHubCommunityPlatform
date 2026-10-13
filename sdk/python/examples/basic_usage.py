@@ -7,6 +7,7 @@ import os
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
+    DataHubError,
     NotFoundError,
     ValidationError,
 )
@@ -26,7 +27,7 @@ async def list_assets(client: DataHubClient):
         print("Assets:", assets)
     except NotFoundError as e:
         print(f"Assets not found: {e.message}")
-    except Exception as e:
+    except (DataHubError, ValueError) as e:
         print(f"Error: {e}")
 
 
@@ -45,7 +46,7 @@ async def create_asset(client: DataHubClient):
         print("Created asset:", asset)
     except ValidationError as e:
         print(f"Validation errors: {e.details}")
-    except Exception as e:
+    except (DataHubError, ValueError) as e:
         print(f"Error: {e}")
 
 
@@ -56,7 +57,7 @@ async def get_asset(client: DataHubClient, asset_id: str):
         print("Asset:", asset)
     except NotFoundError as e:
         print(f"Asset {asset_id} not found: {e.message}")
-    except Exception as e:
+    except (DataHubError, ValueError) as e:
         print(f"Error: {e}")
 
 
@@ -70,7 +71,7 @@ async def update_asset(client: DataHubClient, asset_id: str):
             },
         )
         print("Updated asset:", asset)
-    except Exception as e:
+    except (DataHubError, ValueError) as e:
         print(f"Error: {e}")
 
 
@@ -79,7 +80,7 @@ async def delete_asset(client: DataHubClient, asset_id: str):
     try:
         await client.delete(f"/assets/{asset_id}/")
         print("Asset deleted")
-    except Exception as e:
+    except (DataHubError, ValueError) as e:
         print(f"Error: {e}")
 
 

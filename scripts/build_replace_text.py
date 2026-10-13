@@ -22,10 +22,27 @@ import subprocess
 from pathlib import Path
 
 SECRET_KEY_RE = re.compile(r"KEY|SECRET|TOKEN|PASSWORD|JWT|CREDENTIAL", re.I)
-HOSTNAME_RE = re.compile(
-    r"[\w.-]+\.meshant\.com|wiki\.internal|grafana\.internal"
+HOSTNAME_RE = re.compile(r"[\w.-]+\.meshant\.com|wiki\.internal|grafana\.internal")
+TEXT_SUFFIXES = (
+    ".md",
+    ".py",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".txt",
+    ".json",
+    ".sh",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".cjs",
+    ".mjs",
+    ".html",
+    ".css",
+    ".ini",
+    ".cfg",
+    ".env.example",
 )
-TEXT_SUFFIXES = (".md", ".py", ".yml", ".yaml", ".toml", ".txt", ".json", ".sh", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".html", ".css", ".ini", ".cfg", ".env.example")
 
 # Files whose values are local infrastructure defaults, not secrets — kept
 # in the history on purpose (they were never secrets).

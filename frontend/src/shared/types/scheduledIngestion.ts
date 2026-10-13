@@ -87,6 +87,8 @@ export interface ScheduledIngestionListFilters {
   page?: number;
   page_size?: number;
   status?: ScheduledIngestionStatus;
+  /** The dataset → schedule lookup surface (asset-scoped listing). */
+  asset_id?: string;
 }
 
 export interface ScheduledIngestionCreateRequest {

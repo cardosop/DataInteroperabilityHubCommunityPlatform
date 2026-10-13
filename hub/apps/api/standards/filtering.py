@@ -7,6 +7,8 @@ Provides consistent filtering across all API endpoints.
 from typing import Any
 
 import structlog
+from django.core.exceptions import FieldError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q, QuerySet
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import BaseFilterBackend
@@ -198,27 +200,28 @@ def apply_filters(
     # Build Q objects for filters
     q_objects = Q()
 
-    for field, value in filter_params.items():
+    for field, raw_value in filter_params.items():
         # Skip empty values
-        if value is None or value == "":
+        if raw_value is None or raw_value == "":
             continue
+        value = raw_value
 
         # Handle special operators
         if "__in" in field:
             # Handle comma-separated values
-            if isinstance(value, str):
-                value = [v.strip() for v in value.split(",") if v.strip()]
+            if isinstance(raw_value, str):
+                value = [v.strip() for v in raw_value.split(",") if v.strip()]
             if value:
                 q_objects &= Q(**{field: value})
         elif "__isnull" in field or "__isnotnull" in field:
             # Handle boolean strings
-            if isinstance(value, str):
-                value = value.lower() in ["true", "1", "yes"]
+            if isinstance(raw_value, str):
+                value = raw_value.lower() in ["true", "1", "yes"]
             q_objects &= Q(**{field: value})
         elif "__range" in field:
             # Handle range (comma-separated)
-            if isinstance(value, str):
-                parts = value.split(",")
+            if isinstance(raw_value, str):
+                parts = raw_value.split(",")
                 if len(parts) == 2:
                     try:
                         range_values = [float(parts[0]), float(parts[1])]
@@ -229,7 +232,7 @@ def apply_filters(
             # Standard filter
             try:
                 q_objects &= Q(**{field: value})
-            except Exception as e:
+            except (FieldError, DjangoValidationError, TypeError, ValueError) as e:
                 logger.warning(
                     "filter_application_failed",
                     field=field,

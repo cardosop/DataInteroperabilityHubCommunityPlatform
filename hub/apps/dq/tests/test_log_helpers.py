@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import ClassVar
 
 # ---------------------------------------------------------------------------
 # Core ``_redact`` semantics — mirror of dq-service test inventory.
@@ -203,7 +204,7 @@ class TestRedactedKeysParity:
     never redact LESS than dq-service.
     """
 
-    DQ_SERVICE_REDACTED_KEYS = {
+    DQ_SERVICE_REDACTED_KEYS: ClassVar[set[str]] = {
         "row_samples",
         "sample_value",
         "sample_data_json",
@@ -283,7 +284,8 @@ def _load_lint_script_module():
     )
     module_name = "check_dq_log_extras_for_parity_test"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     try:

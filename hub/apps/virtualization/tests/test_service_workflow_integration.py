@@ -21,7 +21,6 @@ from hub.apps.orchestration.registry import reset_workflow_definition_cache
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
 from hub.apps.users.models import User, UserStatus
 from hub.apps.virtualization.models import (
-    QueryExecution,
     QueryExecutionMode,
     QueryExecutionStatus,
     QueryType,
@@ -41,13 +40,13 @@ def _database_reachable():
             (db.get("HOST", "localhost"), int(db.get("PORT", 5432))), timeout=2
         )
         sock.close()
-        return True
     except OSError:
         return False
+    else:
+        return True
 
 
 from hub.apps.testing.virtualization_support import get_test_db_source as _get_test_db_source
-
 
 
 class ServiceWorkflowIntegrationTest(TestCase):

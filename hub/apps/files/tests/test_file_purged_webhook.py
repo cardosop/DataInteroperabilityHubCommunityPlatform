@@ -71,7 +71,7 @@ from hub.apps.webhooks.models import (
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip  # noqa: E402
+from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip
 
 # ---------------------------------------------------------------------------
 # 260.7.G.2 — Enum registration. Pin that ``file.purged`` is in

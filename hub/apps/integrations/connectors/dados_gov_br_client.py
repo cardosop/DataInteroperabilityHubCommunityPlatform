@@ -30,7 +30,9 @@ class DadosGovBrAPIClient:
         client: HTTP client for making requests
     """
 
-    def __init__(self, base_url: str, jwt_token: str | None = None, swagger_spec_url: str | None = None):
+    def __init__(
+        self, base_url: str, jwt_token: str | None = None, swagger_spec_url: str | None = None
+    ):
         """
         Initialize dados.gov.br API client.
 
@@ -114,8 +116,6 @@ class DadosGovBrAPIClient:
                 f"Loaded Swagger specification from {swagger_url} "
                 f"(paths: {len(spec.get('paths', {}))})"
             )
-
-            return spec
         except httpx.RequestError as e:
             logger.warning(f"Failed to load Swagger spec from {swagger_url}: {e}")
             return None
@@ -125,6 +125,8 @@ class DadosGovBrAPIClient:
         except Exception as e:
             logger.warning(f"Unexpected error loading Swagger spec: {e}")
             return None
+        else:
+            return spec
 
     def get_endpoint_path(self, operation_id: str) -> str:
         """
@@ -337,14 +339,14 @@ class DadosGovBrAPIClient:
                 except (ValueError, TypeError, AttributeError):
                     raise ValueError(
                         f"API endpoint returned non-JSON response: {response.text[:200]}"
-                    )
+                    ) from None
 
             return response.json()
         except httpx.HTTPStatusError as e:
             # Check if we were redirected to signin (authentication failure)
             final_url = str(e.response.url) if hasattr(e.response, "url") else ""
             if "/signin" in final_url or "/login" in final_url:
-                logger.error(
+                logger.exception(
                     f"API endpoint redirected to signin page: {method} {endpoint} -> {final_url}. "
                     f"This indicates authentication failure - JWT token may be expired or invalid."
                 )
@@ -383,13 +385,13 @@ class DadosGovBrAPIClient:
                     f"Status {e.response.status_code}: {e.response.text[:200]}"
                 )
             else:
-                logger.error(
+                logger.exception(
                     f"API request failed: {method} {endpoint} - "
                     f"Status {e.response.status_code}: {e.response.text[:200]}"
                 )
             raise
-        except httpx.RequestError as e:
-            logger.error(f"Network error making API request: {method} {endpoint} - {e}")
+        except httpx.RequestError:
+            logger.exception(f"Network error making API request: {method} {endpoint} - ")
             raise
 
     def search_datasets(

@@ -15,17 +15,20 @@ is to express it as a polling predicate via this helper.
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 T = TypeVar("T")
 
 
-def wait_for(
+def wait_for[T](
     predicate: Callable[[], T],
     *,
     timeout: float = 30.0,
     interval: float = 0.1,
-    description: Optional[str] = None,
+    description: str | None = None,
 ) -> T:
     """Poll ``predicate`` until it returns truthy or ``timeout`` elapses.
 

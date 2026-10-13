@@ -13,7 +13,7 @@ import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -36,7 +36,7 @@ class EndpointURLSearcher:
     """Searches for hardcoded endpoint URLs in codebase"""
 
     # Patterns to match endpoint URLs
-    ENDPOINT_PATTERNS = [
+    ENDPOINT_PATTERNS: ClassVar[list[str]] = [
         # Full URLs with /api/v1/
         r'https?://[^\s\'"`]+/api/v1/[^\s\'"`]*',
         # Relative paths /api/v1/
@@ -51,7 +51,7 @@ class EndpointURLSearcher:
     ]
 
     # Patterns that indicate comments
-    COMMENT_PATTERNS = {
+    COMMENT_PATTERNS: ClassVar[dict[str, str | None]] = {
         "python": r"^\s*#",
         "javascript": r"^\s*//",
         "typescript": r"^\s*//",
@@ -61,7 +61,7 @@ class EndpointURLSearcher:
     }
 
     # Patterns that indicate deprecated code
-    DEPRECATED_PATTERNS = [
+    DEPRECATED_PATTERNS: ClassVar[list[str]] = [
         r"deprecated",
         r"DEPRECATED",
         r"TODO.*remove",
@@ -213,7 +213,7 @@ class EndpointURLSearcher:
         try:
             with open(file_path, encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()
-        except Exception as e:
+        except OSError as e:
             print(f"Warning: Could not read {file_path}: {e}", file=sys.stderr)
             return references
 
@@ -363,7 +363,7 @@ class ImpactMatrixGenerator:
             "by_priority": dict(by_priority),
             "by_category": dict(by_category),
             "unique_files": len(by_file),
-            "unique_endpoints": len(set(ref.endpoint_url for ref in self.references)),
+            "unique_endpoints": len({ref.endpoint_url for ref in self.references}),
         }
 
     def generate_matrix(self) -> list[dict[str, Any]]:
@@ -386,7 +386,7 @@ class ImpactMatrixGenerator:
                     "file_path": file_path,
                     "total_references": len(refs),
                     "priority_breakdown": dict(priority_counts),
-                    "categories": list(set(ref.category for ref in refs)),
+                    "categories": list({ref.category for ref in refs}),
                     "references": [
                         {
                             "line_number": ref.line_number,

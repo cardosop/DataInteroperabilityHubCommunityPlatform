@@ -370,7 +370,12 @@ class FileQuotaUsedMatchesPlanLimitGate(TestCase):
         _seed_file(tenant=tenant, user=user, size=200, status_=FileStatus.ACTIVE)
         _seed_file(tenant=tenant, user=user, size=999_999, status_=FileStatus.DELETED)
 
-        from hub.apps.billing.limit_registry import get_resource_count
+        # billing is the paid layer — the sanctioned guard covers both
+        # core-only absence forms (W7.1).
+        try:
+            from hub.apps.billing.limit_registry import get_resource_count
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("billing (paid layer) not installed in core-only mode")
 
         meter_bytes = _tenant_file_storage_used_bytes(str(tenant.id))
         gate_bytes = get_resource_count(str(tenant.id), "max_storage_gb")

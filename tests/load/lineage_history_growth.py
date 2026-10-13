@@ -6,7 +6,7 @@ Phase 228 F5 (REQ-LIN-F5-005 / 228.F5.8 / DoD-G5) — quarterly capacity
 Spec scenarios (REQ-LIN-F5-005):
 
 * "When the simulation runs with the staging churn rate, the final
-  row count is ≤1.5× the starting count AND the storage size
+  row count is ≤1.5x the starting count AND the storage size
   projection for 3 years stays within the documented RDS instance class."
 
 This script SIMULATES 90 days of typical lineage edits at the rate

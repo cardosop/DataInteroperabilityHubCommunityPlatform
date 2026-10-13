@@ -74,12 +74,7 @@ def _find_frontend_test_files(search_roots: list[str]) -> list[str]:
                 if d not in ("node_modules", ".git", "dist", "build", "__pycache__")
             ]
             for fn in filenames:
-                if (
-                    fn.endswith(".test.ts")
-                    or fn.endswith(".test.tsx")
-                    or fn.endswith(".spec.ts")
-                    or fn.endswith(".spec.tsx")
-                ):
+                if fn.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
                     files.append(os.path.join(dirpath, fn))
     return sorted(files)
 
@@ -89,7 +84,7 @@ def check_file(file_path: str) -> list[tuple[int, str]]:
     try:
         with open(file_path, encoding="utf-8") as fh:
             lines = fh.readlines()
-    except Exception:
+    except (OSError, ValueError):
         return violations
 
     for i, line in enumerate(lines):

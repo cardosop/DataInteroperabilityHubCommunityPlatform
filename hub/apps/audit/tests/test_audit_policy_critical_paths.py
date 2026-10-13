@@ -55,9 +55,7 @@ def _disconnect_semantic_signals():
         post_save.disconnect(contract_saved, sender=Contract)
         post_save.disconnect(asset_saved, sender=Asset)
     except (ImportError, AttributeError) as exc:
-        logger.debug(
-            "Could not disconnect semantic signals (may not be installed): %s", exc
-        )
+        logger.debug("Could not disconnect semantic signals (may not be installed): %s", exc)
 
 
 def _reconnect_semantic_signals():
@@ -72,9 +70,7 @@ def _reconnect_semantic_signals():
         post_save.connect(contract_saved, sender=Contract, weak=False)
         post_save.connect(asset_saved, sender=Asset, weak=False)
     except (ImportError, AttributeError) as exc:
-        logger.debug(
-            "Could not reconnect semantic signals (may not be installed): %s", exc
-        )
+        logger.debug("Could not reconnect semantic signals (may not be installed): %s", exc)
 
 
 class AuditPolicyCriticalPathsTest(TestCase):
@@ -332,9 +328,7 @@ class AuditPolicyCriticalPathsTest(TestCase):
     def test_login_with_nonexistent_email_emits_audit_event(self):
         """Test that login attempt with nonexistent email may create an audit event."""
         anon_client = APIClient()
-        initial_count = AuditEvent.objects.filter(
-            resource_type="AUTH", action="LOGIN"
-        ).count()
+        initial_count = AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
 
         response = anon_client.post(
             "/api/v1/auth/login/",

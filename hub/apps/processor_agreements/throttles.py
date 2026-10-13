@@ -14,7 +14,7 @@ class ProcessorAgreementUserThrottle(SimpleRateThrottle):
         super().__init__()
         self.rate = getattr(settings, "PROCESSOR_AGREEMENT_RATE_LIMIT_PER_MIN", "20/min")
 
-    def get_cache_key(self, request, view):
+    def get_cache_key(self, request, view):  # DRF throttle contract
         if request.user and request.user.is_authenticated:
             tenant_id = getattr(request.user, "tenant_id", None)
             return f"throttle_pa_{tenant_id}_{request.user.pk}"

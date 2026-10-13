@@ -38,6 +38,12 @@ class CheckLimitWarningTest(TestCase):
     """Soft-limit warnings in PlanLimitService.check_limit()."""
 
     def setUp(self):
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest(
+                "plan-limit warnings are paid-layer (billing limit_registry) — absent in core-only mode"
+            )
         self.plan = _make_tenant_plan("test-pro", PlanTier.PRO, {"max_assets": 10})
         self.tenant = _make_tenant(self.plan)
         self.service = PlanLimitService()
@@ -180,6 +186,12 @@ class ValidateDowngradeWarningTest(TestCase):
     """Soft-limit warnings in Billing PlanLimitService.validate_downgrade()."""
 
     def setUp(self):
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest(
+                "plan-limit warnings are paid-layer (billing limit_registry) — absent in core-only mode"
+            )
         self.pro_plan = _make_tenant_plan(
             "downgrade-pro",
             PlanTier.PRO,

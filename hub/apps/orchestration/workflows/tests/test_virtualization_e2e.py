@@ -94,7 +94,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
             self.assertIn("execution_id", workflow_instance.state_data)
             self.assertIn("execution_results", workflow_instance.state_data)
             self.assertIn("cache_status", workflow_instance.state_data)
-        except (ValueError, Exception) as e:
+        except Exception as e:
             # If execution fails (e.g., database not available), verify workflow handled it correctly
             # Check that workflow instance was created and all steps were attempted
             workflow_instances = WorkflowInstance.objects.filter(
@@ -154,7 +154,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
         invalid_dataset = invalid_datasets[0]
 
         # Execute workflow - should fail at validation step
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):  # execute raises ValueError when the workflow fails
             VirtualizationWorkflow.execute(
                 virtual_dataset_id=str(invalid_dataset.id),
                 tenant_id=str(self.tenant.id),

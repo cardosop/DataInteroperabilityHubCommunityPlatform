@@ -5,7 +5,10 @@ Prometheus metrics for event bus monitoring and observability.
 Tracks event publishing, consumption, processing duration, failures, and dead letter queue.
 """
 
+import contextlib
 from typing import Any
+
+import redis
 
 from hub.apps.observability.otel_metrics import (
     _CounterWrapper,
@@ -272,6 +275,17 @@ def get_tenant_id(tenant_id: str | None) -> str:
     return str(tenant_id) if tenant_id else "system"
 
 
+# Ordered keyword rules for normalizing raw exception-type names into stable
+# metric labels. Order matters: earlier rules win (e.g. "database" contains "db").
+_ERROR_TYPE_NORMALIZATION_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("connection", "connectionerror"), "connection_error"),
+    (("timeout", "timeouterror"), "timeout"),
+    (("validation", "validationerror"), "validation_error"),
+    (("redis",), "redis_error"),
+    (("database", "db"), "database_error"),
+)
+
+
 def get_error_type(error_details: dict[str, Any] | None, error: Exception | None = None) -> str:
     """
     Extract error type from error details or exception for metrics labels.
@@ -292,18 +306,10 @@ def get_error_type(error_details: dict[str, Any] | None, error: Exception | None
 
     # Normalize common error types
     error_type_lower = error_type.lower()
-    if "connection" in error_type_lower or "connectionerror" in error_type_lower:
-        return "connection_error"
-    elif "timeout" in error_type_lower or "timeouterror" in error_type_lower:
-        return "timeout"
-    elif "validation" in error_type_lower or "validationerror" in error_type_lower:
-        return "validation_error"
-    elif "redis" in error_type_lower:
-        return "redis_error"
-    elif "database" in error_type_lower or "db" in error_type_lower:
-        return "database_error"
-    else:
-        return error_type_lower.replace("error", "").replace("exception", "").strip() or "unknown"
+    for substrings, normalized in _ERROR_TYPE_NORMALIZATION_RULES:
+        if any(substring in error_type_lower for substring in substrings):
+            return normalized
+    return error_type_lower.replace("error", "").replace("exception", "").strip() or "unknown"
 
 
 def sync_queue_depth_from_redis(
@@ -362,12 +368,14 @@ def sync_queue_depth_from_redis(
                         # Count events
                         metric_key = (key_event_type, key_subscriber, tenant_label)
                         queue_depths[metric_key] = queue_depths.get(metric_key, 0) + 1
-            except Exception:
+            except (redis.RedisError, ValueError, AttributeError):
                 continue  # Skip invalid keys
 
         # Update metrics
-        for (key_event_type, key_subscriber, _key_tenant), _count in queue_depths.items():
-            try:
+        for (_key_event_type, _key_subscriber, _key_tenant), _count in queue_depths.items():
+            with contextlib.suppress(
+                Exception
+            ):  # scaffolding for a future UpDownCounter set(); the no-op body raises nothing
                 # Set the gauge to the actual count
                 # Note: UpDownCounterWrapper doesn't have a set() method, so we need to
                 # calculate the difference and adjust
@@ -375,9 +383,8 @@ def sync_queue_depth_from_redis(
                 # This is a limitation of UpDownCounter - we'd need a Gauge for absolute values
                 # But we can still use it for relative tracking
                 pass  # UpDownCounter doesn't support absolute values
-            except Exception:
-                pass
 
-        return queue_depths
-    except Exception:
+    except (ImportError, redis.RedisError):
         return {}
+    else:
+        return queue_depths

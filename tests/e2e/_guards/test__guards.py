@@ -184,7 +184,7 @@ class TestAssertAuditEventEventually:
         from tests.factories import TenantFactory
 
         tenant = TenantFactory()
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"timeout must be > 0"):
             assert_audit_event_eventually(tenant, "X", "y", timeout=0)
 
     def test_rejects_nonpositive_poll_interval(self):
@@ -192,7 +192,7 @@ class TestAssertAuditEventEventually:
         from tests.factories import TenantFactory
 
         tenant = TenantFactory()
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"poll_interval must be > 0"):
             assert_audit_event_eventually(
                 tenant,
                 "X",

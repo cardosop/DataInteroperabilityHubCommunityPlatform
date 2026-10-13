@@ -1,6 +1,6 @@
 """Notification operations for DataHub SDK."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -10,21 +10,25 @@ class NotificationAPI:
         self.client = client
 
     async def list_notifications(
-        self, page: int = 1, page_size: int = 25, category: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, page: int = 1, page_size: int = 25, category: str | None = None
+    ) -> dict[str, Any]:
         params = {"page": page, "page_size": page_size}
         if category:
             params["category"] = category
-        return await self.client.get("notifications/", params=params)
+        # The canonical list endpoint is the user-notifications ViewSet
+        # (hub/apps/notifications/urls.py).  "notifications/" is the DRF
+        # router INDEX (a URL map), which this method hit before — a real
+        # SDK bug pinned by the CLI↔SDK consistency suite.
+        return await self.client.get("notifications/user-notifications/", params=params)
 
-    async def get_notification(self, notification_id: str) -> Dict[str, Any]:
-        return await self.client.get(f"notifications/{notification_id}/")
+    async def get_notification(self, notification_id: str) -> dict[str, Any]:
+        return await self.client.get(f"notifications/user-notifications/{notification_id}/")
 
-    async def unread_count(self) -> Dict[str, Any]:
-        return await self.client.get("notifications/unread-count/")
+    async def unread_count(self) -> dict[str, Any]:
+        return await self.client.get("notifications/user-notifications/unread-count/")
 
-    async def mark_read(self, notification_id: str) -> Dict[str, Any]:
-        return await self.client.post(f"notifications/{notification_id}/mark-read/")
+    async def mark_read(self, notification_id: str) -> dict[str, Any]:
+        return await self.client.post(f"notifications/user-notifications/{notification_id}/read/")
 
-    async def mark_all_read(self) -> Dict[str, Any]:
-        return await self.client.post("notifications/mark-all-read/")
+    async def mark_all_read(self) -> dict[str, Any]:
+        return await self.client.post("notifications/user-notifications/read-all/")

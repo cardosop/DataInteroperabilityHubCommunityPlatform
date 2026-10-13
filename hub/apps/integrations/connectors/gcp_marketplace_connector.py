@@ -28,14 +28,16 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 
 if TYPE_CHECKING:
-    from google.cloud.bigquery_analyticshub_v1 import AnalyticsHubServiceClient
+    from google.cloud.bigquery_analyticshub_v1 import (
+        AnalyticsHubServiceClient,  # type: ignore[import-untyped]
+    )
 
 # Optional Google Cloud imports - handle gracefully if not available
 try:
-    from google.api_core import exceptions as google_exceptions
+    from google.api_core import exceptions as google_exceptions  # type: ignore[import-untyped]
     from google.auth import default as google_auth_default
     from google.auth.exceptions import GoogleAuthError
-    from google.cloud import bigquery
+    from google.cloud import bigquery  # type: ignore[import-untyped]
     from google.oauth2 import service_account
 
     # Use GoogleAPIError from google.api_core.exceptions
@@ -54,7 +56,7 @@ except ImportError:
 # Analytics Hub client - optional import
 try:
     from google.cloud.bigquery_analyticshub_v1 import AnalyticsHubServiceClient
-    from google.cloud.bigquery_analyticshub_v1.types import (
+    from google.cloud.bigquery_analyticshub_v1.types import (  # type: ignore[import-untyped]
         DataExchange,
         Listing,
     )
@@ -258,15 +260,20 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 error_message = error_details.message
 
         # Map error codes to exceptions
-        if error_code == 404:
-            return NotFoundError(
+        code_exceptions: dict[int, Exception] = {
+            404: NotFoundError(
                 f"Resource not found{': ' + context if context else ''}. {error_message}"
-            )
-        elif error_code == 403:
-            return PermissionError(
+            ),
+            403: PermissionError(
                 f"Permission denied{': ' + context if context else ''}. {error_message}"
-            )
-        elif error_code == 400:
+            ),
+            401: PermissionError(
+                f"Authentication failed{': ' + context if context else ''}. {error_message}"
+            ),
+        }
+        if error_code in code_exceptions:
+            return code_exceptions[error_code]
+        if error_code == 400:
             # GCP Analytics Hub returns INVALID_ARGUMENT (400) for nonexistent
             # listing/exchange paths instead of NOT_FOUND (404). Treat as NotFoundError
             # when the operation involves fetching a specific resource.
@@ -277,21 +284,16 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             return ValueError(
                 f"Invalid request{': ' + context if context else ''}. {error_message}"
             )
-        elif error_code == 401:
-            return PermissionError(
-                f"Authentication failed{': ' + context if context else ''}. {error_message}"
-            )
-        elif self._is_transient_error(error_code):
+        if self._is_transient_error(error_code):
             # Transient error - will be retried, but return ConnectionError for final failure
             return HubConnectionError(
                 f"Transient error{': ' + context if context else ''}. {error_message}"
             )
-        else:
-            # Unknown error code
-            return HubConnectionError(
-                f"Google Cloud API error{': ' + context if context else ''}. "
-                f"Code: {error_code}, Message: {error_message}"
-            )
+        # Unknown error code
+        return HubConnectionError(
+            f"Google Cloud API error{': ' + context if context else ''}. "
+            f"Code: {error_code}, Message: {error_message}"
+        )
 
     def _log_with_context(
         self,
@@ -412,8 +414,6 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             attempt=attempt + 1,
                             max_retries=self.max_retries + 1,
                         )
-                    return result
-
                 except GoogleAPIError as e:
                     error_code = getattr(e, "code", None)
 
@@ -437,7 +437,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
                     # Non-transient error or max retries exceeded - map and raise
                     mapped_error = self._map_google_error(e, context, operation_name)
-                    raise mapped_error
+                    raise mapped_error from None
 
                 except (NotFoundError, PermissionError, ValueError):
                     # Re-raise mapped errors as-is (no retry)
@@ -452,6 +452,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                         error_message=str(e),
                     )
                     raise HubConnectionError(f"Unexpected error in {operation_name}: {e}") from e
+                else:
+                    return result
 
             # Max retries exceeded
             if last_exception:
@@ -485,7 +487,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         if self._credentials is not None:
             return self._credentials
 
-        try:
+        def _build() -> Any:
             if self.use_adc:
                 # Use Application Default Credentials
                 credentials, project = google_auth_default()
@@ -504,12 +506,17 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 raise ValueError("Either 'use_adc=True' or 'credentials_json' must be provided")
 
             return self._credentials
+
+        try:
+            result = _build()
         except GoogleAuthError as e:
-            logger.error(f"Failed to get Google Cloud credentials: {e}")
+            logger.exception("Failed to get Google Cloud credentials")
             raise ValueError(f"Invalid Google Cloud credentials: {e}") from e
         except Exception as e:
-            logger.error(f"Unexpected error getting credentials: {e}")
+            logger.exception("Unexpected error getting credentials")
             raise ValueError(f"Failed to initialize credentials: {e}") from e
+        else:
+            return result
 
     def _get_bigquery_client(self):
         """
@@ -704,7 +711,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 self._authenticated = False
                 raise
             self._authenticated = False
-            logger.error(f"GCP authentication failed: {e}")
+            logger.exception("GCP authentication failed")
             raise HubConnectionError(f"Unable to authenticate with Google Cloud: {e}") from e
 
     def test_connection(self) -> bool:
@@ -734,7 +741,6 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     f"Connection test successful for GCP project {self.project_id}",
                     operation="test_connection",
                 )
-                return True
             except GoogleAuthError as e:
                 self._log_with_context(
                     "error",
@@ -746,6 +752,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             except ValueError:
                 # Re-raise ValueError as-is (e.g., missing project_id)
                 raise
+            else:
+                return True
 
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
@@ -866,9 +874,12 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             )
 
                             # Apply filters
-                            if filters and filters.get("category"):
-                                if marketplace_listing.category != filters["category"]:
-                                    continue
+                            if (
+                                filters
+                                and filters.get("category")
+                                and marketplace_listing.category != filters["category"]
+                            ):
+                                continue
 
                             all_listings.append(marketplace_listing)
                         except NotFoundError:
@@ -1041,7 +1052,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             # camelCase→snake_case converter so the downstream dict-access
             # code sees the same keys regardless of the code-path taken.
 
-            from google.protobuf.json_format import MessageToDict
+            from google.protobuf.json_format import MessageToDict  # type: ignore[import-untyped]
 
             raw = listing._pb if hasattr(listing, "_pb") else listing
             camel_dict = MessageToDict(raw)
@@ -1160,7 +1171,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         )
 
     def _extract_odps_metadata(
-        self, listing_details: dict[str, Any], data_exchange_id: str, exchange: Any = None
+        self, listing_details: dict[str, Any], _data_exchange_id: str, _exchange: Any = None
     ) -> dict[str, Any] | None:
         """
         Extract ODPS contract metadata from Analytics Hub listing.
@@ -2008,7 +2019,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             query_parameters=[bigquery.ScalarQueryParameter("table_name", "STRING", table_id)]
         )
 
-        try:
+        def _build() -> dict[str, Any]:
             query_job = client.query(query, job_config=job_config)
             results = query_job.result()
 
@@ -2040,6 +2051,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             return schema
 
+        try:
+            result = _build()
         except GoogleAPIError as e:
             error_code = getattr(e, "code", None)
             if error_code == 404:
@@ -2052,6 +2065,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         except Exception as e:
             logger.error(f"Unexpected error extracting schema: {e}", exc_info=True)
             raise HubConnectionError(f"Failed to extract schema: {e}") from e
+        else:
+            return result
 
     def _map_bigquery_type(self, bigquery_type: str) -> str:
         """
@@ -2065,37 +2080,28 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         """
         bigquery_type_upper = bigquery_type.upper()
 
-        # String types
-        if bigquery_type_upper in ["STRING", "BYTES"]:
-            return "string"
-
-        # Number types
-        if bigquery_type_upper in ["INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC"]:
-            return "number"
-
-        # Boolean types
-        if bigquery_type_upper in ["BOOLEAN", "BOOL"]:
-            return "boolean"
-
-        # Date/time types
-        if bigquery_type_upper in ["TIMESTAMP", "DATETIME"]:
-            return "datetime"
-        if bigquery_type_upper == "DATE":
-            return "date"
-        if bigquery_type_upper == "TIME":
-            return "time"
-
-        # Geography types
-        if bigquery_type_upper == "GEOGRAPHY":
-            return "string"
-
-        # Array types
-        if bigquery_type_upper == "ARRAY":
-            return "array"
-
-        # Struct/Record types
-        if bigquery_type_upper in ["STRUCT", "RECORD"]:
-            return "object"
+        exact_type_map = {
+            "STRING": "string",
+            "BYTES": "string",
+            "INTEGER": "number",
+            "INT64": "number",
+            "FLOAT": "number",
+            "FLOAT64": "number",
+            "NUMERIC": "number",
+            "BIGNUMERIC": "number",
+            "BOOLEAN": "boolean",
+            "BOOL": "boolean",
+            "TIMESTAMP": "datetime",
+            "DATETIME": "datetime",
+            "DATE": "date",
+            "TIME": "time",
+            "GEOGRAPHY": "string",
+            "ARRAY": "array",
+            "STRUCT": "object",
+            "RECORD": "object",
+        }
+        if bigquery_type_upper in exact_type_map:
+            return exact_type_map[bigquery_type_upper]
 
         # Default to string for unknown types
         logger.warning(f"Unknown BigQuery type '{bigquery_type}', mapping to 'string'")

@@ -138,6 +138,23 @@ class EventTypesTest(TestCase):
         required_fields = schema["data"].get("required", [])
         self.assertIn("asset_id", required_fields)
 
+    def test_asset_created_domainless_payload_valid(self):
+        """
+        Domain-less assets publish ``domain: null`` (``asset.domain or
+        None``) — the schema must accept it or the schema gate drops the
+        WHOLE event before it reaches the bus (b7 #43/#44 re-run:
+        webhook-delivery E2E timed out on a delivery row that could never
+        be created).
+        """
+        data = {
+            "asset_id": str(uuid.uuid4()),
+            "name": "Domainless Asset",
+            "domain": None,
+            "status": "ACTIVE",
+        }
+        is_valid, error = validate_event_data("asset.created", data)
+        self.assertTrue(is_valid, f"Validation failed: {error}")
+
     def test_workflow_started_schema(self):
         """Test workflow.started event schema."""
         schema = get_event_schema("workflow.started")

@@ -6,11 +6,13 @@ Authenticates WebSocket connections using JWT tokens or API keys.
 
 import structlog
 from asgiref.sync import sync_to_async
+from django.db import DatabaseError
+from django.db.utils import InterfaceError
 
 # Optional channels imports
 try:
-    from channels.db import database_sync_to_async
-    from channels.middleware import BaseMiddleware
+    from channels.db import database_sync_to_async  # type: ignore[import-untyped]
+    from channels.middleware import BaseMiddleware  # type: ignore[import-untyped]
 
     CHANNELS_AVAILABLE = True
 except ImportError:
@@ -65,11 +67,11 @@ def _get_user_from_token_sync(token: str) -> User | None:
                 connection = connections["default"]
                 try:
                     connection.ensure_connection()
-                except Exception as conn_err:
+                except (DatabaseError, InterfaceError) as conn_err:
                     close_old_connections()
                     try:
                         connection.ensure_connection()
-                    except Exception as retry_err:
+                    except (DatabaseError, InterfaceError) as retry_err:
                         logger.debug(
                             "websocket_auth_ensure_connection_failed",
                             extra={
@@ -89,7 +91,6 @@ def _get_user_from_token_sync(token: str) -> User | None:
                 token_valid = JWTTokenGenerator.validate_token_version(payload, user)
                 if token_valid:
                     return user
-                return None
             except User.DoesNotExist:
                 return None
             except Exception as db_error:
@@ -104,6 +105,8 @@ def _get_user_from_token_sync(token: str) -> User | None:
                     continue
                 if is_connection_error:
                     logger.warning("websocket_token_auth_db_error", error=str(db_error))
+                return None
+            else:
                 return None
     except Exception as e:
         if "connection" not in str(e).lower():
@@ -165,7 +168,6 @@ def _get_user_from_api_key_sync(api_key: str) -> User | None:
 
         # If no user, return None (tenant-scoped keys don't have users)
         logger.debug("websocket_api_key_no_user", api_key_id=str(api_key_obj.id))
-        return None
     except APIKey.DoesNotExist:
         logger.warning("websocket_api_key_not_found")
     except Exception as e:
@@ -175,6 +177,8 @@ def _get_user_from_api_key_sync(api_key: str) -> User | None:
             logger.warning("websocket_api_key_auth_db_error", error=str(e))
         else:
             logger.warning("websocket_api_key_auth_failed", error=str(e))
+    else:
+        return None
     return None
 
 
@@ -217,13 +221,15 @@ class WebSocketAuthMiddleware(BaseMiddleware):
             if header_name.lower() == b"authorization":
                 # Handle both bytes and string headers
                 if isinstance(header_value, bytes):
-                    header_value = header_value.decode("utf-8")
+                    decoded_value = header_value.decode("utf-8")
+                else:
+                    decoded_value = header_value
 
                 # Extract Bearer token
-                if header_value.startswith("Bearer "):
-                    return header_value[7:]  # Remove "Bearer " prefix
-                elif header_value.startswith("bearer "):
-                    return header_value[7:]  # Case-insensitive
+                if decoded_value.startswith("Bearer "):
+                    return decoded_value[7:]  # Remove "Bearer " prefix
+                elif decoded_value.startswith("bearer "):
+                    return decoded_value[7:]  # Case-insensitive
         return None
 
     def _extract_api_key_from_headers(self, headers: list) -> str | None:
@@ -293,10 +299,12 @@ class WebSocketAuthMiddleware(BaseMiddleware):
         user = None
         auth_method = None
 
-        # Check if query-param auth has been disabled (post-deprecation)
+        # Check if query-param auth has been disabled (post-deprecation).
+        # W1.18: the fallback default is True — OFF unless a deployment
+        # opts back in via the Django setting (declared in hub/settings.py).
         from django.conf import settings
 
-        query_param_auth_disabled = getattr(settings, "WEBSOCKET_QUERY_PARAM_AUTH_DISABLED", False)
+        query_param_auth_disabled = getattr(settings, "WEBSOCKET_QUERY_PARAM_AUTH_DISABLED", True)
 
         # --- Header-based auth (not deprecated) ---
         header_token = self._extract_token_from_headers(headers)

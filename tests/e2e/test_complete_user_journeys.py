@@ -16,15 +16,15 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, Order, PricingModel
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
-from .conftest import get_response_data
+from .conftest import get_response_data, mark_file_scan_unavailable_if_pending
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -111,9 +111,11 @@ class CompleteUserJourneysE2ETest(TestCase):
         """Test complete data provider journey: onboard → publish → manage using REAL services"""
 
         # 1. Onboard data (data-first)
+        # NB: `visibility` is deprecated since Phase 250.3.B (derived
+        # property; the request value is ignored) — intentionally omitted.
         asset_response = self.client.post(
             "/api/v1/assets/",
-            {"key": "sales-data", "name": "Sales Data", "visibility": "INTERNAL"},
+            {"key": "sales-data", "name": "Sales Data"},
             format="json",
         )
         self.assertEqual(
@@ -166,6 +168,9 @@ class CompleteUserJourneysE2ETest(TestCase):
             f"/api/v1/files/{file_id}/complete/", {"content_sha256": content_sha256}, format="json"
         )
         self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
+        # Phase 260.2.D — under TestCase the on_commit-deferred ClamAV scan
+        # never runs; mark the scan terminal so the dataset gate allows it.
+        mark_file_scan_unavailable_if_pending(file_obj)
 
         dataset_response = self.client.post(
             "/api/v1/datasets/", {"file_id": file_id, "asset_id": asset_id}, format="json"
@@ -380,7 +385,7 @@ class CompleteUserJourneysE2ETest(TestCase):
         """Test complete data consumer journey: browse → purchase → access"""
         # Create provider tenant and user
         provider_tenant = Tenant.objects.create(
-            name="Provider", slug="provider", kyc_status=KYCStatus.VERIFIED
+            name="Provider", slug=f"provider-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(provider_tenant)
         provider_user = User.objects.create_user(
@@ -427,7 +432,7 @@ class CompleteUserJourneysE2ETest(TestCase):
 
         # Create consumer tenant and user
         consumer_tenant = Tenant.objects.create(
-            name="Consumer", slug="consumer", kyc_status=KYCStatus.VERIFIED
+            name="Consumer", slug=f"consumer-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(consumer_tenant)
         consumer_user = User.objects.create_user(

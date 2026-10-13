@@ -196,15 +196,17 @@ def test_script_json_includes_scenario_coverage():
     # Each entry is id -> {success, failure, edge}
     for _uc_id, cov in list(sc["use_cases"].items())[:3]:
         assert isinstance(cov, dict)
-        assert "success" in cov and "failure" in cov and "edge" in cov
-        assert (
-            isinstance(cov["success"], bool)
-            and isinstance(cov["failure"], bool)
-            and isinstance(cov["edge"], bool)
-        )
+        assert "success" in cov
+        assert "failure" in cov
+        assert "edge" in cov
+        assert isinstance(cov["success"], bool)
+        assert isinstance(cov["failure"], bool)
+        assert isinstance(cov["edge"], bool)
     for _j_id, cov in list(sc["user_journeys"].items())[:3]:
         assert isinstance(cov, dict)
-        assert "success" in cov and "failure" in cov and "edge" in cov
+        assert "success" in cov
+        assert "failure" in cov
+        assert "edge" in cov
 
 
 def test_script_markdown_includes_scenario_column():

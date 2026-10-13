@@ -70,9 +70,8 @@ describe('assetService', () => {
     await expect(assetService.list()).rejects.toThrow('Network Error');
   });
 
-});
-
-  // Phase 277.3.2 — compliance activation error-state tests.
+  // Phase 277.3.2 — compliance activation error-state tests (nested: the
+  // outer describe's mock + beforeEach apply — 2.4f: the close had drifted).
   describe('activation compliance errors', () => {
     it('handles 409 COMPLIANCE_SCAN_PENDING with Retry-After', async () => {
       const error = {
@@ -83,9 +82,7 @@ describe('assetService', () => {
         headers: new Map([['retry-after', '30']]),
       };
       vi.mocked(mock.post).mockRejectedValue(error);
-      await expect(
-        assetService.activate('asset-1', 1),
-      ).rejects.toMatchObject({ status: 409 });
+      await expect(assetService.activate('asset-1', 1)).rejects.toMatchObject({ status: 409 });
     });
 
     it('handles 422 COMPLIANCE_SCAN_FAILED', async () => {
@@ -93,9 +90,7 @@ describe('assetService', () => {
         status: 422,
         data: { error: { code: 'COMPLIANCE_SCAN_FAILED', http_status: 422 } },
       });
-      await expect(
-        assetService.activate('asset-1', 1),
-      ).rejects.toMatchObject({ status: 422 });
+      await expect(assetService.activate('asset-1', 1)).rejects.toMatchObject({ status: 422 });
     });
 
     it('handles 422 COMPLIANCE_NOT_ALLOWED_TO_STORE', async () => {
@@ -103,8 +98,7 @@ describe('assetService', () => {
         status: 422,
         data: { error: { code: 'COMPLIANCE_NOT_ALLOWED_TO_STORE', http_status: 422 } },
       });
-      await expect(
-        assetService.activate('asset-1', 1),
-      ).rejects.toMatchObject({ status: 422 });
+      await expect(assetService.activate('asset-1', 1)).rejects.toMatchObject({ status: 422 });
     });
   });
+});

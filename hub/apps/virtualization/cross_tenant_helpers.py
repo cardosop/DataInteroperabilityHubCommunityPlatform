@@ -131,7 +131,7 @@ def check_abac_for_dataset(
     if hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin:
         return
 
-    try:
+    def _evaluate() -> None:
         result = ABACEngine.evaluate_access(
             user_id=str(request.user.id),
             tenant_id=str(dataset.tenant_id),
@@ -140,15 +140,17 @@ def check_abac_for_dataset(
             access_type=access_type,
         )
 
-        if not result.allowed:
+        if not result.allowed and result.policy:
             # If a policy explicitly denied access, raise PermissionDenied
-            if result.policy:
-                policy_name = result.policy.name if result.policy else "Unknown Policy"
-                msg = (
-                    f"ABAC policy '{policy_name}' denies {access_type} "
-                    f"access to VIRTUAL_DATASET {dataset.id}"
-                )
-                raise PermissionDenied(msg)
+            policy_name = result.policy.name if result.policy else "Unknown Policy"
+            msg = (
+                f"ABAC policy '{policy_name}' denies {access_type} "
+                f"access to VIRTUAL_DATASET {dataset.id}"
+            )
+            raise PermissionDenied(msg)
+
+    try:
+        _evaluate()
     except PermissionDenied:
         raise
     except Exception as e:
@@ -196,7 +198,7 @@ def check_abac_for_execution(
     if hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin:
         return
 
-    try:
+    def _evaluate() -> None:
         result = ABACEngine.evaluate_access(
             user_id=str(request.user.id),
             tenant_id=str(execution.virtual_dataset.tenant_id),
@@ -205,15 +207,17 @@ def check_abac_for_execution(
             access_type=access_type,
         )
 
-        if not result.allowed:
+        if not result.allowed and result.policy:
             # If a policy explicitly denied access, raise PermissionDenied
-            if result.policy:
-                policy_name = result.policy.name if result.policy else "Unknown Policy"
-                msg = (
-                    f"ABAC policy '{policy_name}' denies {access_type} "
-                    f"access to QUERY_EXECUTION {execution.id}"
-                )
-                raise PermissionDenied(msg)
+            policy_name = result.policy.name if result.policy else "Unknown Policy"
+            msg = (
+                f"ABAC policy '{policy_name}' denies {access_type} "
+                f"access to QUERY_EXECUTION {execution.id}"
+            )
+            raise PermissionDenied(msg)
+
+    try:
+        _evaluate()
     except PermissionDenied:
         raise
     except Exception as e:

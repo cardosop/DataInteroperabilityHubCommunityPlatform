@@ -322,7 +322,6 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
         from hub.apps.assets.models import (
             Asset,
             AssetStatus,
-            AssetVisibility,
         )
 
         self.asset = Asset.objects.create(

@@ -8,7 +8,6 @@ skip cleanly when the daemon is unreachable — no env-var gate required.
 
 from __future__ import annotations
 
-import unittest
 import uuid
 
 import pytest
@@ -44,8 +43,10 @@ def _clamav_probe_scanner() -> ClamAVScanner | None:
         # Quick smoke test — classify clean bytes.  If this raises,
         # clamd is unreachable and we skip.
         outcome, _ = scanner.classify_bytes_with_detail(b"no malware here\n")
-        # Any outcome means connectivity works (even SCAN_UNAVAILABLE means
-        # the daemon answered, just didn't scan properly).
+        # A real verdict (CLEAN / INFECTED) proves the daemon scanned;
+        # SCAN_UNAVAILABLE / SCAN_ERROR mean no usable daemon — skip.
+        if outcome not in (FileScanStatus.CLEAN, FileScanStatus.INFECTED):
+            return None
         return scanner
     except Exception:
         return None

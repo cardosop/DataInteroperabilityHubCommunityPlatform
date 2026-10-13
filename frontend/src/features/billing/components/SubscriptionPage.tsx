@@ -23,7 +23,9 @@ import {
   usePlans,
 } from '../hooks/useSubscription';
 import { billingService } from '../services/billingService';
-import type { Invoice, TenantPlan } from '../services/billingService';
+import type { Invoice } from '../../../shared/types/billing';
+import { formatCurrency } from '../../../shared/i18n/formatters';
+import type { TenantPlan } from '../services/billingService';
 import './SubscriptionPage.css';
 
 function formatDate(iso: string | null | undefined): string {
@@ -50,14 +52,6 @@ function formatLimitValue(value: number | null | undefined): string {
   return value.toLocaleString();
 }
 
-function formatCurrency(amount: string, currency: string): string {
-  const num = parseFloat(amount);
-  if (Number.isNaN(num)) return amount;
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: currency.toUpperCase(),
-  }).format(num);
-}
 
 export function SubscriptionPage() {
   const { data: subscription, isLoading, error, refetch } = useCurrentSubscription();
@@ -298,7 +292,7 @@ export function SubscriptionPage() {
                       ? `${formatDate(inv.period_start)} – ${formatDate(inv.period_end)}`
                       : '—'}
                   </td>
-                  <td>{formatCurrency(inv.amount_due, inv.currency)}</td>
+                  <td>{formatCurrency(inv.amount_due_cents, inv.currency)}</td>
                   <td>
                     <span className={`subscription-badge subscription-status-${inv.status?.toLowerCase()}`}>
                       {inv.status}

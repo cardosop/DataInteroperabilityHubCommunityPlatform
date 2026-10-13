@@ -52,7 +52,7 @@ class FallbackRaiseExceptionTests(SimpleTestCase):
 
     def test_raises_fallback_error(self):
         fn = fallback(FallbackStrategy.RAISE_EXCEPTION)
-        with self.assertRaises(FallbackError):
+        with self.assertRaises(FallbackError) as ctx:
             fn()
         assert "RAISE_EXCEPTION" in str(ctx.exception)
 
@@ -68,7 +68,7 @@ class FallbackCustomFunctionTests(SimpleTestCase):
         assert fn(3, y=7) == 10
 
     def test_requires_fallback_func(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as ctx:
             fallback(FallbackStrategy.CUSTOM_FUNCTION, fallback_func=None)
         assert "fallback_func required" in str(ctx.exception)
 

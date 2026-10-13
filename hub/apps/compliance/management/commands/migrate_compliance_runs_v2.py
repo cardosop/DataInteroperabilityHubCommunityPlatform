@@ -174,7 +174,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run: bool = options["dry_run"]
         batch_size: int = options["batch_size"]
         verbosity: int = options["verbosity"]

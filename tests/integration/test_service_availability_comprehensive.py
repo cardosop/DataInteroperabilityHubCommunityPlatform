@@ -19,7 +19,6 @@ from enum import Enum
 from typing import Any
 
 import pytest
-
 import requests
 from django.conf import settings
 from django.db import connection

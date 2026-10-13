@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 import time
+import zlib
 
 # ── LiveServer bytes-in-environ patch (Python 3.12 + Django 6.0) ─────────
 # ROOT CAUSE: django.core.handlers.wsgi.get_bytes_from_wsgi() unconditionally
@@ -134,11 +135,11 @@ from django.db.transaction import TransactionManagementError as _Tme
 
 if not getattr(_dbtx.set_rollback, "_hub_tme_patched", False):
     _orig_tx_set_rollback = _dbtx.set_rollback
+
     def _hub_safe_set_rollback(rollback, using=None):
-        try:
+        with contextlib.suppress(_Tme):  # No active atomic block — cosmetic, test already passed
             _orig_tx_set_rollback(rollback, using=using)
-        except _Tme:
-            pass  # No active atomic block — cosmetic, test already passed
+
     _hub_safe_set_rollback._hub_tme_patched = True
     _dbtx.set_rollback = _hub_safe_set_rollback
 # ──────────────────────────────────────────────────────────────────────────
@@ -491,6 +492,68 @@ if True:  # Always apply patches
 
         _patch_logger.debug(traceback.format_exc())
 
+    # CRITICAL: Retry execute_sql_flush when PostgreSQL picks the flush as the
+    # deadlock victim.  The shared test DB (TEST_DB_SUFFIX=shared) doubles as
+    # the live API stack's database: TransactionTestCase teardown TRUNCATEs
+    # every table while gunicorn workers / parallel sessions insert across the
+    # same tables — a lock-ordering inversion aborts one side
+    # (psycopg2 DeadlockDetected at base/operations.py → CommandError →
+    # teardown ERROR), and the failed flush leaves the DB dirty for the next
+    # --reuse-db batch (fixed-slug UniqueViolations + unscoped count-assertion
+    # pollution, batch 10-2e).
+    try:
+        import django.db.backends.base.operations as base_operations
+
+        if not hasattr(
+            base_operations.BaseDatabaseOperations.execute_sql_flush,
+            "_patched_for_deadlock_retry",
+        ):
+            _original_execute_sql_flush = (
+                base_operations.BaseDatabaseOperations.execute_sql_flush
+            )
+
+            def _patched_execute_sql_flush(self, sql_list):
+                """Flush with bounded deadlock retries.
+
+                Each attempt runs Django's own transaction.atomic wrapper, so a
+                retry starts from a clean transaction.  The competing writers
+                are short-lived request transactions; three attempts with
+                backoff virtually always win.  Anything other than
+                DeadlockDetected re-raises immediately — real flush errors are
+                never masked.
+                """
+                import psycopg2.errors as _pg_errors
+                from django.db.utils import OperationalError
+
+                _flush_retry_delays = (0.5, 1.5)
+                for _attempt in range(len(_flush_retry_delays) + 1):
+                    try:
+                        return _original_execute_sql_flush(self, sql_list)
+                    except OperationalError as _exc:
+                        _cause = _exc.__cause__
+                        if isinstance(_cause, _pg_errors.DeadlockDetected) and (
+                            _attempt < len(_flush_retry_delays)
+                        ):
+                            _delay = _flush_retry_delays[_attempt]
+                            _patch_logger.warning(
+                                f"flush deadlocked (attempt {_attempt + 1}); "
+                                f"retrying in {_delay}s"
+                            )
+                            time.sleep(_delay)  # noqa: sleep-needed  # INTENTIONAL: flush deadlock backoff
+                            continue
+                        raise
+
+            _patched_execute_sql_flush._patched_for_deadlock_retry = True
+            base_operations.BaseDatabaseOperations.execute_sql_flush = (
+                _patched_execute_sql_flush
+            )
+            _log_patch("BaseDatabaseOperations.execute_sql_flush (deadlock retry)")
+    except Exception as e:
+        _log_patch_failure("execute_sql_flush", e)
+        import traceback
+
+        _patch_logger.debug(traceback.format_exc())
+
     # Also patch sync_apps to catch errors and return early
     if migrate_module is None:
         _patch_logger.debug("migrate_module not available, skipping sync_apps patch")
@@ -715,7 +778,6 @@ if True:  # Always apply patches
                     )
                     result = _original_handle(self, *args, **options)
                     _patch_logger.info("✓ Command.handle: Original handle completed")
-                    return result
                 except Exception as e:
                     # If we get a table error, it means our patches didn't work properly
                     # Log it and re-raise - we should fix the root cause, not suppress errors
@@ -727,19 +789,21 @@ if True:  # Always apply patches
                         or ("programmingerror" in error_type.lower() and "relation" in error_str)
                     )
                     if is_table_error:
-                        _patch_logger.error(
+                        _patch_logger.exception(
                             f"✗ Table error caught in handle patch - patches didn't prevent sync_apps: {error_str[:150]}"
                         )
-                        _patch_logger.error(
+                        _patch_logger.exception(
                             "✗ This indicates that run_syncdb=False or unmigrated_apps clearing didn't work"
                         )
                     raise
+                else:
+                    return result
                 finally:
                     # Restore original sync_apps on this instance (for cleanup)
                     try:
                         if original_sync_apps:
                             self.__dict__["sync_apps"] = original_sync_apps
-                    except:
+                    except Exception:
                         pass
 
             migrate_module.Command.handle = _patched_handle
@@ -954,7 +1018,7 @@ if True:  # Always apply patches
                 )
             if verbosity >= 2:
                 for perm in perms:
-                    _patch_logger.debug("Adding permission '%s'" % perm)
+                    _patch_logger.debug(f"Adding permission '{perm}'")
 
         auth_management.create_permissions = _patched_create_permissions
         auth_management._patched_create_permissions_func = _patched_create_permissions
@@ -1067,8 +1131,7 @@ if True:  # Always apply patches
                 else:
                     if verbosity >= 1:
                         self.log(
-                            "Using existing test database for alias %s..."
-                            % (self._get_database_display_str(verbosity, test_database_name),)
+                            f"Using existing test database for alias {self._get_database_display_str(verbosity, test_database_name)}..."
                         )
                     try:
                         self._create_test_db(verbosity, autoclobber, keepdb)
@@ -1317,6 +1380,8 @@ import uuid
 
 import pytest
 
+from envpolicy import skip_or_fail
+
 
 # Import test environment validation (lazy import to avoid Django dependency)
 def _get_test_env_validator():
@@ -1384,6 +1449,11 @@ def pytest_addoption(parser):
     )
 
 
+def _reraise_last_error(exc):
+    """Re-raise a previously caught exception outside the enclosing try (TRY301)."""
+    raise exc
+
+
 # Use pytest hooks to ensure migrations run before database setup
 def pytest_configure(config):
     """
@@ -1427,8 +1497,7 @@ def pytest_configure(config):
                     test_database_name = self._get_test_db_name()
                     if verbosity >= 1:
                         self.log(
-                            "Using existing test database for alias %s..."
-                            % (self._get_database_display_str(verbosity, test_database_name),)
+                            f"Using existing test database for alias {self._get_database_display_str(verbosity, test_database_name)}..."
                         )
                     self._create_test_db(verbosity, autoclobber, keepdb)
                     self.connection.close()
@@ -1639,7 +1708,6 @@ def pytest_configure(config):
                         **kwargs,
                     )
                     _patch_logger.info("✓ setup_databases: Completed successfully")
-                    return result
                 except OperationalError as e:
                     last_exc = e
                     msg = str(e).lower()
@@ -1677,8 +1745,10 @@ def pytest_configure(config):
                         delay,
                     )
                     time.sleep(delay)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
+                else:
+                    return result
             if last_exc is not None:
-                raise last_exc
+                _reraise_last_error(last_exc)
 
         django.test.utils.setup_databases = _patched_setup_databases
         _log_patch("setup_databases")
@@ -1727,6 +1797,105 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_real)
 
 
+_BATCH_LOCK_NAMESPACE = 0x54535450  # "TSTP" — namespace for per-DB batch serialization locks
+_batch_db_guard_conn = None  # held for the session lifetime; closing it releases the lock
+
+
+def _effective_test_db_name():
+    """Best-effort name of the database this pytest run will use.
+
+    In-container batch runs pass POSTGRES_DB explicitly (the shared DB or a
+    session clone).  Host-side runs may only set TEST_DB_SUFFIX, in which case
+    Django appends ``_test_<suffix>`` to the configured NAME.
+    """
+    db = os.environ.get("POSTGRES_DB") or os.environ.get("TEST_DB_NAME")
+    if not db:
+        return None
+    suffix = os.environ.get("TEST_DB_SUFFIX")
+    if suffix and not db.endswith(f"_test_{suffix}"):
+        db = f"{db}_test_{suffix}"
+    return db
+
+
+def _acquire_batch_db_guard():
+    """Take a session-scoped advisory lock for this run's database.
+
+    PostgreSQL advisory locks are cluster-wide (not per-database), so the
+    connection can target the 'postgres' maintenance DB when the test DB does
+    not exist yet.  Returns True on success, False when another pytest
+    session already holds the lock, and None when the guard is unavailable
+    (missing env / DB down) — degraded to a warning, never blocking the run.
+    """
+    db_name = _effective_test_db_name()
+    if not db_name:
+        return None
+    try:
+        import psycopg2
+
+        connect_kwargs = {
+            "host": os.environ.get("POSTGRES_HOST", "localhost"),
+            "port": int(os.environ.get("POSTGRES_PORT", "5432")),
+            "connect_timeout": 10,
+        }
+        for key in ("user", "password"):
+            value = os.environ.get(f"POSTGRES_{key.upper()}")
+            if value:
+                connect_kwargs[key] = value
+        conn = None
+        for target_db in (db_name, "postgres"):
+            try:
+                conn = psycopg2.connect(dbname=target_db, **connect_kwargs)
+                break
+            except psycopg2.OperationalError:
+                continue
+        if conn is None:
+            return None
+        conn.autocommit = True
+        lock_key = (_BATCH_LOCK_NAMESPACE << 32) | zlib.crc32(db_name.encode())
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
+            acquired = cur.fetchone()[0]
+        if acquired:
+            global _batch_db_guard_conn  # noqa: PLW0603 — advisory-lock guard held for the pytest session
+            _batch_db_guard_conn = conn
+            _patch_logger.info(f"batch DB lock acquired ({db_name}, key={lock_key})")
+            return True
+
+        # Optional bounded wait (opt-in via BATCH_DB_LOCK_WAIT_SECONDS):
+        # the sweep runs many batches sequentially against the shared DB.
+        # When a peer session is mid-battery, waiting for its lock to clear
+        # (then running) beats failing the batch with a lock error — the
+        # alternative is a sweep full of lock-collision batch files.  Default
+        # stays fail-fast so interactive runs get the immediate message.
+        try:
+            wait_seconds = int(os.environ.get("BATCH_DB_LOCK_WAIT_SECONDS", "0") or "0")
+        except ValueError:
+            wait_seconds = 0
+        if wait_seconds > 0:
+            deadline = time.monotonic() + wait_seconds
+            while time.monotonic() < deadline:
+                remaining = max(0.0, deadline - time.monotonic())
+                sys.stderr.write(
+                    "batch DB lock held by another pytest session "
+                    f"({db_name}); waiting up to {remaining:.0f}s for release "
+                    "(BATCH_DB_LOCK_WAIT_SECONDS) — Ctrl-C to abort.\n"
+                )
+                sys.stderr.flush()
+                time.sleep(min(10.0, remaining))
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
+                    acquired = cur.fetchone()[0]
+                if acquired:
+                    _batch_db_guard_conn = conn
+                    _patch_logger.info(f"batch DB lock acquired ({db_name}, key={lock_key})")
+                    return True
+        conn.close()
+        return False
+    except Exception as exc:
+        _patch_logger.warning(f"batch DB guard unavailable: {exc}")
+        return None
+
+
 def pytest_sessionstart(session):
     """
     Called after the Session object has been created and before performing collection.
@@ -1738,6 +1907,36 @@ def pytest_sessionstart(session):
         sys.stderr.write("Conftest loaded. Collecting tests...\n")
         sys.stderr.flush()
         return
+
+    # ── Per-DB batch serialization guard ─────────────────────────────────────
+    # ROOT CAUSE: ONE pytest run per database.  TransactionTestCase teardown
+    # flushes (TRUNCATE every table) the shared test DB; a concurrent pytest
+    # session on the SAME database truncates tables under the other run's
+    # feet — moving failures: persisted rows vanish before assertions
+    # (exists() False), "File not found" lookups, FK violations inside the
+    # post-flush emit_post_migrate_signal, and sqlflush deadlocks.  Batch
+    # 10-2e 00:31 run: 2 failed + 1 error, all cross-session interference.
+    # Take a session-scoped PostgreSQL advisory lock keyed on the DB name and
+    # fail fast with an actionable message instead of silently corrupting
+    # both runs.  Session clones (hub_test_b102f, ...) get their own lock.
+    if os.environ.get("BATCH_DB_LOCK_DISABLED", "").lower() not in ("1", "true"):
+        _guard_state = _acquire_batch_db_guard()
+        if _guard_state is False:
+            pytest.exit(
+                "\n".join(
+                    [
+                        "ERROR: another pytest session already holds the batch lock "
+                        f"for database {_effective_test_db_name()!r}.",
+                        "The test DB supports ONE pytest run at a time: TransactionTestCase "
+                        "flushes TRUNCATE tables under any concurrent run's feet, "
+                        "corrupting both runs.",
+                        "Wait for the other session to finish, or run against a dedicated "
+                        "clone DB (see docs/runbooks/LOCAL_FULL_TEST_SWEEP.md).",
+                        "Set BATCH_DB_LOCK_DISABLED=1 to override.",
+                    ]
+                ),
+                returncode=1,
+            )
 
     # Wait for PostgreSQL to be ready before running tests
     # This is especially important for Docker Compose E2E tests where PostgreSQL may still be starting
@@ -1852,6 +2051,21 @@ def pytest_sessionstart(session):
             _patch_logger.warning(f"✗ Failed to verify patches after Django setup: {e}")
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Release the per-DB batch serialization lock (if held).
+
+    Closing the dedicated guard connection releases the session-scoped
+    PostgreSQL advisory lock; a crashed run releases it implicitly when the
+    backend drops the connection.
+    """
+    try:
+        if _batch_db_guard_conn is not None and not _batch_db_guard_conn.closed:
+            _batch_db_guard_conn.close()
+            _patch_logger.info("batch DB lock released")
+    except Exception:
+        pass
+
+
 def pytest_runtest_setup(item):
     """
     Ensure all Django database connections are alive before each test.
@@ -1923,7 +2137,7 @@ def pytest_runtest_setup(item):
                 break
             except Exception:
                 if attempt < 3:
-                    time.sleep(0.1)  # noqa: sleep-needed — polling loop
+                    time.sleep(0.1)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         # 4. Last resort: psycopg2-level reset (nuke the underlying object
         #    and let Django create a fresh one on next access).
@@ -2117,9 +2331,10 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
                 except Exception:
                     pass
                 time.sleep(interval)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
-            return False
         except ImportError:
-            pytest.skip("httpx or requests required for service health checks")
+            skip_or_fail("httpx or requests required for service health checks")
+        else:
+            return False
 
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -2151,7 +2366,7 @@ def datacontract_service():
     health_url = f"{service_url}/health"
 
     if not wait_for_service_health(health_url, timeout=30):
-        pytest.skip(f"DataContract CLI service not available at {service_url}")
+        skip_or_fail(f"DataContract CLI service not available at {service_url}")
 
     return service_url
 
@@ -2166,7 +2381,7 @@ def dq_service():
     health_url = f"{service_url}/health"
 
     if not wait_for_service_health(health_url, timeout=30):
-        pytest.skip(f"DQ service not available at {service_url}")
+        skip_or_fail(f"DQ service not available at {service_url}")
 
     return service_url
 
@@ -2182,7 +2397,7 @@ def compliance_service():
     health_url = f"{service_url}/health"
 
     if not wait_for_service_health(health_url, timeout=30):
-        pytest.skip(f"Compliance service not available at {service_url}")
+        skip_or_fail(f"Compliance service not available at {service_url}")
 
     return service_url
 
@@ -2204,7 +2419,7 @@ def semantic_service():
     health_url = f"{service_url}/health"
 
     if not wait_for_service_health(health_url, timeout=30):
-        pytest.skip(f"Semantic service not available at {service_url}")
+        skip_or_fail(f"Semantic service not available at {service_url}")
 
     return service_url
 
@@ -2261,7 +2476,7 @@ def validate_test_env(test_env_validator):
     is_valid, errors, _warnings = test_env_validator.validate_all()
 
     if not is_valid and errors:
-        pytest.skip(
+        skip_or_fail(
             f"Test environment validation failed: {'; '.join(errors)}. "
             "Set SKIP_TEST_ENV_VALIDATION=1 to skip validation."
         )
@@ -2277,7 +2492,7 @@ def validate_database_connectivity(test_env_validator):
     """
     connected, error = test_env_validator.validate_database_connectivity(timeout=10)
     if not connected:
-        pytest.skip(f"Database connectivity check failed: {error}")
+        skip_or_fail(f"Database connectivity check failed: {error}")
     return connected
 
 
@@ -2289,7 +2504,7 @@ def validate_redis_connectivity(test_env_validator):
     """
     connected, error = test_env_validator.validate_redis_connectivity(timeout=10)
     if not connected:
-        pytest.skip(f"Redis connectivity check failed: {error}")
+        skip_or_fail(f"Redis connectivity check failed: {error}")
     return connected
 
 
@@ -2317,7 +2532,7 @@ def validate_service_connectivity(test_env_validator):
             failed_services.append(f"{service_name}: {error}")
 
     if failed_services:
-        pytest.skip(f"Service connectivity check failed: {'; '.join(failed_services)}")
+        skip_or_fail(f"Service connectivity check failed: {'; '.join(failed_services)}")
 
     return True
 
@@ -2341,7 +2556,11 @@ def tenant_with_plan(db):
 
     from django.utils import timezone
 
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        # Billing is paid-layer — both core-mode absence forms.
+        Subscription = SubscriptionStatus = None  # type: ignore[assignment]
     from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan, TenantStatus
 
     # Create plan
@@ -2395,7 +2614,11 @@ def subscription(db, tenant_with_plan):
 
     from django.utils import timezone
 
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        # Billing is paid-layer — both core-mode absence forms.
+        Subscription = SubscriptionStatus = None  # type: ignore[assignment]
 
     return Subscription.objects.create(
         tenant=tenant_with_plan,

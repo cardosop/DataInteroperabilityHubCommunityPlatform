@@ -288,7 +288,7 @@ class OrphanDatasetLifecycleTest(DatasetsAPITestBase):
 
         # --- 2. TIME-TRAVEL: backdate ``deleted_at`` past the
         # tenant's grace period so the file becomes purge-eligible.
-  # noqa: sleep-needed  # We cannot ``time.sleep(grace_days)``; backdating the
+        # noqa: sleep-needed  # We cannot ``time.sleep(grace_days)``; backdating the  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
         # ``deleted_at`` column directly mirrors how production
         # would look on day ``grace_days+1``.
         grace_days = int(getattr(self.tenant, "file_soft_delete_grace_days", 30) or 30)

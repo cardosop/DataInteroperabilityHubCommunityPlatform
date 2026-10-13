@@ -306,7 +306,7 @@ class SearchService(BaseService, SearchEventPublisher):
                         title = virtual_dataset.name or str(virtual_dataset.id)
                     if not update_type:
                         update_type = "updated"
-                except Exception as e:
+                except VirtualDataset.DoesNotExist as e:
                     get_logger().warning(
                         "VirtualDataset not found for indexing",
                         resource_id=resource_id,
@@ -346,8 +346,6 @@ class SearchService(BaseService, SearchEventPublisher):
                         exc_info=True,
                     )
 
-            return search_index
-
         except Exception as e:
             get_logger().error(
                 "Failed to update search index",
@@ -358,6 +356,8 @@ class SearchService(BaseService, SearchEventPublisher):
                 exc_info=True,
             )
             return None
+        else:
+            return search_index
 
     def delete_index(
         self,
@@ -502,14 +502,6 @@ class SearchService(BaseService, SearchEventPublisher):
                     exc_info=True,
                 )
 
-            return {
-                "resource_count": resource_count,
-                "duration_ms": duration_ms,
-                "success": True,
-                "errors": errors,
-                "resource_types": resource_types,
-            }
-
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             error_msg = str(e)
@@ -547,4 +539,12 @@ class SearchService(BaseService, SearchEventPublisher):
                 "success": False,
                 "errors": errors,
                 "resource_types": [],
+            }
+        else:
+            return {
+                "resource_count": resource_count,
+                "duration_ms": duration_ms,
+                "success": True,
+                "errors": errors,
+                "resource_types": resource_types,
             }

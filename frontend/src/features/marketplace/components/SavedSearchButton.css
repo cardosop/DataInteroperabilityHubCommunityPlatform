@@ -3,6 +3,12 @@
  */
 .saved-search-btn-wrapper {
   position: relative;
+  /* Keep the trigger right-aligned in the filter row even when
+     flex-wrap puts it on its own line. The dropdown is `right: 0`
+     (opens leftward), so a left-edge trigger would push the 300px
+     panel across the app sidebar, where the sidebar's nav links
+     intercept pointer events (b6 saved-search-crud click timeouts). */
+  margin-left: auto;
 }
 
 .saved-search-trigger {

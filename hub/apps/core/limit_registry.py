@@ -23,12 +23,24 @@ from datetime import datetime
 from typing import Any
 
 from django.apps import apps
+from django.conf import settings
 from django.core.exceptions import FieldError
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Sum
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+class LimitCounterError(RuntimeError):
+    """A resource counter failed to compute usage.
+
+    R2-B6 (W2.7) — the counter registry previously swallowed every
+    counting error into a silent 0 (fail-open quota: a broken counter
+    reads as free usage).  ``get_resource_count`` raises this when
+    ``LIMIT_CHECK_STRICT`` is armed so ``PlanLimitService.check_limit``
+    fails CLOSED instead of approving against an untrusted 0.
+    """
 
 
 def _month_start() -> datetime:
@@ -147,6 +159,10 @@ RESOURCE_COUNTERS: dict[str, ResourceCounter] = {
     # ── Newly enforced limits (Phase 113) ──
     "max_contracts": ResourceCounter(
         "contracts.Contract",
+        # Soft-deleted contracts (status RETIRED — delete_contract is a
+        # soft delete) must not count against the quota, or the free-plan
+        # max_contracts ratchets up forever across test/E2E runs.
+        exclude_statuses=["RETIRED"],
     ),
     "max_webhooks": ResourceCounter(
         "webhooks.Webhook",
@@ -205,10 +221,19 @@ RESOURCE_COUNTERS: dict[str, ResourceCounter] = {
         monthly=True,
     ),
     # ── Storage (aggregate, not count) ──
+    # R2-B3 (W2.7) — PENDING-aware: an initialized-but-unfinished upload
+    # (PENDING / UPLOADING) RESERVES its declared bytes, so two
+    # concurrent 1GB uploads cannot both pass a 1GB plan (the pre-fix
+    # ACTIVE-only filter let every in-flight upload stack quota for
+    # free).  FAILED releases the reservation.  ``COMPLETED`` was
+    # retired by files/0009 (migration rewrote it to ACTIVE) — dropped
+    # from the filter so the meter and the gate cannot drift.
     "max_storage_gb": ResourceCounter(
         "files.File",
         sum_field="size",
-        extra_filter=lambda: {"status__in": ["ACTIVE", "COMPLETED"]},
+        extra_filter=lambda: {
+            "status__in": ["PENDING", "UPLOADING", "ACTIVE"],
+        },
     ),
     # ── ML limits ──
     "max_ml_models": ResourceCounter(
@@ -250,6 +275,16 @@ RESOURCE_COUNTERS: dict[str, ResourceCounter] = {
         "contracts.Contract",
         extra_filter=lambda: {"original_spec_type": "ODPS"},
     ),
+    # ── Phase 3.4 (add-databricks-sql-warehouses) — the warehouse
+    # creation chain's quota counter. The mirror is tenant-scoped through
+    # the workspace (FK traversal); DELETING rows are on their way out
+    # and never block a create.
+    "max_databricks_warehouses": ResourceCounter(
+        "databricks_admin.DatabricksSqlWarehouse",
+        tenant_field="workspace__tenant_id",
+        exclude_statuses=["DELETING"],
+        status_field="state",
+    ),
     # ── Phase 240.3.B.2 — Advanced quality endpoints day-rate cap ──
     # Counts AuditEvent rows scoped to the DQ_QUALITY_QUERY action
     # emitted by ``DQQualityViewSet`` on each successful endpoint hit.
@@ -265,12 +300,51 @@ RESOURCE_COUNTERS: dict[str, ResourceCounter] = {
 }
 
 
+def _emit_counter_error_audit(tenant_id: str, limit_key: str, error: Exception) -> None:
+    """R2-B6 — every counter failure is audited (never a silent 0).
+
+    Best-effort: an audit-DB outage must not compound the counter
+    failure (the LIMIT_CHECK_STRICT raise below is the fail-closed
+    signal; this event is the forensic trail).
+    """
+    try:
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.models import Tenant
+
+        tenant = Tenant.objects.filter(pk=tenant_id).first()
+        create_audit_event(
+            resource_type="PLAN_LIMIT",
+            action="LIMIT_COUNTER_ERROR",
+            actor_user=None,
+            tenant=tenant,
+            resource_id=tenant_id,
+            result="FAILURE",
+            details={
+                "limit_key": limit_key,
+                "error_type": type(error).__name__,
+                "error": str(error)[:256],
+                "strict": bool(getattr(settings, "LIMIT_CHECK_STRICT", False)),
+            },
+        )
+    except Exception as audit_error:  # noqa: BLE001 — audit must never compound the counter failure
+        logger.warning(
+            "limit_counter_error_audit_failed",
+            extra={"error": str(audit_error)},
+            exc_info=True,
+        )
+
+
 def get_resource_count(tenant_id: str, limit_key: str) -> int:
     """
     Get the current usage count for a limit key.
 
     Returns the count from the registry, or 0 if the limit_key
     is not registered (e.g., for limits not yet backed by a model).
+
+    R2-B6 — counter ERRORS are audited (``LIMIT_COUNTER_ERROR``) and,
+    when ``LIMIT_CHECK_STRICT`` is armed, RAISE ``LimitCounterError``
+    so a limit check fails closed instead of approving against an
+    untrusted 0.
     """
     counter = RESOURCE_COUNTERS.get(limit_key)
     if counter is None:
@@ -282,15 +356,20 @@ def get_resource_count(tenant_id: str, limit_key: str) -> int:
 
     try:
         return counter.get_count(tenant_id)
-    except (FieldError, OperationalError, ProgrammingError):
+    except (FieldError, OperationalError, ProgrammingError) as error:
         # Schema drift (FieldError — renamed/deleted column), DB outage
-        # (OperationalError), or bad SQL (ProgrammingError).  All are
-        # non-fatal for the usage endpoint — the counter returns 0 so
-        # the rest of the response still renders.
+        # (OperationalError), or bad SQL (ProgrammingError).
         logger.warning(
             "Failed to count resource for limit_key=%s, tenant_id=%s",
             limit_key,
             tenant_id,
             exc_info=True,
         )
+        _emit_counter_error_audit(tenant_id, limit_key, error)
+        if getattr(settings, "LIMIT_CHECK_STRICT", False):
+            raise LimitCounterError(
+                f"Resource counter failed for {limit_key}: {error}"
+            ) from error
+        # Non-strict: the pre-existing fail-open fallback (0) so the
+        # usage endpoint still renders — but the failure is now audited.
         return 0

@@ -107,11 +107,11 @@ def error_from_http_status(
         A typed :class:`CLIError` instance.
     """
     code = error_code or f"HTTP_{status_code}"
-    if status_code == 401 or status_code == 403:
+    if status_code in {401, 403}:
         return CLIAuthError(message, code)
     if status_code == 404:
         return CLINotFoundError(message, code)
-    if status_code == 422 or status_code == 400:
+    if status_code in {422, 400}:
         return CLIValidationError(message, code)
     if status_code == 429:
         return CLIRateLimitError(message, code)

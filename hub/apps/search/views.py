@@ -6,8 +6,12 @@ import contextlib
 from typing import Any, cast
 
 from django.contrib.postgres.search import SearchQuery, SearchRank
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 from django.db import models as db_models
-from django.http import HttpRequest
+from django.http import (
+    HttpRequest,
+)
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -23,7 +27,7 @@ from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
 from hub.apps.search.throttles import SearchUserThrottle
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
-from .models import SearchAnalytics
+from .models import SearchAnalytics, SearchIndex
 from .search_engine import SearchEngine
 from .serializers import (
     SearchAnalyticsDashboardSerializer,
@@ -31,6 +35,19 @@ from .serializers import (
     SearchSuggestionSerializer,
 )
 from .services import SearchService
+
+# Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — SearchIndex
+# resource types → canonical-search result slugs.  The type strings live
+# on the CORE SearchIndex.resource_type choices; the databricks_admin
+# feed writes the rows (provider-boundary legal direction).
+_UC_TYPE_SLUGS: dict[str, str] = {
+    "DATABRICKS_UC_CATALOG": "uc_catalog",
+    "DATABRICKS_UC_SCHEMA": "uc_schema",
+    "DATABRICKS_UC_TABLE": "uc_table",
+    "DATABRICKS_UC_VIEW": "uc_view",
+    "DATABRICKS_UC_VOLUME": "uc_volume",
+    "DATABRICKS_UC_MODEL": "uc_model",
+}
 
 
 # Auditor permission - users with AUDITOR role
@@ -48,8 +65,8 @@ class SearchViewSet(viewsets.ViewSet):
     """
 
     # Phase 273.2 — rate-limit search/suggestions per tenant.
-    throttle_classes = [SearchUserThrottle]
-    permission_classes = [IsAuthenticated]
+    throttle_classes = (SearchUserThrottle,)
+    permission_classes = (IsAuthenticated,)
 
     def finalize_response(self, request, response, *args, **kwargs):
         """Phase 54.1 + 273.1.8 — RFC 8594 deprecation headers.
@@ -114,6 +131,17 @@ class SearchViewSet(viewsets.ViewSet):
             )
 
         query = request.query_params.get("q", "").strip()
+
+        # q is required — an empty query must never degrade into a
+        # match-everything scan of the tenant's search index.
+        if not query:
+            return Response(
+                {
+                    "error": "Query parameter 'q' is required",
+                    "code": "QUERY_REQUIRED",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Phase 53: guard against arbitrarily long queries
         from django.conf import settings as _settings
@@ -222,7 +250,7 @@ class SearchViewSet(viewsets.ViewSet):
             # request opts into semantic expansion AND the tenant has
             # the per-tenant flag enabled, run the expansion module
             # for each bridge term, dedupe by (id, type), apply the
-            # 0.5× rank multiplier, and tag expansion-only matches
+            # 0.5x rank multiplier, and tag expansion-only matches
             # with matched_via=ontology + bridge_term.  Both flags
             # required → defence-in-depth (a tenant cannot opt itself
             # in via the URL alone).
@@ -306,6 +334,12 @@ class SearchViewSet(viewsets.ViewSet):
 
             # Cache results for 5 minutes
             cache.set(cache_key, (results, total), 300)
+            # Backends without delete_pattern invalidate via a key
+            # registry (Phase 226 G12) — register so a later index
+            # write can drop this entry without a full cache.clear().
+            from hub.apps.search.cache_invalidation import register_search_cache_key
+
+            register_search_cache_key(cache_key)
 
         # Track search (async in production via job queue)
         # For now, we'll do it synchronously but log it for async processing
@@ -444,10 +478,8 @@ class SearchViewSet(viewsets.ViewSet):
         try:
             SearchEngine.track_click(analytics_id, result_id, result_type)
             return Response({"status": "click tracked"})
-        except Exception as e:
+        except (SearchAnalytics.DoesNotExist, DatabaseError, ValidationError) as e:
             # Return 400 if analytics not found, 500 for other errors
-            from hub.apps.search.models import SearchAnalytics
-
             try:
                 SearchAnalytics.objects.get(id=analytics_id)
                 # Analytics exists but track_click failed for another reason
@@ -573,22 +605,25 @@ class SearchViewSet(viewsets.ViewSet):
         request_data = cast("dict[str, Any]", request.data)
         tenant_id = get_request_tenant_id(cast("HttpRequest", request))
         body_tenant_id = request_data.get("tenant_id")
-        if body_tenant_id is not None and str(body_tenant_id).strip():
-            if str(body_tenant_id) != str(tenant_id):
-                cross_tenant_denied(
-                    endpoint="search.rebuild_index",
-                    reason="body_tenant_mismatch",
-                    request=cast("HttpRequest", request),
-                    requested_tenant_id=body_tenant_id,
-                    actual_tenant_id=tenant_id,
-                )
-                return Response(
-                    {
-                        "code": "CROSS_TENANT_FORBIDDEN",
-                        "detail": "tenant_id must not be set in request body",
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        if (
+            body_tenant_id is not None
+            and str(body_tenant_id).strip()
+            and str(body_tenant_id) != str(tenant_id)
+        ):
+            cross_tenant_denied(
+                endpoint="search.rebuild_index",
+                reason="body_tenant_mismatch",
+                request=cast("HttpRequest", request),
+                requested_tenant_id=body_tenant_id,
+                actual_tenant_id=tenant_id,
+            )
+            return Response(
+                {
+                    "code": "CROSS_TENANT_FORBIDDEN",
+                    "detail": "tenant_id must not be set in request body",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if not tenant_id:
             return Response(
@@ -633,14 +668,16 @@ class UnifiedSearchView(APIView):
     Query parameters
     ----------------
     q      : search term (required)
-    types  : comma-separated subset of ``assets``, ``contracts``
-             (default: both)
+    types  : comma-separated subset of ``assets``, ``contracts``, ``uc``
+             (default: assets + contracts; ``uc`` adds Databricks Unity
+             Catalog objects from the tenant's SearchIndex)
     page   : page number (StandardPageNumberPagination, page_size=50)
 
     Response schema (per item)
     --------------------------
     {
-        "type":  "asset" | "contract",
+        "type":  "asset" | "contract" | "uc_catalog" | "uc_schema" |
+                 "uc_table" | "uc_view" | "uc_volume" | "uc_model",
         "id":    "<uuid>",
         "name":  "<string>",
         "rank":  <float>
@@ -648,8 +685,8 @@ class UnifiedSearchView(APIView):
     """
 
     # Phase 273.2 — rate-limit the canonical search endpoint.
-    throttle_classes = [SearchUserThrottle]
-    permission_classes = [IsAuthenticated]
+    throttle_classes = (SearchUserThrottle,)
+    permission_classes = (IsAuthenticated,)
 
     def throttled(self, request, wait):
         """Dispatch to each throttle's ``throttled()`` if it exists.
@@ -680,7 +717,7 @@ class UnifiedSearchView(APIView):
 
         Factored out so the Phase 230.11 expansion path can call the
         same query for the original query and for each ontology
-        bridge term, applying a 0.5× rank multiplier on the latter
+        bridge term, applying a 0.5x rank multiplier on the latter
         (REQ-SEM-SEARCH-EXPAND-001 ranking contract).
 
         ``bridge_term`` is unused inside this helper but the caller
@@ -736,6 +773,33 @@ class UnifiedSearchView(APIView):
                     }
                 )
 
+        # Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — the
+        # databricks_admin feed writes these rows into the tenant's
+        # SearchIndex; the canonical search surfaces them under
+        # ``types=uc``.  The search app never imports the provider
+        # models — the type strings are registered on the CORE
+        # SearchIndex.resource_type choices (provider-boundary legal).
+        if "uc" in requested_types:
+            for row in (
+                SearchIndex.objects.filter(
+                    tenant=tenant,
+                    resource_type__in=list(_UC_TYPE_SLUGS),
+                    search_vector__isnull=False,
+                )
+                .filter(search_vector=sq)
+                .annotate(rank=SearchRank(db_models.F("search_vector"), sq))
+                .order_by("-rank")
+                .values("resource_id", "resource_type", "title", "rank")
+            ):
+                out.append(
+                    {
+                        "type": _UC_TYPE_SLUGS[row["resource_type"]],
+                        "id": str(row["resource_id"]),
+                        "name": row["title"],
+                        "rank": float(row["rank"]) * rank_multiplier,
+                    }
+                )
+
         return out
 
     def get(self, request: Request) -> Response:
@@ -757,6 +821,11 @@ class UnifiedSearchView(APIView):
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # NOTE: an empty/missing ``q`` is VALID here — Phase 18.3 filter-only
+        # browse mode (the frontend search page calls /api/search/ without
+        # ``q`` when the search box is empty and expects filtered listings).
+        # The deprecated /api/v1/search/search/ ViewSet is the surface that
+        # requires ``q`` (QUERY_REQUIRED).
         q = request.query_params.get("q", "").strip()
 
         # Reject NUL bytes early — they cannot appear in PostgreSQL string
@@ -837,7 +906,7 @@ class UnifiedSearchView(APIView):
         # Phase 230.11 — for each ontology bridge, run the same FTS
         # against the asset/contract index, then merge while:
         # (a) tagging expansion-only matches with matched_via=ontology,
-        # (b) applying a 0.5× rank multiplier (exact > expanded), and
+        # (b) applying a 0.5x rank multiplier (exact > expanded), and
         # (c) deduping by (type, id) — exact match wins on collision.
         if bridges:
             seen = {(r["type"], r["id"]) for r in results}
@@ -865,7 +934,8 @@ class UnifiedSearchView(APIView):
         results.sort(key=lambda r: r["rank"], reverse=True)
 
         # ── analytics tracking (Phase 54.2) ──────────────────────────────
-        try:
+        # Analytics tracking must not break search on failure.
+        with contextlib.suppress(Exception):
             SearchEngine.track_search(
                 tenant_id=str(tenant.id),
                 query=q,
@@ -877,8 +947,6 @@ class UnifiedSearchView(APIView):
                 ip_address=request.META.get("REMOTE_ADDR"),
                 user_agent=request.META.get("HTTP_USER_AGENT"),
             )
-        except Exception:
-            pass  # analytics must not break search
 
         # ── Phase 273.3 — audit every search execution ──────────────────
         try:
@@ -900,7 +968,7 @@ class UnifiedSearchView(APIView):
                 },
             )
         except Exception:
-            pass  # audit-DB outage MUST NOT block search response
+            pass
 
         # ── Phase 273.4 — OTel metrics on search hot path ─────────────
         try:
@@ -914,7 +982,7 @@ class UnifiedSearchView(APIView):
                 query_length=len(q.encode("utf-8")),
             )
         except Exception:
-            pass  # metric-backend outage MUST NOT block search response
+            pass
 
         # ── paginate ─────────────────────────────────────────────────────
         paginator = StandardPageNumberPagination()

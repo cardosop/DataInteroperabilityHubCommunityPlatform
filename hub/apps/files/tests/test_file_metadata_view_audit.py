@@ -23,7 +23,18 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.metadata_view_audit import file_metadata_view_should_emit
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import FilesAPITestBase, _ensure_tenant_has_active_subscription
-from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing, ListingStatus
+# marketplace is the paid layer — guarded for both core-only absence
+# forms (W7.1); entitlement-dependent tests skip when absent.
+try:
+    from hub.apps.marketplace.models import (
+        Entitlement,
+        EntitlementStatus,
+        Listing,
+        ListingStatus,
+    )
+except (RuntimeError, ModuleNotFoundError):
+    Entitlement = EntitlementStatus = None  # type: ignore[assignment]
+    Listing = ListingStatus = None  # type: ignore[assignment]
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from tests.security.base_idor import IDORTestBase
 

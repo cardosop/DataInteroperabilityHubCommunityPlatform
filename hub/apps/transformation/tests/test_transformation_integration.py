@@ -22,13 +22,13 @@ from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.models import AuditEvent
+from hub.apps.core.services.base import ValidationError as CoreValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import AccessPolicy
 from hub.apps.jobs.models import JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.transformation.business_rules import TransformationBusinessRules
-from hub.apps.core.services.base import ValidationError as CoreValidationError
 from hub.apps.transformation.exceptions import (
     TransformationValidationError,
 )
@@ -39,7 +39,7 @@ from hub.apps.transformation.models import (
     TransformationPipeline,
 )
 from hub.apps.transformation.services import TransformationService
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -505,10 +505,7 @@ class TransformationServiceIntegrationTest(TestCase):
                 if isinstance(ExecutionMode.ASYNC, tuple)
                 else ExecutionMode.ASYNC
             )
-            if (
-                execution.execution_mode == async_mode
-                or execution.execution_mode == ExecutionMode.ASYNC
-            ):
+            if execution.execution_mode in (async_mode, ExecutionMode.ASYNC):
                 self.assertIsNotNone(execution.job)
 
             # Verify audit events were created

@@ -41,5 +41,19 @@ def e_logs_is_not_pass():
         logging.getLogger(__name__).warning("oops")
 
 
+def f_exception_pass_swallow():
+    try:
+        raise RuntimeError("x")
+    except Exception:
+        pass
+
+
+def g_bare_except_pass_swallow():
+    try:
+        raise RuntimeError("y")
+    except:  # noqa: E722 — the metric counts bare-except pass as a swallow
+        pass
+
+
 # except Exception: pass  <-- comment text, must not count
 # The line above should NOT be counted by an AST-based metric.

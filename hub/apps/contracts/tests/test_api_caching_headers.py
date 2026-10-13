@@ -227,7 +227,8 @@ class APICachingHeadersTest(ContractsAPITestBase):
         # Ensure the update timestamp differs from the initial read
         # (HTTP Last-Modified has second-level precision).
         import time
-        time.sleep(1.1)
+
+        time.sleep(1.1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         # Update the contract
         updated_odps = {

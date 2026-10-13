@@ -27,7 +27,7 @@ def _get_default_api_url() -> str:
     return f"http://localhost:{port}/api/v1"
 
 
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
+def pytest_collection_modifyitems(config, items):
     if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
         return
     api_url = os.environ.get("MESHANT_API_URL") or _get_default_api_url()
@@ -85,7 +85,6 @@ def _refresh_test_token_if_stale():
     # have set one — but guard against the edge case anyway.
     elif not token:
         get_api_key()
-    yield
 
 
 # ── Proactive E2E user self-heal ─────────────────────────────────────────
@@ -134,4 +133,4 @@ def _proactively_heal_e2e_users():
         except _rq.RequestException:
             continue  # best-effort; don't fail collection
 
-    yield
+    return

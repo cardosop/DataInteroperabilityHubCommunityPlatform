@@ -30,7 +30,10 @@ class AssetCRUDTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
@@ -203,7 +206,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         response = self.client.get(f"/api/v1/assets/{asset.id}/")
@@ -215,7 +221,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         response = self.client.get(f"/api/v1/assets/{asset.id}/")
@@ -229,7 +238,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         data = {
@@ -247,7 +259,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         data = {
@@ -265,7 +280,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         data = {
@@ -284,7 +302,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
         original_version = asset.version
 
@@ -304,7 +325,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         # Simulate concurrent update: increment version in database
@@ -330,7 +354,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         response = self.client.delete(f"/api/v1/assets/{asset.id}/")
@@ -342,7 +369,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         self.client.delete(f"/api/v1/assets/{asset.id}/")
@@ -357,7 +387,10 @@ class AssetCRUDTest(TestCase):
         # Create another tenant and asset
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
@@ -467,7 +500,10 @@ class AssetCRUDTest(TestCase):
 
         # Create an asset
         Asset.objects.create(
-            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
+            tenant=self.tenant,
+            key=self._unique_key("test-asset"),
+            name="Test Asset",
+            created_by=self.user,
         )
 
         # Filter by invalid status
@@ -481,10 +517,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create assets with different names
-        asset_a = Asset.objects.create(
+        _asset_a = Asset.objects.create(
             tenant=self.tenant, key="asset-a", name="Asset A", created_by=self.user
         )
-        asset_b = Asset.objects.create(
+        _asset_b = Asset.objects.create(
             tenant=self.tenant, key="asset-b", name="Asset B", created_by=self.user
         )
 
@@ -503,10 +539,10 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create assets with different names
-        asset_a = Asset.objects.create(
+        _asset_a = Asset.objects.create(
             tenant=self.tenant, key="asset-a", name="Asset A", created_by=self.user
         )
-        asset_b = Asset.objects.create(
+        _asset_b = Asset.objects.create(
             tenant=self.tenant, key="asset-b", name="Asset B", created_by=self.user
         )
 
@@ -705,7 +741,10 @@ class AssetCRUDTest(TestCase):
         # Create another tenant and asset
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
@@ -735,7 +774,10 @@ class AssetCRUDTest(TestCase):
         # Create another tenant and asset
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"

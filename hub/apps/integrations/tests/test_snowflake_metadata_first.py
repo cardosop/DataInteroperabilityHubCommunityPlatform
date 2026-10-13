@@ -22,7 +22,6 @@ from hub.apps.integrations.base import (
     MarketplaceListing,
     MarketplaceType,
     SyncResult,
-    SyncStatus,
 )
 from hub.apps.integrations.connectors.snowflake_connector import SnowflakeConnector
 
@@ -35,9 +34,7 @@ def _connector():
     The connector will fail at the connection layer, but all Python-level
     validation still executes first.
     """
-    return SnowflakeConnector(
-        account="test_account", user="test_user", token="test_token"
-    )
+    return SnowflakeConnector(account="test_account", user="test_user", token="test_token")
 
 
 class TestSnowflakeConnectorValidation:
@@ -48,7 +45,7 @@ class TestSnowflakeConnectorValidation:
     def test_map_to_hub_asset_with_none_listing(self):
         connector = _connector()
         with pytest.raises((ValueError, TypeError)):
-            connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+            connector.map_to_hub_asset(None)
 
     def test_map_to_hub_asset_with_empty_metadata(self):
         connector = _connector()
@@ -80,7 +77,7 @@ class TestSnowflakeConnectorValidation:
         """
         connector = _connector()
         try:
-            result = connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]
+            result = connector.sync_pull(listing_ids=None)
             assert isinstance(result, SyncResult)
         except ConnectionError:
             # Expected — fake credentials cannot reach Snowflake
@@ -97,6 +94,6 @@ class TestSnowflakeConnectorValidation:
         connector = _connector()
         with pytest.raises((ValueError, TypeError, AttributeError, NotFoundError, ConnectionError)):
             connector.download_resource(
-                resource_id=None,  # type: ignore[arg-type]
+                resource_id=None,
                 destination_path="/tmp/test.csv",
             )

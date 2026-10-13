@@ -177,9 +177,7 @@ class DpiaFeatureFlagTests(TestCase):
             },
             format="json",
         )
-        assert resp.status_code == 403, (
-            f"Expected 403 when DPIA disabled, got {resp.status_code}"
-        )
+        assert resp.status_code == 403, f"Expected 403 when DPIA disabled, got {resp.status_code}"
 
     def test_flag_enabled_accessible(self):
         """When compliance_dpia_enabled=True, DPIA endpoints return 200 with results."""

@@ -153,7 +153,7 @@ class TestInterServiceCommunicationSearch:
     def test_service_client_types(self):
         """Test that service client types are identified"""
         report = self.report
-        client_types = set(call["client_type"] for call in report["service_calls"])
+        client_types = {call["client_type"] for call in report["service_calls"]}
 
         # Should have various client types
         expected_types = [
@@ -173,9 +173,9 @@ class TestInterServiceCommunicationSearch:
     def test_endpoint_diversity(self):
         """Test that diverse endpoints are found"""
         report = self.report
-        endpoints = set(
+        endpoints = {
             call["endpoint"] for call in report["service_calls"] if call["endpoint"] != "unknown"
-        )
+        }
 
         # Should have endpoints from different services
         endpoint_keywords = ["health", "scan", "run", "map", "validate", "normalize", "sparql"]
@@ -208,7 +208,7 @@ class TestInterServiceCommunicationSearch:
         """Test that search has comprehensive coverage"""
         report = self.report
         # Should find calls in multiple areas
-        file_paths = set(call["file_path"] for call in report["service_calls"])
+        file_paths = {call["file_path"] for call in report["service_calls"]}
 
         # Should have files from different areas
         areas = ["hub/apps", "services", "cli", "sdk"]
@@ -233,7 +233,7 @@ class TestInterServiceCommunicationSearch:
         report = self.report
         # Should have both HTTP calls and queue-based communication
         http_calls = [c for c in report["service_calls"] if c["method"] != "ENQUEUE"]
-        queue_calls = [
+        _queue_calls = [
             c
             for c in report["service_calls"]
             if c["method"] == "ENQUEUE" or "queue" in c["endpoint"].lower()

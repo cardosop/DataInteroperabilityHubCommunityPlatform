@@ -121,7 +121,7 @@ class AccessLoggingMiddleware(MiddlewareMixin):
         """Map HTTP status code to access result"""
         if 200 <= status_code < 300:
             return "ALLOWED"
-        elif status_code == 403 or status_code == 401:
+        elif status_code in {403, 401}:
             return "DENIED"
         else:
             return "ALLOWED"  # Other status codes are still considered allowed

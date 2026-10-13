@@ -44,7 +44,7 @@ def create_plugin(name, config_json):
     try:
         config = json.loads(config_json)
     except json.JSONDecodeError as exc:
-        raise click.ClickException(f"Invalid JSON: {exc}")
+        raise click.ClickException(f"Invalid JSON: {exc}") from exc
     data = api_client.post("developer/plugins/", json_data={"name": name, "config": config})
     click.echo(json.dumps(data, indent=2, default=str))
 

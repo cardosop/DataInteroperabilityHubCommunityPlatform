@@ -5,9 +5,10 @@ Compliance operations for DataHub SDK.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import TYPE_CHECKING, Any
 
-from .client import DataHubClient
+if TYPE_CHECKING:
+    from .client import DataHubClient
 
 
 class ComplianceAPI:
@@ -17,7 +18,7 @@ class ComplianceAPI:
     #: by :meth:`wait_for`. Mirrors the existing ``poll_async``
     #: terminal set on this class. Published as a class constant
     #: so non-canonical deployments can subclass + override.
-    TERMINAL_STATUSES: FrozenSet[str] = frozenset(
+    TERMINAL_STATUSES: frozenset[str] = frozenset(
         {
             "completed",
             "failed",
@@ -33,9 +34,9 @@ class ComplianceAPI:
         self,
         asset_id: str,
         scan_mode: str = "full",
-        regulations: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+        regulations: list[str] | None = None,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {
             "asset_id": asset_id,
             "scan_mode": scan_mode,
         }
@@ -47,20 +48,20 @@ class ComplianceAPI:
         self,
         page: int = 1,
         page_size: int = 50,
-        asset_id: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"page": page, "page_size": page_size}
+        asset_id: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
         if asset_id:
             params["asset_id"] = asset_id
         if status:
             params["status"] = status
         return await self.client.get("compliance/runs/", params=params)
 
-    async def get_run(self, run_id: str) -> Dict[str, Any]:
+    async def get_run(self, run_id: str) -> dict[str, Any]:
         return await self.client.get(f"compliance/runs/{run_id}/")
 
-    async def get_results(self, run_id: str) -> Dict[str, Any]:
+    async def get_results(self, run_id: str) -> dict[str, Any]:
         return await self.client.get(f"compliance/runs/{run_id}/results/")
 
     async def poll_async(
@@ -68,7 +69,7 @@ class ComplianceAPI:
         run_id: str,
         interval: float = 2.0,
         timeout: float = 300.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         elapsed = 0.0
         while elapsed < timeout:
             run = await self.get_run(run_id)
@@ -83,7 +84,7 @@ class ComplianceAPI:
         asset_id: str,
         timeout: float = 180.0,
         interval: float = 2.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Phase 250.4.3 — poll the latest compliance run on an
         asset until it reaches a terminal status.
 
@@ -123,7 +124,7 @@ class ComplianceAPI:
             )
             results = response.get("results") or []
             if results:
-                latest: Dict[str, Any] = results[0]
+                latest: dict[str, Any] = results[0]
                 run_asset_id = latest.get("asset_id") or latest.get("asset")
                 if (
                     run_asset_id

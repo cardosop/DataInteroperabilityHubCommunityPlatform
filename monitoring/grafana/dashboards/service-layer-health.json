@@ -1,0 +1,441 @@
+{
+  "title": "Service Layer Health Dashboard",
+  "tags": [
+    "service-layer",
+    "monitoring",
+    "health"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service Health Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "service_health_status",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Unhealthy",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Healthy",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Service Operations Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_operations_total[5m])",
+          "legendFormat": "{{service}}.{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Operations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Service Operation Duration (p50, p95, p99)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(service_operation_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50 - {{service}}.{{operation}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(service_operation_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95 - {{service}}.{{operation}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(service_operation_duration_seconds_bucket[5m]))",
+          "legendFormat": "p99 - {{service}}.{{operation}}",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Service Operation Error Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_operation_errors_total[5m])",
+          "legendFormat": "{{service}}.{{operation}} - {{error_code}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Errors/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Cross-Service Calls Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_calls_total[5m])",
+          "legendFormat": "{{source_service}} -> {{target_service}} ({{method}})",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Calls/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Cross-Service Call Duration (p95)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(service_call_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{source_service}} -> {{target_service}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Cross-Service Call Errors",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_call_errors_total[5m])",
+          "legendFormat": "{{source_service}} -> {{target_service}} - {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Errors/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Cross-Service Call Timeouts",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_call_timeouts_total[5m])",
+          "legendFormat": "{{source_service}} -> {{target_service}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Timeouts/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Cross-Service Call Retries",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_call_retries_total[5m])",
+          "legendFormat": "{{source_service}} -> {{target_service}} ({{retry_count}} retries)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Retries/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Service Health Check Duration",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(service_health_check_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Service Health Check Status",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(service_health_checks_total{status=\"unhealthy\"}[5m])",
+          "legendFormat": "{{service}} - Unhealthy",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(service_health_checks_total{status=\"healthy\"}[5m])",
+          "legendFormat": "{{service}} - Healthy",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Checks/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Top Services by Operation Count",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "topk(10, sum by (service) (rate(service_operations_total[5m])))",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      }
+    },
+    {
+      "id": 13,
+      "title": "Service Error Rate by Error Code",
+      "type": "piechart",
+      "targets": [
+        {
+          "expr": "sum by (error_code) (rate(service_operation_errors_total[5m]))",
+          "legendFormat": "{{error_code}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      }
+    },
+    {
+      "id": 14,
+      "title": "Service Operation Success Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(service_operations_total[5m])) / (sum(rate(service_operations_total[5m])) + sum(rate(service_operation_errors_total[5m]))) * 100",
+          "legendFormat": "Success Rate",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Success Rate",
+          "max": 100,
+          "min": 0
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Service Operations by Tenant",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (rate(service_operations_total[5m]))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Operations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ]
+}

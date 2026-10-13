@@ -11,6 +11,7 @@ This test suite implements comprehensive, engineering-grade validation for:
 All tests use real implementations (no mocks/stubs) per requirements.
 """
 
+import contextlib
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -833,8 +834,8 @@ class ODPSEventPublishingValidationTest(TestCase):
         timestamps = []
 
         # Publish multiple events
-        for i in range(3):
-            time.sleep(  # noqa: sleep-needed — retry loop
+        for _i in range(3):
+            time.sleep(  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 0.01
             )  # INTENTIONAL: test-specific delay  # Small delay to ensure different timestamps
             event_id = self.publisher.publish_odps_created(
@@ -1105,7 +1106,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
         for event_type in lifecycle_events:
             has_handler = any(
                 event_type in pattern or pattern.endswith("*") or pattern == event_type
-                for pattern in self.notification_subscriber.handlers.keys()
+                for pattern in self.notification_subscriber.handlers
             )
             self.assertTrue(has_handler, f"Notification subscriber should handle {event_type}")
 
@@ -1117,7 +1118,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
         # Audit subscriber should subscribe to all ODPS events using wildcard
         has_wildcard = any(
             pattern == "odps.*" or pattern.endswith("*")
-            for pattern in self.audit_subscriber.handlers.keys()
+            for pattern in self.audit_subscriber.handlers
         )
         self.assertTrue(has_wildcard, "Audit subscriber should subscribe to odps.* pattern")
 
@@ -1139,7 +1140,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
         for event_type in odps_event_types:
             has_handler = any(
                 event_type in pattern or pattern.endswith("*") or pattern == event_type
-                for pattern in self.webhook_subscriber.handlers.keys()
+                for pattern in self.webhook_subscriber.handlers
             )
             self.assertTrue(has_handler, f"Webhook subscriber should handle {event_type}")
 
@@ -1232,12 +1233,12 @@ class ODPSEventSubscriberTestingTest(TestCase):
         }
 
         # Call handler directly (should not raise exception)
-        try:
-            self.webhook_subscriber._handle_odps_event(event_dict)
-        except Exception:
+        with contextlib.suppress(
+            Exception
+        ):  # any subscriber failure is acceptable; the test only verifies it does not crash
             # Webhook subscriber may fail if no webhooks are configured, which is OK
             # We just verify it doesn't crash
-            pass
+            self.webhook_subscriber._handle_odps_event(event_dict)
 
     def test_all_subscribers_handle_multiple_event_types(self):
         """Test that all subscribers handle multiple ODPS event types."""
@@ -1717,14 +1718,21 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
         """Test that event bus handles Redis failure gracefully."""
         contract_id = str(uuid.uuid4())
 
-        # Mock Redis client to raise exception
+        # Mock Redis client to raise exception.  The injected failure is a
+        # REAL ``redis.RedisError`` subclass (ConnectionError — exactly
+        # what a dead Redis raises): the bus's graceful-degradation
+        # contract is scoped to Redis operational errors, while a bare
+        # ``Exception`` is a programming error and SHOULD propagate as
+        # ``EventPublishError``.
+        import redis as _redis
+
         original_redis = self.event_bus.redis_client
         mock_redis = type(
             "MockRedis",
             (),
             {
                 "publish": lambda *args, **kwargs: (_ for _ in ()).throw(
-                    Exception("Redis connection failed")
+                    _redis.exceptions.ConnectionError("Redis connection failed")
                 )
             },
         )()

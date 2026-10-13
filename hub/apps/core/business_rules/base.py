@@ -415,10 +415,11 @@ class BusinessRules(ABC):
                     "business_rules.user_id": context.user_id or "",
                 },
             )
-            return span
         except Exception as e:
             logger.warning("Failed to create trace span", error=str(e), exc_info=True)
             return None
+        else:
+            return span
 
     @abstractmethod
     def validate(
@@ -498,10 +499,7 @@ class BusinessRules(ABC):
         span_context = self._create_trace_span(rule_name, context)
 
         # Use span as context manager if available
-        if span_context:
-            span = span_context.__enter__()
-        else:
-            span = None
+        span = span_context.__enter__() if span_context else None
 
         try:
             # Execute validation
@@ -549,8 +547,6 @@ class BusinessRules(ABC):
             # Phase 274.8 — emit observability hook on every result
             with contextlib.suppress(Exception):
                 self._emit_observability(result)
-
-            return result
 
         except Exception as e:
             duration = time.time() - start_time
@@ -615,6 +611,8 @@ class BusinessRules(ABC):
 
             # Return error result
             return error_result
+        else:
+            return result
         finally:
             # End span context manager
             if span_context:

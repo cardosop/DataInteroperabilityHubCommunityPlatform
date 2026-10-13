@@ -32,9 +32,11 @@ class TestPhase274Migrations(TestCase):
             assert os.path.isfile(path), f"Migration {app}/{name} not found at {path}"
 
     def test_migrations_are_applied(self):
+        from django.db import connection
         from django.db.migrations.recorder import MigrationRecorder
-        recorder = MigrationRecorder("default")
-        applied = {(m.app, m.name) for m in recorder.applied_migrations()}
+
+        recorder = MigrationRecorder(connection)
+        applied = set(recorder.applied_migrations())
         for app, name in PHASE_274_MIGRATIONS:
             assert (app, name) in applied, f"Migration {app}/{name} is not applied"
 

@@ -89,4 +89,4 @@ if __name__ == "__main__":
     models = find_tenant_models()
     result = check_sweep_coverage(models)
     generate_report(result)
-    sys.exit(0 if not result["gaps"] else 0)  # Informational
+    sys.exit(0)  # Informational

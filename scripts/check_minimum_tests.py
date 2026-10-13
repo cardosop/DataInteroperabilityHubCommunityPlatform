@@ -33,7 +33,7 @@ for app in sorted(APP_DIRS):
                 try:
                     with open(os.path.join(root, f)) as fh:
                         all_content += fh.read()
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
     for category, patterns in REQUIRED_PATTERNS.items():

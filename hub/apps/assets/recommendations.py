@@ -343,11 +343,11 @@ class AssetRecommendationService:
 
         # Calculate final scores (average with slight boost for multiple reasons)
         final_recommendations = []
-        for asset_id, data in aggregated.items():
+        for _asset_id, data in aggregated.items():
             scores = data["scores"]
             avg_score = sum(scores) / len(scores) if scores else 0.0
             # Boost score if multiple recommendation types
-            boost = min(0.2, len(set(r["type"] for r in data["reasons"])) * 0.05)
+            boost = min(0.2, len({r["type"] for r in data["reasons"]}) * 0.05)
             final_score = min(1.0, avg_score + boost)
 
             final_recommendations.append(

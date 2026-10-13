@@ -5,7 +5,8 @@
  * Persona: Data Product Owner
  * Reference: docs/USE_CASES.md, docs/TEST_TRACEABILITY.md
  *
- * Success/Failure/Edge. Routes: /odps, /odps/upload.
+ * Success/Failure/Edge. Routes: /odps, /odps/upload (legacy — Phase 211.A6
+ * redirects them to /contracts?spec_type=ODPS and /contracts/create).
  * Real backend only; no mocks.
  */
 
@@ -19,28 +20,30 @@ test.describe('UC-ODPS-001: Create ODPS Product', () => {
   test.describe('Success', () => {
     test('ODPS list loads', async ({ page }) => {
       const user = await getTestUser();
+      // Legacy /odps redirects (Phase 211.A6) to the contracts list filtered by spec_type=ODPS.
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
-      expect(page.url()).toContain('/odps');
+      expect(page.url()).toContain('/contracts?spec_type=ODPS');
       const hasContent =
-        (await page.locator('.odps-list-page').count()) > 0 ||
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').count()) > 0 ||
         (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
     test('ODPS upload page loads', async ({ page }) => {
       const user = await getTestUser();
+      // Legacy /odps/upload redirects (Phase 211.A6) to the unified contract create page.
       await loginAndNavigateToRoute(page, user, '/odps/upload', {
         timeout: 60000,
-        contentSelector: 'textarea#odps-content, textarea, .odps-upload-page',
+        contentSelector: 'textarea.contract-file-reader__textarea, textarea, .contract-create-page',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
-      expect(page.url()).toContain('/odps/upload');
+      expect(page.url()).toContain('/contracts/create');
       const hasUploadUI =
-        (await page.locator('textarea#odps-content, textarea, .odps-upload-page').count()) > 0;
+        (await page.locator('textarea.contract-file-reader__textarea, textarea, .contract-create-page').count()) > 0;
       expect(hasUploadUI).toBe(true);
     });
   });
@@ -60,11 +63,11 @@ test.describe('UC-ODPS-001: Create ODPS Product', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      expect(page.url()).toContain('/odps');
+      expect(page.url()).toContain('/contracts?spec_type=ODPS');
       const hasContent =
-        (await page.locator('.odps-list-page').count()) > 0 ||
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').count()) > 0 ||
         (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });

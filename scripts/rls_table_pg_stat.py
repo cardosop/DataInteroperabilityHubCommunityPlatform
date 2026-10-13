@@ -66,7 +66,9 @@ def snapshot(database_url: str, table: str, output_path: Path, limit: int) -> in
     stats = _read_stats(database_url, table=table, limit=limit)
     payload = {
         "captured_at_utc": datetime.now(UTC).isoformat(),
-        "database_url_hint": (database_url.split("@")[-1] if "@" in database_url else "local"),
+        "database_url_hint": (
+            database_url.rsplit("@", maxsplit=1)[-1] if "@" in database_url else "local"
+        ),
         "table": table,
         "top_n": limit,
         "query_count": len(stats),

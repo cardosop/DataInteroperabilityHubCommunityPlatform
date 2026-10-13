@@ -17,6 +17,7 @@ Covers:
 import uuid
 from datetime import timedelta
 from io import StringIO
+from typing import TYPE_CHECKING
 
 import pytest
 from django.core.management import call_command
@@ -28,6 +29,9 @@ from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.jobs.models import FailedJobDLQ, Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+
+if TYPE_CHECKING:
+    from hub.apps.datasets.models import Dataset
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -520,7 +524,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             engine=DQEngine.GREAT_EXPECTATIONS,
             status=DQRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=1300),  # >2*600=1200
-            warehouse_config=None,
+            warehouse_config={},
         )
 
         call_command("detect_stuck_dq_compliance_runs", stdout=StringIO())

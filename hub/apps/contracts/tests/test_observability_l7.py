@@ -822,9 +822,10 @@ class TestStructurelessRolloutDashboardJSON(TestCase):
         path = Path(self.DASHBOARD_PATH)
         assert path.exists(), f"Dashboard file missing: {path}"
         # Just round-trips the JSON — pin parseability.
+        # Dashboards are stored in Grafana provisioning file format:
+        # the dashboard model IS the top-level object (no {"dashboard": ...} wrapper).
         data = json.loads(path.read_text())
-        assert "dashboard" in data
-        assert data["dashboard"]["uid"] == "hub-structureless-rollout-227"
+        assert data["uid"] == "hub-structureless-rollout-227"
 
     def test_dashboard_panels_reference_emitted_metrics(self):
         """Every PromQL query in the dashboard must reference a metric
@@ -833,7 +834,7 @@ class TestStructurelessRolloutDashboardJSON(TestCase):
         from pathlib import Path
 
         data = json.loads(Path(self.DASHBOARD_PATH).read_text())
-        panels = data["dashboard"]["panels"]
+        panels = data["panels"]
         all_exprs = []
         for panel in panels:
             for target in panel.get("targets", []):

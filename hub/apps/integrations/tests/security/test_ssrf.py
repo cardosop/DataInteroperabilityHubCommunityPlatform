@@ -366,7 +366,11 @@ class TestSSRFGuardDnspythonRevalidate:
         ``dnspython.resolver``); pin the import here so a future
         package-rename surfaces as a test failure instead of a
         runtime crash inside the worker."""
-        import dns.resolver  # noqa: F401 — import-only check
+        from dns import resolver
+
+        assert hasattr(resolver, "resolve"), (
+            "dnspython must expose the dns.resolver.resolve lookup API"
+        )
 
     def test_revalidate_rejects_rebound_to_loopback(self, monkeypatch):
         """Simulate a hostname that resolves to 127.0.0.1 at
@@ -488,7 +492,7 @@ class TestSSRFGuardSLOBudget:
         timings.sort()
         p95 = timings[int(0.95 * len(timings))]
         # Allow some headroom for slow CI shared-runner: budget
-        # is 5ms on a developer laptop; CI runners can be 2-3×
+        # is 5ms on a developer laptop; CI runners can be 2-3x
         # slower under load. We pin the assertion at 25ms to
         # catch real regressions while tolerating CI variance.
         # The PRODUCTION SLO is 5ms; this test pins the

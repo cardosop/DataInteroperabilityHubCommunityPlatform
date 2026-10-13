@@ -14,7 +14,6 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from hub.apps.api.middleware.idempotency_utils import get_redis_client
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileScanStatus, FileStatus
@@ -109,7 +108,7 @@ class CleanupAbandonedMultipartUploadsTests(FilesTestBase):
 
     @pytest.mark.integration
     def test_cleanup_aborts_stale_multipart_flips_uploading_audit(self):
-        """Non–dry-run: abort S3 session, correlate File.UPLOADING, emit audit."""
+        """Non-dry-run: abort S3 session, correlate File.UPLOADING, emit audit."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 

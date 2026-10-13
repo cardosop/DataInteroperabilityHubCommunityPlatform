@@ -1,0 +1,88 @@
+groups:
+  - name: odcs_alerts
+    interval: 30s
+    rules:
+      # ODCS Normalization Failures (All Versions)
+      # Alert when normalization failure rate exceeds 5% over 5 minutes for any version
+      - alert: ODCSNormalizationFailureRate
+        expr: |
+          (
+            sum(rate(odcs_normalization_total{status=~"NORMALIZATION_FAILED|failed|error"}[5m])) by (tenant_id, version)
+            /
+            sum(rate(odcs_normalization_total[5m])) by (tenant_id, version)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: odcs
+        annotations:
+          summary: "High ODCS normalization failure rate for tenant {{ $labels.tenant_id }}"
+          description: "ODCS normalization failure rate is {{ $value | humanizePercentage }} for version {{ $labels.version }} (tenant: {{ $labels.tenant_id }}, threshold: 5%)"
+
+      # ODCS Version-Specific Normalization Errors
+      # Alert when specific versions have high error rates (indicates version-specific issues)
+      - alert: ODCSVersionSpecificNormalizationErrors
+        expr: |
+          (
+            sum(rate(odcs_normalization_total{status=~"NORMALIZATION_FAILED|failed|error",version=~"3.0.2|3.0.1|3.0.0"}[5m])) by (tenant_id, version)
+            /
+            sum(rate(odcs_normalization_total{version=~"3.0.2|3.0.1|3.0.0"}[5m])) by (tenant_id, version)
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: odcs
+        annotations:
+          summary: "High ODCS normalization error rate for version {{ $labels.version }}"
+          description: "ODCS version {{ $labels.version }} has normalization error rate of {{ $value | humanizePercentage }} for tenant {{ $labels.tenant_id }} (threshold: 10%). This may indicate version-specific normalization issues."
+
+      # ODCS Regression Detection (Comparison with Baseline)
+      # Alert when regression detection metric shows high regression rate
+      # This compares current normalization behavior with baseline (historical patterns)
+      - alert: ODCSNormalizationRegressionDetected
+        expr: |
+          sum(rate(odcs_normalization_regression_total[15m])) by (version, regression_type, tenant_id) > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: odcs
+        annotations:
+          summary: "ODCS normalization regression detected for version {{ $labels.version }}"
+          description: "ODCS normalization regression detected: {{ $labels.regression_type }} for version {{ $labels.version }} (tenant: {{ $labels.tenant_id }}). This indicates a deviation from baseline normalization behavior."
+
+      # ODCS Regression Rate Alert (High Regression Frequency)
+      # Alert when regression rate exceeds threshold (multiple regressions in short time)
+      - alert: ODCSNormalizationRegressionRate
+        expr: |
+          (
+            sum(rate(odcs_normalization_regression_total[15m])) by (version, regression_type, tenant_id)
+            /
+            sum(rate(odcs_normalization_total{version=~"3.0.2|3.0.1|3.0.0"}[15m])) by (version, tenant_id)
+          ) > 0.05
+        for: 15m
+        labels:
+          severity: critical
+          component: odcs
+        annotations:
+          summary: "High ODCS normalization regression rate for version {{ $labels.version }}"
+          description: "ODCS normalization regression rate is {{ $value | humanizePercentage }} for version {{ $labels.version }}, regression type {{ $labels.regression_type }} (tenant: {{ $labels.tenant_id }}, threshold: 5%). This indicates significant deviation from baseline."
+
+      # ODCS Version Distribution Anomaly
+      # Alert when version distribution shows unexpected patterns (e.g., sudden drop in 3.0.2 usage)
+      - alert: ODCSVersionDistributionAnomaly
+        expr: |
+          (
+            sum(rate(odcs_version_distribution_total{version="3.0.2"}[1h])) by (tenant_id)
+            /
+            sum(rate(odcs_version_distribution_total[1h])) by (tenant_id)
+          ) < 0.50
+          and
+          sum(rate(odcs_version_distribution_total[1h])) by (tenant_id) > 10
+        for: 30m
+        labels:
+          severity: warning
+          component: odcs
+        annotations:
+          summary: "ODCS version distribution anomaly detected for tenant {{ $labels.tenant_id }}"
+          description: "ODCS 3.0.2 usage is {{ $value | humanizePercentage }} of total (tenant: {{ $labels.tenant_id }}, threshold: 50%). This may indicate version migration issues or normalization problems."
+

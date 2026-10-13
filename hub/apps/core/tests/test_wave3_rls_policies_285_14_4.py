@@ -48,7 +48,7 @@ class AuthRlsTests(TestCase):
         # Currently this is not enforced — tracked as a known gap.
         # When RLS migrations are added, this assertion should be uncommented.
         # assert has_rls  # TODO: enable when auth RLS migrations are in place
-        assert has_rls or True, "auth: verify APIKey + Session have RLS; User is global"
+        assert True, "auth: verify APIKey + Session have RLS; User is global"
 
 
 class TenantsRlsTests(TestCase):

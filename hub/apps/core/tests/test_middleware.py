@@ -65,13 +65,15 @@ class ContentLengthSafeCommonMiddlewareTests(SimpleTestCase):
         request = self.factory.get("/")
         response = HttpResponse(b"stub")
 
-        with self.assertRaises(RuntimeError) as ctx:
-            with patch.object(
+        with (
+            self.assertRaises(RuntimeError) as ctx,
+            patch.object(
                 type(response),
                 "content",
                 new_callable=PropertyMock,
                 side_effect=RuntimeError("something else broke"),
-            ):
-                self.middleware.process_response(request, response)
+            ),
+        ):
+            self.middleware.process_response(request, response)
 
         self.assertIn("something else broke", str(ctx.exception))

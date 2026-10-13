@@ -27,6 +27,7 @@ import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
+    DataHubError,
     NotFoundError,
     ODPSExportError,
     ODPSValidationError,
@@ -59,6 +60,9 @@ def real_api_config():
         tenant_name=_ODPS_TENANT_NAME,
         api_key_name=_ODPS_API_KEY_NAME,
         scopes=_ODPS_SCOPES,
+        # ODPS export/product-first flows have 90-140s steps — the 30s
+        # default read-times-out before the server finishes under any load.
+        timeout=120.0,
     )
 
 
@@ -586,21 +590,26 @@ async def test_export_odps_error_scenarios(real_client):
         await client.contracts.export_odps("invalid-uuid", format="json")
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]
-        assert "uuid" in e.message.lower() or "contract_id" in e.message.lower()
+        if e.code not in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]:
+            pytest.fail(f"Unexpected ODPS error code: {e.code}")
+        if not ("uuid" in e.message.lower() or "contract_id" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")
     except NotFoundError as e:
         # API may return 404 for invalid UUID, which is also acceptable
-        assert hasattr(e, "http_status") and e.http_status == 404, (
-            f"Expected 404 NotFoundError, got {type(e).__name__}: {e}"
-        )
+        if not hasattr(e, "http_status"):
+            pytest.fail(f"Expected http_status attribute, got {type(e).__name__}: {e}")
+        if e.http_status != 404:
+            pytest.fail(f"Expected 404 NotFoundError, got {type(e).__name__}: {e}")
 
     # Test 2: Invalid format
     try:
         await client.contracts.export_odps("123e4567-e89b-12d3-a456-426614174000", format="xml")
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "INVALID_VALUE"
-        assert "format" in e.message.lower()
+        if e.code != "INVALID_VALUE":
+            pytest.fail(f"Expected code INVALID_VALUE, got {e.code}")
+        if "format" not in e.message.lower():
+            pytest.fail(f"Expected 'format' in message, got: {e.message}")
 
     # Test 3: Invalid version format
     try:
@@ -611,20 +620,27 @@ async def test_export_odps_error_scenarios(real_client):
         )
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "INVALID_VALUE"
-        assert "version" in e.message.lower() or "format" in e.message.lower()
+        if e.code != "INVALID_VALUE":
+            pytest.fail(f"Expected code INVALID_VALUE, got {e.code}")
+        if not ("version" in e.message.lower() or "format" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")
 
     # Test 4: Non-existent contract (should return 404)
     try:
         await client.contracts.export_odps("00000000-0000-0000-0000-000000000000", format="json")
         pytest.fail("Should have raised NotFoundError or ODPSExportError")
     except NotFoundError as e:
-        assert hasattr(e, "http_status") and e.http_status == 404
+        if not hasattr(e, "http_status"):
+            pytest.fail(f"Expected http_status attribute, got {type(e).__name__}: {e}")
+        if e.http_status != 404:
+            pytest.fail(f"Expected http_status 404, got {e.http_status}")
     except ODPSExportError as e:
-        assert hasattr(e, "code")
+        if not hasattr(e, "code"):
+            pytest.fail(f"Expected 'code' attribute, got {type(e).__name__}: {e}")
     except ODPSValidationError as e:
-        assert hasattr(e, "code")
-    except Exception as e:
+        if not hasattr(e, "code"):
+            pytest.fail(f"Expected 'code' attribute, got {type(e).__name__}: {e}")
+    except (DataHubError, ValueError) as e:
         pytest.fail(f"Unexpected exception type for non-existent contract: {type(e).__name__}: {e}")
 
 
@@ -638,27 +654,35 @@ async def test_download_odps_error_scenarios(real_client):
         await client.contracts.download_odps("not-a-uuid", format="json")
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]
+        if e.code not in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]:
+            pytest.fail(f"Unexpected ODPS error code: {e.code}")
 
     # Test 2: Invalid format
     try:
         await client.contracts.download_odps("123e4567-e89b-12d3-a456-426614174000", format="xml")
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "INVALID_VALUE"
-        assert "format" in e.message.lower()
+        if e.code != "INVALID_VALUE":
+            pytest.fail(f"Expected code INVALID_VALUE, got {e.code}")
+        if "format" not in e.message.lower():
+            pytest.fail(f"Expected 'format' in message, got: {e.message}")
 
     # Test 3: Non-existent contract (should return 404)
     try:
         await client.contracts.download_odps("00000000-0000-0000-0000-000000000000", format="json")
         pytest.fail("Should have raised NotFoundError or ODPSExportError")
     except NotFoundError as e:
-        assert hasattr(e, "http_status") and e.http_status == 404
+        if not hasattr(e, "http_status"):
+            pytest.fail(f"Expected http_status attribute, got {type(e).__name__}: {e}")
+        if e.http_status != 404:
+            pytest.fail(f"Expected http_status 404, got {e.http_status}")
     except ODPSExportError as e:
-        assert hasattr(e, "code")
+        if not hasattr(e, "code"):
+            pytest.fail(f"Expected 'code' attribute, got {type(e).__name__}: {e}")
     except ODPSValidationError as e:
-        assert hasattr(e, "code")
-    except Exception as e:
+        if not hasattr(e, "code"):
+            pytest.fail(f"Expected 'code' attribute, got {type(e).__name__}: {e}")
+    except (DataHubError, ValueError) as e:
         pytest.fail(f"Unexpected exception for non-existent contract: {type(e).__name__}: {e}")
 
 
@@ -672,16 +696,20 @@ async def test_create_odps_error_scenarios(real_client):
         await client.contracts.create_odps("", extract_odcs=True)
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "REQUIRED_FIELD_MISSING"
-        assert "original_raw" in e.message.lower() or "required" in e.message.lower()
+        if e.code != "REQUIRED_FIELD_MISSING":
+            pytest.fail(f"Expected code REQUIRED_FIELD_MISSING, got {e.code}")
+        if not ("original_raw" in e.message.lower() or "required" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")
 
     # Test 2: Too short content
     try:
         await client.contracts.create_odps("{}", extract_odcs=True)
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "INVALID_VALUE"
-        assert "short" in e.message.lower() or "length" in e.message.lower()
+        if e.code != "INVALID_VALUE":
+            pytest.fail(f"Expected code INVALID_VALUE, got {e.code}")
+        if not ("short" in e.message.lower() or "length" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")
 
     # Test 3: Mutually exclusive options
     odps_content = '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", "product": {"details": {"en": {"productID": "test"}}}}'
@@ -693,16 +721,20 @@ async def test_create_odps_error_scenarios(real_client):
         )
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "INVALID_VALUE"
-        assert "extract_odcs" in e.message.lower() or "link_odcs_id" in e.message.lower()
+        if e.code != "INVALID_VALUE":
+            pytest.fail(f"Expected code INVALID_VALUE, got {e.code}")
+        if not ("extract_odcs" in e.message.lower() or "link_odcs_id" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")
 
     # Test 4: Neither option provided
     try:
         await client.contracts.create_odps(original_raw=odps_content)
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "REQUIRED_FIELD_MISSING"
-        assert "extract_odcs" in e.message.lower() or "link_odcs_id" in e.message.lower()
+        if e.code != "REQUIRED_FIELD_MISSING":
+            pytest.fail(f"Expected code REQUIRED_FIELD_MISSING, got {e.code}")
+        if not ("extract_odcs" in e.message.lower() or "link_odcs_id" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")
 
     # Test 5: Invalid version format
     try:
@@ -713,8 +745,10 @@ async def test_create_odps_error_scenarios(real_client):
         )
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "INVALID_VALUE"
-        assert "version" in e.message.lower()
+        if e.code != "INVALID_VALUE":
+            pytest.fail(f"Expected code INVALID_VALUE, got {e.code}")
+        if "version" not in e.message.lower():
+            pytest.fail(f"Expected 'version' in message, got: {e.message}")
 
 
 @pytest.mark.asyncio
@@ -731,7 +765,8 @@ async def test_link_odps_error_scenarios(real_client):
         )
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]
+        if e.code not in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]:
+            pytest.fail(f"Unexpected ODPS error code: {e.code}")
 
     # Test 2: Missing odps_format when odps_raw provided
     try:
@@ -741,8 +776,10 @@ async def test_link_odps_error_scenarios(real_client):
         )
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "REQUIRED_FIELD_MISSING"
-        assert "odps_format" in e.message.lower()
+        if e.code != "REQUIRED_FIELD_MISSING":
+            pytest.fail(f"Expected code REQUIRED_FIELD_MISSING, got {e.code}")
+        if "odps_format" not in e.message.lower():
+            pytest.fail(f"Expected 'odps_format' in message, got: {e.message}")
 
     # Test 3: Neither odps_contract_id nor odps_raw provided
     try:
@@ -751,5 +788,7 @@ async def test_link_odps_error_scenarios(real_client):
         )
         pytest.fail("Should have raised ODPSValidationError")
     except ODPSValidationError as e:
-        assert e.code == "REQUIRED_FIELD_MISSING"
-        assert "odps_contract_id" in e.message.lower() or "odps_raw" in e.message.lower()
+        if e.code != "REQUIRED_FIELD_MISSING":
+            pytest.fail(f"Expected code REQUIRED_FIELD_MISSING, got {e.code}")
+        if not ("odps_contract_id" in e.message.lower() or "odps_raw" in e.message.lower()):
+            pytest.fail(f"Unexpected ODPS error message: {e.message}")

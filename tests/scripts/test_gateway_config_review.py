@@ -527,7 +527,7 @@ class TestGatewayConfigReviewerIntegration(unittest.TestCase):
         for service in review["services"]:
             url = service.get("url", "")
             self.assertTrue(
-                url.startswith("http://") or url.startswith("https://"),
+                url.startswith(("http://", "https://")),
                 f"Service URL should start with http:// or https://: {url}",
             )
 

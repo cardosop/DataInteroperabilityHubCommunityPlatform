@@ -123,21 +123,15 @@ if _sparql_view is not None:
     urlpatterns = [
         path(
             "<uuid:tenant_id>/sparql-endpoints/",
-            _sparql_view.as_view(
-                {"get": "list", "post": "create"},
-            ),
+            _sparql_view.as_view({"get": "list", "post": "create"}),
             name="tenant-sparql-endpoint-list",
         ),
         path(
             "<uuid:tenant_id>/sparql-endpoints/<uuid:pk>/",
             _sparql_view.as_view(
-                {
-                    "get": "retrieve",
-                    "patch": "partial_update",
-                    "put": "update",
-                    "delete": "destroy",
-                },
+                {"get": "retrieve", "patch": "partial_update", "put": "update", "delete": "destroy"}
             ),
             name="tenant-sparql-endpoint-detail",
         ),
-    ] + urlpatterns
+        *urlpatterns,
+    ]

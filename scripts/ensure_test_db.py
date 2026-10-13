@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import os
 import sys
 import time
@@ -55,7 +56,6 @@ def _pg_connect(db_config, dbname="postgres"):
                 connect_timeout=5,
             )
             conn.autocommit = True
-            return conn
         except psycopg2.OperationalError as e:
             last_err = e
             msg = str(e).lower()
@@ -74,6 +74,8 @@ def _pg_connect(db_config, dbname="postgres"):
                 time.sleep(2)
                 continue
             raise
+        else:
+            return conn
     raise last_err
 
 
@@ -92,7 +94,7 @@ def _drop_database(db_config, dbname):
             "WHERE datname = %s AND pid <> pg_backend_pid()",
             [dbname],
         )
-        cur.execute('DROP DATABASE IF EXISTS "%s"' % dbname)
+        cur.execute(f'DROP DATABASE IF EXISTS "{dbname}"')
     finally:
         conn.close()
 
@@ -107,7 +109,7 @@ def _tables_count(db_config, dbname):
         conn.close()
 
 
-def _migrate_database(db_config, dbname):
+def _migrate_database(_db_config, dbname):
     from pathlib import Path
 
     _project_root = Path(__file__).resolve().parent.parent
@@ -131,14 +133,12 @@ def _migrate_database(db_config, dbname):
     cfg["NAME"] = dbname
     settings.DATABASES["_ensure_db"] = cfg
 
-    try:
+    # ``post_migrate`` signal from ``django.contrib.auth`` does a
+    # ``Permission.objects.bulk_create()`` that can race/conflict
+    # when the DB already has migrations + data from a prior run.
+    # The DB is still usable — swallow and continue.
+    with contextlib.suppress(IntegrityError):
         call_command("migrate", database="_ensure_db", verbosity=0, interactive=False)
-    except IntegrityError:
-        # ``post_migrate`` signal from ``django.contrib.auth`` does a
-        # ``Permission.objects.bulk_create()`` that can race/conflict
-        # when the DB already has migrations + data from a prior run.
-        # The DB is still usable — swallow and continue.
-        pass
 
     from django.db import connections
 
@@ -180,7 +180,7 @@ def main():
         conn = _pg_connect(db_config, "postgres")
         try:
             cur = conn.cursor()
-            cur.execute('CREATE DATABASE "%s" OWNER %s' % (test_db, db_config["user"]))
+            cur.execute('CREATE DATABASE "{}" OWNER {}'.format(test_db, db_config["user"]))
         finally:
             conn.close()
         print(f"[ensure_test_db] Test DB {test_db} created, running migrate...")

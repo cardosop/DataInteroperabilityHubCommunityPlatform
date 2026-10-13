@@ -19,7 +19,14 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+_billing_models = pytest.importorskip("hub.apps.billing.models")
+_integrations_models = pytest.importorskip("hub.apps.integrations.models")
 hub = pytest.importorskip("hub")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import contextlib
 import json
 import uuid
@@ -27,7 +34,12 @@ import uuid
 from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
-from datahub_interoperability import DataHubClient, DataHubClientConfig, MarketplaceIntegrationAPI
+from datahub_interoperability import (
+    DataHubClient,
+    DataHubClientConfig,
+    MarketplaceIntegrationAPI,
+    NotFoundError,
+)
 from django.contrib.auth import get_user_model
 from django.test import LiveServerTestCase
 
@@ -37,6 +49,31 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
+
+
+def _create_mapping_fixture(*, tenant, user, connection_id, unique_id, listing):
+    """Sync ORM fixture creation for the async mapping tests.
+
+    Django's ORM raises SynchronousOnlyOperation inside ``async def`` test
+    bodies (measured 2026-08-28) — call this via ``sync_to_async``.
+    """
+    asset = Asset.objects.create(
+        tenant=tenant,
+        key=f"mapping-list-test-asset-{unique_id}",
+        name="Mapping List Test Asset",
+        status=AssetStatus.ACTIVE,
+        source_type="HUB_NATIVE",
+        created_by=user,
+    )
+    connection_obj = MarketplaceConnection.objects.get(id=connection_id)
+    mapping = MarketplaceMapping.objects.create(
+        tenant=tenant,
+        connection=connection_obj,
+        hub_asset=asset,
+        external_listing_id=listing,
+        external_resource_ids=[] if listing.startswith("TEST_LISTING") else ["RESOURCE_1"],
+    )
+    return asset.id, str(mapping.id)
 
 
 class MarketplaceLiveServerTestCase(LiveServerTestCase):
@@ -49,13 +86,33 @@ class MarketplaceLiveServerTestCase(LiveServerTestCase):
     live server URL is still set.
     """
 
+    @classmethod
+    def _fixture_setup(cls):
+        """Skip the per-test DB flush on the persistent dedicated test DB.
+
+        TransactionTestCase flushes every table before EACH test; against
+        the persistent dedicated test DB (TEST_DB_SUFFIX=cli) the TRUNCATE
+        (no CASCADE) blocks on FK-referenced tables until the 120 s
+        ``statement_timeout`` fires — so the 9-test run burned 2+ minutes
+        per test purely in setup (measured 2026-08-28).  Fixture names are
+        per-run unique (uuid suffixes in setUp), so isolation does not
+        depend on the flush.
+        """
+        import os
+
+        if not os.environ.get("TEST_DB_SUFFIX"):
+            # Fresh-DB path: setup errors are handled by setUp below.
+            with contextlib.suppress(Exception):
+                super()._fixture_setup()
+
     def _post_teardown(self):
-        """Override to handle teardown errors gracefully"""
-        try:
-            super()._post_teardown()
-        except Exception:
-            # Ignore teardown errors - they don't affect test validity
-            pass
+        """Teardown that does not pay the 120 s statement-timeout."""
+        import os
+
+        if not os.environ.get("TEST_DB_SUFFIX"):
+            # Fresh-DB path: teardown errors don't affect test validity.
+            with contextlib.suppress(Exception):
+                super()._post_teardown()
 
     def setUp(self):
         """Set up test fixtures, handling database flush errors"""
@@ -91,7 +148,6 @@ class MarketplaceLiveServerTestCase(LiveServerTestCase):
                 raise
 
 
-@pytest.mark.django_db(transaction=True)
 class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
     """
     E2E tests for Marketplace CLI/SDK consistency.
@@ -104,15 +160,45 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
         super().setUp()
         self.runner = CliRunner()
 
-        # Create tenant
+        # Create tenant — per-run unique: the _post_teardown override skips
+        # the TransactionTestCase flush (persistent dedicated DB), so a
+        # fixed name collides with the tenants_name_key constraint on the
+        # second test of the run (measured 2026-08-28).
         self.tenant = Tenant.objects.create(
-            name="Marketplace CLI/SDK Consistency Test Tenant",
-            slug="marketplace-cli-sdk-consistency-test-tenant",
+            name=f"Marketplace CLI/SDK Consistency Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"marketplace-cli-sdk-consistency-test-tenant-{uuid.uuid4().hex[:8]}",
+            # Phase 285.5.2.1 — the connection/mapping viewsets gate on this
+            # tenant flag (403 MARKETPLACE_INTEGRATIONS_DISABLED when False).
+            marketplace_integrations_enabled=True,
+        )
+
+        # Phase 313 paid write-gate — tenants middleware blocks every write
+        # method with 403 "No active subscription" when the tenant has no
+        # ACTIVE billing subscription. Provision one (plan is global, so a
+        # fixed name keeps reruns idempotent).
+        # GATE-29 — no static paid import: reuse the importorskip'd module
+        # object above (its skip-in-public-tree behaviour stays intact).
+        Subscription = _billing_models.Subscription
+        SubscriptionStatus = _billing_models.SubscriptionStatus
+        from hub.apps.tenants.models import PlanTier, TenantPlan
+
+        plan, _ = TenantPlan.objects.get_or_create(
+            name="Marketplace CLI/SDK Parity Pro Plan",
+            defaults={
+                "slug": "marketplace-cli-sdk-parity-pro",
+                "tier": PlanTier.PRO,
+                "category": "BASE",
+                "order": 1,
+            },
+        )
+        Subscription.objects.get_or_create(
+            tenant=self.tenant,
+            defaults={"plan": plan, "status": SubscriptionStatus.ACTIVE, "category": "BASE"},
         )
 
         # Create user with ACTIVE status
         self.user = User.objects.create_user(
-            email="marketplace-cli-sdk-consistency-test@example.com",
+            email=f"marketplace-cli-sdk-consistency-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -122,9 +208,15 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
         from hub.apps.users.models import Role
 
         data_provider_role, _ = Role.objects.get_or_create(
-            name="DATA_PROVIDER", defaults={"description": "Data Provider Role"}
+            # Roles are tenant-scoped (unique on (tenant, name)); without the
+            # tenant filter get() raises MultipleObjectsReturned once more
+            # than one tenant has a DATA_PROVIDER role (found on the shared
+            # test DB, which held 5 of them).
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
         )
-        self.user.user_roles.create(role=data_provider_role)
+        self.user.user_roles.create(role=data_provider_role, tenant=self.tenant)
 
         # Set API base URL to live test server
         # LiveServerTestCase starts a test server that uses the test database
@@ -174,11 +266,9 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
         config.clear_auth()
         # Note: super().tearDown() may fail with database flush errors in LiveServerTestCase
         # This is a known issue and doesn't affect test results
-        try:
+        # Ignore teardown errors - they don't affect test validity
+        with contextlib.suppress(Exception):
             super().tearDown()
-        except Exception:
-            # Ignore teardown errors - they don't affect test validity
-            pass
 
     async def get_sdk_client(self):
         """Get SDK client"""
@@ -495,27 +585,18 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
         connection_id = json.loads(result.output)["id"]
         self.created_connections.append(connection_id)
 
-        # Create asset
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"mapping-list-test-asset-{unique_id}",
-            name="Mapping List Test Asset",
-            status=AssetStatus.ACTIVE,
-            source_type="HUB_NATIVE",
-            created_by=self.user,
-        )
-        self.created_assets.append(asset.id)
+        # Create asset + mapping (sync ORM — must run via sync_to_async).
+        from asgiref.sync import sync_to_async
 
-        # Create mapping
-        connection_obj = MarketplaceConnection.objects.get(id=connection_id)
-        mapping = MarketplaceMapping.objects.create(
+        asset_id, mapping_id = await sync_to_async(_create_mapping_fixture)(
             tenant=self.tenant,
-            connection=connection_obj,
-            hub_asset=asset,
-            external_listing_id=f"TEST_LISTING_{unique_id}",
-            external_resource_ids=[],
+            user=self.user,
+            connection_id=connection_id,
+            unique_id=unique_id,
+            listing=f"TEST_LISTING_{unique_id}",
         )
-        self.created_mappings.append(str(mapping.id))
+        self.created_assets.append(asset_id)
+        self.created_mappings.append(mapping_id)
 
         # List via CLI
         result_cli = self.runner.invoke(
@@ -539,8 +620,8 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
             cli_ids = {m.get("id") for m in cli_list}
             sdk_ids = {m.get("id") for m in sdk_list}
 
-            assert str(mapping.id) in cli_ids
-            assert str(mapping.id) in sdk_ids
+            assert str(mapping_id) in cli_ids
+            assert str(mapping_id) in sdk_ids
         finally:
             await client.close()
 
@@ -571,29 +652,21 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
         connection_id = json.loads(result.output)["id"]
         self.created_connections.append(connection_id)
 
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"mapping-get-test-asset-{unique_id}",
-            name="Mapping Get Test Asset",
-            status=AssetStatus.ACTIVE,
-            source_type="HUB_NATIVE",
-            created_by=self.user,
-        )
-        self.created_assets.append(asset.id)
+        from asgiref.sync import sync_to_async
 
-        connection_obj = MarketplaceConnection.objects.get(id=connection_id)
-        mapping = MarketplaceMapping.objects.create(
+        asset_id, mapping_id = await sync_to_async(_create_mapping_fixture)(
             tenant=self.tenant,
-            connection=connection_obj,
-            hub_asset=asset,
-            external_listing_id=f"TEST_LISTING_{unique_id}",
-            external_resource_ids=["RESOURCE_1"],
+            user=self.user,
+            connection_id=connection_id,
+            unique_id=unique_id,
+            listing=f"TEST_LISTING_{unique_id}",
         )
-        self.created_mappings.append(str(mapping.id))
+        self.created_assets.append(asset_id)
+        self.created_mappings.append(mapping_id)
 
         # Get via CLI
         result_cli = self.runner.invoke(
-            cli, ["marketplace", "mappings", "get", str(mapping.id), "--format", "json"]
+            cli, ["marketplace", "mappings", "get", str(mapping_id), "--format", "json"]
         )
         assert result_cli.exit_code == 0
         cli_data = json.loads(result_cli.output)
@@ -601,11 +674,11 @@ class TestMarketplaceCLISDKConsistency(MarketplaceLiveServerTestCase):
         # Get via SDK
         client, marketplace_api = await self.get_sdk_client()
         try:
-            sdk_data = await marketplace_api.get_mapping(str(mapping.id))
+            sdk_data = await marketplace_api.get_mapping(str(mapping_id))
 
             # Verify both have same ID
             assert cli_data["id"] == sdk_data["id"]
-            assert cli_data["id"] == str(mapping.id)
+            assert cli_data["id"] == str(mapping_id)
 
             # Verify both have same external_listing_id
             assert cli_data["external_listing_id"] == sdk_data["external_listing_id"]

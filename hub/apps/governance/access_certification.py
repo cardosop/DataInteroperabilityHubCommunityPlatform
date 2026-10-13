@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
 from django.conf import settings
@@ -23,7 +23,7 @@ class AccessCertification(models.Model):
     Model for access certifications and periodic reviews.
     """
 
-    CERTIFICATION_STATUS_CHOICES = [
+    CERTIFICATION_STATUS_CHOICES: ClassVar[list[tuple[str, str]]] = [
         ("PENDING", "Pending"),
         ("IN_PROGRESS", "In Progress"),
         ("APPROVED", "Approved"),

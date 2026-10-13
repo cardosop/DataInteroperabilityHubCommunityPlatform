@@ -21,19 +21,21 @@ def test_dead_proxy_raises_connection_error():
     dead_port = unique_port()
     dead_proxy = f"http://127.0.0.1:{dead_port}"
 
-    with patch.dict(os.environ, {"HTTPS_PROXY": dead_proxy, "HTTP_PROXY": dead_proxy}):
-        with pytest.raises(
+    with (
+        patch.dict(os.environ, {"HTTPS_PROXY": dead_proxy, "HTTP_PROXY": dead_proxy}),
+        pytest.raises(
             (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.ProxyError,
             )
-        ):
-            requests.get(
-                "https://stagingmeshant-internal.example.com/api/v1/health/",
-                timeout=5,
-                # Explicit proxies to override any session-level config
-                proxies={"https": dead_proxy, "http": dead_proxy},
-            )
+        ),
+    ):
+        requests.get(
+            "https://stagingmeshant-internal.example.com/api/v1/health/",
+            timeout=5,
+            # Explicit proxies to override any session-level config
+            proxies={"https": dead_proxy, "http": dead_proxy},
+        )
 
 
 def test_proxy_error_message_is_actionable():
@@ -50,9 +52,8 @@ def test_proxy_error_message_is_actionable():
         pytest.fail("Expected ProxyError or ConnectionError")
     except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError) as exc:
         msg = str(exc).lower()
-        assert "proxy" in msg or "127.0.0.1" in msg or "connect" in msg, (
-            f"Proxy error message is not actionable: {str(exc)[:200]}"
-        )
+        if not ("proxy" in msg or "127.0.0.1" in msg or "connect" in msg):
+            pytest.fail(f"Proxy error message is not actionable: {str(exc)[:200]}")
 
 
 def test_no_proxy_env_is_respected():

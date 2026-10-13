@@ -42,11 +42,12 @@ def _backend_available() -> bool:
     try:
         req = urllib.request.Request(f"{root_url}/")
         resp = urllib.request.urlopen(req, timeout=5)
-        return resp.status < 500
     except urllib.error.HTTPError as e:
         return e.code < 500
     except urllib.error.URLError:
         return False
+    else:
+        return resp.status < 500
 
 
 BACKEND_AVAILABLE = _backend_available()

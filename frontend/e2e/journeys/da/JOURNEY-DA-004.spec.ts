@@ -21,26 +21,38 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await loginUser(page, testUser);
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // The CapabilityRoute gate resolves asynchronously (OpenAPI schema +
+      // runtime snapshot — under batch load that outlasts a fixed sleep),
+      // then either redirects (/unavailable, /coming-soon) or mounts the
+      // page. Wait for a terminal state instead of racing a 3s sleep.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      await page
+        .locator(
+          '.semantic-page, [data-testid="semantic-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]'
+        )
+        .first()
+        .waitFor({ state: 'visible', timeout: 30000 })
+        .catch(() => null);
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const onSemantic = url.includes('/semantic');
       const onComingSoon = url.includes('/coming-soon');
       const onUnavailable = url.includes('/unavailable');
-      if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+      const authGated = onLogin || on403;
+      test.skip(authGated, 'Auth/role gated — skipping success assertion');
+      if (authGated) {
         return;
       }
       // CapabilityRoute sends MVP builds to /coming-soon when semantic.sparql is off.
       expect(onSemantic || onComingSoon || onUnavailable).toBe(true);
       if (onSemantic) {
         const hasContent =
-          (await page.locator('.semantic-page, .app-main, [data-testid="app-main"]').count()) > 0;
+          (await page.locator('.semantic-page, [data-testid="semantic-page"], .app-main, [data-testid="app-main"]').count()) > 0;
         expect(hasContent).toBe(true);
         await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       } else {
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 15000 });
       }
     });
 
@@ -53,8 +65,9 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
         '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]',
         { timeout: 90000 }
       );
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Auth gated — skipping success assertion');
+      const redirectedToLogin = page.url().includes('/login');
+      test.skip(redirectedToLogin, 'Auth gated — skipping success assertion');
+      if (redirectedToLogin) {
         return;
       }
       expect(page.url()).toContain('/virtualization');
@@ -64,15 +77,51 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
 
   test.describe('Failure', () => {
     test('semantic without capability shows 403 or unavailable', async ({ page }) => {
+      // Force the gate OFF deterministically: semantic.sparql is
+      // path-derived and ON for every tenant in this environment, so the
+      // gate-off contract is not exercisable against the real manifest
+      // (b6 skip root cause: "capability enabled — gate-off contract not
+      // exercisable"). Intercepting the manifest makes the SPA's own
+      // CapabilityRoute run the off path — real gating logic, no
+      // backend changes and no shared-state mutation. Installed BEFORE
+      // loginUser: the app mount during login performs the capability
+      // fetch this mock must already be answering.
+      await page.route('**/api/v1/capabilities/manifest/', async (route) => {
+        // Synthesize the manifest instead of fetch-then-patch: a patched
+        // fetch hits the browser HTTP cache on later tests in the same
+        // worker (304 / empty body) and response.json() throws. The SPA
+        // defaults missing manifest keys to false, so a minimal map
+        // forces the gate OFF deterministically.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            capabilities: { 'semantic.sparql': false },
+            source: 'e2e-gate-off-mock',
+          }),
+        });
+      });
       const testUser = await getConsumerTestUser();
       await loginUser(page, testUser);
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Same gate-resolution contract as the Success test: wait for a
+      // terminal state (page mounted or gate-off page) instead of a fixed
+      // 3s sleep racing the capabilities query.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      await page
+        .locator(
+          '.semantic-page, [data-testid="semantic-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]'
+        )
+        .first()
+        .waitFor({ state: 'visible', timeout: 30000 })
+        .catch(() => null);
+      // The manifest mock above forces the off path — the gate-off
+      // terminal states below are the assertion, not a skip branch.
       const url = page.url();
       const on403 = url.includes('/403');
       const onUnavailableDom =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]').count()) > 0;
       const onLogin = url.includes('/login');
       const onUnavailableUrl = url.includes('/unavailable');
       const onComingSoon = url.includes('/coming-soon');

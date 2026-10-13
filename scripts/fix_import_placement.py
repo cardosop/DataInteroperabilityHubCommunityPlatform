@@ -25,9 +25,10 @@ def fix_file(filepath):
     # Check for syntax errors first
     try:
         compile(original, filepath, "exec")
-        return False  # No syntax error, skip
     except SyntaxError:
         pass
+    else:
+        return False  # No syntax error, skip
 
     # Find and fix misplaced "import uuid" lines
     result = []
@@ -36,16 +37,15 @@ def fix_file(filepath):
 
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if stripped == "import uuid":
+        if stripped == "import uuid" and i > 0:
             # Check if we're inside a multi-line import (previous line ends with ( or ,)
-            if i > 0:
-                prev = lines[i - 1].rstrip()
-                if prev.endswith("(") or prev.endswith(","):
-                    # Inside a multi-line import! Skip this line
-                    uuid_import_needed = True
-                    continue
-                else:
-                    uuid_already_at_top = True
+            prev = lines[i - 1].rstrip()
+            if prev.endswith(("(", ",")):
+                # Inside a multi-line import! Skip this line
+                uuid_import_needed = True
+                continue
+            else:
+                uuid_already_at_top = True
         result.append(line)
 
     if uuid_import_needed and not uuid_already_at_top:
@@ -54,9 +54,7 @@ def fix_file(filepath):
         last_import = 0
         for i, line in enumerate(result):
             stripped = line.strip()
-            if (
-                stripped.startswith("import ") or stripped.startswith("from ")
-            ) and "(" not in stripped:
+            if (stripped.startswith(("import ", "from "))) and "(" not in stripped:
                 last_import = i
         for i, line in enumerate(result):
             final.append(line)
@@ -81,7 +79,7 @@ def fix_file(filepath):
                 result2.append(line)
                 if (
                     not added
-                    and (stripped.startswith("import ") or stripped.startswith("from "))
+                    and (stripped.startswith(("import ", "from ")))
                     and "(" not in stripped
                     and ")" not in stripped
                 ) and stripped != "import uuid":

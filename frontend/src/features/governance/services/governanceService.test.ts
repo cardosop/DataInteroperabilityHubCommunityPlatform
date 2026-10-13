@@ -46,8 +46,6 @@ describe('governanceService', () => {
     await expect(governanceService.list()).rejects.toThrow('Network Error');
   });
 
-});
-
   // Phase 277.3.3 — governance error-state tests.
   describe('governance error handling', () => {
     it('handles 403 ABAC_POLICY_DENIED', async () => {
@@ -83,3 +81,4 @@ describe('governanceService', () => {
       ).rejects.toMatchObject({ status: 422 });
     });
   });
+});

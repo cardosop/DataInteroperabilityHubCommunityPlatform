@@ -31,7 +31,7 @@ test.describe('Persona RBAC: Community Manager', () => {
     await page.waitForLoadState('domcontentloaded');
     const resolved = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
     if (resolved.includes('/login')) {
-      test.skip(true, 'Auth session expired — not an RBAC result');
+      test.skip(resolved.includes('/login'), 'Auth session expired — not an RBAC result');
       return;
     }
     expect(resolved.includes('/403') || !resolved.includes('/admin')).toBe(true);

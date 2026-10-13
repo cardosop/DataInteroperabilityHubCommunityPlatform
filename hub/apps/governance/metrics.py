@@ -16,7 +16,7 @@ Sampled by the ``revoke_expired_access`` management command at the
 end of each daily run (after the sweep, the gauges reflect the
 post-sweep steady state). The command is the canonical writer:
 no API hot-path emits to these gauges, so cardinality stays bounded
-to ``len(active_tenants) × len(buckets)``.
+to ``len(active_tenants) x len(buckets)``.
 
 Bounded-cardinality labels:
 * ``tenant_id`` — one label value per active tenant (typically

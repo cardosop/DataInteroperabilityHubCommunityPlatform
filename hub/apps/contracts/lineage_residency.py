@@ -35,7 +35,7 @@ DATA_RESIDENCY_BLOCK_CODE = "DATA_RESIDENCY_BLOCK"
 """REQ-LIN-X-004 — error code surfaced in the 403 response body."""
 
 
-class ResidencyOutcome(str, enum.Enum):
+class ResidencyOutcome(enum.StrEnum):
     ALLOW = "allow"
     BLOCK = "block"
     ALLOW_WITH_CONSENT = "allow_with_consent"
@@ -86,7 +86,7 @@ def consent_from_request(request: Any) -> bool:
     if qp is not None:
         try:
             qp_value = str(qp.get(CONSENT_QUERY_PARAM, "")).strip().lower()
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             qp_value = ""
         if qp_value in ("1", "true", "yes"):
             return True

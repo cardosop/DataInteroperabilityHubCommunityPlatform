@@ -362,6 +362,7 @@ class JobLifecycleIntegrationTest(TestCase):
             # A CANCELLED job must not be picked up by process_job —
             # the status must remain CANCELLED after processing.
             self.assertEqual(
-                job.status, JobStatus.CANCELLED,
+                job.status,
+                JobStatus.CANCELLED,
                 "CANCELLED job must not be processed by process_job",
             )

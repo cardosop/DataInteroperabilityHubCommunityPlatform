@@ -240,12 +240,14 @@ class AssetOperationsE2ETest(E2ETestBase):
         from hub.apps.assets.models import ComplianceStatus, DQStatus
 
         self.assertNotEqual(
-            asset.dq_status, DQStatus.UNKNOWN,
-            f"Real DQ service did not set dq_status (still UNKNOWN) for asset {asset_id}"
+            asset.dq_status,
+            DQStatus.UNKNOWN,
+            f"Real DQ service did not set dq_status (still UNKNOWN) for asset {asset_id}",
         )
         self.assertNotEqual(
-            asset.compliance_status, ComplianceStatus.UNKNOWN,
-            f"Real compliance service did not set compliance_status (still UNKNOWN) for asset {asset_id}"
+            asset.compliance_status,
+            ComplianceStatus.UNKNOWN,
+            f"Real compliance service did not set compliance_status (still UNKNOWN) for asset {asset_id}",
         )
 
         # Refresh asset again to get updated statuses

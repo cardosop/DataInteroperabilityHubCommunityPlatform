@@ -18,6 +18,8 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -203,7 +205,7 @@ class DataSLABusinessRulesTest(TestCase):
     def test_sla_must_have_appropriate_target(self):
         """Test SLA must have appropriate target for its type"""
         # Availability SLA without target should fail constraint
-        with self.assertRaises(Exception):  # IntegrityError or ValidationError
+        with self.assertRaises(IntegrityError):  # CheckConstraint sla_has_appropriate_target
             DataSLA.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -372,7 +374,9 @@ class ObservabilityBusinessRulesFailureTest(TestCase):
 
     def test_create_incident_missing_required_fields(self):
         """Test creating incident with missing required fields"""
-        with self.assertRaises(Exception):  # ValidationError or TypeError
+        with self.assertRaises(
+            TypeError
+        ):  # title/description/incident_type are required positional args
             IncidentManager.create_incident(
                 tenant_id=str(self.tenant.id),
                 # Missing title, description, incident_type
@@ -387,14 +391,18 @@ class ObservabilityBusinessRulesFailureTest(TestCase):
             incident_type="FRESHNESS_VIOLATION",
         )
 
-        with self.assertRaises(Exception):  # ValidationError
+        with self.assertRaises(
+            ValidationError
+        ):  # raised by update_incident_status for invalid status
             IncidentManager.update_incident_status(
                 incident_id=str(incident.id), status="INVALID_STATUS"
             )
 
     def test_create_sla_invalid_sla_type(self):
         """Test creating SLA with invalid SLA type"""
-        with self.assertRaises(Exception):  # ValidationError
+        with self.assertRaises(
+            IntegrityError
+        ):  # CheckConstraint sla_has_appropriate_target (no branch matches INVALID_TYPE)
             DataSLA.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -406,7 +414,7 @@ class ObservabilityBusinessRulesFailureTest(TestCase):
     def test_create_sla_missing_target(self):
         """Test creating SLA without appropriate target"""
         # Freshness SLA without freshness_sla_seconds should fail
-        with self.assertRaises(Exception):  # IntegrityError or ValidationError
+        with self.assertRaises(IntegrityError):  # CheckConstraint sla_has_appropriate_target
             DataSLA.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,

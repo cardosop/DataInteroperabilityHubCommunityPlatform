@@ -842,10 +842,6 @@ Generated: 2026-06-13T19:42:09.592825
   - Name: `dataset-schema-evolution`
 - `get` /api/v1/datasets/^(?P<id>[^/.]+)/schema-evolution\.(?P<format>[a-z0-9]+)/?$
   - Name: `dataset-schema-evolution`
-- `get` /api/v1/datasets/^(?P<id>[^/.]+)/share/$
-  - Name: `dataset-share`
-- `get` /api/v1/datasets/^(?P<id>[^/.]+)/share\.(?P<format>[a-z0-9]+)/?$
-  - Name: `dataset-share`
 - `get, post` /api/v1/datasets/^(?P<id>[^/.]+)/versions/$
   - Name: `dataset-versions`
 - `get, post` /api/v1/datasets/^(?P<id>[^/.]+)/versions\.(?P<format>[a-z0-9]+)/?$
@@ -2566,8 +2562,6 @@ Generated: 2026-06-13T19:42:09.592825
 - `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/warehouses/<drf_format_suffix:format>
   - Name: `api-root`
 - `get` /api/v1/warehouses/query/
-- `get` /api/v1/warehouses/share/<uuid:asset_id>/
-- `get` /api/v1/warehouses/share/<uuid:asset_id>/query/
 
 ### Webhooks (20 endpoints)
 

@@ -11,6 +11,11 @@
 
 import { test, expect } from "@playwright/test";
 import path from "path";
+import { fileURLToPath } from "url";
+
+// package.json has "type": "module" — __dirname is not defined in ES
+// module scope (collection failed on this file until fixed).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const SCREENSHOT_DIR = path.resolve(
   __dirname,
@@ -127,7 +132,7 @@ test.describe("Search quality", () => {
     { query: "GDPR", expectResult: "GDPR" },
   ];
 
-  for (const { query, expectResult } of SEARCH_QUERIES) {
+  for (const { query } of SEARCH_QUERIES) {
     test(`search "${query}" returns relevant result`, async ({
       page,
     }) => {

@@ -36,7 +36,7 @@ def save_draft(resource_type, draft_key, payload):
     try:
         parsed = json.loads(payload)
     except json.JSONDecodeError as exc:
-        raise click.ClickException(f"Invalid JSON payload: {exc}")
+        raise click.ClickException(f"Invalid JSON payload: {exc}") from exc
     # api_client has no put() — use the generic request() with PUT method.
     resp = api_client.request(
         "PUT",

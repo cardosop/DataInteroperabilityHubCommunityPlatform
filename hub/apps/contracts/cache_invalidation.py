@@ -39,6 +39,8 @@ from typing import Any
 
 import structlog
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 
 logger = structlog.get_logger(__name__)
 
@@ -58,7 +60,7 @@ def _safe_invoke(label: str, contract_id: str, fn) -> None:
     """
     try:
         fn()
-    except Exception as exc:  # pragma: no cover — best-effort cascade
+    except Exception as exc:
         logger.warning(
             "contract_post_save_cascade_step_failed",
             step=label,
@@ -89,7 +91,7 @@ def _invalidate_dependents_lineage_caches(contract) -> list[str]:
         return dependents
     try:
         upstream = traverser.traverse_bottom_up()
-    except Exception as exc:
+    except (DatabaseError, ValidationError, AttributeError, TypeError) as exc:
         logger.warning(
             "contract_post_save_cascade_traverse_failed",
             contract_id=str(contract.id),
@@ -126,18 +128,17 @@ def _invalidate_dependents_lineage_caches(contract) -> list[str]:
 
 
 def _trigger_search_reindex(contract) -> None:
-    """Step 5 — request a search-index refresh. Existing post-save
-    signal-driven reindex picks up the row automatically, but for
-    callers that bypass signals (rare — bulk operations) we kick it
-    here too. Best-effort: the search subsystem owns the queue."""
-    try:
-        from hub.apps.search.indexing import (
-            enqueue_contract_reindex,  # type: ignore[import-not-found]  # search app is optional at import-time
-        )
-    except ImportError:
-        # Search module may not be installed in this deployment
-        # (some test environments). Skip silently.
-        return
+    """Step 5 — request a search-index refresh.
+
+    W4.2 (R2-B5): the pre-fix version imported ``enqueue_contract_reindex``
+    from ``hub.apps.search.indexing`` — a symbol that did NOT exist — and
+    SWALLOWED the ImportError behind an "app is optional" excuse.  The
+    search app is always installed in this deployment; a missing symbol is
+    a real bug that must surface.  (Fail-open for the user is preserved by
+    the cascade's ``run_side_effect`` wrapper, which logs and never raises.)
+    """
+    from hub.apps.search.indexing import enqueue_contract_reindex
+
     enqueue_contract_reindex(contract_id=str(contract.id))
 
 
@@ -153,16 +154,20 @@ def _trigger_semantic_reingest(contract, tenant_id: str | None) -> None:
         from hub.apps.tenants.models import Tenant
 
         tenant = Tenant.objects.only("id").get(id=tenant_id)
-    except Exception:
+    except ImportError:
+        return
+    except (Tenant.DoesNotExist, ValidationError, DatabaseError):
         return
     enabled = bool(getattr(tenant, "semantic_capabilities_enabled", False))
     if not enabled:
         return
     try:
         from hub.apps.semantic.tasks import (
-            enqueue_contract_reingest,  # type: ignore[import-not-found]  # semantic app is optional at import-time
+            enqueue_contract_reingest,  # semantic app is optional at import-time
         )
-    except ImportError:
+    except (ImportError, RuntimeError):
+        # Both core-mode absence forms: ModuleNotFoundError (public tree,
+        # module absent) and RuntimeError (private repo, app uninstalled).
         return
     enqueue_contract_reingest(contract_id=str(contract.id), tenant_id=tenant_id)
 
@@ -216,7 +221,7 @@ def _emit_contract_normalized_event(
         # ``publish_contract_normalized`` may not exist in older
         # publisher versions. Fail-soft.
         return
-    except Exception as exc:  # pragma: no cover — best-effort
+    except Exception as exc:
         logger.warning(
             "contract_normalized_event_publish_failed",
             contract_id=contract_id,

@@ -9,7 +9,7 @@ import json
 
 import pytest
 from datahub_cli.main import cli
-from tests.use_cases.conftest import unique_key
+from tests.use_cases.conftest import extract_id, register_asset_cleanup, unique_key
 
 pytestmark = pytest.mark.mvp
 
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.mvp
 class TestAssetCreation:
     """E2E tests for asset creation"""
 
-    def test_create_asset_minimal_metadata(self, runner, authenticated_config):
+    def test_create_asset_minimal_metadata(self, runner, authenticated_config, cleanup_registry):
         """Test asset creation with minimal metadata (name and key only)"""
         result = runner.invoke(
             cli, ["assets", "create", "--name", "Minimal Asset", "--key", unique_key("min-asset")]
@@ -30,8 +30,9 @@ class TestAssetCreation:
             # Extract asset ID if possible
             output_data = result.output
             assert "ID:" in output_data or "id" in output_data.lower()
+            register_asset_cleanup(cleanup_registry, extract_id(result.output))
 
-    def test_create_asset_all_metadata(self, runner, authenticated_config):
+    def test_create_asset_all_metadata(self, runner, authenticated_config, cleanup_registry):
         """Test asset creation with all metadata fields"""
         result = runner.invoke(
             cli,
@@ -59,8 +60,11 @@ class TestAssetCreation:
             # Domain is stored but not echoed in the create response.
             # Verify via JSON output or get command instead.
             assert "ID:" in result.output
+            register_asset_cleanup(cleanup_registry, extract_id(result.output))
 
-    def test_create_asset_data_first_flow_simulation(self, runner, authenticated_config, temp_file):
+    def test_create_asset_data_first_flow_simulation(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test data-first flow: Create asset, then upload file (simulated)"""
         # Step 1: Create asset with minimal metadata
         create_result = runner.invoke(
@@ -89,20 +93,43 @@ class TestAssetCreation:
                         break
 
             assert asset_id, "Asset ID not found in create output"
+            register_asset_cleanup(cleanup_registry, asset_id)
 
             # Step 2: Upload a file (simulating data-first flow).
             # File upload depends on S3/object-storage being configured;
             # the CLI command exists but the backend init endpoint may
             # return an error if storage is not provisioned.
             file_path, _content = temp_file(".csv", "col1,col2\nval1,val2")
+            # Per-run unique name: unique_active_filename_per_tenant
+            # rejects re-uploads of a name left ACTIVE by a previous run.
+            upload_name = f"{unique_key('data-first')}.csv"
             upload_result = runner.invoke(
-                cli, ["files", "upload", file_path, "--name", "data-first-file.csv"]
+                cli, ["files", "upload", file_path, "--name", upload_name]
             )
 
             assert upload_result.exit_code == 0, f"File upload failed: {upload_result.output}"
 
+            # Delete the uploaded file at teardown so the suite is
+            # re-runnable against the persistent backend.
+            file_id = extract_id(upload_result.output)
+            if file_id:
+                # Snapshot auth NOW: teardown may run after other tests
+                # re-pointed the global config.
+                from datahub_cli import api_client as _api
+                from datahub_cli.config import config as _cfg
+
+                _base = _cfg.get_api_base_url().rstrip("/")
+                _headers = _api.auth_manager.get_auth_headers()
+
+                def _delete_uploaded_file() -> None:
+                    import requests
+
+                    requests.delete(f"{_base}/files/{file_id}/", headers=_headers, timeout=15)
+
+                cleanup_registry.add(_delete_uploaded_file, label=f"file:{file_id}")
+
     def test_create_asset_contract_first_flow_simulation(
-        self, runner, authenticated_config, temp_file
+        self, runner, authenticated_config, temp_file, cleanup_registry
     ):
         """Test contract-first flow: Create contract, then create asset (simulated)"""
         # Step 1: Create a valid ODCS contract file
@@ -147,8 +174,9 @@ schema:
         assert asset_result.exit_code == 0, asset_result.output
         if asset_result.exit_code == 0:
             assert "created successfully" in asset_result.output.lower()
+            register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
 
-    def test_create_asset_json_output(self, runner, authenticated_config):
+    def test_create_asset_json_output(self, runner, authenticated_config, cleanup_registry):
         """Test asset creation with JSON output format"""
         result = runner.invoke(
             cli,
@@ -171,11 +199,12 @@ schema:
                 output_data = json.loads(result.output)
                 assert isinstance(output_data, dict)
                 assert "id" in output_data or "name" in output_data
+                register_asset_cleanup(cleanup_registry, extract_id(result.output))
             except json.JSONDecodeError:
                 # If not JSON, that's OK for this test
                 pass
 
-    def test_create_asset_duplicate_key(self, runner, authenticated_config):
+    def test_create_asset_duplicate_key(self, runner, authenticated_config, cleanup_registry):
         """Test asset creation with duplicate key (should fail)"""
         _dup_key = unique_key("duptest")
         # Create first asset
@@ -193,6 +222,7 @@ schema:
             # The API enforces key uniqueness per tenant — second create
             # returns a validation error (exit_code 1)
             assert result2.exit_code != 0, "Expected duplicate key to be rejected"
+            register_asset_cleanup(cleanup_registry, extract_id(result1.output))
 
 
 class TestAssetUpdates:
@@ -592,7 +622,7 @@ class TestAssetSearch:
 class TestAssetManagementWorkflows:
     """E2E tests for complete asset management workflows"""
 
-    def test_complete_asset_lifecycle(self, runner, authenticated_config):
+    def test_complete_asset_lifecycle(self, runner, authenticated_config, cleanup_registry):
         """Test complete asset lifecycle: create -> update -> activate -> delete"""
         # Step 1: Create asset
         create_result = runner.invoke(
@@ -621,6 +651,7 @@ class TestAssetManagementWorkflows:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Step 2: Update asset
                 runner.invoke(
                     cli,

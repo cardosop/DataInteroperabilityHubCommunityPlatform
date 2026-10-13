@@ -33,9 +33,9 @@ def check_isolation(ta, tb):
                     results.append(
                         {"url": url, "status": resp.status, "isolated": resp.status in (403, 404)}
                     )
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 results.append({"url": url, "error": str(e), "isolated": True})
-    except:
+    except Exception:
         pass
     return results
 

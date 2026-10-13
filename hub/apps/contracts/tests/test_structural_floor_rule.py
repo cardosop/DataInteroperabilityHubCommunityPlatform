@@ -15,7 +15,6 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.structural_floor import (
-    ERROR_CODE,
     SUBCODE_ODPS_NO_PORTS,
     collect_structural_floor_errors,
     enforce_structural_floor,

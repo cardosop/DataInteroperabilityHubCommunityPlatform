@@ -163,7 +163,10 @@ class AuthAPIRegressionTest(APIRegressionTest):
         )
         response = self.client.delete(f"/api/v1/auth/api-keys/{api_key.id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(APIKey.objects.filter(id=api_key.id).exists())
+        # Deletion is a soft delete (D2 single-identity contract): the row
+        # is kept with revoked_at set so usage/audit attribution survives.
+        api_key.refresh_from_db()
+        self.assertTrue(api_key.is_revoked, "API key delete must set revoked_at")
 
 
 class TenantAPIRegressionTest(APIRegressionTest):

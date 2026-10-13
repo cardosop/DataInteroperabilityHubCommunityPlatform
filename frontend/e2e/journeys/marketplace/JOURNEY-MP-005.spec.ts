@@ -10,11 +10,16 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-005: Schedule Automatic Sync', () => {
-  test.setTimeout(90000);
+  // 240s: login overhead + 90s helper wait + gate-bounce handling — the 90s
+  // budget died inside the helper while the /unavailable bounce landed at
+  // the very end of the boot window (b6: budget expired before the
+  // terminal-state check could see the bounce). DE-010/015 convention.
+  test.setTimeout(240000);
 
   test.describe('Success', () => {
     test('sync jobs list loads for schedule management', async ({ page }) => {
@@ -23,6 +28,20 @@ test.describe('JOURNEY-MP-005: Schedule Automatic Sync', () => {
         timeout: 90000,
         contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
+      // The integrations subtree is CapabilityRoute-gated off the
+      // OpenAPI/marketplace snapshot — a /unavailable bounce under batch
+      // churn is a transient snapshot-fetch failure, not a disabled
+      // feature. W16-guarded skip: raises in CI, skips locally (MP-001
+      // convention).
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'integrations gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'integrations gate bounced to /unavailable — transient snapshot failure'
+      );
       expect(page.url()).toContain('/integrations/sync-jobs');
     });
   });
@@ -54,6 +73,15 @@ test.describe('JOURNEY-MP-005: Schedule Automatic Sync', () => {
         timeout: 90000,
         contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'integrations gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'integrations gate bounced to /unavailable — transient snapshot failure'
+      );
       expect(page.url()).toContain('/integrations/sync-jobs');
       const hasContent =
         (await page.locator('.sync-job-list-page, [data-testid="sync-job-list-page"]').first().count()) > 0 ||

@@ -62,7 +62,7 @@ def list_deps(pipeline_type, pipeline_id, direction, output_format):
                     f"  (priority={link.get('priority', 0)})"
                 )
     except Exception as e:
-        raise click.ClickException(f"Failed to list dependencies: {e}")
+        raise click.ClickException(f"Failed to list dependencies: {e}") from e
 
 
 @dependencies_group.command("add")
@@ -111,7 +111,7 @@ def add_dep(
         else:
             click.echo(f"Dependency created: {result.get('id', '?')}")
     except Exception as e:
-        raise click.ClickException(f"Failed to add dependency: {e}")
+        raise click.ClickException(f"Failed to add dependency: {e}") from e
 
 
 @dependencies_group.command("preview")
@@ -151,4 +151,4 @@ def preview_deps(pipeline_type, pipeline_id, max_depth, output_format):
                     f"  [{node.get('status', '?')}]"
                 )
     except Exception as e:
-        raise click.ClickException(f"Failed to preview dependencies: {e}")
+        raise click.ClickException(f"Failed to preview dependencies: {e}") from e

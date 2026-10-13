@@ -84,7 +84,7 @@ def test_app() -> FastAPI:
     return _build_app()
 
 
-@pytest.fixture()
+@pytest.fixture
 async def client(test_app: FastAPI):
     """Async httpx test client."""
     transport = ASGITransport(app=test_app)

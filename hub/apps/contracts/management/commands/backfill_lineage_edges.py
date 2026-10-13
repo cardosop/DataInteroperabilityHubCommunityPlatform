@@ -222,9 +222,10 @@ class Command(BaseCommand):
             from django.core.cache import cache
 
             value = cache.get(f"backfill_lineage:{resume_key}")
-            return value
         except Exception:
             return None
+        else:
+            return value
 
     @staticmethod
     def _save_resume_checkpoint(resume_key: str, contract_id: Any) -> None:

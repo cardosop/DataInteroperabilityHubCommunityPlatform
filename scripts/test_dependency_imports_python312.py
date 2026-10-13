@@ -17,7 +17,7 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 
-def test_import(module_name: str, display_name: str = None) -> tuple[bool, str]:
+def test_import(module_name: str, display_name: str | None) -> tuple[bool, str]:
     """Test if a module can be imported."""
     if display_name is None:
         display_name = module_name

@@ -17,6 +17,7 @@ except ImportError:
     pytest = None
     pytestmark = None
 
+import contextlib
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -173,10 +174,8 @@ class WorkflowProgressStateTest(TestCase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow (will fail at step2 due to invalid state transition)
-        try:
+        with contextlib.suppress(Exception):
             self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected failure — state verified below
 
         instance.refresh_from_db()
 

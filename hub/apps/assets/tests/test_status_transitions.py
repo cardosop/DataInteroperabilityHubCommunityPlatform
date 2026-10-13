@@ -184,9 +184,7 @@ class AssetStatusTransitionTest(TestCase):
 
     def test_public_to_active_forbidden(self):
         """PUBLIC -> ACTIVE raises ValidationError."""
-        asset = self._make_asset(
-            dq_status=DQStatus.PASS, compliance_status=ComplianceStatus.PASS
-        )
+        asset = self._make_asset(dq_status=DQStatus.PASS, compliance_status=ComplianceStatus.PASS)
         self._make_valid_contract(asset)
         self._force_status(asset, AssetStatus.PUBLIC)
         asset.status = AssetStatus.ACTIVE
@@ -196,9 +194,7 @@ class AssetStatusTransitionTest(TestCase):
 
     def test_public_to_draft_forbidden(self):
         """PUBLIC -> DRAFT raises ValidationError."""
-        asset = self._make_asset(
-            dq_status=DQStatus.PASS, compliance_status=ComplianceStatus.PASS
-        )
+        asset = self._make_asset(dq_status=DQStatus.PASS, compliance_status=ComplianceStatus.PASS)
         self._make_valid_contract(asset)
         self._force_status(asset, AssetStatus.PUBLIC)
         asset.status = AssetStatus.DRAFT

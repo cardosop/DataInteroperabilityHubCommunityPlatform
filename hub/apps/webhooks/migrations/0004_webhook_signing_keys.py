@@ -103,7 +103,7 @@ class Migration(migrations.Migration):
                 "constraints": [
                     models.UniqueConstraint(
                         condition=models.Q(("status", "ACTIVE")),
-                        fields=("webhook",),
+                        fields=["webhook",],
                         name="webhook_signing_keys_one_active_per_webhook",
                     ),
                 ],

@@ -12,7 +12,8 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.files.models import File as FileModel, FileStatus
+from hub.apps.files.models import File as FileModel
+from hub.apps.files.models import FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -25,7 +26,8 @@ class TestMultipartAbortResumeApi(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Abort Test Tenant", slug=f"abort-{uuid.uuid4().hex[:8]}",
+            name="Abort Test Tenant",
+            slug=f"abort-{uuid.uuid4().hex[:8]}",
         )
         self.user = User.objects.create_user(
             email=f"abort-{uuid.uuid4().hex[:8]}@example.com",

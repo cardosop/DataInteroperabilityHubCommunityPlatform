@@ -226,13 +226,22 @@ class ContractCompliancePolicyExtractionTest(TestCase):
         self.assertGreater(len(categories), 0)
 
         # Verify categories are non-empty strings in the known PII set
-        known_categories = {"EMAIL", "PHONE_NUMBER", "SSN", "CREDIT_CARD",
-                            "IP_ADDRESS", "NAME", "ADDRESS", "DOB"}
+        known_categories = {
+            "EMAIL",
+            "PHONE_NUMBER",
+            "SSN",
+            "CREDIT_CARD",
+            "IP_ADDRESS",
+            "NAME",
+            "ADDRESS",
+            "DOB",
+        }
         for category in categories:
             self.assertIsInstance(category, str)
             self.assertGreater(len(category), 0)
             self.assertIn(
-                category, known_categories,
+                category,
+                known_categories,
                 f"Category '{category}' not in known PII category set",
             )
 

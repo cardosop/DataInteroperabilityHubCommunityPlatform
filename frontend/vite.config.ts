@@ -1,8 +1,28 @@
+/// <reference types="vite/client" />
+
 import react from '@vitejs/plugin-react';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import fs from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
+import { DEV_SECURITY_HEADERS_REV } from './src/lib/playwright-frontend-resolve';
+import { E2E_STRIPE_PUBLISHABLE_KEY } from './src/lib/e2e-stripe-config';
+
+// E2E-mode default for the Stripe publishable key. Playwright's webServer
+// injects this for servers IT starts, but batch runs reuse the supervised
+// dev server started by scripts/e2e-detect-api.sh (only VITE_E2E_TEST is
+// in its env) — without this default that server embeds no key, the
+// checkout page renders "Stripe is not configured", and the Stripe
+// checkout E2E runtime-skips. Vite loads this config file BEFORE loadEnv
+// merges process.env into import.meta.env, so the mutation below is
+// picked up by every VITE_* replacement. An explicitly exported key
+// always wins.
+if (
+  process.env.VITE_E2E_TEST === 'true' &&
+  !process.env.VITE_STRIPE_PUBLISHABLE_KEY
+) {
+  process.env.VITE_STRIPE_PUBLISHABLE_KEY = E2E_STRIPE_PUBLISHABLE_KEY;
+}
 
 /**
  * Resolve proxy target for API/health/ws. Safe when VITE_API_BASE_URL is relative (e.g. /api/v1).
@@ -32,6 +52,33 @@ function securityHeadersPlugin(): import('vite').Plugin {
   return {
     name: 'security-headers',
     configureServer(server) {
+      // Direct-mode support: when VITE_API_BASE_URL is absolute (e.g.
+      // .env.local's http://localhost:8001/api/v1), the browser fetches the
+      // API cross-origin, bypassing the proxy. The static nginx-parity CSP
+      // below would block every apiClient fetch (connect-src 'self' only)
+      // — a CSP-blocked fetch rejects as TypeError "Failed to fetch",
+      // indistinguishable from a network outage. Append the API origin to
+      // connect-src in direct mode only; proxy mode (relative base, the E2E
+      // batch path) keeps the header byte-identical to nginx.test.conf and
+      // the csp-enforce parity specs stay green.
+      // process.env (NOT import.meta.env): the config is bundled into a
+      // temp .mjs where import.meta.env is undefined and reading it
+      // crashes every FRESH vite start with "Cannot read properties of
+      // undefined (reading 'VITE_API_BASE_URL')" (b7 verification run) —
+      // long-running servers that loaded the config before the bundler
+      // behaviour changed masked it. getProxyTarget() above already uses
+      // process.env; the wrapper exports VITE_API_BASE_URL into the vite
+      // process env, so the direct/proxy-mode decision is unchanged.
+      const apiBase = process.env.VITE_API_BASE_URL as string | undefined;
+      let apiOrigin = '';
+      if (apiBase && /^https?:\/\//.test(apiBase)) {
+        try {
+          apiOrigin = new URL(apiBase).origin;
+        } catch {
+          /* keep the static header */
+        }
+      }
+      const connectSrcExtra = apiOrigin ? ` ${apiOrigin}` : '';
       server.middlewares.use((_req, res, next) => {
         // Match nginx.test.conf CSP exactly so E2E csp-enforce tests pass.
         // script-src needs 'unsafe-inline' for Vite's HMR client injection in dev mode.
@@ -39,10 +86,22 @@ function securityHeadersPlugin(): import('vite').Plugin {
         // style-src needs fonts.googleapis.com for Google Fonts loaded in index.html.
         // font-src needs fonts.gstatic.com for the actual font file downloads.
         res.setHeader('Content-Security-Policy',
-          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: http://localhost:9010; report-uri /api/csp-report/");
+          // script-src/frame-src include js.stripe.com (mirrors
+          // nginx.test.conf) — without it the Stripe.js loader is CSP-blocked
+          // and the checkout page hangs on its skeleton forever (the Stripe
+          // E2E timed out on an h1 that can never render).
+          `default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: http://localhost:9010 https://api.stripe.com${connectSrcExtra}; frame-src 'self' https://js.stripe.com https://hooks.stripe.com; report-uri /api/csp-report/`);
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+        // nginx.test.conf:54-57 — keep the dev-server header set at parity with
+        // the reverse proxy so the E2E security-header specs (csp-enforce,
+        // security-headers) assert the same baseline against both servers.
+        res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+        res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+        // Staleness fingerprint for global-setup's reused-server guard —
+        // BUMP DEV_SECURITY_HEADERS_REV whenever this header set changes.
+        res.setHeader('X-Vite-Security-Headers-Rev', DEV_SECURITY_HEADERS_REV);
         next();
       });
     },
@@ -72,6 +131,18 @@ export default defineConfig({
         : path.resolve(__dirname, '../shared'),
     },
   },
+  // Phase 278 / b7 #14 — @codemirror/view is imported directly by
+  // SemanticPage (EditorView.contentAttributes for the a11y label +
+  // E2E testid). When the long-lived dev server discovers the new
+  // import mid-flight, Vite pre-bundles a SECOND copy of view/state,
+  // and CodeMirror's ExtensionSet instanceof checks throw
+  // "Unrecognized extension value ... multiple instances of
+  // @codemirror/state are loaded" at runtime (the whole semantic
+  // page crashed with the ErrorDisplay). Pinning view+state in the
+  // optimizeDeps pre-bundle keeps exactly one browser instance.
+  optimizeDeps: {
+    include: ['@codemirror/view', '@codemirror/state'],
+  },
   server: {
     port: 5173, // Vite default port (3000 is used by Grafana)
     // E2E (VITE_E2E_TEST): disable HMR so the dev server does not compete for CPU/WebSocket
@@ -87,10 +158,22 @@ export default defineConfig({
         target: getProxyTarget(),
         changeOrigin: true,
         rewrite: (path) => (path === '/health' ? '/health/' : path),
+        // Same no-pooling rationale as the /api proxy below.
+        agent: false,
       },
       '/api': {
         target: getProxyTarget(),
         changeOrigin: true,
+        // No keep-alive pooling for the API proxy: after a backend container
+        // restart (batch startup, mid-run `docker restart`, gunicorn HUP) the
+        // pooled sockets point at the dead container and the first requests
+        // on them die with ECONNRESET → browser "Failed to fetch" /
+        // NETWORK_ERROR on the API-fetch layer (b7: assets + compliance
+        // nil-UUID probes NETWORK_ERROR'd while the API was healthy — the
+        // requests never reached Django). A fresh agent per request removes
+        // the stale-pool failure mode entirely; the cost on localhost is
+        // negligible. `agent: false` is the documented http-proxy switch.
+        agent: false,
         // 30s proxy timeout: long enough for normal API calls (including file uploads via
         // presigned URLs which bypass the proxy), short enough to release Vite's event loop
         // when the backend is slow under parallel E2E load. Previously 60s — stalled proxy

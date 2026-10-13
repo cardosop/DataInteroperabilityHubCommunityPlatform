@@ -16,8 +16,18 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+
 hub = pytest.importorskip("hub")
+# Phase U / U.3 — marketplace is paid/excluded from the public
+# tree; the integrations guards were no-ops (integrations is core).
+_marketplace = pytest.importorskip("hub.apps.marketplace")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import json
+import uuid
 
 from click.testing import CliRunner
 from datahub_cli.config import config
@@ -30,7 +40,6 @@ from hub.apps.integrations.models import MarketplaceConnection, MarketplaceMappi
 
 # Import Django models
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -48,45 +57,45 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
         super().setUp()
         self.runner = CliRunner()
 
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="CLI Mapping E2E Test Tenant", slug="cli-mapping-e2e-test-tenant"
+        # The CLI's get_api_key() prefers env tokens over the config-file
+        # key (DATAHUB_API_TOKEN etc.), and the batch runner exports one
+        # bound to the DEFAULT tenant — the in-process CLI would auth as
+        # that tenant and see none of this test's tenant-scoped rows.
+        # Neutralize the env fallback for the duration of the test and
+        # restore it in tearDown so other suites keep their batch token.
+        import os as _os
+
+        self._saved_env_token = _os.environ.pop("DATAHUB_API_TOKEN", None)
+
+        # Seed the WHOLE fixture set (tenant + subscription + user + role +
+        # key) through the stack's container: in-process ORM rows live
+        # inside this TransactionTestCase's transaction while the live
+        # server's request threads use separate connections that cannot
+        # see uncommitted rows (intermittent 401 / "No active
+        # subscription" 403 flakes).  The container commit makes every
+        # row visible to every connection; re-read them here (READ
+        # COMMITTED).
+        from tests.use_cases.conftest import seed_marketplace_e2e_tenant_in_container
+
+        _email = f"cli-mapping-e2e-{uuid.uuid4().hex[:8]}@example.com"
+        seeded = seed_marketplace_e2e_tenant_in_container(
+            slug=f"cli-mapping-e2e-test-tenant-{uuid.uuid4().hex[:8]}",
+            name=f"CLI Mapping E2E Test Tenant {uuid.uuid4().hex[:8]}",
+            email=_email,
+            key_name="CLI Mapping E2E Test Key",
         )
+        self.tenant = Tenant.objects.get(pk=seeded["tenant_id"])
+        self.user = User.objects.get(email=_email)
 
-        # Create user with ACTIVE status
-        self.user = User.objects.create_user(
-            email="cli-mapping-e2e@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-
-        # Create DATA_PROVIDER role and assign to user
-        from hub.apps.users.models import Role, UserRole
-
-        data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider Role"}
-        )
-        UserRole.objects.create(user=self.user, role=data_provider_role)
-
+        # Clear any auth left on the GLOBAL config by other tests (the
+        # CLI prefers an access token over the API key — a stale JWT from
+        # authenticated_config would make every call here "Invalid API key").
+        config.clear_auth()
         # Set API base URL to live test server
         self.api_base_url = f"{self.live_server_url}/api/v1"
         config.set_api_base_url(self.api_base_url)
-
-        # Create API key for testing with required scopes
-        from hub.apps.auth.models import APIKey
-
-        plaintext_key = APIKey.generate_key()
-        key_hash = APIKey.hash_key(plaintext_key)
-        APIKey.objects.create(
-            user=self.user,
-            tenant=self.tenant,
-            name="CLI Mapping E2E Test Key",
-            key_hash=key_hash,
-            scopes=["integrations:write", "integrations:read"],
-        )
-        config.set_api_key(plaintext_key)
-        self.api_key = plaintext_key
+        config.set_api_key(seeded["api_key"])
+        self.api_key = seeded["api_key"]
 
         # Create connection and assets for testing
         self.connection = MarketplaceConnection.objects.create(
@@ -95,7 +104,6 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             name="E2E Test Connection",
             config={"base_url": "https://demo.ckan.org"},
             is_active=True,
-            created_by=self.user,
         )
 
         self.asset1 = Asset.objects.create(
@@ -116,10 +124,25 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             created_by=self.user,
         )
 
+    @classmethod
+    def _fixture_teardown(cls):
+        """Never flush — the default TransactionTestCase flush TRUNCATEs
+        tables in dependency order against the SHARED test DB
+        (TEST_DB_SUFFIX=shared) until it raises NotSupportedError,
+        wiping plans, seeded users and subscriptions along the way (the
+        recurring seed-erasure mystery).  Fixture rows use per-run uuid
+        suffixes, so skipping the flush is safe; manual cleanup lives in
+        tearDown where needed.
+        """
+
     def tearDown(self):
         """Clean up after tests"""
         super().tearDown()
         config.clear_auth()
+        if getattr(self, "_saved_env_token", None) is not None:
+            import os as _os
+
+            _os.environ["DATAHUB_API_TOKEN"] = self._saved_env_token
 
     def test_complete_mapping_workflow_list_get_delete(self):
         """Test complete workflow: list → get → delete"""
@@ -142,10 +165,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             list_data = json.loads(result.output)
 
             # Verify mapping is in the list
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
 
             mapping_ids = [m.get("id") for m in mappings]
             assert str(mapping.id) in mapping_ids, "Mapping not found in list"
@@ -157,12 +177,14 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             assert result.exit_code == 0, f"Get failed: {result.output}"
             get_data = json.loads(result.output)
 
-            # Verify details
+            # Verify details — the backend serializer is FLAT
+            # (hub_asset_id/hub_asset_name, connection_id/connection_name),
+            # not nested envelopes.
             assert get_data["id"] == str(mapping.id)
             assert get_data["external_listing_id"] == "E2E_TEST_LISTING_1"
-            assert get_data["hub_asset"]["id"] == str(self.asset1.id)
-            assert get_data["hub_asset"]["name"] == "E2E Test Asset 1"
-            assert get_data["connection"]["id"] == str(self.connection.id)
+            assert get_data["hub_asset_id"] == str(self.asset1.id)
+            assert get_data["hub_asset_name"] == "E2E Test Asset 1"
+            assert get_data["connection_id"] == str(self.connection.id)
             assert len(get_data.get("external_resource_ids", [])) == 2
 
             # Step 3: Delete mapping
@@ -214,10 +236,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             )
             assert result.exit_code == 0
             list_data = json.loads(result.output)
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
             mapping_ids = [m.get("id") for m in mappings]
             assert str(mapping1.id) in mapping_ids
             assert str(mapping2.id) in mapping_ids
@@ -237,10 +256,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             )
             assert result.exit_code == 0
             list_data = json.loads(result.output)
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
             mapping_ids = [m.get("id") for m in mappings]
             assert str(mapping1.id) in mapping_ids
             assert str(mapping2.id) not in mapping_ids
@@ -262,10 +278,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             )
             assert result.exit_code == 0
             list_data = json.loads(result.output)
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
             assert len(mappings) <= 1
 
         finally:

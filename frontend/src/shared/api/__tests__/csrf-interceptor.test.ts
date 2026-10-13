@@ -20,11 +20,9 @@ vi.mock('../../services/performanceMetrics', () => ({
 describe('CSRF token middleware', () => {
   const CSRF_TOKEN = 'test-csrf-token-abc123';
   let capturedHeaders: Headers | null = null;
-  let capturedMethod: string | null = null;
 
   beforeEach(() => {
     capturedHeaders = null;
-    capturedMethod = null;
 
     // Set a mock csrftoken cookie
     Object.defineProperty(document, 'cookie', {
@@ -35,7 +33,6 @@ describe('CSRF token middleware', () => {
     // Mock fetch to capture request details
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       capturedHeaders = new Headers(init?.headers as HeadersInit);
-      capturedMethod = init?.method ?? 'GET';
       return new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

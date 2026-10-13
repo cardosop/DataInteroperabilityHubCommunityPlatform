@@ -5,7 +5,9 @@
  * Persona: Data Product Owner
  * Reference: docs/USER_JOURNEYS.md
  *
- * Success/Failure/Edge per JOURNEY-DPO-001 pattern. Routes: /odps/upload, /odps.
+ * Success/Failure/Edge per JOURNEY-DPO-001 pattern. Routes: /odps/upload, /odps
+ * (legacy — Phase 211.A6 redirects them to /contracts/create and
+ * /contracts?spec_type=ODPS; tests assert the post-redirect contract pages).
  * Real backend only; no mocks.
  */
 
@@ -19,22 +21,24 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) @critic
   test.describe('Success', () => {
     test('ODPS upload page loads', async ({ page }) => {
       const testUser = await getTestUser();
+      // Legacy /odps/upload redirects (Phase 211.A6) to the unified contract create page.
       await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
         timeout: 60000,
-        contentSelector: '.odps-upload-page, .error-display, [data-testid="error-display"]',
+        contentSelector: '.contract-create-page, .error-display, [data-testid="error-display"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
-      expect(page.url()).toContain('/odps');
+      expect(page.url()).toContain('/contracts/create');
     });
 
     test('ODPS list loads', async ({ page }) => {
       const testUser = await getTestUser();
+      // Legacy /odps redirects (Phase 211.A6) to the contracts list filtered by spec_type=ODPS.
       await loginAndNavigateToRoute(page, testUser, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .odps-empty-state, .error-display, [data-testid="error-display"]',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
-      expect(page.url()).toContain('/odps');
+      expect(page.url()).toContain('/contracts?spec_type=ODPS');
     });
   });
 
@@ -42,15 +46,15 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) @critic
     test('ODPS detail with non-existent id shows explicit error display', async ({ page }) => {
       const testUser = await getTestUser();
       // Use loginAndNavigateToRoute to ensure auth tokens survive the navigation.
-      // ODPSDetailPage checks (isError || (isFetched && !contract)) BEFORE skeleton,
-      // so ErrorDisplay renders immediately on 404.
+      // /odps/:id redirects (Phase 211.A6) to the contract detail page, which
+      // renders ErrorDisplay when the contract fetch fails — so the error shows on 404.
       await loginAndNavigateToRoute(
         page,
         testUser,
         '/odps/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, [data-testid="error-display"], .odps-detail-page, [role="alert"]',
+          contentSelector: '.error-display, [data-testid="error-display"], .contract-detail-page, [data-testid="contract-detail-page"], [role="alert"]',
         }
       );
 
@@ -71,19 +75,24 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) @critic
       page,
     }) => {
       const testUser = await getTestUser();
+      // Legacy /odps/upload redirects (Phase 211.A6) to the unified contract create page.
       await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
         timeout: 60000,
-        contentSelector: '.odps-upload-page, .error-display, [data-testid="error-display"]',
+        contentSelector: '.contract-create-page, .error-display, [data-testid="error-display"]',
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
 
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect — backend may be rate-limiting');
-        return;
-      }
-      if ((await page.locator('.odps-upload-page').count()) === 0) {
-        test.skip(true, 'ODPS upload page did not render; skipping submission test.');
-        return;
+      test.skip(page.url().includes('/login'), 'Auth redirect — backend may be rate-limiting');
+      test.skip(
+        (await page.locator('.contract-create-page').count()) === 0,
+        'Contract create page did not render; skipping submission test.'
+      );
+
+      // Default creation mode is Raw Upload; click the tab defensively so the
+      // JSON-paste textarea is mounted even if the default changes.
+      const rawModeTab = page.locator('button[role="tab"]:has-text("Raw Upload")').first();
+      if ((await rawModeTab.count()) > 0) {
+        await rawModeTab.click();
       }
 
       // Fill the textarea with a minimal but valid ODPS document
@@ -124,19 +133,22 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) @critic
         },
       };
 
-      const contentTextarea = page.locator('textarea#odps-content, textarea').first();
+      const contentTextarea = page.locator('textarea.contract-file-reader__textarea, textarea').first();
       await expect(contentTextarea).toBeVisible({ timeout: 10000 });
       await contentTextarea.fill(JSON.stringify(minimalOdps, null, 2));
       await page.waitForTimeout(500);
 
-      const submitBtn = page.locator('button:has-text("Create ODPS Product")').first();
+      // Raw Upload mode submits via "Create Contract" (Phase 211 unified create page);
+      // server-side mode detection still routes ODPS payloads to the workflow endpoint.
+      const submitBtn = page.locator('button:not([role="tab"]):has-text("Create Contract")').first();
       await expect(submitBtn).toBeVisible({ timeout: 5000 });
+      await expect(submitBtn).toBeEnabled({ timeout: 10000 });
 
       // Intercept the API response to distinguish success from validation error
       const createResponse = page.waitForResponse(
         (resp) =>
           resp.url().includes('/contracts/') &&
-          (resp.status() === 200 || resp.status() === 201 || resp.status() >= 400),
+          (resp.status() === 200 || resp.status() === 201 || resp.status() === 202 || resp.status() >= 400),
         { timeout: 60000 }
       );
       await submitBtn.click();
@@ -160,12 +172,14 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) @critic
       }
 
       const finalUrl = page.url();
-      const navigatedAway = !finalUrl.includes('/odps/upload');
+      // Successful create navigates to the contract detail page (/contracts/:id);
+      // the async ODPS workflow may instead keep us on /contracts/create with a progress bar.
+      const navigatedAway = !finalUrl.includes('/contracts/create');
       const hasSuccessContent =
-        (await page.locator('.odps-detail-page, .odps-detail-main, .workflow-status').count()) > 0;
-      const stayedOnUploadWithNoError =
-        finalUrl.includes('/odps/upload') && (await page.locator('.error-display, [data-testid="error-display"]').first().count()) === 0;
-      expect(navigatedAway || hasSuccessContent || stayedOnUploadWithNoError).toBe(true);
+        (await page.locator('.contract-detail-page, [data-testid="contract-detail-page"], .contract-create-page__progress').count()) > 0;
+      const stayedOnCreateWithNoError =
+        finalUrl.includes('/contracts/create') && (await page.locator('.error-display, [data-testid="error-display"]').first().count()) === 0;
+      expect(navigatedAway || hasSuccessContent || stayedOnCreateWithNoError).toBe(true);
     });
   });
 });

@@ -1,0 +1,128 @@
+{
+  "uid": "hub-lineage-overview-228",
+  "title": "Phase 228 — Lineage Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["lineage", "phase-228", "feature"],
+  "timezone": "browser",
+  "time": {"from": "now-24h", "to": "now"},
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+        "query": "label_values(lineage_query_total, tenant_id)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false
+      },
+      {
+        "name": "detail",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+        "query": "label_values(lineage_query_total, detail)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Lineage queries / second",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 7},
+      "targets": [
+        {
+          "expr": "sum by (detail) (rate(lineage_query_total{detail=~\"$detail\"}[5m]))",
+          "legendFormat": "{{detail}}"
+        }
+      ],
+      "description": "Per-detail-level read rate (REQ-LIN-007). Spike during a customer-driven UI session is normal; a sustained spike indicates a polling client."
+    },
+    {
+      "id": 2,
+      "title": "Lineage query p50 / p95 / p99 latency",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 7},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, detail) (rate(lineage_query_duration_seconds_bucket{detail=~\"$detail\"}[5m])))",
+          "legendFormat": "p50 {{detail}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, detail) (rate(lineage_query_duration_seconds_bucket{detail=~\"$detail\"}[5m])))",
+          "legendFormat": "p95 {{detail}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, detail) (rate(lineage_query_duration_seconds_bucket{detail=~\"$detail\"}[5m])))",
+          "legendFormat": "p99 {{detail}}"
+        }
+      ],
+      "description": "Latency histogram split by detail level. p99 above 1s suggests a relational-index regression or a JSON-fallback path that should have been removed."
+    },
+    {
+      "id": 3,
+      "title": "LineageEdge writes / second by operation",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 0, "y": 7, "w": 12, "h": 7},
+      "targets": [
+        {
+          "expr": "sum by (operation) (rate(lineage_edge_writes_total{tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "description": "REQ-LIN-002 #7. add/remove/noop split. Sustained ratio of remove > add indicates a tenant under heavy lineage churn; sustained noop dominance is the steady-state."
+    },
+    {
+      "id": 4,
+      "title": "Cross-tenant lineage reads",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 12, "y": 7, "w": 6, "h": 7},
+      "targets": [
+        {
+          "expr": "sum(increase(lineage_query_total{cross_tenant=\"true\"}[24h]))",
+          "legendFormat": "24h cross-tenant"
+        }
+      ],
+      "description": "Daily count of cross-tenant lineage views (REQ-LIN-007 audit code LINEAGE_VIEWED_CROSS_TENANT). Cross-reference against the LINEAGE_VIEWED_CROSS_TENANT audit-event count for compliance."
+    },
+    {
+      "id": 5,
+      "title": "Time-travel reads (as_of=true)",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 18, "y": 7, "w": 6, "h": 7},
+      "targets": [
+        {
+          "expr": "sum(increase(lineage_query_total{as_of=\"true\"}[24h]))",
+          "legendFormat": "24h time-travel"
+        }
+      ],
+      "description": "Daily count of as_of-bearing reads. Drives capacity for the relational read path."
+    },
+    {
+      "id": 6,
+      "title": "Top-20 tenants by 24h edge-write activity",
+      "type": "table",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 8},
+      "targets": [
+        {
+          "expr": "topk(20, sum by (tenant_id) (increase(lineage_edge_writes_total{operation=~\"add|remove\",tenant_id=~\"$tenant_id\"}[24h])))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "description": "Top-20 tenants by 24h LineageEdge mutation count (add + remove). Uses the live `lineage_edge_writes_total` counter — no separate exporter required. Tenants spiking above the per-tenant baseline warrant a capacity check against `docs/capacity/lineage-storage.md`."
+    }
+  ]
+}

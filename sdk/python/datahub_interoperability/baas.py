@@ -6,7 +6,7 @@ Provides high-level methods for managing API keys, usage tracking, and developer
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 from .errors import (
@@ -74,7 +74,7 @@ class BaaSAPI:
                 field_path=f"/{param_name}",
                 expected="valid UUID format (e.g., '123e4567-e89b-12d3-a456-426614174000')",
                 actual=api_key_id[:50] if len(api_key_id) > 50 else api_key_id,
-            )
+            ) from None
 
     def _validate_date_format(self, date_str: str, param_name: str = "date") -> None:
         """
@@ -127,7 +127,7 @@ class BaaSAPI:
                 field_path=f"/{param_name}",
                 expected="ISO date string",
                 actual=date_str[:50] if len(date_str) > 50 else date_str,
-            )
+            ) from None
 
     def _validate_tier(self, tier: str) -> None:
         """
@@ -206,8 +206,8 @@ class BaaSAPI:
         self,
         name: str,
         tier: str = "FREE",
-        expires_at: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create a new API key.
 
@@ -229,8 +229,10 @@ class BaaSAPI:
             BaaSValidationError: If parameters are invalid
             BaaSError: If API key creation fails
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
+            nonlocal name, tier
             if not name:
                 raise BaaSValidationError(
                     "name is required",
@@ -262,6 +264,9 @@ class BaaSAPI:
 
             if expires_at:
                 self._validate_date_format(expires_at, "expires_at")
+
+        try:
+            _validate_params()
         except BaaSValidationError:
             raise
         except Exception as e:
@@ -272,7 +277,7 @@ class BaaSAPI:
             ) from e
 
         # Build request data
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "name": name,
             "tier": tier,
         }
@@ -285,16 +290,17 @@ class BaaSAPI:
                 "baas/api-keys/",
                 data=data,
             )
-            return response
         except Exception as e:
-            raise self._handle_baas_error(e, "create_api_key")
+            raise self._handle_baas_error(e, "create_api_key") from e
+        else:
+            return response
 
     async def list_api_keys(
         self,
-        tier: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        tier: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List API keys.
 
@@ -310,8 +316,10 @@ class BaaSAPI:
             BaaSValidationError: If parameters are invalid
             BaaSError: If listing fails
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
+            nonlocal tier
             if tier:
                 tier = tier.upper()
                 self._validate_tier(tier)
@@ -333,6 +341,9 @@ class BaaSAPI:
                     expected="non-negative integer",
                     actual=offset,
                 )
+
+        try:
+            _validate_params()
         except BaaSValidationError:
             raise
         except Exception as e:
@@ -343,7 +354,7 @@ class BaaSAPI:
             ) from e
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if tier:
             params["tier"] = tier
         if limit is not None:
@@ -365,9 +376,9 @@ class BaaSAPI:
             else:
                 return [response] if response else []
         except Exception as e:
-            raise self._handle_baas_error(e, "list_api_keys")
+            raise self._handle_baas_error(e, "list_api_keys") from e
 
-    async def get_api_key(self, api_key_id: str) -> Dict[str, Any]:
+    async def get_api_key(self, api_key_id: str) -> dict[str, Any]:
         """
         Get API key details.
 
@@ -399,17 +410,18 @@ class BaaSAPI:
             response = await self.client.get(
                 f"baas/api-keys/{api_key_id}/",
             )
-            return response
         except Exception as e:
-            raise self._handle_baas_error(e, "get_api_key")
+            raise self._handle_baas_error(e, "get_api_key") from e
+        else:
+            return response
 
     async def update_api_key(
         self,
         api_key_id: str,
-        name: Optional[str] = None,
-        tier: Optional[str] = None,
-        expires_at: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        name: str | None = None,
+        tier: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
         """
         Update API key.
 
@@ -427,8 +439,10 @@ class BaaSAPI:
             NotFoundError: If API key not found
             BaaSError: If update fails
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
+            nonlocal name, tier
             self._validate_api_key_id(api_key_id)
 
             if name is not None:
@@ -456,6 +470,9 @@ class BaaSAPI:
 
             if expires_at is not None:
                 self._validate_date_format(expires_at, "expires_at")
+
+        try:
+            _validate_params()
         except BaaSValidationError:
             raise
         except Exception as e:
@@ -466,7 +483,7 @@ class BaaSAPI:
             ) from e
 
         # Build request data (only include provided fields)
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         if name is not None:
             data["name"] = name
         if tier is not None:
@@ -489,9 +506,10 @@ class BaaSAPI:
                 f"baas/api-keys/{api_key_id}/",
                 data=data,
             )
-            return response
         except Exception as e:
-            raise self._handle_baas_error(e, "update_api_key")
+            raise self._handle_baas_error(e, "update_api_key") from e
+        else:
+            return response
 
     async def revoke_api_key(self, api_key_id: str) -> None:
         """
@@ -523,16 +541,16 @@ class BaaSAPI:
                 f"baas/api-keys/{api_key_id}/",
             )
         except Exception as e:
-            raise self._handle_baas_error(e, "revoke_api_key")
+            raise self._handle_baas_error(e, "revoke_api_key") from e
 
     # Usage Tracking Methods
 
     async def get_usage_stats(
         self,
-        api_key_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        api_key_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get usage statistics.
 
@@ -573,7 +591,7 @@ class BaaSAPI:
             ) from e
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if api_key_id:
             params["api_key_id"] = api_key_id
         if start_date:
@@ -587,16 +605,17 @@ class BaaSAPI:
                 "baas/usage/stats/",
                 params=params,
             )
-            return response
         except Exception as e:
-            raise self._handle_baas_error(e, "get_usage_stats")
+            raise self._handle_baas_error(e, "get_usage_stats") from e
+        else:
+            return response
 
     async def get_usage_by_endpoint(
         self,
-        api_key_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        api_key_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get usage breakdown by endpoint.
 
@@ -638,7 +657,7 @@ class BaaSAPI:
             ) from e
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if api_key_id:
             params["api_key_id"] = api_key_id
         if start_date:
@@ -660,13 +679,13 @@ class BaaSAPI:
             else:
                 return [response] if response else []
         except Exception as e:
-            raise self._handle_baas_error(e, "get_usage_by_endpoint")
+            raise self._handle_baas_error(e, "get_usage_by_endpoint") from e
 
     async def get_usage_by_tenant(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get usage breakdown by tenant (admin only).
 
@@ -704,7 +723,7 @@ class BaaSAPI:
             ) from e
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if start_date:
             params["start_date"] = start_date
         if end_date:
@@ -724,9 +743,9 @@ class BaaSAPI:
             else:
                 return [response] if response else []
         except Exception as e:
-            raise self._handle_baas_error(e, "get_usage_by_tenant")
+            raise self._handle_baas_error(e, "get_usage_by_tenant") from e
 
-    async def check_quota(self, api_key_id: str) -> Dict[str, Any]:
+    async def check_quota(self, api_key_id: str) -> dict[str, Any]:
         """
         Check quota information for an API key.
 
@@ -769,9 +788,10 @@ class BaaSAPI:
             response = await self.client.get(
                 f"baas/api-keys/{api_key_id}/quota/",
             )
-            return response
         except Exception as e:
-            raise self._handle_baas_error(e, "check_quota")
+            raise self._handle_baas_error(e, "check_quota") from e
+        else:
+            return response
 
     # Developer Portal Methods
 
@@ -789,8 +809,9 @@ class BaaSAPI:
             BaaSValidationError: If format is invalid
             BaaSError: If retrieval fails
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
             if format not in ("html", "json"):
                 raise BaaSValidationError(
                     "format must be 'html' or 'json'",
@@ -799,6 +820,9 @@ class BaaSAPI:
                     expected="'html' or 'json'",
                     actual=format,
                 )
+
+        try:
+            _validate_params()
         except BaaSValidationError:
             raise
         except Exception as e:
@@ -821,7 +845,7 @@ class BaaSAPI:
             # Otherwise return formatted string representation
             return str(response)
         except Exception as e:
-            raise self._handle_baas_error(e, "get_api_docs")
+            raise self._handle_baas_error(e, "get_api_docs") from e
 
     async def get_openapi_schema(self, format: str = "json") -> Any:
         """
@@ -837,8 +861,9 @@ class BaaSAPI:
             BaaSValidationError: If format is invalid
             BaaSError: If retrieval fails
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
             if format not in ("json", "yaml"):
                 raise BaaSValidationError(
                     "format must be 'json' or 'yaml'",
@@ -847,6 +872,9 @@ class BaaSAPI:
                     expected="'json' or 'yaml'",
                     actual=format,
                 )
+
+        try:
+            _validate_params()
         except BaaSValidationError:
             raise
         except Exception as e:
@@ -874,13 +902,14 @@ class BaaSAPI:
                         field_path="/format",
                         expected="yaml format with PyYAML installed",
                         actual="yaml format without PyYAML",
-                    )
+                    ) from None
+        except Exception as e:
+            raise self._handle_baas_error(e, "get_openapi_schema") from e
+        else:
             # Otherwise return as dictionary
             return response
-        except Exception as e:
-            raise self._handle_baas_error(e, "get_openapi_schema")
 
-    async def get_sdk_download_links(self) -> Dict[str, str]:
+    async def get_sdk_download_links(self) -> dict[str, str]:
         """
         Get SDK download links.
 
@@ -915,7 +944,7 @@ class BaaSAPI:
                         return sdk_links
             return response if isinstance(response, dict) else {}
         except Exception as e:
-            raise self._handle_baas_error(e, "get_sdk_download_links")
+            raise self._handle_baas_error(e, "get_sdk_download_links") from e
 
     # ── 118F.17: Expanded BaaS methods ───────────────────
 
@@ -928,7 +957,7 @@ class BaaSAPI:
     async def list_customers(self, **kwargs) -> dict:
         return await self.client.get("baas/customers/", params=kwargs or None)
 
-    async def get_customer_usage(self, customer_id: str, period: str = None) -> dict:
+    async def get_customer_usage(self, customer_id: str, period: str | None = None) -> dict:
         params = {"period": period} if period else None
         return await self.client.get(f"baas/customers/{customer_id}/usage/", params=params)
 

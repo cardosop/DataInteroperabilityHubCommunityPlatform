@@ -123,7 +123,11 @@ def _kustomize_build(base_path: Path) -> str:
         raise FileNotFoundError(f"kustomization.yaml not found in {base_path}")
 
     # Prefer standalone kustomize, then kubectl kustomize
-    _kubectl_cmd = [_KUBECTL_PATH, "kustomize", str(base_path)] if _KUBECTL_PATH else ["kubectl", "kustomize", str(base_path)]
+    _kubectl_cmd = (
+        [_KUBECTL_PATH, "kustomize", str(base_path)]
+        if _KUBECTL_PATH
+        else ["kubectl", "kustomize", str(base_path)]
+    )
     for cmd in (["kustomize", "build", str(base_path)], _kubectl_cmd):
         try:
             result = subprocess.run(
@@ -199,9 +203,10 @@ def kustomize_available() -> bool:
     _, first_base = bases[0]
     try:
         _kustomize_build(first_base)
-        return True
     except (FileNotFoundError, subprocess.CalledProcessError):
         return False
+    else:
+        return True
 
 
 def kubectl_available() -> bool:
@@ -216,9 +221,10 @@ def kubectl_available() -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+    else:
+        return result.returncode == 0
 
 
 def validate_manifests_with_kubectl_dry_run(yaml_stream: str) -> bool:

@@ -119,9 +119,7 @@ class GovernanceServiceTest(TestCase):
         """Test successful access request creation with asset"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -143,9 +141,7 @@ class GovernanceServiceTest(TestCase):
         """Test successful access request creation with dataset"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -164,9 +160,7 @@ class GovernanceServiceTest(TestCase):
         """Test successful access request creation with file"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -206,9 +200,7 @@ class GovernanceServiceTest(TestCase):
         """Test creating access request with expiration date"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -479,9 +471,7 @@ class GovernanceServiceTest(TestCase):
         """Test creating access requests with different access types"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 

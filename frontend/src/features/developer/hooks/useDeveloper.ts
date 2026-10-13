@@ -4,12 +4,13 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { developerService } from '../services/developerService';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import type { DeveloperListFilters } from '../../../shared/types/developer';
 
 export function usePlugins(filters: DeveloperListFilters = {}) {
   return useQuery({
     queryKey: ['developer', 'plugins', filters],
-    queryFn: () => developerService.listPlugins(filters),
+    queryFn: async () => normalizePaginated(await developerService.listPlugins(filters)),
   });
 }
 
@@ -24,7 +25,7 @@ export function usePlugin(id: string | null) {
 export function useSDKDocumentation(filters: DeveloperListFilters = {}) {
   return useQuery({
     queryKey: ['developer', 'sdk', filters],
-    queryFn: () => developerService.listSDKDocumentation(filters),
+    queryFn: async () => normalizePaginated(await developerService.listSDKDocumentation(filters)),
   });
 }
 

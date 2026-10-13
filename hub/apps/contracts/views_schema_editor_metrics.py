@@ -135,7 +135,7 @@ class SchemaEditorMetricsView(APIView):
     ``request.user`` — no opportunity for cross-tenant pollution).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
 
     def post(self, request: Request) -> Response:
         body: dict[str, Any] = request.data if isinstance(request.data, dict) else {}
@@ -174,7 +174,7 @@ class SchemaEditorMetricsView(APIView):
                     tenant_id=tenant_id,
                     spec_type=spec_type,
                 )
-            except Exception as exc:  # pragma: no cover — best-effort
+            except Exception as exc:
                 logger.warning(
                     "schema_editor_audit_event_failed",
                     extra={"error": str(exc), "tenant_id": tenant_id},

@@ -52,9 +52,11 @@ test.describe("Phase 7.5 gap — search @deprecated", () => {
     await expect(searchInput).toBeVisible({ timeout: 5000 });
     await searchInput.fill('test query');
 
-    const searchButton = page.getByRole('button', { name: /Search/i });
-    await expect(searchButton).toBeVisible({ timeout: 5000 });
-    await searchButton.click();
+    // The "Search" button was removed from SearchPage — typing debounces
+    // 300ms and runs the query automatically (Enter just blurs focus).
+    // Filling the input above triggers the search; the debounce fires
+    // within the race window below.
+    await page.waitForTimeout(500);
 
     await Promise.race([
       page.waitForSelector('.search-page-results-meta', { timeout: 20000 }),

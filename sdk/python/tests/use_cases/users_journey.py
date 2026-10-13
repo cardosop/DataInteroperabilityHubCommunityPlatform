@@ -95,7 +95,7 @@ def test_user_has_required_fields():
         pytest.skip(f"Could not get current user: {resp.status_code}")
 
     user = resp.json()
-    keys_lower = {k.lower() for k in user.keys()}
+    keys_lower = {k.lower() for k in user}
 
     has_id = any(k in keys_lower for k in ("id", "user_id"))
     has_email = "email" in keys_lower

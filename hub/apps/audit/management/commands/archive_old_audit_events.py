@@ -48,7 +48,7 @@ class Command(BaseCommand):
             help=f"Events to archive per batch (default: {DEFAULT_BATCH_SIZE})",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         retention_years = options.get(
             "retention_years", getattr(settings, "AUDIT_RETENTION_YEARS", 3)
         )

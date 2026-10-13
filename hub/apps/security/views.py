@@ -87,9 +87,10 @@ def _uri_path(uri: str) -> str:
     """Return the path component of a URI, falling back to 'unknown'."""
     try:
         path = urlparse(uri).path
-        return path if path else "unknown"
     except (ValueError, AttributeError):
         return "unknown"
+    else:
+        return path if path else "unknown"
 
 
 def _directive_label(raw: str) -> str:
@@ -100,7 +101,7 @@ def _directive_label(raw: str) -> str:
     or 'script-src-elem'.  We take only the directive keyword so labels stay
     low-cardinality.
     """
-    return raw.split()[0].strip().lower() if raw else "unknown"
+    return raw.split(maxsplit=1)[0].strip().lower() if raw else "unknown"
 
 
 # ---------------------------------------------------------------------------

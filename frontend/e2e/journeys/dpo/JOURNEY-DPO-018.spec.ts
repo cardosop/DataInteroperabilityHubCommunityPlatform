@@ -44,7 +44,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       } catch (navErr) {
         const msg = String(navErr);
         if (/timeout|page.*closed|browser.*closed/i.test(msg)) {
-          test.skip(true, `Navigation timed out under load: ${msg.slice(0, 150)}`);
+          test.skip(/timeout|page.*closed|browser.*closed/i.test(msg), `Navigation timed out under load: ${msg.slice(0, 150)}`);
           return;
         }
         throw navErr;
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth failed under load');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth failed under load');
         return;
       }
 
@@ -82,28 +82,29 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       const assetPicker = page.locator('[data-testid="dataset-asset-picker"]');
       await expect(assetPicker).toBeVisible({ timeout: 5000 });
 
-      // Select the known asset using the picker's search.
-      // The AssetPicker searches by asset name/key (not UUID), so search by "E2E"
-      // which matches the name pattern "E2E Publish Asset" used by createAssetViaApi.
-      const pickerInput = assetPicker.locator('input').first();
-      if ((await pickerInput.count()) > 0) {
+      // Select the known asset. The AssetPicker searches by asset name/key
+      // (not UUID), so search by "E2E" which matches the name pattern
+      // "E2E Publish Asset" used by createAssetViaApi.
+      //
+      // Two render modes (FEATURE_RESOURCE_PICKERS_ENABLED):
+      //  * OFF — a plain UUID input (`input[aria-label="Asset ID"]`).
+      //  * ON  — a searchable picker whose options publish
+      //    `id="asset-picker-option-<uuid>"` and class `.asset-picker-option`.
+      //    There is NO `data-testid` on the options — a selector using one
+      //    never matches and previously landed this test in a permanent
+      //    skip (the skip removed below).
+      const plainInput = assetPicker.locator('input[aria-label="Asset ID"]');
+      if ((await plainInput.count()) > 0) {
+        await plainInput.fill(assetId);
+      } else {
+        const pickerInput = assetPicker.locator('input').first();
         await pickerInput.click();
         await pickerInput.fill('E2E');
-        // Wait for debounced search (300ms) + API response
-        await page.waitForTimeout(1000);
-        const suggestion = page.locator('[data-testid="asset-picker-option"]').first();
-        if ((await suggestion.count()) === 0) {
-          // Fallback: if FEATURE_RESOURCE_PICKERS_ENABLED is off, the picker shows
-          // a plain text input for UUID — fill the asset ID directly.
-          const plainInput = assetPicker.locator('input[aria-label="Asset ID"]');
-          if ((await plainInput.count()) > 0) {
-            await plainInput.fill(assetId);
-          } else {
-            test.skip(true, 'No asset picker suggestion appeared and no plain UUID input — picker may be disabled');
-          }
-        } else {
-          await suggestion.click();
-        }
+        // Bound wait for the created asset's option (debounced search 300ms +
+        // API response; slow dev boxes need more than a fixed 1s sleep).
+        const option = page.locator(`#asset-picker-option-${assetId}`);
+        await expect(option).toBeVisible({ timeout: 10_000 });
+        await option.click();
       }
 
       // Save the form
@@ -124,7 +125,11 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       // Verify the asset_id was actually persisted to the backend (not just optimistic UI)
       const persistedAssetId = await page.evaluate(
         async ({ did }: { did: string }) => {
-          const token = localStorage.getItem('access_token');
+          const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      const token =
+        (typeof g === 'function' ? g() : null) ??
+        localStorage.getItem('access_token');
           if (!token) return null;
           const res = await fetch(`${window.location.origin}/api/v1/datasets/${did}/`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -187,7 +192,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       } catch (navErr) {
         const msg = String(navErr);
         if (/timeout|page.*closed|browser.*closed/i.test(msg)) {
-          test.skip(true, `Navigation timed out under load: ${msg.slice(0, 150)}`);
+          test.skip(/timeout|page.*closed|browser.*closed/i.test(msg), `Navigation timed out under load: ${msg.slice(0, 150)}`);
           return;
         }
         throw navErr;
@@ -195,7 +200,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth failed under load');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth failed under load');
         return;
       }
 
@@ -212,7 +217,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
           const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
           throw new Error(`Dataset detail showed error instead of content: ${errText.slice(0, 200)}`);
         }
-        test.skip(true, 'Edit button not found on dataset detail — page may not have fully rendered');
+        test.skip((await editBtn.count()) === 0, 'Edit button not found on dataset detail — page may not have fully rendered');
         return;
       }
 
@@ -270,7 +275,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       } catch (navErr) {
         const msg = String(navErr);
         if (/timeout|page.*closed|browser.*closed/i.test(msg)) {
-          test.skip(true, `Navigation timed out under load: ${msg.slice(0, 150)}`);
+          test.skip(/timeout|page.*closed|browser.*closed/i.test(msg), `Navigation timed out under load: ${msg.slice(0, 150)}`);
           return;
         }
         throw navErr;
@@ -278,7 +283,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth failed under load');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth failed under load');
         return;
       }
 
@@ -287,7 +292,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
         .or(page.locator('button:has-text("Edit")'))
         .first();
       if ((await editBtn.count()) === 0) {
-        test.skip(true, 'Edit button not found');
+        test.skip((await editBtn.count()) === 0, 'Edit button not found');
         return;
       }
       await editBtn.click();

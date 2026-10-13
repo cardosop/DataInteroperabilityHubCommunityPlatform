@@ -303,3 +303,36 @@ class ProductionSSLGuardTest(TestCase):
 
         # HSTS should still be set unconditionally (not env-gated).
         assert "SECURE_HSTS_SECONDS" in block
+
+    def test_secure_redirect_exempts_health_paths(self):
+        """W1.18 — SECURE_SSL_REDIRECT=True would 301 the internal
+        docker-healthcheck (``curl -f http://localhost:8000/health``, no
+        proxy header). The production block must exempt the health paths
+        (pattern WITHOUT the trailing-slash requirement — the compose
+        healthcheck hits ``/health``)."""
+        import re
+        from pathlib import Path
+
+        settings_path = Path(__file__).resolve().parents[3] / "settings.py"
+        source = settings_path.read_text()
+        prod_blocks = list(
+            re.finditer(
+                r'if ENVIRONMENT\s*==\s*["\']production["\']\s*:\s*\n'
+                r"((?:\s+.+\n)+)",
+                source,
+            )
+        )
+        security_block = None
+        for m in prod_blocks:
+            candidate = m.group(1)
+            if "SESSION_COOKIE_SECURE" in candidate and "ImproperlyConfigured" in candidate:
+                security_block = candidate
+                break
+        assert security_block, "Security guard production block not found"
+        assert "SECURE_REDIRECT_EXEMPT" in security_block, (
+            "The production block must declare SECURE_REDIRECT_EXEMPT so the "
+            "internal healthcheck stays reachable under SECURE_SSL_REDIRECT."
+        )
+        assert "health" in security_block.lower(), (
+            "The exempt list must cover the health paths."
+        )

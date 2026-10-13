@@ -10,7 +10,7 @@ from hub.apps.jobs.tasks import check_job_timeouts
 class Command(BaseCommand):
     help = "Check for jobs that have exceeded their timeout and mark them as failed"
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         """Execute the command"""
         self.stdout.write("Checking for timed-out jobs...")
 

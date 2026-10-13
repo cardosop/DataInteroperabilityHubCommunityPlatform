@@ -98,7 +98,7 @@ class ODCSVersionSupportDocumentationTest(TestCase):
 
     def test_version_detection_works_for_all_versions(self):
         """Test that version detection works for all documented versions."""
-        for version in self.expected_versions.keys():
+        for version in self.expected_versions:
             with self.subTest(version=version):
                 # Create contract with this version
                 contract_data = {

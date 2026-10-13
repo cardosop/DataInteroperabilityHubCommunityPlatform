@@ -27,7 +27,7 @@ import contextlib
 from django.test import TransactionTestCase
 
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 # Try to import SDK
 try:
@@ -78,9 +78,38 @@ class ODHIntegrationCLISDKPerformanceTestBase(TransactionTestCase):
             },
         )
 
+        # ML is a feature-gated surface — enable it so the CLI/SDK calls
+        # below can succeed instead of 403ing.
+        self.tenant.ml_enabled = True
+        self.tenant.save(update_fields=["ml_enabled"])
+
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        # Provision a real API key so the CLI subprocess and SDK client can
+        # authenticate against the API.
+        from hub.apps.auth.models import APIKey as AuthAPIKey
+        from hub.apps.auth.permissions import ROLE_SCOPE_MAP
+
+        role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
+        self.api_key_value = AuthAPIKey.generate_key()
+        AuthAPIKey.objects.create(
+            user=self.user,
+            tenant=self.tenant,
+            name=f"ODH perf key {unique_id}",
+            key_hash=AuthAPIKey.hash_key(self.api_key_value),
+            scopes=list(ROLE_SCOPE_MAP.get("TENANT_ADMIN", [])),
+        )
+
         if SDK_AVAILABLE:
             config = DataHubClientConfig(
-                base_url="http://localhost:8000/api/v1", api_token="test-key"
+                base_url="http://localhost:8000/api/v1", api_token=self.api_key_value
             )
             self.client = DataHubClient(config)
 
@@ -97,50 +126,62 @@ class TestODHIntegrationCLIPerformance(ODHIntegrationCLISDKPerformanceTestBase):
     """Test ODH Integration CLI command performance"""
 
     @pytest.mark.skipif(not CLI_AVAILABLE, reason="CLI not available")
-@pytest.mark.skip(reason="CLI not available or timed out")
     def test_cli_model_list_performance(self):
         """Test CLI model list command performance with progress tracking"""
         project_root = Path(__file__).resolve().parent.parent.parent
-        cli_path = project_root / "cli" / "datahub_cli" / "main.py"
+        cli_dir = project_root / "cli"
+
+        import os
+
+        env = os.environ.copy()
+        env["DATAHUB_API_KEY"] = self.api_key_value
+        env["API_BASE_URL"] = "http://localhost:8000/api/v1"
 
         start_time = time.time()
 
         try:
-            subprocess.run(
-                [sys.executable, str(cli_path), "odh", "models", "list"],
+            result = subprocess.run(
+                [sys.executable, "-m", "datahub_cli", "ml", "models", "list", "--format", "json"],
                 check=False,
                 capture_output=True,
                 text=True,
                 timeout=10.0,
+                env=env,
+                cwd=str(cli_dir),
             )
-            duration = time.time() - start_time
+        except subprocess.TimeoutExpired:
+            self.fail("CLI odh models list hung (>10s)")
+        except FileNotFoundError:
+            self.fail(f"CLI package missing: {cli_dir}")
+        duration = time.time() - start_time
 
-            # CLI with progress tracking should complete within reasonable time
-            self.assertLess(
-                duration, 5.0, f"CLI model list took {duration:.3f}s, exceeds 5s target"
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"CLI exit {result.returncode}: {result.stdout} {result.stderr}",
+        )
+        # CLI with progress tracking should complete within reasonable time
+        self.assertLess(duration, 5.0, f"CLI model list took {duration:.3f}s, exceeds 5s target")
 
 
 class TestODHIntegrationSDKPerformance(ODHIntegrationCLISDKPerformanceTestBase):
     """Test ODH Integration SDK method performance"""
 
     @pytest.mark.skipif(not SDK_AVAILABLE, reason="SDK not available")
-@pytest.mark.skip(reason="f'SDK call failed: {e!s}'")
     def test_sdk_model_list_performance(self):
-        """Test SDK model list method performance with progress tracking"""
+        """Test SDK model list method performance (real API round trip)."""
+        import asyncio
+
         start_time = time.time()
 
-        try:
-            # This would call the actual SDK method with progress tracking
-            # models = self.client.odh.list_models(progress_callback=...)
-            duration = time.time() - start_time
+        async def run():
+            return await self.client.ml.list_models(limit=1)
 
-            # SDK with progress tracking should complete quickly
-            self.assertLess(
-                duration, 2.0, f"SDK model list took {duration:.3f}s, exceeds 2s target"
-            )
-        except Exception as e:
+        result = asyncio.run(run())
+        duration = time.time() - start_time
+
+        self.assertIsInstance(result, (list, dict), f"Unexpected SDK response: {result!r}")
+        self.assertLess(duration, 2.0, f"SDK model list took {duration:.3f}s, exceeds 2s target")
 
 
 class TestODHIntegrationConcurrentPerformance(ODHIntegrationCLISDKPerformanceTestBase):
@@ -159,7 +200,7 @@ class TestODHIntegrationConcurrentPerformance(ODHIntegrationCLISDKPerformanceTes
             try:
                 start_time = time.time()
                 # Simulate model listing with progress tracking
-                time.sleep(0.05)  # INTENTIONAL: test-specific delay  # Simulate network delay
+                time.sleep(0.05)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay  # Simulate network delay
                 duration = time.time() - start_time
 
                 with lock:

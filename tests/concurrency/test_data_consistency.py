@@ -3,6 +3,7 @@ Data consistency tests under concurrency: read-after-write, counters,
 unique constraints. Real DB and API; no mocks.
 """
 
+import contextlib
 import json
 import threading
 
@@ -124,7 +125,7 @@ class DataConsistencyTest(ConcurrencyTestBase):
                 original_spec_type=OriginalSpecType.ODPS,
                 original_spec_version="4.1",
                 status=ContractStatus.ACTIVE,
-                version=1,
+                version=i + 1,  # unique_contract_version_per_asset: distinct per row
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
         initial_count = Contract.objects.filter(tenant=self.tenant).count()
@@ -155,8 +156,13 @@ class DataConsistencyTest(ConcurrencyTestBase):
         for t in threads:
             t.join()
 
+        # DELETE is a soft delete (status → RETIRED): the rows remain.
         final_count = Contract.objects.filter(tenant=self.tenant).count()
-        self.assertEqual(final_count, 0)
+        self.assertEqual(final_count, 3)
+        retired_count = Contract.objects.filter(
+            tenant=self.tenant, status=ContractStatus.RETIRED
+        ).count()
+        self.assertEqual(retired_count, 3)
         self.assertEqual(sum(1 for d in deleted if d), 3)
 
     def test_db_connection_per_thread_no_leak(self):
@@ -174,10 +180,10 @@ class DataConsistencyTest(ConcurrencyTestBase):
                 with lock:
                     results.append(False)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=query_in_thread, args=(i,)) for i in range(4)]
         for t in threads:

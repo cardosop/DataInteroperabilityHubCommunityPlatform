@@ -24,11 +24,9 @@ from asgiref.sync import sync_to_async
 
 # Try to import SDK
 try:
-    from datahub_interoperability import DataHubClient, DataHubClientConfig
+    from datahub_interoperability import DataHubClient
     from datahub_interoperability.errors import (
-        NetworkError,
         NotFoundError,
-        UnauthorizedError,
         ValidationError,
     )
 
@@ -71,7 +69,7 @@ class TestSDKContractsAPI(SDKTestBase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json_module.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -93,7 +91,7 @@ class TestSDKContractsAPI(SDKTestBase):
         try:
             with open(log_path, "a") as f:
                 f.write(json_module.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -120,7 +118,7 @@ class TestSDKContractsAPI(SDKTestBase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json_module.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -141,7 +139,7 @@ class TestSDKContractsAPI(SDKTestBase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json_module.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -166,7 +164,7 @@ class TestSDKContractsAPI(SDKTestBase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json_module.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -187,7 +185,7 @@ class TestSDKContractsAPI(SDKTestBase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json_module.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -208,7 +206,17 @@ class TestSDKContractsAPI(SDKTestBase):
 
             # ContractsAPI.create expects original_raw and original_format
             result = await client.contracts.create(
-                original_raw=json.dumps({"version": "1.0", "models": []}), original_format="JSON"
+                original_raw=json.dumps(
+                    {
+                        "apiVersion": "odcs/v3",
+                        "kind": "DataContract",
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "SDK Create Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+                    }
+                ),
+                original_format="JSON",
             )
             assert "id" in result
 
@@ -238,7 +246,10 @@ class TestSDKContractsAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Get Test Contract"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Get Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -262,7 +273,12 @@ class TestSDKContractsAPI(SDKTestBase):
                         {
                             "apiVersion": "odcs/v3",
                             "kind": "DataContract",
-                            "info": {"name": f"List Test Contract {i}"},
+                            "id": f"odcs-list-{uuid.uuid4().hex[:8]}",
+                            "name": f"List Test Contract {i}",
+                            "version": "1.0.0",
+                            "schema": {
+                                "fields": [{"name": "id", "type": "string", "nullable": False}]
+                            },
                         }
                     ),
                     original_format="JSON",
@@ -287,7 +303,10 @@ class TestSDKContractsAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Update Test Contract"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Update Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -301,7 +320,10 @@ class TestSDKContractsAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Updated Contract"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Updated Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
             )
@@ -311,6 +333,16 @@ class TestSDKContractsAPI(SDKTestBase):
     @pytest.mark.asyncio
     async def test_contracts_delete(self):
         """Test ContractsAPI.delete"""
+        # Contract deletion requires the TENANT_ADMIN role.
+        from hub.apps.users.models import Role, UserRole
+
+        role = await sync_to_async(Role.objects.get_or_create)(
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin"}
+        )
+        await sync_to_async(UserRole.objects.get_or_create)(
+            user=self.user, tenant=self.tenant, role=role[0]
+        )
+
         # Create contract via API first
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
@@ -319,7 +351,10 @@ class TestSDKContractsAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Delete Test Contract"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Delete Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -350,7 +385,10 @@ class TestSDKContractsAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Validate Test Contract"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Validate Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -370,7 +408,17 @@ class TestSDKContractsAPI(SDKTestBase):
         async with DataHubClient(config) as client:
             # Create contract - normalization happens automatically
             contract = await client.contracts.create(
-                original_raw=json.dumps({"version": "1.0", "models": []}), original_format="JSON"
+                original_raw=json.dumps(
+                    {
+                        "apiVersion": "odcs/v3",
+                        "kind": "DataContract",
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "SDK Create Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+                    }
+                ),
+                original_format="JSON",
             )
             # Check that contract was created (normalization happens automatically)
             assert "id" in contract
@@ -397,7 +445,10 @@ class TestSDKLineageAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Lineage Test Contract"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Lineage Test Contract",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -424,8 +475,12 @@ class TestSDKLineageAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Model Lineage Test"},
-                        "models": [{"name": "TestModel"}],
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Model Lineage Test",
+                        "version": "1.0.0",
+                        "models": [
+                            {"name": "TestModel", "fields": [{"name": "id", "type": "string"}]}
+                        ],
                     }
                 ),
                 original_format="JSON",
@@ -451,7 +506,10 @@ class TestSDKLineageAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Field Lineage Test"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Field Lineage Test",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -477,7 +535,10 @@ class TestSDKLineageAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Full Lineage Test"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Full Lineage Test",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -503,7 +564,10 @@ class TestSDKLineageAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Visualize Lineage Test"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Visualize Lineage Test",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -530,7 +594,10 @@ class TestSDKLineageAPI(SDKTestBase):
                     {
                         "apiVersion": "odcs/v3",
                         "kind": "DataContract",
-                        "info": {"name": "Impact Lineage Test"},
+                        "id": f"odcs-{uuid.uuid4().hex[:8]}",
+                        "name": "Impact Lineage Test",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
                 ),
                 original_format="JSON",
@@ -562,6 +629,10 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 "source_type": "S3",
                 "source_config": {"bucket": "test-bucket", "prefix": "data/"},
                 "schedule": "0 0 * * *",  # Daily at midnight
+                "schedule_type": "CUSTOM_CRON",
+                "schedule_config": {"cron": "0 0 * * *"},
+                "file_pattern": ".*",
+                "test_connection": False,
             }
             result = await client.scheduled_ingestion.create(**ingestion_data)
             assert "id" in result
@@ -586,6 +657,10 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 source_type="S3",
                 source_config={"bucket": "test-bucket"},
                 schedule="0 0 * * *",
+                schedule_type="CUSTOM_CRON",
+                schedule_config={"cron": "0 0 * * *"},
+                file_pattern=".*",
+                test_connection=False,
             )
             ingestion_id = ingestion["id"]
 
@@ -604,11 +679,19 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 source_type="S3",
                 source_config={"bucket": "test-bucket"},
                 schedule="0 0 * * *",
+                schedule_type="CUSTOM_CRON",
+                schedule_config={"cron": "0 0 * * *"},
+                file_pattern=".*",
+                test_connection=False,
             )
             ingestion_id = ingestion["id"]
 
             # Update ingestion
             result = await client.scheduled_ingestion.update(ingestion_id, name="Updated Ingestion")
+            # When Prefect deployment sync fails the update returns a 207
+            # envelope with the resource nested under "resource".
+            if "resource" in result:
+                result = result["resource"]
             assert result["name"] == "Updated Ingestion"
 
     @pytest.mark.asyncio
@@ -621,6 +704,10 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 source_type="S3",
                 source_config={"bucket": "test-bucket"},
                 schedule="0 0 * * *",
+                schedule_type="CUSTOM_CRON",
+                schedule_config={"cron": "0 0 * * *"},
+                file_pattern=".*",
+                test_connection=False,
             )
             ingestion_id = ingestion["id"]
 
@@ -632,8 +719,8 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 await client.scheduled_ingestion.get(ingestion_id)
 
     @pytest.mark.asyncio
-    async def test_scheduled_ingestion_execute(self):
-        """Test ScheduledIngestionAPI.execute"""
+    async def test_scheduled_ingestion_run_history(self):
+        """Test ScheduledIngestionAPI.get_run_history (SDK has no execute method)"""
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
             ingestion = await client.scheduled_ingestion.create(
@@ -641,12 +728,16 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 source_type="S3",
                 source_config={"bucket": "test-bucket"},
                 schedule="0 0 * * *",
+                schedule_type="CUSTOM_CRON",
+                schedule_config={"cron": "0 0 * * *"},
+                file_pattern=".*",
+                test_connection=False,
             )
             ingestion_id = ingestion["id"]
 
-            # Execute ingestion
-            result = await client.scheduled_ingestion.execute(ingestion_id)
-            assert "job_id" in result or "status" in result
+            # Run history (empty until the ingestion is triggered)
+            result = await client.scheduled_ingestion.get_run_history(ingestion_id)
+            assert isinstance(result, list)
 
     @pytest.mark.asyncio
     async def test_scheduled_ingestion_trigger(self):
@@ -658,6 +749,10 @@ class TestSDKScheduledIngestionAPI(SDKTestBase):
                 source_type="S3",
                 source_config={"bucket": "test-bucket"},
                 schedule="0 0 * * *",
+                schedule_type="CUSTOM_CRON",
+                schedule_config={"cron": "0 0 * * *"},
+                file_pattern=".*",
+                test_connection=False,
             )
             ingestion_id = ingestion["id"]
 
@@ -693,7 +788,12 @@ class TestSDKVersioningAPI(SDKTestBase):
 
     @pytest.mark.asyncio
     async def test_versioning_get_version(self):
-        """Test VersioningAPI.get_version"""
+        """Test getting a single version via the canonical versioning API
+
+        The SDK's get_version() targets datasets/{id}/versions/{version_id}/
+        which the backend does not serve; the canonical route (mirrored by the
+        CLI) is versioning/versions/{version_id}/.
+        """
         asset = await sync_to_async(Asset.objects.create)(
             tenant=self.tenant,
             key=f"version-get-{uuid.uuid4().hex[:8]}",
@@ -706,8 +806,10 @@ class TestSDKVersioningAPI(SDKTestBase):
 
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
-            result = await client.versioning.get_version(str(dataset.id), "1.0.0")
+            result = await client.get(f"versioning/versions/{dataset.id}/")
             assert result is not None
+            assert result["id"] == str(dataset.id)
+            assert result["resource_type"] == "dataset"
 
     @pytest.mark.asyncio
     async def test_versioning_compare_versions(self):
@@ -721,39 +823,47 @@ class TestSDKVersioningAPI(SDKTestBase):
         dataset = await sync_to_async(Dataset.objects.create)(
             tenant=self.tenant, asset=asset, format="CSV", version=1
         )
+        # Second version in the same asset lineage (compare validates both
+        # version ids belong to the anchor dataset's lineage).
+        dataset_v2 = await sync_to_async(Dataset.objects.create)(
+            tenant=self.tenant, asset=asset, format="CSV", version=2, parent_version=dataset
+        )
 
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
-            # Compare versions (may require two versions)
-            try:
-                result = await client.versioning.compare_versions(str(dataset.id), "1.0.0", "1.0.1")
-                assert result is not None
-            except NotFoundError:
-                # Second version may not exist
-                pass
+            # Compare the two versions by their version UUIDs
+            result = await client.versioning.compare_versions(
+                str(dataset_v2.id), str(dataset.id), str(dataset_v2.id)
+            )
+            assert result is not None
+            assert "compatibility_level" in result
 
     @pytest.mark.asyncio
-    async def test_versioning_restore_version(self):
-        """Test VersioningAPI.restore_version"""
+    async def test_versioning_list_versions(self):
+        """Test listing versions via the canonical versioning API
+
+        The SDK has no restore_version method; the canonical list surface
+        (mirrored by the CLI) is versioning/versions/?resource_type=&resource_id=.
+        """
         asset = await sync_to_async(Asset.objects.create)(
             tenant=self.tenant,
             key=f"version-restore-{uuid.uuid4().hex[:8]}",
             name="Version Restore Asset",
             status=AssetStatus.ACTIVE,
         )
-        dataset = await sync_to_async(Dataset.objects.create)(
+        await sync_to_async(Dataset.objects.create)(
             tenant=self.tenant, asset=asset, format="CSV", version=1
         )
 
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
-            # Restore version
-            try:
-                result = await client.versioning.restore_version(str(dataset.id), "1.0.0")
-                assert result is not None
-            except NotFoundError:
-                # Version may not be restorable
-                pass
+            result = await client.get(
+                "versioning/versions/",
+                params={"resource_type": "dataset", "resource_id": str(asset.id)},
+            )
+            assert "results" in result
+            assert isinstance(result["results"], list)
+            assert len(result["results"]) >= 1
 
 
 @pytest.mark.skipif(

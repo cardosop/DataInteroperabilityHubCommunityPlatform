@@ -162,70 +162,11 @@
   background: var(--color-bg-muted, #f1f5f9);
 }
 
-/* Compare action bar (floating, above listings) */
-.compare-action-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3, 0.75rem);
-  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
-  background: var(--color-primary, #4f46e5);
-  color: white;
-  border-radius: var(--radius-md, 8px);
-  margin-bottom: var(--space-4, 1rem);
-  animation: compare-bar-slide-in 0.2s ease;
-}
-
-@keyframes compare-bar-slide-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.compare-action-bar-text {
-  flex: 1;
-  font-size: var(--font-size-sm, 0.875rem);
-  font-weight: 500;
-}
-
-.compare-action-bar-btn {
-  padding: 6px 16px;
-  background: white;
-  color: var(--color-primary, #4f46e5);
-  border: none;
-  border-radius: var(--radius-sm, 4px);
-  font-weight: 600;
-  font-size: var(--font-size-sm, 0.875rem);
-  cursor: pointer;
-}
-
-.compare-action-bar-btn:hover {
-  background: var(--color-bg-muted, #f1f5f9);
-}
-
-.compare-action-bar-clear {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm, 4px);
-  font-size: var(--font-size-xs, 0.75rem);
-  cursor: pointer;
-}
-
-.compare-action-bar-clear:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-/* Compare checkbox on listing cards */
-.listing-card-compare {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-}
-
-.listing-card-compare input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--color-primary, #4f46e5);
-  cursor: pointer;
-}
+/* NOTE: no .listing-card-compare rules here. A previous iteration styled
+   the card compare checkboxes from this file with `position: absolute;
+   top: 8px; right: 8px` — Vite CSS is global, so that rule leaked onto
+   every listing-page checkbox and stacked all 50 of them under the app
+   header's user menu, where clicks were intercepted (b6
+   comparison-side-by-side suite: locator.check timed out on
+   "user-menu-trigger … intercepts pointer events"). The checkboxes live
+   in the per-card toolbar and are styled by ListingListPage.css only. */

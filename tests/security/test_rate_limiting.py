@@ -1,5 +1,6 @@
 """Phase 98: Rate limiting enforcement tests."""
 
+import random
 import uuid
 from unittest.mock import patch
 
@@ -15,8 +16,14 @@ from hub.apps.users.models import User, UserStatus
 pytestmark = pytest.mark.security
 
 
+@override_settings(RATE_LIMIT_ENABLED=True)
 class RateLimitingTest(TestCase):
-    """Verify rate limits are enforced."""
+    """Verify rate limits are enforced.
+
+    Rate limits are disabled globally in the test env (settings.py) so
+    batches don't flake on cross-test quota exhaustion — re-enable them
+    here because this class IS the rate-limit verification.
+    """
 
     def setUp(self):
         cache.clear()
@@ -26,7 +33,9 @@ class RateLimitingTest(TestCase):
 
     def test_ip_login_rate_limit_enforced(self):
         """Exceeding per-IP login rate limit returns False."""
-        ip = "192.0.2.99"
+        # Random per-run IP: the sliding window can outlive the test (60s) in
+        # a Redis-backed cache, so a fixed IP would leak counts across runs.
+        ip = f"192.0.2.{random.randint(1, 254)}"
         # Default is 10 per minute
         for i in range(10):
             self.assertTrue(_check_ip_rate_limit(ip), f"Request {i + 1} should pass")
@@ -47,7 +56,7 @@ class RateLimitingTest(TestCase):
     def test_login_endpoint_returns_429(self):
         """Login endpoint returns 429 after exceeding rate limit."""
         client = APIClient()
-        ip = "10.99.99.99"
+        ip = f"10.99.{random.randint(1, 254)}.{random.randint(1, 254)}"
         # Exhaust rate limit
         for _ in range(12):
             client.post(

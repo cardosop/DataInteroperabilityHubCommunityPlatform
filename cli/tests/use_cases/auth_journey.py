@@ -72,7 +72,8 @@ def test_auth_login_endpoint():
 
     body = resp.json()
     assert "access_token" in body, f"Login response missing access_token. Keys: {list(body.keys())}"
-    assert isinstance(body["access_token"], str) and len(body["access_token"]) > 10
+    assert isinstance(body["access_token"], str)
+    assert len(body["access_token"]) > 10
 
 
 def test_auth_logout_endpoint():

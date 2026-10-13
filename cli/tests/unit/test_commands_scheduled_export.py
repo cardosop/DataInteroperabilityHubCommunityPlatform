@@ -7,6 +7,11 @@ Tests: list, get, create, update, delete, pause, resume, trigger-run commands.
 import json
 
 from datahub_cli.main import cli
+from tests.fixtures.test_data import fresh_id
+
+# Unique per test process (and per xdist worker) so a static literal
+# can never collide across parallel runs — Phase 216.X.2.
+ASSET_ID = fresh_id("asset")
 
 
 class TestScheduledExportList:
@@ -99,19 +104,22 @@ class TestScheduledExportCreate:
                 "create",
                 "--name",
                 "Weekly backup",
-                "--asset-id",
-                "asset-1",
                 "--destination-type",
                 "S3",
                 "--destination-config",
                 '{"bucket":"my-bucket"}',
-                "--cron-expression",
-                "0 0 * * 0",
+                "--schedule-config",
+                '{"cron":"0 0 * * 0"}',
+                "--source-scope",
+                f'{{"asset_ids":["{ASSET_ID}"]}}',
             ],
         )
 
         assert result.exit_code == 0
         assert "Weekly backup" in result.output
+        payload = mock_api_client.post.call_args.kwargs["json_data"]
+        assert payload["schedule_config"] == {"cron": "0 0 * * 0"}
+        assert payload["source_scope"] == {"asset_ids": [ASSET_ID]}
 
     def test_create_export_error(self, runner, mock_api_client):
         """Test create with API error"""
@@ -124,14 +132,14 @@ class TestScheduledExportCreate:
                 "create",
                 "--name",
                 "Bad export",
-                "--asset-id",
-                "bad-id",
                 "--destination-type",
                 "S3",
                 "--destination-config",
                 "{}",
-                "--cron-expression",
-                "invalid",
+                "--schedule-config",
+                '{"cron":"invalid"}',
+                "--source-scope",
+                '{"asset_ids":["bad-id"]}',
             ],
         )
 
@@ -139,38 +147,53 @@ class TestScheduledExportCreate:
 
 
 class TestScheduledExportPauseResume:
-    """Test scheduled-export pause and resume commands"""
+    """Test scheduled-export status update (pause/resume) commands"""
 
     def test_pause_export(self, runner, mock_api_client):
-        """Test pausing an export"""
-        mock_api_client.post.return_value = {"status": "PAUSED"}
+        """Test pausing an export via status update"""
+        mock_api_client.patch.return_value = {
+            "id": "export-1",
+            "name": "Daily CSV",
+            "status": "PAUSED",
+        }
 
-        result = runner.invoke(cli, ["scheduled-export", "pause", "export-1"])
+        result = runner.invoke(
+            cli, ["scheduled-export", "update", "export-1", "--status", "PAUSED"]
+        )
 
         assert result.exit_code == 0
         assert "PAUSED" in result.output
+        assert mock_api_client.patch.call_args.kwargs["json_data"] == {"status": "PAUSED"}
 
     def test_resume_export(self, runner, mock_api_client):
-        """Test resuming an export"""
-        mock_api_client.post.return_value = {"status": "ACTIVE"}
+        """Test resuming an export via status update"""
+        mock_api_client.patch.return_value = {
+            "id": "export-1",
+            "name": "Daily CSV",
+            "status": "ACTIVE",
+        }
 
-        result = runner.invoke(cli, ["scheduled-export", "resume", "export-1"])
+        result = runner.invoke(
+            cli, ["scheduled-export", "update", "export-1", "--status", "ACTIVE"]
+        )
 
         assert result.exit_code == 0
         assert "ACTIVE" in result.output
+        assert mock_api_client.patch.call_args.kwargs["json_data"] == {"status": "ACTIVE"}
 
 
 class TestScheduledExportTrigger:
-    """Test scheduled-export trigger-run command"""
+    """Test scheduled-export trigger command"""
 
     def test_trigger_run(self, runner, mock_api_client):
         """Test triggering an immediate export run"""
-        mock_api_client.post.return_value = {"id": "run-1", "status": "RUNNING"}
+        mock_api_client.post.return_value = {"run_id": "run-1", "status": "success"}
 
-        result = runner.invoke(cli, ["scheduled-export", "trigger-run", "export-1"])
+        result = runner.invoke(cli, ["scheduled-export", "trigger", "export-1"])
 
         assert result.exit_code == 0
         assert "run-1" in result.output
+        mock_api_client.post.assert_called_once_with("scheduled-exports/export-1/trigger/")
 
 
 class TestScheduledExportDelete:
@@ -178,7 +201,7 @@ class TestScheduledExportDelete:
 
     def test_delete_export(self, runner, mock_api_client):
         """Test deleting a scheduled export"""
-        result = runner.invoke(cli, ["scheduled-export", "delete", "export-1"])
+        result = runner.invoke(cli, ["scheduled-export", "delete", "export-1", "--confirm"])
 
         assert result.exit_code == 0
-        mock_api_client.delete.assert_called()
+        mock_api_client.delete.assert_called_once_with("scheduled-exports/export-1/")

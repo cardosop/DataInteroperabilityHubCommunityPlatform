@@ -11,6 +11,7 @@ import unicodedata
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def validate_file_magic(file_obj, declared_content_type: str, filename: str) -> 
 
     try:
         detected_mime: str = magic.from_buffer(content, mime=True)
-    except Exception as exc:  # pragma: no cover – libmagic runtime errors
+    except magic.MagicException as exc:  # pragma: no cover - libmagic runtime errors
         logger.warning(
             "python-magic failed to inspect file %r: %s; skipping magic-byte check.",
             filename,
@@ -76,7 +77,7 @@ def validate_file_magic(file_obj, declared_content_type: str, filename: str) -> 
         )
         return
 
-    # Exact match – all good.
+    # Exact match - all good.
     if detected_mime == declared_content_type:
         return
 
@@ -198,7 +199,7 @@ def validate_file_size(
             from hub.apps.tenants.services import get_tenant_file_size_limit
 
             tenant_limit = get_tenant_file_size_limit(tenant_id)
-        except Exception:
+        except DatabaseError:
             # If tenant lookup fails, fall back to platform defaults
             pass
 
@@ -214,6 +215,13 @@ def validate_file_size(
     if upload_method == "browser":
         method_limit = settings.MAX_BROWSER_UPLOAD_SIZE
         limit_name = "browser upload limit"
+        # Phase 260.3.F — uploads above the multipart threshold go
+        # through the resumable multipart engine, so the single-PUT-era
+        # browser cap does not apply; the platform/tenant effective
+        # limit governs instead (mirrors FilesBusinessRules).
+        if size > getattr(settings, "MULTIPART_UPLOAD_THRESHOLD", 100 * 1024 * 1024):
+            method_limit = effective_limit
+            limit_name = f"file size limit ({limit_source})"
     elif upload_method == "sdk":
         method_limit = settings.MAX_SDK_UPLOAD_SIZE
         limit_name = "SDK upload limit"

@@ -22,6 +22,31 @@ _RETRY_COUNT = 3
 _RETRY_BACKOFF_BASE_SECONDS = 2.0  # 2s, 4s, 8s
 
 
+def _check_clamav_version_once(
+    host: str, port: int, timeout: float, minimum: str, attempt: int
+) -> None:
+    """Probe clamd once; log and return if the version gate passes.
+
+    Raises ``ImproperlyConfigured`` when the daemon version is below
+    *minimum* (propagated unchanged by the caller).
+    """
+    banner = read_clamd_version_banner(host, port, timeout_seconds=min(timeout, 30.0))
+    ok, effective = version_meets_minimum(daemon_banner=banner, required_text=str(minimum))
+    if ok:
+        logger.info(
+            "clamav_daemon_version_gate_ok",
+            banner=banner,
+            effective_semver=effective,
+            minimum=minimum,
+            attempt=attempt,
+        )
+        return
+    raise ImproperlyConfigured(
+        f"CLAMAV_MINIMUM_ENGINE_VERSION={minimum} not satisfied "
+        f"(daemon reports {effective!r}; full banner={banner!r})."
+    )
+
+
 def run_clamav_version_compat_check() -> None:
     """
     When ``CLAMAV_ENABLED`` and checks are enabled, query clamd ``VERSION`` and
@@ -43,26 +68,10 @@ def run_clamav_version_compat_check() -> None:
     last_exc: Exception | None = None
     for attempt in range(_RETRY_COUNT + 1):
         try:
-            banner = read_clamd_version_banner(host, port, timeout_seconds=min(timeout, 30.0))
-            ok, effective = version_meets_minimum(
-                daemon_banner=banner, required_text=str(minimum)
-            )
-            if ok:
-                logger.info(
-                    "clamav_daemon_version_gate_ok",
-                    banner=banner,
-                    effective_semver=effective,
-                    minimum=minimum,
-                    attempt=attempt,
-                )
-                return
-            raise ImproperlyConfigured(
-                f"CLAMAV_MINIMUM_ENGINE_VERSION={minimum} not satisfied "
-                f"(daemon reports {effective!r}; full banner={banner!r})."
-            )
+            _check_clamav_version_once(host, port, timeout, minimum, attempt)
         except ImproperlyConfigured:
             raise
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             last_exc = exc
             if attempt < _RETRY_COUNT:
                 wait = _RETRY_BACKOFF_BASE_SECONDS * (2**attempt)
@@ -75,6 +84,8 @@ def run_clamav_version_compat_check() -> None:
                 )
                 _time.sleep(wait)
             # else: fall through to the final raise below
+        else:
+            return
 
     raise ImproperlyConfigured(
         "ClamAV daemon version probe failed after "

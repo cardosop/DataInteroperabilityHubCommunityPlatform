@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
                 ],
                 "constraints": [
                     models.UniqueConstraint(
-                        fields=("user", "tenant"), name="unique_user_tenant_membership"
+                        fields=["user", "tenant"], name="unique_user_tenant_membership"
                     )
                 ],
             },

@@ -8,6 +8,7 @@ Covers:
   26.17   Observability: alerts, dashboard, promtail, metric wiring
 """
 
+from typing import ClassVar
 from unittest import TestCase
 
 # ======================================================================
@@ -215,7 +216,7 @@ class NormalizationMetricsTest(TestCase):
             },
         }
         # Should not raise
-        record_v310_relationships_count(hub, tenant_id="test")
+        assert record_v310_relationships_count(hub, tenant_id="test") is None
 
     def test_record_v310_relationships_count_empty(self):
         from hub.apps.contracts.normalization_metrics import (
@@ -223,7 +224,7 @@ class NormalizationMetricsTest(TestCase):
         )
 
         # No relationships
-        record_v310_relationships_count({"models": []}, tenant_id="test")
+        assert record_v310_relationships_count({"models": []}, tenant_id="test") is None
 
     def test_record_v310_fallback(self):
         from hub.apps.contracts.normalization_metrics import (
@@ -231,7 +232,7 @@ class NormalizationMetricsTest(TestCase):
         )
 
         # Should not raise
-        record_v310_fallback("ODCSNormalizerV3_0_2", tenant_id="test")
+        assert record_v310_fallback("ODCSNormalizerV3_0_2", tenant_id="test") is None
 
     def test_metrics_constants_exist(self):
         """Verify the new metrics are importable."""
@@ -301,7 +302,12 @@ def _load_dashboard_json():
         "contract-normalization.json",
     )
     with open(path) as f:
-        return json.load(f)
+        data = json.load(f)
+    # Grafana exports the dashboard two ways depending on the exporter
+    # version: the API/CLI wrapped form ({"dashboard": {...}}) and the
+    # flat file form (panels at top level). Normalize to the wrapped
+    # form so consumers can always read ["dashboard"]["panels"].
+    return data if "dashboard" in data else {"dashboard": data}
 
 
 def _find_alert(alerts_data, alert_name):
@@ -452,7 +458,7 @@ class BackfillGaugeWiringTest(TestCase):
         """Calling with 0 remaining should not raise."""
         from hub.apps.contracts.tasks import _set_backfill_remaining
 
-        _set_backfill_remaining(0, tenant_id="test")
+        assert _set_backfill_remaining(0, tenant_id="test") is None
 
 
 class ExportMetricWiringTest(TestCase):
@@ -548,7 +554,7 @@ class PromtailSpecVersionLabelTest(TestCase):
 class DashboardPanelTest(TestCase):
     """26.17.3 — Verify dashboard panels reference real metrics."""
 
-    PHANTOM_METRICS = [
+    PHANTOM_METRICS: ClassVar[list[str]] = [
         "normalization_operations_total",
         "hub_contract_spec_version",
         "normalization_backfill_remaining_total",

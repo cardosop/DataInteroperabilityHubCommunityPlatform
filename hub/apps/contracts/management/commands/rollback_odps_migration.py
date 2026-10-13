@@ -69,7 +69,7 @@ class Command(BaseCommand):
             help="Skip ODCS contracts that do not have ODPS links",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         contract_id = options.get("contract_id")
         options["batch_size"]
@@ -199,10 +199,7 @@ class Command(BaseCommand):
             return False
 
         # Must have ODPS link
-        if not self._has_odps_link(contract):
-            return False
-
-        return True
+        return self._has_odps_link(contract)
 
     def _has_odps_link(self, contract: Contract) -> bool:
         """Check if ODCS contract has an ODPS link."""
@@ -221,10 +218,11 @@ class Command(BaseCommand):
                     original_spec_type=OriginalSpecType.ODPS,
                     tenant_id=contract.tenant_id,
                 )
-                return True
             except Contract.DoesNotExist:
                 # Link exists but contract not found, consider as not linked
                 return False
+            else:
+                return True
 
         return False
 
@@ -268,10 +266,10 @@ class Command(BaseCommand):
                 odcs_contract=odcs_contract, odps_contract=odps_contract, dry_run=dry_run
             )
 
-            return result
-
         except Exception as e:
             return {"status": "failed", "error": f"Unexpected error: {e!s}"}
+        else:
+            return result
 
     def _rollback_contract(
         self, odcs_contract: Contract, odps_contract: Contract, dry_run: bool = False
@@ -388,11 +386,11 @@ class Command(BaseCommand):
                 f"Removed ODPS link from ODCS contract: odcs_contract_id={odcs_contract.id}"
             )
 
-            return {"status": "success", "link_removed": True}
-
         except Exception as e:
             logger.exception(f"Failed to remove ODPS link from ODCS contract: {odcs_contract.id}")
             return {"status": "partial_failure", "error": str(e)}
+        else:
+            return {"status": "success", "link_removed": True}
 
     def _remove_odcs_link_from_odps(self, odps_contract: Contract) -> dict[str, Any]:
         """
@@ -429,11 +427,11 @@ class Command(BaseCommand):
                 f"Removed ODCS link from ODPS contract: odps_contract_id={odps_contract.id}"
             )
 
-            return {"status": "success", "link_removed": True}
-
         except Exception as e:
             logger.exception(f"Failed to remove ODCS link from ODPS contract: {odps_contract.id}")
             return {"status": "partial_failure", "error": str(e)}
+        else:
+            return {"status": "success", "link_removed": True}
 
     def _remove_odps_contract(self, odps_contract: Contract) -> dict[str, Any]:
         """
@@ -453,14 +451,14 @@ class Command(BaseCommand):
 
             logger.info(f"Deleted ODPS contract: odps_contract_id={odps_contract_id}")
 
-            return {"status": "success", "contract_deleted": True}
-
         except Contract.DoesNotExist:
             logger.warning(f"ODPS contract not found for deletion: {odps_contract_id}")
             return {"status": "success", "contract_not_found": True}
         except Exception as e:
             logger.exception(f"Failed to delete ODPS contract: {odps_contract_id}")
             return {"status": "partial_failure", "error": str(e)}
+        else:
+            return {"status": "success", "contract_deleted": True}
 
     def _restore_previous_odps_link(
         self, odcs_contract: Contract, previous_odps_link: str
@@ -510,13 +508,13 @@ class Command(BaseCommand):
                 f"odcs_contract_id={odcs_contract.id}, previous_odps_link={previous_odps_link}"
             )
 
-            return {"status": "success", "link_restored": True}
-
         except Exception as e:
             logger.exception(
                 f"Failed to restore previous ODPS link: odcs_contract_id={odcs_contract.id}"
             )
             return {"status": "partial_failure", "error": str(e)}
+        else:
+            return {"status": "success", "link_restored": True}
 
     def _validate_rollback(self, odcs_contract_id: str, odps_contract_id: str) -> dict[str, Any]:
         """
@@ -571,18 +569,18 @@ class Command(BaseCommand):
             # Contract deletion is checked separately via odps_contract_deleted flag
             status = "success" if all_links_removed else "partial_failure"
 
-            return {
-                "status": status,
-                "all_links_removed": all_links_removed,
-                "odps_contract_deleted": odps_contract_deleted,
-                "errors": errors,
-            }
-
         except Exception as e:
-            logger.exception(f"Failed to validate rollback: {e}")
+            logger.exception("Failed to validate rollback")
             return {
                 "status": "partial_failure",
                 "all_links_removed": False,
                 "odps_contract_deleted": False,
                 "errors": [str(e)],
+            }
+        else:
+            return {
+                "status": status,
+                "all_links_removed": all_links_removed,
+                "odps_contract_deleted": odps_contract_deleted,
+                "errors": errors,
             }

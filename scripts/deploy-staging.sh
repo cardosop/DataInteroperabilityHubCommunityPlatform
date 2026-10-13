@@ -130,18 +130,32 @@ start_infrastructure() {
 run_migrations() {
     log_info "Running database migrations..."
     
-    # First, check for pending migrations and create them if needed
-    log_info "Checking for pending migrations..."
-    PENDING_OUTPUT=$(docker compose -f "$COMPOSE_FILE" run --rm api-service python hub/manage.py makemigrations --dry-run 2>&1 || true)
-    
-    if echo "$PENDING_OUTPUT" | grep -q "Migrations for"; then
-        log_warn "Pending migrations detected. Creating migrations..."
-        docker compose -f "$COMPOSE_FILE" run --rm api-service python hub/manage.py makemigrations --noinput
-        log_info "Migrations created successfully"
-    else
-        log_info "No pending migrations detected"
+    # Deploy must never GENERATE migrations. This block previously ran
+    # `makemigrations --noinput` on the staging host and applied the result.
+    # An auto-generated migration reflects whatever model state happens to be
+    # loaded, and when that state has drifted the autodetector emits
+    # DESTRUCTIVE operations to reconcile it — this repo carried 70 such
+    # pending operations, including a DROP COLUMN on a populated,
+    # foreign-keyed column. Drift means the artifact was never verified, so
+    # abort and let a human generate, review and commit the migration.
+    log_info "Checking for model/migration drift..."
+    if ! docker compose -f "$COMPOSE_FILE" run --rm api-service \
+        python hub/manage.py makemigrations --check --dry-run --noinput; then
+        log_error "Model/migration drift detected — refusing to auto-generate during deploy."
+        log_error "Run 'makemigrations' locally, review the diff, and commit it."
+        exit 1
     fi
-    
+    log_info "No drift detected"
+
+    # Catch data that would abort a pending migration (e.g. duplicate rows vs.
+    # a UNIQUE constraint being added) before any schema change starts.
+    log_info "Running migration pre-flight..."
+    if ! docker compose -f "$COMPOSE_FILE" run --rm api-service \
+        python scripts/preflight_migrations.py; then
+        log_error "Pre-flight found data that would abort a pending migration."
+        exit 1
+    fi
+
     # Now apply migrations
     log_info "Applying migrations..."
     docker compose -f "$COMPOSE_FILE" run --rm api-service python hub/manage.py migrate --noinput

@@ -39,7 +39,9 @@ class Django6BreakingChangesTest(TestCase):
 
         # All middleware should use __init__(get_response) pattern
         factory = RequestFactory()
-        get_response = lambda request: HttpResponse()
+
+        def get_response(_request):
+            return HttpResponse()
 
         # Test each middleware
         middlewares = [

@@ -14,6 +14,8 @@ Tests verify complete workflows, version detection, normalization, and state con
 import json
 import uuid
 
+import pytest
+from django.conf import settings as _settings
 from rest_framework import status
 
 from hub.apps.contracts.models import (
@@ -36,7 +38,7 @@ ODPS_VERSIONS = ["4.1", "4.0", "3.x", "2.x", "1.x"]
 ODCS_VERSIONS = ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]
 
 
-def create_odps_contract(version: str, product_id: str = None) -> dict:
+def create_odps_contract(version: str, product_id: str | None = None) -> dict:
     """
     Create a valid ODPS contract for a specific version.
 
@@ -124,7 +126,7 @@ def create_odps_contract(version: str, product_id: str = None) -> dict:
     return contract
 
 
-def create_odcs_contract(version: str, contract_id: str = None) -> dict:
+def create_odcs_contract(version: str, contract_id: str | None = None) -> dict:
     """
     Create a valid ODCS contract for a specific version.
 
@@ -139,10 +141,7 @@ def create_odcs_contract(version: str, contract_id: str = None) -> dict:
         contract_id = f"test-odcs-{version.replace('.', '-')}"
 
     # Determine apiVersion format
-    if version == "2.2.2":
-        api_version = f"odcs/v{version}"
-    else:
-        api_version = f"odcs.io/v{version}"
+    api_version = f"odcs/v{version}" if version == "2.2.2" else f"odcs.io/v{version}"
 
     contract = {
         "apiVersion": api_version,
@@ -251,6 +250,12 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
             },
             format="json",
         )
+        if _settings.HUB_CORE_ONLY:
+            # Product-first creation runs the paid marketplace workflow —
+            # core-only returns FEATURE_NOT_AVAILABLE (404) by design;
+            # the remaining post-creation assertions are full-mode only.
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+            return
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("odps_contract", response.data)
 
@@ -300,7 +305,12 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        if _settings.HUB_CORE_ONLY:
+            # Product-first creation runs the paid marketplace workflow —
+            # core-only returns FEATURE_NOT_AVAILABLE (404) by design.
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        else:
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_odps_version_3_x_complete_flow(self):
         """Test ODPS 3.x complete flow: detection, validation, normalization, creation"""
@@ -339,8 +349,15 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
             },
             format="json",
         )
-        # May succeed or fail depending on validation strictness for older versions
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if _settings.HUB_CORE_ONLY:
+            # Product-first creation runs the paid marketplace workflow —
+            # core-only returns FEATURE_NOT_AVAILABLE (404) by design.
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        else:
+            # May succeed or fail depending on validation strictness for older versions
+            self.assertIn(
+                response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST]
+            )
 
     def test_odps_version_2_x_complete_flow(self):
         """Test ODPS 2.x complete flow: detection, validation, normalization"""
@@ -765,10 +782,7 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
                 # Create minimal contract (required fields only, optional fields missing)
-                if version == "2.2.2":
-                    api_version = "odcs/v2.2.2"
-                else:
-                    api_version = f"odcs.io/v{version}"
+                api_version = "odcs/v2.2.2" if version == "2.2.2" else f"odcs.io/v{version}"
 
                 minimal_odcs = {
                     "apiVersion": api_version,
@@ -972,6 +986,14 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
 
     # ========== COMPREHENSIVE COMPATIBILITY TEST SUITE ==========
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First ODPS creation runs the paid marketplace "
+            "ProductCreationWorkflow — core-only mode returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_comprehensive_odps_odcs_compatibility_matrix(self):
         """
         Comprehensive test: ODPS-ODCS compatibility matrix
@@ -1076,6 +1098,14 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
                     f"ODCS {version} should normalize successfully",
                 )
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First ODPS creation runs the paid marketplace "
+            "ProductCreationWorkflow — core-only mode returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_comprehensive_api_creation_all_versions(self):
         """Comprehensive test: API creation for all supported versions"""
         self.client.force_authenticate(user=self.user)
@@ -1127,7 +1157,7 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
                     # Version detection is tested separately in test_odcs_all_versions_detection
                     self.assertIn(
                         contract.original_spec_version,
-                        ODCS_VERSIONS + ["3.0.0"],  # Allow any valid version
+                        [*ODCS_VERSIONS, "3.0.0"],  # Allow any valid version
                         f"Version should be a valid ODCS version, got {contract.original_spec_version}",
                     )
 
@@ -1163,7 +1193,7 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
                     # Version detection is tested separately in test_odcs_all_versions_detection
                     self.assertIn(
                         contract.original_spec_version,
-                        ODCS_VERSIONS + ["3.0.0"],  # Allow any valid version
+                        [*ODCS_VERSIONS, "3.0.0"],  # Allow any valid version
                         f"Version should be a valid ODCS version, got {contract.original_spec_version}",
                     )
                     self.assertIn(
@@ -1180,7 +1210,7 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
                     # API may normalize versions, so check it's a valid version
                     api_version = get_response.data["original_spec_version"]
                     self.assertIn(
-                        api_version, ODCS_VERSIONS + ["3.0.0"], "API should return a valid version"
+                        api_version, [*ODCS_VERSIONS, "3.0.0"], "API should return a valid version"
                     )
 
     def test_backward_compatibility_unicode_characters(self):

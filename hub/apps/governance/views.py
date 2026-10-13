@@ -73,7 +73,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -81,7 +81,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         dashboard_data = AccessAnalyticsService.get_analytics_dashboard(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date
@@ -147,7 +147,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -155,7 +155,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         patterns = AccessAnalyticsService.get_access_patterns(
             tenant_id=tenant_id,
@@ -217,7 +217,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -225,7 +225,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         anomalies = AccessAnalyticsService.get_anomalies(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date, limit=limit
@@ -283,7 +283,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["start_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid start_date format. Use ISO format.")
+                raise ValidationError("Invalid start_date format. Use ISO format.") from None
 
         if "end_date" in request.query_params:
             try:
@@ -291,7 +291,7 @@ class AccessAnalyticsViewSet(viewsets.ViewSet):
                     request.query_params["end_date"].replace("Z", "+00:00")
                 )
             except ValueError:
-                raise ValidationError("Invalid end_date format. Use ISO format.")
+                raise ValidationError("Invalid end_date format. Use ISO format.") from None
 
         events = AccessAnalyticsService.get_security_events(
             tenant_id=tenant_id, start_date=start_date, end_date=end_date, limit=limit
@@ -440,7 +440,7 @@ class AccessCertificationViewSet(viewsets.ModelViewSet):
         tags=["Access Certification"],
     )
     @action(detail=False, methods=["get"], url_path="summary")
-    def summary(self, request):
+    def summary(self, _request):
         """
         Get certification summary.
 

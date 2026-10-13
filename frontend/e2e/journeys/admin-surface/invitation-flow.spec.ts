@@ -60,7 +60,7 @@ test.describe('226.G3 — Invitation flow @critical @admin', () => {
       admin = await getTenantAdminUser();
     } catch (err) {
       test.skip(
-        true,
+        !!err,
         `No tenant admin available (${(err as Error).message}). Run ensure_e2e_user_roles.`,
       );
       return;
@@ -88,7 +88,7 @@ test.describe('226.G3 — Invitation flow @critical @admin', () => {
     });
     if (inviteRes.status() === 403) {
       test.skip(
-        true,
+        inviteRes.status() === 403,
         'Tenant admin lacks invite permission on this tenant. ' +
           'Unblock by ensuring TENANT_ADMIN role is assigned.',
       );

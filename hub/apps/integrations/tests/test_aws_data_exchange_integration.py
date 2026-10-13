@@ -127,7 +127,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if hasattr(cls, '_aws_patcher'):
+        if hasattr(cls, "_aws_patcher"):
             cls._aws_patcher.stop()
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
         super().tearDownClass()
@@ -237,8 +237,8 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
         # If both pages are full, they should be disjoint (pagination works).
         if len(first_page) >= 5 and len(second_page) >= 5:
-            first_ids = {l.marketplace_id for l in first_page}
-            second_ids = {l.marketplace_id for l in second_page}
+            first_ids = {first_page.marketplace_id for first_page in first_page}
+            second_ids = {second_page.marketplace_id for second_page in second_page}
             overlap = first_ids & second_ids
             self.assertEqual(
                 len(overlap),
@@ -389,7 +389,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     def test_list_listings_with_none_limit(self):
         """None limit is handled gracefully — returns a list."""
-        listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+        listings = self.connector.list_listings(limit=None)
         self.assertIsInstance(listings, list)
 
     def test_get_listing_with_empty_id(self):
@@ -400,7 +400,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
         with self.assertRaises(TypeError):
-            self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+            self.connector.get_listing(None)  # test: edge-case type exercise
 
     def test_list_resources_with_empty_listing_id(self):
         """Test list_resources() error handling with empty listing ID"""
@@ -410,7 +410,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_list_resources_with_none_listing_id(self):
         """Test list_resources() error handling with None listing ID"""
         with self.assertRaises(TypeError):
-            self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+            self.connector.list_resources(None)  # test: edge-case type exercise
 
     def test_sync_pull_with_empty_listing_ids(self):
         """Test sync_pull() error handling with empty listing_ids list"""

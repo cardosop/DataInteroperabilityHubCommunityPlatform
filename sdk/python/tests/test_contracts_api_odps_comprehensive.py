@@ -20,7 +20,7 @@ import json
 import os
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 
@@ -38,7 +38,7 @@ async def poll_workflow_status(
     workflow_instance_id: str,
     timeout: int = 300,  # 5 minutes default for comprehensive tests
     poll_interval: int = 3,  # Poll every 3 seconds
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Poll workflow status until completion or timeout.
 
@@ -58,11 +58,8 @@ async def poll_workflow_status(
     start_time = time.time()
 
     while time.time() - start_time < timeout:
-        try:
-            status_response = await client.get(
-                f"contracts/products/workflows/{workflow_instance_id}/status/"
-            )
 
+        def _check_status(status_response: dict[str, Any]) -> dict[str, Any] | None:
             status = status_response.get("status", "").upper()
 
             if status == "COMPLETED":
@@ -74,14 +71,16 @@ async def poll_workflow_status(
                     or "Workflow failed"
                 )
                 raise ValueError(f"Workflow failed: {error_msg}")
-            elif status in ["RUNNING", "PENDING"]:
-                # Continue polling
-                await asyncio.sleep(poll_interval)
-                continue
             else:
-                # Unknown status, continue polling
-                await asyncio.sleep(poll_interval)
-                continue
+                # RUNNING, PENDING, or unknown status: continue polling
+                return None
+
+        try:
+            status_response = await client.get(
+                f"contracts/products/workflows/{workflow_instance_id}/status/"
+            )
+
+            result = _check_status(status_response)
         except NotFoundError:
             # Workflow may not exist yet, continue polling
             await asyncio.sleep(poll_interval)
@@ -112,13 +111,19 @@ async def poll_workflow_status(
                 continue
             raise
 
+        if result is not None:
+            return result
+        # Continue polling (RUNNING, PENDING, or unknown status)
+        await asyncio.sleep(poll_interval)
+        continue
+
     # Timeout reached
     raise TimeoutError(f"Workflow {workflow_instance_id} did not complete within {timeout} seconds")
 
 
 async def handle_async_workflow_response(
-    client: DataHubClient, result: Dict[str, Any], timeout: int = 120
-) -> Dict[str, Any]:
+    client: DataHubClient, result: dict[str, Any], timeout: int = 120
+) -> dict[str, Any]:
     """
     Handle async workflow response by polling for completion if needed.
 
@@ -140,7 +145,7 @@ async def handle_async_workflow_response(
     return result
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -164,23 +169,25 @@ def real_api_config():
             "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
         )
 
-    # Use longer timeout for comprehensive tests (60 seconds) to handle slow operations
-    # like linking, semantic mapping, etc.
+    # Use longer timeout for comprehensive tests to handle slow operations
+    # like linking, semantic mapping, and the workflow-backed product
+    # creation (60-120s — a 60s read-timeout expires before the server
+    # responds under load).
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=60.0,  # 60 seconds for comprehensive tests
+        timeout=120.0,
     )
 
 
 def create_valid_odps_json(
-    product_id: str = None,
+    product_id: str | None = None,
     include_marketplace: bool = True,
     include_contract: bool = True,
     include_strategy: bool = False,
-    languages: list = None,
-    odcs_contract_id: str = None,
-    odcs_contract_name: str = None,
+    languages: list | None = None,
+    odcs_contract_id: str | None = None,
+    odcs_contract_name: str | None = None,
 ) -> str:
     """Create a valid ODPS JSON document with various options"""
     if product_id is None:
@@ -321,9 +328,12 @@ class TestContractsAPIODPSComprehensive:
             # Handle async workflow if needed (5 minute timeout for comprehensive tests)
             result = await handle_async_workflow_response(client, result, timeout=300)
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "odps_contract" in result or "id" in result
             if "odps_contract" in result:
@@ -381,9 +391,12 @@ product:
             # Handle async workflow if needed
             result = await handle_async_workflow_response(client, result, timeout=300)
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "odps_contract" in result or "id" in result
         except Exception as e:
@@ -408,9 +421,12 @@ product:
             # Handle async workflow if needed
             result = await handle_async_workflow_response(client, result, timeout=300)
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "odps_contract" in result or "id" in result
         except Exception as e:
@@ -438,9 +454,12 @@ product:
             # Handle async workflow if needed
             result = await handle_async_workflow_response(client, result, timeout=300)
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "odps_contract" in result or "id" in result
         except Exception as e:
@@ -492,9 +511,12 @@ product:
             # Handle async workflow if needed
             result = await handle_async_workflow_response(client, result, timeout=300)
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "id" in result or "odps_contract" in result
             result.get("id") or result.get("odps_contract", {}).get("id")
@@ -571,9 +593,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -608,9 +633,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -641,9 +669,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -683,9 +714,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -715,9 +749,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -758,9 +795,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -797,9 +837,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -871,9 +914,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # The create_odps with link_odcs_id should have already linked it
             # Verify link exists
@@ -1006,9 +1052,12 @@ product:
                 odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
-            if isinstance(link_result, dict) and "error" in link_result:
-                if "workflow" in str(link_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
+            if (
+                isinstance(link_result, dict)
+                and "error" in link_result
+                and "workflow" in str(link_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
 
             # Verify link exists
             linked_before = await client.contracts.get_linked_contracts(odcs_id)
@@ -1064,9 +1113,12 @@ product:
                 odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
-            if isinstance(link_result, dict) and "error" in link_result:
-                if "workflow" in str(link_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
+            if (
+                isinstance(link_result, dict)
+                and "error" in link_result
+                and "workflow" in str(link_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
 
             odps_id = link_result.get("id") or link_result.get("odps_contract", {}).get("id")
             if not odps_id:
@@ -1123,9 +1175,12 @@ product:
                 odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
-            if isinstance(link_result, dict) and "error" in link_result:
-                if "workflow" in str(link_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
+            if (
+                isinstance(link_result, dict)
+                and "error" in link_result
+                and "workflow" in str(link_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
 
             odps_id = link_result.get("id") or link_result.get("odps_contract", {}).get("id")
             if not odps_id:
@@ -1188,9 +1243,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1225,9 +1283,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1259,9 +1320,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1293,9 +1357,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1329,9 +1396,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1379,9 +1449,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1432,9 +1505,12 @@ product:
             # Handle async workflow if needed
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -1481,9 +1557,12 @@ product:
                 original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Filter by spec_type
             result = await client.contracts.list(spec_type="ODPS")
@@ -1514,9 +1593,12 @@ product:
                 odps_version="4.1",
             )
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Filter by ODPS version
             result = await client.contracts.list(odps_version="4.1")
@@ -1572,9 +1654,12 @@ product:
             # Handle async workflow if needed
             link_result = await handle_async_workflow_response(client, link_result, timeout=300)
 
-            if isinstance(link_result, dict) and "error" in link_result:
-                if "workflow" in str(link_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
+            if (
+                isinstance(link_result, dict)
+                and "error" in link_result
+                and "workflow" in str(link_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
         except ODPSLinkingError as e:
             if "circular reference" in str(e).lower():
                 # When linking with odps_raw, the system may extract ODCS first, creating a link
@@ -1609,9 +1694,12 @@ product:
                 odps_version="4.1",
             )
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             # Combine multiple filters
             result = await client.contracts.list(

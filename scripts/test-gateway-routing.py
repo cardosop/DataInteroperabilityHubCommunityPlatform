@@ -247,7 +247,7 @@ class GatewayRoutingTest:
                     403,
                     404,
                 ]  # 404 means route exists but endpoint doesn't
-            except Exception:
+            except requests.RequestException:
                 return False
 
         # Test API service directly (bypass gateway)
@@ -280,7 +280,7 @@ class GatewayRoutingTest:
             print(f"❌ FAILED: {e}")
             self.tests_failed += 1
             self.failures.append(f"Service routing: {e}")
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"⚠️  SKIPPED: Service not accessible: {e}")
             self.tests_skipped += 1
 

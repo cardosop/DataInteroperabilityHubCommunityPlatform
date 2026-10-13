@@ -71,7 +71,11 @@ export function useRenameFile() {
       fileService.rename(id, name),
     successMessage: 'File renamed',
     errorMessage: 'Failed to rename file',
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      // Patch the detail cache with the canonical serialised payload
+      // (the page reflects the new name without a flicker), then
+      // re-validate the list + detail against the backend.
+      queryClient.setQueryData(['files', 'detail', variables.id], data);
       queryClient.invalidateQueries({ queryKey: ['files', 'detail', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['files'] });
     },

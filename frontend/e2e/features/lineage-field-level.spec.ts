@@ -32,7 +32,11 @@ import { getTestUser } from '../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../fixtures/helpers';
 
 test.describe('Field-level lineage (Phase 228.F2)', () => {
-  test.setTimeout(120_000);
+  // 240s: tail-of-batch churn stacks login backoff (~45s) + the 90s
+  // navigation wait past the old 120s budget — the run died inside
+  // waitForAppMainReady's settle wait with the budget expired (same
+  // convention as DE-010/015 and features/integrations.spec.ts).
+  test.setTimeout(240_000);
 
   test('include_fields=true visualisation returns field_nodes + field_links keys', async ({ page }) => {
     const user = await getTestUser();
@@ -45,33 +49,51 @@ test.describe('Field-level lineage (Phase 228.F2)', () => {
       page, user, '/contracts',
       {
         timeout: 90_000,
-        contentSelector: '.contract-list, main',
+        // `.contract-list` never existed — ContractListPage renders
+        // `.contract-list-page` / `.contract-list-table` (b7: the poll
+        // leaned on `main` alone and ate the full budget during the
+        // auth-init stall).
+        contentSelector:
+          '.contract-list-page, [data-testid="contract-list-page"], .contract-list-table, [data-testid="contract-list-table"], main',
       },
     );
     if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to login — auth not available');
+      test.skip(page.url().includes('/login'), 'Redirected to login — auth not available');
     }
     await waitForLoadingComplete(page, { timeout: 15_000 });
 
-    // Pick the first available contract.
-    const firstContract = page.locator('a[href^="/contracts/"]').first();
+    // Pick the first available contract. The list rows are <tr> with
+    // navigate() onClick (no anchors) — the row's checkbox testid
+    // `contract-select-<uuid>` carries the contract id (b7: the
+    // a[href^="/contracts/"] probe found zero anchors and skipped).
+    const firstContract = page
+      .locator('tbody [data-testid^="contract-select-"]:not([data-testid="contract-select-all"])')
+      .first();
     if ((await firstContract.count()) === 0) {
-      test.skip(true, 'No contracts available in this environment');
+      test.skip((await firstContract.count()) === 0, 'No contracts available in this environment');
     }
-    const href = (await firstContract.getAttribute('href')) ?? '';
-    const match = /\/contracts\/([^/?#]+)/.exec(href);
+    const testId = (await firstContract.getAttribute('data-testid')) ?? '';
+    const match = /^contract-select-(.+)$/.exec(testId);
     if (!match) {
-      test.skip(true, "Couldn't parse contract id from href");
+      test.skip(!match, "Couldn't parse contract id from row");
     }
     const contractId = match[1];
 
     // Hit the visualization endpoint with include_fields=true.  The
     // spec at F2.3 promises field_nodes + field_links keys are
     // present on the JSON response when the param is set.
+    // page.request does NOT share the page session — attach the bearer
+    // token explicitly (b7: the unauthenticated call surfaced as a 500).
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
     const apiBase =
       process.env.E2E_API_BASE_URL ?? '/api/v1';
     const response = await page.request.get(
       `${apiBase}/contracts/${contractId}/lineage/visualization/?format=json&max_depth=2&include_fields=true`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     expect(response.status(), 'visualization endpoint responds 200').toBe(200);
     const body = await response.json();
@@ -90,17 +112,24 @@ test.describe('Field-level lineage (Phase 228.F2)', () => {
       page, user, '/contracts',
       {
         timeout: 90_000,
-        contentSelector: '.contract-list, main',
+        // `.contract-list` never existed — ContractListPage renders
+        // `.contract-list-page` / `.contract-list-table` (b7: the poll
+        // leaned on `main` alone and ate the full budget during the
+        // auth-init stall).
+        contentSelector:
+          '.contract-list-page, [data-testid="contract-list-page"], .contract-list-table, [data-testid="contract-list-table"], main',
       },
     );
     if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to login');
+      test.skip(page.url().includes('/login'), 'Redirected to login');
     }
     await waitForLoadingComplete(page, { timeout: 15_000 });
 
-    const firstContract = page.locator('a[href^="/contracts/"]').first();
+    // Same dead-selector class as the sibling test: rows are <tr>, not
+    // anchors (b7: zero anchors → unconditional skip).
+    const firstContract = page.locator('.contract-list-table tbody tr.contract-row').first();
     if ((await firstContract.count()) === 0) {
-      test.skip(true, 'No contracts available');
+      test.skip((await firstContract.count()) === 0, 'No contracts available');
     }
     await firstContract.click();
     await waitForLoadingComplete(page, { timeout: 15_000 });
@@ -108,7 +137,7 @@ test.describe('Field-level lineage (Phase 228.F2)', () => {
     // Switch to Lineage tab.
     const lineageTab = page.getByRole('tab', { name: /lineage/i }).first();
     if ((await lineageTab.count()) === 0) {
-      test.skip(true, 'No Lineage tab on this contract');
+      test.skip((await lineageTab.count()) === 0, 'No Lineage tab on this contract');
     }
     await lineageTab.click();
     await waitForLoadingComplete(page, { timeout: 15_000 });
@@ -116,7 +145,7 @@ test.describe('Field-level lineage (Phase 228.F2)', () => {
     // Capability gate.
     const entrypoint = page.getByTestId('lineage-edit-entrypoint');
     if ((await entrypoint.count()) === 0) {
-      test.skip(true, 'lineage_field_editor capability OFF in this environment');
+      test.skip((await entrypoint.count()) === 0, 'lineage_field_editor capability OFF in this environment');
     }
     await entrypoint.locator('button').click();
 

@@ -509,7 +509,7 @@ class VirtualizationWorkflow:
             else:
                 # For standard query types (SQL, REST, GraphQL, etc.), use the same
                 # entrypoint as the REST path: VirtualizationService._execute_query_against_sources
-                # and _aggregate_results (feat1 2.1.1 – single execution path).
+                # and _aggregate_results (feat1 2.1.1 - single execution path).
                 result_data = VirtualizationWorkflow._execute_via_service_sources(
                     service=service,
                     virtual_dataset=virtual_dataset,
@@ -529,14 +529,10 @@ class VirtualizationWorkflow:
             try:
                 result_rows = result_data.get("data", [])
                 if result_rows:
-                    service._run_quality_check_on_results(
-                        result_rows, execution, virtual_dataset
-                    )
+                    service._run_quality_check_on_results(result_rows, execution, virtual_dataset)
                     execution.save(update_fields=["execution_log", "updated_at"])
             except Exception as quality_err:
-                execution.add_log_entry(
-                    "WARNING", f"Quality check failed: {quality_err!s}"
-                )
+                execution.add_log_entry("WARNING", f"Quality check failed: {quality_err!s}")
                 logger.warning(
                     "Quality check failed for query execution",
                     workflow_instance_id=str(instance.id),
@@ -619,10 +615,19 @@ class VirtualizationWorkflow:
         Returns:
             Query result data dictionary
         """
-        from hub.apps.semantic.service_client import SemanticServiceClient
+        # SPARQL execution is paid-layer — semantic registers the client
+        # factory; fail closed (ValidationError) without it.
+        from hub.apps.core.commercial_hooks import get_service_client_factory
 
-        try:
-            client = SemanticServiceClient()
+        client_cls = get_service_client_factory("SEMANTIC")
+        if client_cls is None:
+            raise ValidationError(
+                "SPARQL query execution is not available in core-only deployments",
+                code="SPARQL_EXECUTION_FAILED",
+            )
+
+        def _run_sparql() -> dict[str, Any]:
+            client = client_cls()
             result = client.query_sparql(
                 query=query,
                 output_format="json",
@@ -653,6 +658,9 @@ class VirtualizationWorkflow:
                 "source_type": "sparql",
                 "query_type": QueryType.SPARQL,
             }
+
+        try:
+            result_data = _run_sparql()
         except Exception as e:
             logger.error(
                 f"SPARQL query execution failed: {e}", extra={"error": str(e)}, exc_info=True
@@ -660,6 +668,8 @@ class VirtualizationWorkflow:
             raise ValidationError(
                 f"SPARQL query execution failed: {e!s}", code="SPARQL_EXECUTION_FAILED"
             ) from e
+        else:
+            return result_data
 
     @staticmethod
     def _execute_via_service_sources(
@@ -675,7 +685,8 @@ class VirtualizationWorkflow:
         Delegates to VirtualizationService._execute_query_against_sources and
         _aggregate_results so workflow and view share one implementation (feat1 2.1.1/2.1.2).
         """
-        try:
+
+        def _execute_sources() -> dict[str, Any]:
             sources = virtual_dataset.get_sources() or []
             if not sources:
                 raise ValidationError(
@@ -704,6 +715,9 @@ class VirtualizationWorkflow:
                 "source_type": results[0].get("source_type", "unknown") if results else "unknown",
                 "query_type": virtual_dataset.query_type,
             }
+
+        try:
+            result_data = _execute_sources()
         except ValidationError:
             raise
         except Exception as e:
@@ -717,6 +731,8 @@ class VirtualizationWorkflow:
                 f"Query execution failed: {e!s}",
                 code="QUERY_EXECUTION_FAILED",
             ) from e
+        else:
+            return result_data
 
     @staticmethod
     def _execute_federated_query(
@@ -1166,8 +1182,6 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(instance.id),
                 execution_id=str(execution.id),
             )
-
-            return {"rolled_back": True}
         except QueryExecution.DoesNotExist:
             logger.warning(
                 "Execution not found for rollback",
@@ -1175,6 +1189,8 @@ class VirtualizationWorkflow:
                 execution_id=execution_id,
             )
             return {"rolled_back": False, "reason": "execution not found"}
+        else:
+            return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
@@ -1209,8 +1225,6 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(instance.id),
                 cache_key=cache_key,
             )
-
-            return {"rolled_back": True}
         except Exception as e:
             logger.warning(
                 "Failed to rollback cache",
@@ -1220,6 +1234,8 @@ class VirtualizationWorkflow:
                 exc_info=True,
             )
             return {"rolled_back": False, "reason": f"Failed to delete cache: {e!s}"}
+        else:
+            return {"rolled_back": True}
 
     @classmethod
     def execute(
@@ -1267,7 +1283,7 @@ class VirtualizationWorkflow:
         try:
             Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise ValueError(f"Tenant matching query does not exist: {tenant_id}")
+            raise ValueError(f"Tenant matching query does not exist: {tenant_id}") from None
 
         # Prepare workflow input
         workflow_input = {

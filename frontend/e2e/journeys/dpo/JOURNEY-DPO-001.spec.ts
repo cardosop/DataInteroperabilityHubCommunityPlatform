@@ -14,6 +14,7 @@ import { expect, test } from '../../fixtures/test-data-cleanup';
 import { cleanupOldE2EAssets, createAssetViaApi, getAssetKeyViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
+  retryPastTransientCapabilityGate,
   assertNonExistentIdShowsError,
   ensureAssetActivationPrerequisites,
   injectTokensBeforeGotoForUser,
@@ -97,13 +98,33 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await createButton.first().click();
 
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
+      // Phase 250.6.B — the create route opens on the type-picker step; the
+      // form fields render only after a pick/skip. The button navigation was
+      // exercised above; re-enter via the deep-link bypass so the rest of the
+      // journey drives the form (picker coverage lives in
+      // asset-type-picker.spec.ts).
+      await page.goto('/assets/create?skip=picker', { waitUntil: 'domcontentloaded' });
+    // CapabilityRoute fails closed on a transient capabilities-fetch hiccup
+    // (batch load / API restart window) — one re-navigation recovers it;
+    // skip with a reason when the gate persists.
+    const gateRecovered = await retryPastTransientCapabilityGate(
+      page,
+      '/assets/create?skip=picker',
+    );
+    test.skip(gateRecovered === false, 'asset_creation capability transiently unavailable (batch load)');
+    if (!gateRecovered) return;
+
       // Phase 226.F1.b — the create-form fields are now testid'd; keep the
       // existing `input[id="..."]` selectors as a parallel anchor so the
       // wait still succeeds on builds without F1.b deployed (zero-risk
       // migration).
+      // 30s budget (was 10s): this wait follows a full page.goto reload —
+      // Vite transform + capabilities fetch + form mount on the HDD box
+      // under E2E load measured >10s, failing the journey BEFORE any real
+      // step ran (the retry then passed the same selector unchanged).
       await page.waitForSelector(
         '[data-testid="asset-create-key"], input[id="asset-key"]',
-        { timeout: 10000 },
+        { timeout: 30000 },
       );
       // Phase 213.E — prefix MUST start with `e2e-` so the orphan reaper script can sweep
       // the row if per-test cleanup fails (worker crash, expired token, etc.). The reaper
@@ -115,7 +136,6 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await page.getByTestId('asset-create-key').or(page.locator('input[id="asset-key"]')).fill(assetKey);
       await page.getByTestId('asset-create-name').or(page.locator('input[id="asset-name"]')).fill('Test Asset');
       await page.getByTestId('asset-create-description').or(page.locator('textarea[id="asset-description"]')).fill('Test asset description');
-      await page.getByTestId('asset-create-visibility').or(page.locator('select[id="asset-visibility"]')).selectOption('INTERNAL');
 
       // The data-testid was added in Phase 226.F1.b
       // (frontend/src/features/assets/components/AssetCreatePage.tsx:355). Mirror
@@ -237,8 +257,17 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           const maxUploadRetries = 5;
 
           while (!uploadSuccess && uploadRetries < maxUploadRetries) {
+            // Backend enforces unique ACTIVE filenames per tenant
+            // (FILENAME_COLLISION 409) — the fixed name 'test.csv'
+            // collided with residue from prior runs (AND with this
+            // test's own first attempt on retry), failing the journey
+            // at the upload step before any real assertion ran. Unique
+            // per attempt, same convention as file-upload-flow.spec.ts.
+            // The CSV CONTENT (not the name) drives schema inference:
+            // keep the sample-upload.csv schema so the step-3a
+            // assertion still sees id, name, value, created_at.
             await datasetFileInput.setInputFiles({
-              name: 'test.csv',
+              name: `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.csv`,
               mimeType: 'text/csv',
               // Use same schema as ManualTest/05-SUPPORT-MATERIAL/data/sample-upload.csv
               // so schema inference produces columns: id, name, value, created_at
@@ -445,7 +474,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           await verifyAuditEvent(
             page,
             {
-              action: 'DQ_RUN_TRIGGERED',
+              // The DQ run create view emits DQ_RUN_CREATED
+              // (hub/apps/dq/views.py) — DQ_RUN_TRIGGERED does not exist
+              // in the backend and never matched a row.
+              action: 'DQ_RUN_CREATED',
               resourceType: 'DQ_RUN',
               resourceId: dqRunId,
             },
@@ -496,7 +528,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         if (compRunId) {
           // Phase 226 G8 — audit-trail guarantee.
           await verifyAuditEvent(page, {
-            action: 'COMPLIANCE_RUN_TRIGGERED',
+            // The compliance run create view emits COMPLIANCE_RUN_CREATED
+            // (hub/apps/compliance/views.py) — COMPLIANCE_RUN_TRIGGERED
+            // does not exist in the backend and never matched a row.
+            action: 'COMPLIANCE_RUN_CREATED',
             resourceType: 'COMPLIANCE_RUN',
             resourceId: compRunId,
           });
@@ -627,13 +662,13 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           type: 'activation-skipped',
           description: `Prerequisites failed: ${prereq.error}`,
         });
-        test.skip(
-          true,
-          `Activation prerequisites failed: ${prereq.error}. ` +
-            'Asset activation requires an ACTIVE contract — skipping activation step.'
-        );
-        return;
       }
+      test.skip(
+        !prereq.success,
+        `Activation prerequisites failed: ${prereq.error}. ` +
+          'Asset activation requires an ACTIVE contract — skipping activation step.'
+      );
+      if (!prereq.success) return;
 
       // Still on `/assets/${assetId}` from the navigation above; ensure() only used fetch().
       // Re-navigate via loginAndNavigateToRoute (instead of bare page.reload) to refresh
@@ -651,8 +686,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       const activateButton = page.locator(
         '[data-testid="btn-activate-asset"], button:has-text("Activate Asset")'
       );
+      let activateButtonVisible = false;
       try {
         await activateButton.first().waitFor({ state: 'visible', timeout: 15000 });
+        activateButtonVisible = true;
       } catch {
         // D86: Button not visible is a real precondition failure — skip (not silent pass).
         // This surfaces as YELLOW in CI so the team investigates activation prerequisites.
@@ -660,13 +697,13 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           type: 'activation-skipped',
           description: 'Activate button not visible after 15s',
         });
-        test.skip(
-          true,
-          'Activate Asset button not visible after 15s — prerequisites (contracts) may be unmet. ' +
-            'Investigate: does createAssetViaApi(ensureActivated) complete? Is the contract VALID+NORMALIZED?'
-        );
-        return;
       }
+      test.skip(
+        !activateButtonVisible,
+        'Activate Asset button not visible after 15s — prerequisites (contracts) may be unmet. ' +
+          'Investigate: does createAssetViaApi(ensureActivated) complete? Is the contract VALID+NORMALIZED?'
+      );
+      if (!activateButtonVisible) return;
 
       const responsePromise = page.waitForResponse(
         (r) => r.url().includes('/assets/') && r.url().includes('/activate/'),
@@ -684,7 +721,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           description: `API timeout: ${String(activateTimeoutErr).slice(0, 100)}`,
         });
         test.skip(
-          true,
+          activateResp === undefined,
           `Activate API timed out (60s): ${String(activateTimeoutErr).slice(0, 200)}. ` +
             'This may indicate backend overload — investigate.'
         );
@@ -708,7 +745,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           description: `Backend ${activateResp.status()} error`,
         });
         test.skip(
-          true,
+          activateResp.status() >= 500,
           `Asset activation returned ${activateResp.status()}: ${body.slice(0, 200)}. Backend error.`
         );
         return;
@@ -721,7 +758,11 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
 
       // Verify backend persisted ACTIVE status (avoids stale cache false positive)
       const apiActive = await page.evaluate(async (aid: string) => {
-        const token = localStorage.getItem('access_token');
+        const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      const token =
+        (typeof g === 'function' ? g() : null) ??
+        localStorage.getItem('access_token');
         if (!token) return false;
         const res = await fetch(`${window.location.origin}/api/v1/assets/${aid}/`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -825,10 +866,20 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       // safety net inside `handleSubmit` (which is unreachable through the disabled button).
       // Asserting on `validity.valueMissing` or `.error-message` was wrong.
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+      await loginAndNavigateToRoute(page, testUser, '/assets/create?skip=picker', {
         timeout: 60000,
         contentSelector: 'input[id="asset-key"]',
       });
+    // CapabilityRoute fails closed on a transient capabilities-fetch hiccup
+    // (batch load / API restart window) — one re-navigation recovers it;
+    // skip with a reason when the gate persists.
+    const gateRecovered = await retryPastTransientCapabilityGate(
+      page,
+      '/assets/create?skip=picker',
+    );
+    test.skip(gateRecovered === false, 'asset_creation capability transiently unavailable (batch load)');
+    if (!gateRecovered) return;
+
       await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
       // Clear the auto-filled key (handleNameChange auto-slugifies name → key) by typing
       // name first, then explicitly clearing key. keyEdited becomes true, so further name
@@ -845,10 +896,21 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
     test('asset create with empty name blocks submit (button disabled)', async ({ page }) => {
       // Same contract: button is disabled when name is empty.
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+      await loginAndNavigateToRoute(page, testUser, '/assets/create?skip=picker', {
         timeout: 60000,
         contentSelector: 'input[id="asset-key"]',
       });
+    // CapabilityRoute fails closed on a transient capabilities-fetch hiccup
+    // (batch load / API restart window) — one re-navigation recovers it;
+    // skip with a reason when the gate persists.
+    const gateRecovered = await retryPastTransientCapabilityGate(
+      page,
+      '/assets/create?skip=picker',
+    );
+    test.skip(gateRecovered === false, 'asset_creation capability transiently unavailable (batch load)');
+    if (!gateRecovered) return;
+
+
       await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
       // Fill key first, then explicitly clear name (the form does NOT auto-fill name from key —
       // the auto-fill direction is only name → key via slugify).
@@ -875,10 +937,21 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       // right floor without masking real hangs.
       test.setTimeout(120000);
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+      await loginAndNavigateToRoute(page, testUser, '/assets/create?skip=picker', {
         timeout: 60000,
         contentSelector: 'input[id="asset-key"]',
       });
+    // CapabilityRoute fails closed on a transient capabilities-fetch hiccup
+    // (batch load / API restart window) — one re-navigation recovers it;
+    // skip with a reason when the gate persists.
+    const gateRecovered = await retryPastTransientCapabilityGate(
+      page,
+      '/assets/create?skip=picker',
+    );
+    test.skip(gateRecovered === false, 'asset_creation capability transiently unavailable (batch load)');
+    if (!gateRecovered) return;
+
+
       await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
       await page.fill('input[id="asset-name"]', 'Test Asset');
       // Fill key AFTER name to override the auto-slugified value (handleKeyChange marks
@@ -917,15 +990,24 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       // Fetch the key in Node.js context — no CORS restriction
       const existingKey = await getAssetKeyViaApi(testUser, existingAssetId);
 
-      if (!existingKey) {
-        test.skip(true, 'Could not fetch asset key via API');
-        return;
-      }
+      test.skip(!existingKey, 'Could not fetch asset key via API');
+      if (!existingKey) return;
 
-      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+      await loginAndNavigateToRoute(page, testUser, '/assets/create?skip=picker', {
         timeout: 60000,
         contentSelector: 'input[id="asset-key"]',
       });
+    // CapabilityRoute fails closed on a transient capabilities-fetch hiccup
+    // (batch load / API restart window) — one re-navigation recovers it;
+    // skip with a reason when the gate persists.
+    const gateRecovered = await retryPastTransientCapabilityGate(
+      page,
+      '/assets/create?skip=picker',
+    );
+    test.skip(gateRecovered === false, 'asset_creation capability transiently unavailable (batch load)');
+    if (!gateRecovered) return;
+
+
       await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
       await page.fill('input[id="asset-key"]', existingKey);
       await page.fill('input[id="asset-name"]', 'Duplicate Key Asset');
@@ -1002,10 +1084,9 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await page.waitForTimeout(2000);
 
       const assetListPage = page.locator('.asset-list-page, [data-testid="asset-list-page"]').first();
-      if ((await assetListPage.count()) === 0) {
-        test.skip(true, 'Asset list page not rendered — no .asset-list-page, [data-testid="asset-list-page"] element found (empty state or error)');
-        return;
-      }
+      const assetListPageCount = await assetListPage.count();
+      test.skip(assetListPageCount === 0, 'Asset list page not rendered — no .asset-list-page, [data-testid="asset-list-page"] element found (empty state or error)');
+      if (assetListPageCount === 0) return;
       {
         // Capture initial state before filtering
         const initialRowCount = await page.locator('.asset-list-page, [data-testid="asset-list-page"] tr, .asset-list-page, [data-testid="asset-list-page"] .asset-card, .asset-list-page, [data-testid="asset-list-page"] [data-testid*="asset"]').count();

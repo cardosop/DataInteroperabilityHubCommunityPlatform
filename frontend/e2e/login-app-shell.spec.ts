@@ -186,7 +186,10 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15000 });
 
     // Confirm tokens are present before logout
-    const tokenBefore = await page.evaluate(() => localStorage.getItem('access_token'));
+    const tokenBefore = await page.evaluate(() => {
+      const g = (window as Window & { __getAccessToken?: () => string | null }).__getAccessToken;
+      return typeof g === 'function' ? g() : localStorage.getItem('access_token');
+    });
     expect(tokenBefore).toBeTruthy();
 
     // Open user menu and click logout

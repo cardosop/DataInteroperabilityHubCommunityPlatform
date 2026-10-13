@@ -272,7 +272,7 @@ class TestFieldLevelLineageExtraction(TestCase):
         be updated to assert graceful handling.
         """
         with self.assertRaises(AttributeError):
-            extract_contract_level_lineage(None)  # type: ignore[misc]
+            extract_contract_level_lineage(None)
 
     def test_extract_contract_level_lineage_with_empty_transform_sources(self):
         """Test extraction with empty transformSourceObjects list."""

@@ -48,15 +48,16 @@ class HealthService(BaseService):
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
-            return {
-                "status": "connected",
-                "healthy": True,
-            }
         except Exception as e:
             return {
                 "status": f"error: {e!s}",
                 "healthy": False,
                 "error": str(e),
+            }
+        else:
+            return {
+                "status": "connected",
+                "healthy": True,
             }
 
     def check_redis_health(self) -> dict[str, Any]:
@@ -93,9 +94,11 @@ class HealthService(BaseService):
         """
         Phase 277.B.079 — health probe for ClamAV daemon.
 
-        Sends a ``zVERSION`` command to clamd and checks the response
-        contains ``ClamAV`` — same probe as the docker-compose
-        healthcheck and the Kubernetes exec probe.
+        Sends a ``VERSION`` command to clamd and checks the response
+        contains ``ClamAV``. (NOT ``zVERSION``: that variant also resolves
+        the daemon's hostname/UID/GID and blocks on container DNS reverse
+        lookup, making the probe time out even though the daemon answers
+        PING/VERSION instantly.)
 
         When ``CLAMAV_ENABLED`` is False, returns status=disabled.
         Connection failures return status=unhealthy.
@@ -114,7 +117,7 @@ class HealthService(BaseService):
             sock.settimeout(min(timeout, 5.0))
             try:
                 sock.connect((host, port))
-                sock.sendall(b"zVERSION\n")
+                sock.sendall(b"VERSION\n")
                 banner = b""
                 while True:
                     chunk = sock.recv(4096)
@@ -228,7 +231,11 @@ class HealthService(BaseService):
             if not baas_health.get("all_healthy", True):
                 status["status"] = "unhealthy"
 
-        http_status = 200 if status["status"] == "healthy" else 503
+        # Liveness contract: the LB/monitoring probe must receive 200 for
+        # both 'healthy' and 'degraded' (optional-service outages must not
+        # remove pods from rotation); 503 is reserved for 'unhealthy'
+        # (DB/Redis down).
+        http_status = 503 if status["status"] == "unhealthy" else 200
         status["http_status"] = http_status
 
         return status

@@ -140,18 +140,18 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         # 201 = created with successful Prefect sync
         # 207 = created but Prefect deployment sync failed (expected in test env)
-        self.assertIn(response.status_code, (status.HTTP_201_CREATED, 207))
+        assert response.status_code in (status.HTTP_201_CREATED, 207)
         resp_data = response.data
         # 207 wraps the resource inside a "resource" key
         if response.status_code == 207:
             resp_data = response.data.get("resource", response.data)
-        self.assertEqual(resp_data["name"], "Daily Sales Ingestion")
-        self.assertEqual(resp_data["source_type"], "S3")
-        self.assertIn("id", resp_data)
+        assert resp_data["name"] == "Daily Sales Ingestion"
+        assert resp_data["source_type"] == "S3"
+        assert "id" in resp_data
 
         ingestion = ScheduledIngestion.objects.get(id=resp_data["id"])
-        self.assertEqual(ingestion.tenant, self.tenant)
-        self.assertEqual(ingestion.created_by, self.user)
+        assert ingestion.tenant == self.tenant
+        assert ingestion.created_by == self.user
 
     def test_create_scheduled_ingestion_invalid_cron(self):
         """Test creating scheduled ingestion with invalid cron (schedule_config for CUSTOM_CRON)."""
@@ -166,10 +166,9 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/scheduled-ingestions/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue(
-            "schedule_config" in response.data or "schedule" in str(response.data).lower(),
-            f"Expected schedule_config or schedule in error: {response.data}",
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "schedule_config" in response.data or "schedule" in str(response.data).lower(), (
+            f"Expected schedule_config or schedule in error: {response.data}"
         )
 
     def test_create_scheduled_ingestion_invalid_regex(self):
@@ -184,8 +183,8 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/scheduled-ingestions/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("file_pattern", response.data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "file_pattern" in response.data
 
     def test_list_scheduled_ingestions(self):
         """Test listing scheduled ingestions (paginated or list)."""
@@ -204,16 +203,16 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-ingestions/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
-        self.assertEqual(len(results), 2)
+        assert len(results) == 2
         names = [item["name"] for item in results]
-        self.assertIn("Ingestion 1", names)
-        self.assertIn("Ingestion 2", names)
+        assert "Ingestion 1" in names
+        assert "Ingestion 2" in names
 
     def test_retrieve_scheduled_ingestion(self):
         """Test retrieving a scheduled ingestion"""
@@ -223,9 +222,9 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-ingestions/{ingestion.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["name"], "Test Ingestion")
-        self.assertEqual(response.data["id"], str(ingestion.id))
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["name"] == "Test Ingestion"
+        assert response.data["id"] == str(ingestion.id)
 
     def test_update_scheduled_ingestion(self):
         """Test updating a scheduled ingestion (schedule_config, not schedule)."""
@@ -242,25 +241,28 @@ class ScheduledIngestionViewSetTest(TestCase):
             f"/api/v1/scheduled-ingestions/{ingestion.id}/", data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["description"], "Updated description")
-        self.assertEqual(response.data["schedule_config"].get("time"), "03:00")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["description"] == "Updated description"
+        assert response.data["schedule_config"].get("time") == "03:00"
 
         ingestion.refresh_from_db()
-        self.assertEqual(ingestion.description, "Updated description")
-        self.assertEqual(ingestion.schedule_config.get("time"), "03:00")
+        assert ingestion.description == "Updated description"
+        assert ingestion.schedule_config.get("time") == "03:00"
 
     def test_delete_scheduled_ingestion(self):
         """Test deleting a scheduled ingestion"""
+        # No prefect_deployment_id: this test covers the HARD-delete path.
+        # (The prefect-blocked soft-delete + 409 path has its own test
+        # below; a deployment id would route this through the paid Prefect
+        # integration and 409 in core-only mode.)
         ingestion = ScheduledIngestion.objects.create(
-            **_scheduled_ingestion_kwargs(self.tenant, self.user),
-            prefect_deployment_id=uuid.uuid4(),
+            **_scheduled_ingestion_kwargs(self.tenant, self.user)
         )
 
         response = self.client.delete(f"/api/v1/scheduled-ingestions/{ingestion.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(ScheduledIngestion.objects.filter(id=ingestion.id).exists())
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not ScheduledIngestion.objects.filter(id=ingestion.id).exists()
 
     def test_list_runs(self):
         """Test listing runs for a scheduled ingestion (paginated or list)."""
@@ -284,16 +286,16 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-ingestions/{ingestion.id}/runs/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
-        self.assertEqual(len(results), 2)
+        assert len(results) == 2
         statuses = [item["status"] for item in results]
-        self.assertIn("COMPLETED", statuses)
-        self.assertIn("FAILED", statuses)
+        assert "COMPLETED" in statuses
+        assert "FAILED" in statuses
 
     def test_retrieve_run(self):
         """Test retrieving a specific run"""
@@ -312,10 +314,10 @@ class ScheduledIngestionViewSetTest(TestCase):
         # Retrieve run via flat runs endpoint: /api/v1/scheduled-ingestions/runs/{run_id}/
         response = self.client.get(f"/api/v1/scheduled-ingestions/runs/{run.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["status"], "COMPLETED")
-        self.assertEqual(response.data["id"], str(run.id))
-        self.assertEqual(response.data["result_json"]["files_processed"], 5)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["status"] == "COMPLETED"
+        assert response.data["id"] == str(run.id)
+        assert response.data["result_json"]["files_processed"] == 5
 
     def test_trigger_ingestion(self):
         """
@@ -345,14 +347,14 @@ class ScheduledIngestionViewSetTest(TestCase):
                     os.environ.pop("PREFECT_INTEGRATION_SERVICE_URL", None)
                 else:
                     os.environ["PREFECT_INTEGRATION_SERVICE_URL"] = prev
-            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-            self.assertIn("flow_run_id", response.data)
-            self.assertIn("scheduled_ingestion_run_id", response.data)
+            assert response.status_code == status.HTTP_202_ACCEPTED
+            assert "flow_run_id" in response.data
+            assert "scheduled_ingestion_run_id" in response.data
             run = ScheduledIngestionRun.objects.get(
                 scheduled_ingestion=ingestion,
                 prefect_flow_run_id=flow_run_id,
             )
-            self.assertEqual(run.status, ScheduledIngestionRunStatus.PENDING)
+            assert run.status == ScheduledIngestionRunStatus.PENDING
         finally:
             server.shutdown()
 
@@ -389,12 +391,8 @@ class ScheduledIngestionViewSetTest(TestCase):
                     os.environ.pop("PREFECT_INTEGRATION_SERVICE_URL", None)
                 else:
                     os.environ["PREFECT_INTEGRATION_SERVICE_URL"] = prev
-            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-            self.assertEqual(
-                queue.count,
-                count_before,
-                "Trigger must not enqueue SCHEDULED_INGESTION to RQ",
-            )
+            assert response.status_code == status.HTTP_202_ACCEPTED
+            assert queue.count == count_before, "Trigger must not enqueue SCHEDULED_INGESTION to RQ"
         finally:
             server.shutdown()
 
@@ -414,12 +412,8 @@ class ScheduledIngestionViewSetTest(TestCase):
         prev = os.environ.pop("PREFECT_INTEGRATION_SERVICE_URL", None)
         try:
             response = self.client.post(f"/api/v1/scheduled-ingestions/{ingestion.id}/trigger/")
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                response.data,
-            )
-            self.assertIn("error", response.data)
+            assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, response.data
+            assert "error" in response.data
         finally:
             if prev is not None:
                 os.environ["PREFECT_INTEGRATION_SERVICE_URL"] = prev
@@ -438,8 +432,8 @@ class ScheduledIngestionViewSetTest(TestCase):
             created_by=self.user,
         )
         response = self.client.post(f"/api/v1/scheduled-ingestions/{ingestion.id}/trigger/")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("not active", response.data["detail"].lower())
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "not active" in response.data["detail"].lower()
 
     def test_tenant_isolation(self):
         """Test that tenants can only see their own scheduled ingestions (paginated or list)."""
@@ -463,14 +457,14 @@ class ScheduledIngestionViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-ingestions/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
         ingestion_ids = [item["id"] for item in results]
-        self.assertNotIn(str(ingestion2.id), ingestion_ids)
+        assert str(ingestion2.id) not in ingestion_ids
 
     # --- Edge cases ---
 
@@ -490,14 +484,14 @@ class ScheduledIngestionViewSetTest(TestCase):
             "/api/v1/scheduled-ingestions/",
             {"status": ScheduledIngestionStatus.ACTIVE},
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
         for item in results:
-            self.assertEqual(item["status"], ScheduledIngestionStatus.ACTIVE)
+            assert item["status"] == ScheduledIngestionStatus.ACTIVE
 
     def test_trigger_with_parameters(self):
         """Trigger accepts optional parameters in body."""
@@ -522,7 +516,7 @@ class ScheduledIngestionViewSetTest(TestCase):
                     os.environ.pop("PREFECT_INTEGRATION_SERVICE_URL", None)
                 else:
                     os.environ["PREFECT_INTEGRATION_SERVICE_URL"] = prev
-            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+            assert response.status_code == status.HTTP_202_ACCEPTED
         finally:
             server.shutdown()
 
@@ -536,14 +530,10 @@ class ScheduledIngestionViewSetTest(TestCase):
         # Middleware ordering determines whether authentication or tenant
         # resolution fires first.  Both outcomes mean the endpoint is
         # correctly gated.
-        self.assertIn(
-            response.status_code,
-            (
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_401_UNAUTHORIZED,
-            ),
-            response.data,
-        )
+        assert response.status_code in (
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_401_UNAUTHORIZED,
+        ), response.data
 
     def test_costs_invalid_start_date_returns_400(self):
         """Costs endpoint returns 400 for invalid start_date format."""
@@ -552,8 +542,8 @@ class ScheduledIngestionViewSetTest(TestCase):
             "/api/v1/scheduled-ingestions/costs/",
             {"start_date": "not-a-date"},
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in response.data
 
     def test_costs_invalid_end_date_returns_400(self):
         """Costs endpoint returns 400 for invalid end_date format."""
@@ -562,8 +552,8 @@ class ScheduledIngestionViewSetTest(TestCase):
             "/api/v1/scheduled-ingestions/costs/",
             {"end_date": "invalid"},
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in response.data
 
     # ------------------------------------------------------------------
     # 25.24.1 — Deployment sync failure returns 207 + FAILED status
@@ -612,14 +602,14 @@ class ScheduledIngestionViewSetTest(TestCase):
                 format="json",
             )
 
-            self.assertEqual(response.status_code, 207)
-            self.assertIn("deployment_sync", response.data)
-            self.assertEqual(response.data["deployment_sync"]["status"], "failed")
+            assert response.status_code == 207
+            assert "deployment_sync" in response.data
+            assert response.data["deployment_sync"]["status"] == "failed"
 
             # Verify the DB record
             created_id = response.data["resource"]["id"]
             si = ScheduledIngestion.objects.get(id=created_id)
-            self.assertEqual(si.deployment_sync_status, "FAILED")
+            assert si.deployment_sync_status == "FAILED"
         finally:
             server.shutdown()
             if prev is not None:
@@ -680,15 +670,15 @@ class ScheduledIngestionViewSetTest(TestCase):
                 f"/api/v1/scheduled-ingestions/{si.id}/",
             )
 
-            self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-            self.assertIn("error", response.data)
-            self.assertEqual(response.data["error"], "prefect_deployment_delete_failed")
+            assert response.status_code == status.HTTP_409_CONFLICT
+            assert "error" in response.data
+            assert response.data["error"] == "prefect_deployment_delete_failed"
 
             # Verify the record still exists (soft-deleted)
             si.refresh_from_db()
-            self.assertEqual(si.status, ScheduledIngestionStatus.DELETED)
+            assert si.status == ScheduledIngestionStatus.DELETED
             # prefect_deployment_id should be preserved (not cleared)
-            self.assertEqual(str(si.prefect_deployment_id), "dep-to-delete-123")
+            assert str(si.prefect_deployment_id) == "dep-to-delete-123"
         finally:
             server.shutdown()
             if prev is not None:

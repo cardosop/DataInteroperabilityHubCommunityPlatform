@@ -50,9 +50,12 @@ from __future__ import annotations
 
 import re
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _CATALOGUE_PATH = Path("docs/api/error-codes.md")
 
@@ -83,6 +86,12 @@ _PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"'code'\s*:\s*'([A-Z][A-Z0-9_]+)'"),
     # code="SOME_CODE"      kwarg
     re.compile(r"\bcode\s*=\s*[\"']([A-Z][A-Z0-9_]+)[\"']"),
+    # code: ClassVar[str] = "SOME_CODE"  — the DRF classified-error class
+    # attribute (APIException subclasses); the optional annotation group
+    # covers the bare `str` annotation as well as the ClassVar form.
+    re.compile(
+        r"\bcode\s*:\s*(?:ClassVar\[[^\]]+\]|[A-Za-z_][\w\[\]., |]*)\s*=\s*[\"']([A-Z][A-Z0-9_]+)[\"']"
+    ),
     # error_code="SOME_CODE" kwarg
     re.compile(r"\berror_code\s*=\s*[\"']([A-Z][A-Z0-9_]+)[\"']"),
     # ErrorCode.SOME_CODE   enum reference

@@ -1,7 +1,14 @@
 import pytest
 
 from hub.db_router import (
-    ManagementCommandAdminRouter,  # type: ignore[attr-defined]  # test: edge-case type exercise
+    ManagementCommandAdminRouter,  # test: edge-case type exercise
+)
+
+# These tests deliberately override settings.DATABASES to exercise the
+# admin-router aliasing — the override is the point, so silence Django's
+# informational UserWarning for this module.
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:Overriding setting DATABASES can lead to unexpected behavior:UserWarning"
 )
 
 
@@ -13,7 +20,7 @@ class _Model:
     _meta = _Meta()
 
 
-@pytest.fixture()
+@pytest.fixture
 def router():
     return ManagementCommandAdminRouter()
 

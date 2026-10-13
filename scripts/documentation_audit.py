@@ -118,7 +118,7 @@ class DocumentationAuditor:
         try:
             with open(file_path, encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-        except Exception as e:
+        except OSError as e:
             return {"error": str(e), "size": 0, "keywords_found": {}}
 
         analysis = {
@@ -214,7 +214,7 @@ class DocumentationAuditor:
 
         for guide in self.usage_guides:
             guide_lower = guide.lower()
-            found = any(guide_lower in f.lower() for f in self.file_analysis.keys())
+            found = any(guide_lower in f.lower() for f in self.file_analysis)
             if found:
                 report["usage_guides_found"].append(guide)
             else:

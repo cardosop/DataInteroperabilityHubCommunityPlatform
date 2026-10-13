@@ -60,7 +60,7 @@ class ODPSAutoGenerationTest(ContractsTestBase):
 
         self.odcs_raw = json.dumps(
             {
-                "schema": "https://datacontract.com/schema/v3.0.2",
+                "apiVersion": "https://datacontract.com/schema/v3.0.2",
                 "version": "3.0.2",
                 "info": {"title": "Test Data Contract", "version": "1.0.0"},
                 "schema": {"fields": [{"name": "id", "type": "string"}]},

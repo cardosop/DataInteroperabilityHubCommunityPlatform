@@ -275,7 +275,7 @@ def test_runbook_app_encryption_key_claim_matches_terraform():
     "✅ Enabled" but the IaC was changed to disable rotation."""
     src = _read(KMS_MODULE_PATH)
     blocks = _extract_kms_key_blocks(src)
-    by_name = {name: body for name, body in blocks}
+    by_name = dict(blocks)
 
     assert "app_encryption" in by_name, (
         "Terraform module is expected to declare ``aws_kms_key.app_encryption`` "

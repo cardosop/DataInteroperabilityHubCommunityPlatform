@@ -11,6 +11,7 @@ import { useCreateScheduledIngestion } from '../hooks/useScheduledIngestion';
 import type { SourceType, ScheduleType } from '../../../shared/types/scheduledIngestion';
 import './ScheduledIngestionCreatePage.css';
 import { Button } from '../../../shared/components/Button';
+import { DatabricksWarehousePicker } from '../../warehouses/components/DatabricksWarehousePicker';
 
 export function ScheduledIngestionCreatePage() {
   const navigate = useNavigate();
@@ -20,13 +21,52 @@ export function ScheduledIngestionCreatePage() {
   const [sourceType, setSourceType] = useState<SourceType>('S3');
   const [scheduleType, setScheduleType] = useState<ScheduleType>('DAILY');
   const [credentialRef, setCredentialRef] = useState('');
+  // 6.8 (design D8) — the DATABRICKS_SOURCE picker state: the stored
+  // http_path is DERIVED from the picked warehouse, never hand-typed.
+  const [databricksHost, setDatabricksHost] = useState<string | undefined>();
+  const [databricksHttpPath, setDatabricksHttpPath] = useState<string | undefined>();
+  const [catalog, setCatalog] = useState('main');
+  const [schema, setSchema] = useState('default');
+  const [formError, setFormError] = useState<string | null>(null);
+  // Real S3 source fields — the placeholder ``{bucket: 'placeholder-bucket'}``
+  // could never run (a UI-created ingestion had no reachable source), which
+  // is what the JOURNEY-INGESTION-001 E2E needs the app to actually do.
+  const [s3Bucket, setS3Bucket] = useState('');
+  const [s3Prefix, setS3Prefix] = useState('');
+  const [s3Endpoint, setS3Endpoint] = useState('');
+  const [s3AccessKeyId, setS3AccessKeyId] = useState('');
+  const [s3SecretAccessKey, setS3SecretAccessKey] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+    // 6.8 — the derived path is the ONLY Databricks http_path: refuse the
+    // submit until a warehouse is picked (fail-closed, never a placeholder).
+    if (sourceType === 'DATABRICKS_SOURCE' && !databricksHttpPath) {
+      setFormError('Pick a workspace and a warehouse — the http_path is derived, never typed.');
+      return;
+    }
+    // Fail-closed S3 guard: a placeholder source must never reach the API.
+    if (
+      sourceType === 'S3' &&
+      (!s3Bucket.trim() || !s3AccessKeyId.trim() || !s3SecretAccessKey.trim())
+    ) {
+      setFormError('Bucket, access key ID and secret access key are required for S3 sources.');
+      return;
+    }
     try {
       // Provide minimal valid configs based on source_type and schedule_type
       let sourceConfig: Record<string, unknown> = {};
-      if (sourceType === 'S3' || sourceType === 'GCS') {
+      if (sourceType === 'S3') {
+        sourceConfig = {
+          bucket: s3Bucket.trim(),
+          ...(s3Prefix.trim() ? { prefix: s3Prefix.trim() } : {}),
+          ...(s3Endpoint.trim() ? { endpoint_url: s3Endpoint.trim() } : {}),
+          access_key_id: s3AccessKeyId.trim(),
+          secret_access_key: s3SecretAccessKey.trim(),
+          region: 'us-east-1',
+        };
+      } else if (sourceType === 'GCS') {
         sourceConfig = { bucket: 'placeholder-bucket' }; // Will need proper form later
       } else if (sourceType === 'AZURE_BLOB') {
         sourceConfig = { account_name: 'placeholder', container: 'placeholder' };
@@ -41,7 +81,13 @@ export function ScheduledIngestionCreatePage() {
       } else if (sourceType === 'BIGQUERY_SOURCE') {
         sourceConfig = { project_id: 'placeholder-project', dataset_id: 'placeholder_dataset' };
       } else if (sourceType === 'DATABRICKS_SOURCE') {
-        sourceConfig = { host: 'placeholder.cloud.databricks.com', http_path: '/sql/1.0/warehouses/placeholder', catalog: 'main', schema: 'default' };
+        // 6.8 — the picker's derived values are the stored contract.
+        sourceConfig = {
+          host: databricksHost,
+          http_path: databricksHttpPath,
+          catalog,
+          schema,
+        };
       } else if (sourceType === 'ATHENA_SOURCE') {
         sourceConfig = { database: 'placeholder_db', s3_staging_dir: 's3://placeholder-bucket/athena-results/' };
       }
@@ -140,6 +186,104 @@ export function ScheduledIngestionCreatePage() {
             <option value="ATHENA_SOURCE">Athena Source</option>
           </select>
         </div>
+
+        {sourceType === 'S3' && (
+          <div className="form-group">
+            <label htmlFor="s3_bucket">
+              Bucket <span className="required">*</span>
+            </label>
+            <input
+              id="s3_bucket"
+              type="text"
+              value={s3Bucket}
+              onChange={(e) => setS3Bucket(e.target.value)}
+              required
+              placeholder="e.g., my-source-bucket"
+            />
+            <label htmlFor="s3_prefix">Prefix</label>
+            <input
+              id="s3_prefix"
+              type="text"
+              value={s3Prefix}
+              onChange={(e) => setS3Prefix(e.target.value)}
+              placeholder="e.g., in/ (optional)"
+            />
+            <label htmlFor="s3_endpoint">Endpoint URL</label>
+            <input
+              id="s3_endpoint"
+              type="text"
+              value={s3Endpoint}
+              onChange={(e) => setS3Endpoint(e.target.value)}
+              placeholder="e.g., http://minio-test:9000 (optional; for S3-compatible stores)"
+            />
+            <label htmlFor="s3_access_key_id">
+              Access Key ID <span className="required">*</span>
+            </label>
+            <input
+              id="s3_access_key_id"
+              type="text"
+              value={s3AccessKeyId}
+              onChange={(e) => setS3AccessKeyId(e.target.value)}
+              required
+              placeholder="e.g., minio"
+            />
+            <label htmlFor="s3_secret_access_key">
+              Secret Access Key <span className="required">*</span>
+            </label>
+            <input
+              id="s3_secret_access_key"
+              type="password"
+              value={s3SecretAccessKey}
+              onChange={(e) => setS3SecretAccessKey(e.target.value)}
+              required
+              placeholder="••••••••"
+            />
+            <small className="form-help">
+              S3-compatible object stores (MinIO, etc.) go in Endpoint URL; leave it
+              empty for AWS S3 itself.
+            </small>
+          </div>
+        )}
+
+        {sourceType === 'DATABRICKS_SOURCE' && (
+          <div className="form-group">
+            {/* 6.8 (design D8) — the workspace+warehouse picker; the stored
+                http_path is the DERIVED value, never a hand-typed string. */}
+            <DatabricksWarehousePicker
+              value={databricksHttpPath}
+              onChange={setDatabricksHttpPath}
+              onHostChange={setDatabricksHost}
+            />
+            <label htmlFor="catalog">
+              Catalog <span className="required">*</span>
+            </label>
+            <input
+              id="catalog"
+              type="text"
+              value={catalog}
+              onChange={(e) => setCatalog(e.target.value)}
+              required
+              placeholder="main"
+            />
+            <label htmlFor="schema">
+              Schema <span className="required">*</span>
+            </label>
+            <input
+              id="schema"
+              type="text"
+              value={schema}
+              onChange={(e) => setSchema(e.target.value)}
+              required
+              placeholder="default"
+            />
+          </div>
+        )}
+
+        {formError && (
+          <div className="form-error" role="alert">
+            {formError}
+          </div>
+        )}
 
         <div className="form-group">
           <label htmlFor="credential_ref">Credential Reference</label>

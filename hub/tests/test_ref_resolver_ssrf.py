@@ -66,9 +66,11 @@ class TestRefResolverSSRF(TestCase):
 
     def test_localhost_ref_raises_not_warns(self):
         """$ref to http://localhost/… must raise, never just log a warning."""
-        with _mock_dns_in_resolver("127.0.0.1"):
-            with self.assertRaises(ODPSRefResolutionError) as ctx:
-                self._validate_url("http://localhost/schema.json")
+        with (
+            _mock_dns_in_resolver("127.0.0.1"),
+            self.assertRaises(ODPSRefResolutionError) as ctx,
+        ):
+            self._validate_url("http://localhost/schema.json")
         self.assertEqual(
             ctx.exception.error_code,
             ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
@@ -133,9 +135,11 @@ class TestRefResolverSSRF(TestCase):
 
     def test_hostname_resolving_to_private_ip_raises(self):
         """A public-looking hostname that resolves to a private IP must be blocked."""
-        with _mock_dns_in_resolver("10.0.0.5"):
-            with self.assertRaises(ODPSRefResolutionError) as ctx:
-                self._validate_url("https://internal.corp/schema.json")
+        with (
+            _mock_dns_in_resolver("10.0.0.5"),
+            self.assertRaises(ODPSRefResolutionError) as ctx,
+        ):
+            self._validate_url("https://internal.corp/schema.json")
         self.assertEqual(
             ctx.exception.error_code,
             ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
@@ -157,9 +161,11 @@ class TestRefResolverSSRF(TestCase):
 
     def test_ipv6_mapped_rfc1918_10x_raises(self):
         """::ffff:10.0.0.1 is an IPv4-mapped address for a private range."""
-        with _mock_dns_ipv6_in_resolver("::ffff:10.0.0.1"):
-            with self.assertRaises(ODPSRefResolutionError) as ctx:
-                self._validate_url("https://example.com/schema.json")
+        with (
+            _mock_dns_ipv6_in_resolver("::ffff:10.0.0.1"),
+            self.assertRaises(ODPSRefResolutionError) as ctx,
+        ):
+            self._validate_url("https://example.com/schema.json")
         self.assertEqual(
             ctx.exception.error_code,
             ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
@@ -167,9 +173,11 @@ class TestRefResolverSSRF(TestCase):
 
     def test_ipv6_mapped_rfc1918_192168_raises(self):
         """::ffff:192.168.1.1 is an IPv4-mapped address for a private range."""
-        with _mock_dns_ipv6_in_resolver("::ffff:192.168.1.1"):
-            with self.assertRaises(ODPSRefResolutionError) as ctx:
-                self._validate_url("https://example.com/schema.json")
+        with (
+            _mock_dns_ipv6_in_resolver("::ffff:192.168.1.1"),
+            self.assertRaises(ODPSRefResolutionError) as ctx,
+        ):
+            self._validate_url("https://example.com/schema.json")
         self.assertEqual(
             ctx.exception.error_code,
             ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
@@ -177,9 +185,11 @@ class TestRefResolverSSRF(TestCase):
 
     def test_ipv6_mapped_imds_raises(self):
         """::ffff:169.254.169.254 maps to the AWS IMDS address."""
-        with _mock_dns_ipv6_in_resolver("::ffff:169.254.169.254"):
-            with self.assertRaises(ODPSRefResolutionError) as ctx:
-                self._validate_url("https://example.com/schema.json")
+        with (
+            _mock_dns_ipv6_in_resolver("::ffff:169.254.169.254"),
+            self.assertRaises(ODPSRefResolutionError) as ctx,
+        ):
+            self._validate_url("https://example.com/schema.json")
         self.assertEqual(
             ctx.exception.error_code,
             ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,

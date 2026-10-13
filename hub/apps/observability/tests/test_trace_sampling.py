@@ -110,7 +110,7 @@ class TraceSamplingTest(TestCase):
         attributes = {"http.target": "/api/v1/datasets/", "http.method": "GET"}
 
         # Test with enough trials for statistical confidence.
-        # n=1000 with p=0.1 gives σ≈0.95%, so [0.05, 0.15] is ≈±5.3σ.
+        # n=1000 with p=0.1 gives o≈0.95%, so [0.05, 0.15] is ≈±5.3o.
         sampled_count = 0
         total_tests = 1000
 
@@ -140,7 +140,7 @@ class TraceSamplingTest(TestCase):
         attributes = {"http.target": "/api/v1/datasets/", "http.method": "GET"}
 
         # Test with enough trials for statistical confidence.
-        # n=1000 with p=0.5 gives σ≈1.58%, so [0.40, 0.60] is ≈±6.3σ.
+        # n=1000 with p=0.5 gives o≈1.58%, so [0.40, 0.60] is ≈±6.3o.
         sampled_count = 0
         total_tests = 1000
 

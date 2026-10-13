@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-285.14.6.7 — CI-ASSERT-REAL gate.
+285.14.6.7 / Phase T.1 — CI-ASSERT-REAL gate.
 
 Scans test files for placeholder assertions that indicate a test was stubbed
 but never implemented:
@@ -19,6 +19,7 @@ Exit 0 on clean, 1 if violations found.
 
 import ast
 import os
+import re
 import sys
 
 
@@ -127,6 +128,59 @@ def analyze_file(filepath: str) -> list[tuple[int, str]]:
     return violations
 
 
+# ── Phase T.1 — TypeScript extension ─────────────────────────────────────
+
+
+# Line-based regex, NOT a TS parser — documented limitation: a tautology
+# split across lines is invisible. The checker is a GROWTH gate and
+# targets the common single-line form (``expect(x).toBe(x)``,
+# ``expect(true).toBeTruthy()``); it never mis-reports a real expectation.
+_TS_IDENTICAL_OPERAND_RE = re.compile(
+    r"expect\(\s*(.+?)\s*\)\.(toBe|toEqual|toStrictEqual)\(\s*\1\s*\)"
+)
+_TS_LITERAL_TRUTHY_RE = re.compile(r"expect\(\s*true\s*\)\.toBeTruthy\(\)")
+_TS_LITERAL_FALSY_RE = re.compile(r"expect\(\s*false\s*\)\.toBeFalsy\(\)")
+
+
+def analyze_ts_source(source: str) -> list[tuple[int, str]]:
+    """Find tautological expectations in TypeScript test source.
+
+    Returns (lineno, description) for each violation.
+    """
+    violations: list[tuple[int, str]] = []
+    for lineno, line in enumerate(source.splitlines(), start=1):
+        # Skip matches that live inside a `//` line comment (a comment
+        # quoting the pattern is not a test — the first real-tree run
+        # flagged exactly this false positive).
+        code = line.split("//", 1)[0]
+        if _TS_IDENTICAL_OPERAND_RE.search(code):
+            violations.append((lineno, "tautological expect(<x>).toBe(<x>) — identical operands"))
+            continue
+        if _TS_LITERAL_TRUTHY_RE.search(code):
+            violations.append((lineno, "expect(true).toBeTruthy() — trivially true"))
+            continue
+        if _TS_LITERAL_FALSY_RE.search(code):
+            violations.append((lineno, "expect(false).toBeFalsy() — trivially true"))
+            continue
+    return violations
+
+
+def _ts_test_files() -> list[str]:
+    """Test files under frontend/ (vitest units + Playwright specs)."""
+    found: list[str] = []
+    frontend = "frontend"
+    if not os.path.isdir(frontend):
+        return found
+    for root, dirs, files in os.walk(frontend):
+        dirs[:] = [
+            d for d in dirs if d not in ("node_modules", "dist", "coverage", "__pycache__", ".git")
+        ]
+        for f in files:
+            if f.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
+                found.append(os.path.join(root, f))
+    return found
+
+
 def main() -> int:
     violations: list[tuple[str, int, str]] = []
 
@@ -138,6 +192,16 @@ def main() -> int:
             path = os.path.join(root, f)
             for lineno, desc in analyze_file(path):
                 violations.append((path, lineno, desc))
+
+    # Phase T.1 — frontend TypeScript test files (vitest + Playwright).
+    for path in _ts_test_files():
+        try:
+            with open(path) as fh:
+                source = fh.read()
+        except OSError:
+            continue
+        for lineno, desc in analyze_ts_source(source):
+            violations.append((path, lineno, desc))
 
     if violations:
         print(f"ASSERT-REAL gate: {len(violations)} violation(s) found:")

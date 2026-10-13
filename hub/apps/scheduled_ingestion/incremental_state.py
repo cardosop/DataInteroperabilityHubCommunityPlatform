@@ -112,12 +112,9 @@ class IncrementalStateManager:
         if self.is_file_failed(file_path):
             return False
 
-        # Check timestamp-based filtering
+        # Check timestamp-based filtering: only process files newer than last processed
         last_timestamp = self.get_last_processed_timestamp()
-        if last_timestamp and file_timestamp:
-            # Only process files newer than last processed
-            if file_timestamp <= last_timestamp:
-                return False
+        return not (last_timestamp and file_timestamp and file_timestamp <= last_timestamp)
 
         return True
 

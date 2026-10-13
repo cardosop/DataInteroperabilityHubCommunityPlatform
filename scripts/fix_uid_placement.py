@@ -37,22 +37,21 @@ def fix_file(filepath):
         stripped = line.strip()
 
         # Check if this is "uid = uuid.uuid4().hex[:8]" inside a call
-        if stripped == "uid = uuid.uuid4().hex[:8]":
+        if stripped == "uid = uuid.uuid4().hex[:8]" and i > 0:
             # Check if previous line has an open paren (we're inside a call)
-            if i > 0:
-                prev = lines[i - 1].rstrip()
-                if prev.endswith("(") or prev.endswith(","):
-                    # We're inside a function call - move this line before the call
-                    # Find the start of the call (Tenant.objects.create, etc)
-                    call_start = i - 1
-                    while call_start > 0 and not lines[call_start].strip().endswith("("):
-                        call_start -= 1
-                    # Get indentation of the call
-                    indent = len(lines[call_start]) - len(lines[call_start].lstrip())
-                    # Insert uid definition before the call
-                    result.insert(call_start, " " * indent + "uid = uuid.uuid4().hex[:8]")
-                    i += 1  # skip this line (it's been moved)
-                    continue
+            prev = lines[i - 1].rstrip()
+            if prev.endswith(("(", ",")):
+                # We're inside a function call - move this line before the call
+                # Find the start of the call (Tenant.objects.create, etc)
+                call_start = i - 1
+                while call_start > 0 and not lines[call_start].strip().endswith("("):
+                    call_start -= 1
+                # Get indentation of the call
+                indent = len(lines[call_start]) - len(lines[call_start].lstrip())
+                # Insert uid definition before the call
+                result.insert(call_start, " " * indent + "uid = uuid.uuid4().hex[:8]")
+                i += 1  # skip this line (it's been moved)
+                continue
 
         result.append(line)
         i += 1

@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from django.core.cache import cache
-from django.db import transaction
+from django.db import DatabaseError, InterfaceError, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -28,9 +28,11 @@ from hub.apps.transformation.exceptions import (
     TransformationValidationError,
 )
 from hub.apps.transformation.models import (
+    PipelineExecution,
     PipelineStatus,
     TransformationNode,
     TransformationPipeline,
+    WranglingSession,
 )
 from hub.apps.transformation.pipeline_compatibility_validator import PipelineCompatibilityValidator
 
@@ -235,7 +237,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 errors.append(
                     f"Source asset {source_asset_id} not found or does not belong to tenant"
                 )
-            except Exception as e:
+            except (ValueError, DatabaseError, InterfaceError) as e:
                 errors.append(f"Error validating source asset {source_asset_id}: {e!s}")
 
         # Validate target asset if specified
@@ -256,7 +258,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 errors.append(
                     f"Target asset {target_asset_id} not found or does not belong to tenant"
                 )
-            except Exception as e:
+            except (ValueError, DatabaseError, InterfaceError) as e:
                 errors.append(f"Error validating target asset {target_asset_id}: {e!s}")
 
         if errors:
@@ -288,7 +290,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Prefetch user_roles relationship to ensure has_role() works correctly
             user = User.objects.prefetch_related("user_roles__role").get(id=user_id)
         except User.DoesNotExist:
-            raise PermissionError(f"User {user_id} not found")
+            raise PermissionError(f"User {user_id} not found") from None
 
         # Platform admins have all permissions (can operate on any tenant)
         if user.is_platform_admin:
@@ -642,8 +644,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 },
             )
 
-            return pipeline
-
         except (ValidationError, PermissionError, ResourceQuotaExceededError):
             # Re-raise these specific errors as-is
             raise
@@ -660,7 +660,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
             raise ValidationError(
                 f"Failed to create transformation pipeline: {e!s}", details={"error": str(e)}
-            )
+            ) from e
+        else:
+            return pipeline
 
     @transaction.atomic
     def update_pipeline(
@@ -721,14 +723,16 @@ class TransformationService(BaseService, TransformationEventPublisher):
             if status is not None and pipeline.status != status:
                 original_values["status"] = pipeline.status
                 changes["status"] = status
-            if pipeline_definition is not None:
+            if (
+                pipeline_definition is not None
+                and pipeline.get_pipeline_definition() != pipeline_definition
+            ):
                 # Compare pipeline definitions (simplified comparison)
-                if pipeline.get_pipeline_definition() != pipeline_definition:
-                    original_values["pipeline_definition"] = pipeline.get_pipeline_definition()
-                    changes["pipeline_definition"] = pipeline_definition
-                    # Include step count for audit
-                    steps = pipeline_definition.get("steps", [])
-                    changes["step_count"] = len(steps)
+                original_values["pipeline_definition"] = pipeline.get_pipeline_definition()
+                changes["pipeline_definition"] = pipeline_definition
+                # Include step count for audit
+                steps = pipeline_definition.get("steps", [])
+                changes["step_count"] = len(steps)
             if metadata is not None:
                 # Compare metadata (simplified comparison)
                 # For metadata, we need to handle dict merging
@@ -855,8 +859,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 },
             )
 
-            return pipeline
-
         except NotFoundError:
             raise
         except Exception as e:
@@ -871,7 +873,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
             raise ValidationError(
                 f"Failed to update transformation pipeline: {e!s}", details={"error": str(e)}
-            )
+            ) from e
+        else:
+            return pipeline
 
     @transaction.atomic
     def delete_pipeline(
@@ -1082,8 +1086,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 },
             )
 
-            return node
-
         except NotFoundError:
             raise
         except Exception as e:
@@ -1099,7 +1101,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
             raise ValidationError(
                 f"Failed to create transformation node: {e!s}", details={"error": str(e)}
-            )
+            ) from e
+        else:
+            return node
 
     def _validate_pipeline_for_execution(self, pipeline: TransformationPipeline) -> None:
         """
@@ -1143,7 +1147,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
         except Asset.DoesNotExist:
-            raise NotFoundError("Asset", asset_id)
+            raise NotFoundError("Asset", asset_id) from None
 
         # Check asset status
         if asset.status not in ["DRAFT", "ACTIVE", "PUBLIC"]:
@@ -1178,7 +1182,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _select_execution_mode(
-        self, asset_id: str, tenant_id: str, force_mode: str | None = None
+        self, _asset_id: str, _tenant_id: str, force_mode: str | None = None
     ) -> str:
         """All transformation execution runs through the async orchestration
         path.  The SYNC mode was removed during the Phase 285.9 dbt-native
@@ -1237,10 +1241,10 @@ class TransformationService(BaseService, TransformationEventPublisher):
     def _execute_pipeline_sync(
         self,
         pipeline: TransformationPipeline,
-        asset_id: str,
+        _asset_id: str,
         execution: "PipelineExecution",
-        tenant_id: str,
-        user_id: str | None = None,
+        _tenant_id: str,
+        _user_id: str | None = None,
     ) -> dict[str, Any]:
         """Synchronous in-worker execution (DuckDB/Polars) has been
         deprecated in favour of the dbt-native async orchestration path
@@ -1254,6 +1258,24 @@ class TransformationService(BaseService, TransformationEventPublisher):
             error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
             pipeline_id=str(pipeline.id),
             execution_id=str(execution.id),
+            tenant_id=_tenant_id,
+        )
+
+    @staticmethod
+    def _raise_execution_error(
+        message: str,
+        *,
+        error_code: str,
+        pipeline_id: str,
+        tenant_id: str,
+        execution_id: str | None = None,
+    ) -> None:
+        """Raise TransformationExecutionError from outside caller try bodies."""
+        raise TransformationExecutionError(
+            message,
+            error_code=error_code,
+            pipeline_id=pipeline_id,
+            execution_id=execution_id,
             tenant_id=tenant_id,
         )
 
@@ -1367,7 +1389,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 pass
             except PipelineExecution.MultipleObjectsReturned:
                 # Multiple executions with same key (should not happen due to unique constraint)
-                logger.error(
+                logger.exception(
                     f"Multiple executions found with idempotency_key '{idempotency_key}'",
                     extra={"idempotency_key": idempotency_key, "tenant_id": effective_tenant_id},
                 )
@@ -1376,7 +1398,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     error_code=TransformationExecutionError.ERROR_CODE_INTERNAL_ERROR,
                     pipeline_id=pipeline_id,
                     tenant_id=effective_tenant_id,
-                )
+                ) from None
 
         try:
             # Get pipeline
@@ -1448,7 +1470,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Get execution from workflow result
             execution_id = workflow_result.get("execution_id")
             if not execution_id:
-                raise TransformationExecutionError(
+                self._raise_execution_error(
                     "Workflow execution did not return execution_id",
                     error_code=TransformationExecutionError.ERROR_CODE_INTERNAL_ERROR,
                     pipeline_id=pipeline_id,
@@ -1553,7 +1575,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # If workflow failed, raise error
             if not workflow_result.get("success", False):
                 error_message = workflow_result.get("error", "Workflow execution failed")
-                raise TransformationExecutionError(
+                self._raise_execution_error(
                     error_message,
                     error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
                     pipeline_id=pipeline_id,
@@ -1785,7 +1807,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 exc_info=True,
                             )
 
-                        raise TransformationExecutionError(
+                        self._raise_execution_error(
                             error_msg,
                             error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
                             pipeline_id=pipeline_id,
@@ -1863,7 +1885,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         )
                     except Exception as comp_error:
                         logger.exception(
-                            f"Compensation failed for async execution {execution.id}: {comp_error}",
+                            f"Compensation failed for async execution {execution.id}",
                             extra={
                                 "execution_id": str(execution.id),
                                 "compensation_error": str(comp_error),
@@ -1879,7 +1901,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         execution_id=str(execution.id),
                         tenant_id=effective_tenant_id,
                         cause=e,
-                    )
+                    ) from None
 
             logger.info(
                 f"Pipeline execution initiated: {execution.id}",
@@ -1892,8 +1914,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "user_id": effective_user_id,
                 },
             )
-
-            return execution
 
         except (
             NotFoundError,
@@ -1919,7 +1939,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 pipeline_id=pipeline_id,
                 tenant_id=effective_tenant_id,
                 cause=e,
-            )
+            ) from e
+        else:
+            return execution
 
     def _run_quality_check(
         self, asset_id: str, tenant_id: str, execution: "PipelineExecution"
@@ -1981,8 +2003,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "INFO",
             )
 
-            return quality_metrics
-
         except Exception as e:
             logger.warning(
                 f"Quality check failed (non-critical): {e}",
@@ -1991,6 +2011,18 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
             execution.add_log_entry(f"Quality check failed: {e!s}", "WARNING")
             return None
+        else:
+            return quality_metrics
+
+    @staticmethod
+    def _raise_validation_failed(message: str, *, details: dict[str, Any], tenant_id: str) -> None:
+        """Raise TransformationValidationError from outside caller try bodies."""
+        raise TransformationValidationError(
+            message,
+            error_code=TransformationValidationError.ERROR_CODE_VALIDATION_FAILED,
+            details=details,
+            tenant_id=tenant_id,
+        )
 
     def _run_compliance_check(
         self, asset_id: str, tenant_id: str, execution: "PipelineExecution"
@@ -2076,9 +2108,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     f"Risk level: {compliance_status['risk_level']}. "
                     f"Compliance violations detected."
                 )
-                raise TransformationValidationError(
+                self._raise_validation_failed(
                     error_msg,
-                    error_code=TransformationValidationError.ERROR_CODE_VALIDATION_FAILED,
                     details={
                         "asset_id": asset_id,
                         "compliance_status": compliance_status,
@@ -2100,8 +2131,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "INFO",
             )
 
-            return compliance_status
-
         except TransformationValidationError:
             raise
         except Exception as e:
@@ -2112,6 +2141,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
             execution.add_log_entry(f"Compliance check failed: {e!s}", "WARNING")
             return None
+        else:
+            return compliance_status
 
     def _validate_transformation_compliance(
         self,
@@ -2263,9 +2294,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     f"Risk level: {compliance_status['risk_level']}. "
                     f"Transformation produced non-compliant output."
                 )
-                raise TransformationValidationError(
+                self._raise_validation_failed(
                     error_msg,
-                    error_code=TransformationValidationError.ERROR_CODE_VALIDATION_FAILED,
                     details={
                         "asset_id": result_asset_id,
                         "compliance_status": compliance_status,
@@ -2281,8 +2311,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "INFO",
             )
 
-            return compliance_status
-
         except TransformationValidationError:
             raise
         except Exception as e:
@@ -2297,6 +2325,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
             execution.add_log_entry(f"Output compliance check failed: {e!s}", "WARNING")
             return None
+        else:
+            return compliance_status
 
     def preview_transformation(
         self,
@@ -2360,13 +2390,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     id=pipeline_id, tenant_id=effective_tenant_id
                 )
             except TransformationPipeline.DoesNotExist:
-                raise NotFoundError(f"Pipeline {pipeline_id} not found")
+                raise NotFoundError(f"Pipeline {pipeline_id} not found") from None
 
             # Validate asset exists
             try:
                 asset = Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
             except Asset.DoesNotExist:
-                raise NotFoundError(f"Asset {asset_id} not found")
+                raise NotFoundError(f"Asset {asset_id} not found") from None
 
             # Generate cache key based on pipeline, asset, sample_size, and sampling_method
             cache_key_data = {
@@ -2637,7 +2667,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _infer_schema_from_data(
-        self, data: list[dict[str, Any]], file_format: str
+        self, data: list[dict[str, Any]], _file_format: str
     ) -> dict[str, Any]:
         """
         Infer schema from sample data.
@@ -3041,8 +3071,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 },
             )
 
-            return quality_impact
-
         except Exception as e:
             logger.warning(
                 f"Quality impact analysis failed: {e}", extra={"error": str(e)}, exc_info=True
@@ -3054,6 +3082,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "output_quality_metrics": None,
                 "quality_comparison": None,
             }
+        else:
+            return quality_impact
 
     def _determine_status_change(
         self, input_status: str | None, output_status: str | None
@@ -3166,6 +3196,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         session_id: str | None = None,
         tenant_id: str | None = None,
         user_id: str | None = None,
+        # `request` is part of the call contract: views call
+        # wrangle_data(..., request=...) by KEYWORD.
         request: HttpRequest | None = None,
     ) -> dict[str, Any]:
         """
@@ -3220,14 +3252,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             asset = Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
         except Asset.DoesNotExist:
-            raise NotFoundError(f"Asset {asset_id} not found")
+            raise NotFoundError(f"Asset {asset_id} not found") from None
 
         # Get or create wrangling session
         if session_id:
             try:
                 session = WranglingSession.objects.get(id=session_id, tenant_id=effective_tenant_id)
             except WranglingSession.DoesNotExist:
-                raise NotFoundError(f"Wrangling session {session_id} not found")
+                raise NotFoundError(f"Wrangling session {session_id} not found") from None
         else:
             # Create new session
             session = WranglingSession.objects.create(
@@ -3571,28 +3603,20 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Simple condition evaluation (in production, use a proper expression evaluator)
         # For now, support simple comparisons like "column == value" or "column > value"
         def evaluate_condition(row: dict[str, Any], condition: str) -> bool:
-            # Parse simple conditions
-            if "==" in condition:
-                col, val = condition.split("==", 1)
+            # Parse simple conditions (dispatch over supported operators in
+            # precedence order: ==, !=, >, <).
+            for op in ("==", "!=", ">", "<"):
+                if op not in condition:
+                    continue
+                col, val = condition.split(op, 1)
                 col = col.strip()
-                val = val.strip().strip('"').strip("'")
-                return str(row.get(col, "")) == val
-            elif "!=" in condition:
-                col, val = condition.split("!=", 1)
-                col = col.strip()
-                val = val.strip().strip('"').strip("'")
-                return str(row.get(col, "")) != val
-            elif ">" in condition:
-                col, val = condition.split(">", 1)
-                col = col.strip()
+                if op in ("==", "!="):
+                    val = val.strip().strip('"').strip("'")
+                    matches = str(row.get(col, "")) == val
+                    return matches if op == "==" else not matches
                 try:
-                    return float(row.get(col, 0)) > float(val.strip())
-                except (ValueError, TypeError):
-                    return False
-            elif "<" in condition:
-                col, val = condition.split("<", 1)
-                col = col.strip()
-                try:
+                    if op == ">":
+                        return float(row.get(col, 0)) > float(val.strip())
                     return float(row.get(col, 0)) < float(val.strip())
                 except (ValueError, TypeError):
                     return False
@@ -3645,14 +3669,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 new_row[column] = str(value).strip()
             else:
                 # Try to evaluate as Python expression (limited for security)
-                try:
+
+                def _evaluate_expression(expr: str, val: Any):
                     # Only allow safe operations
-                    if "import" not in expression and "__" not in expression:
-                        new_row[column] = eval(
-                            expression, {"value": value, "str": str, "int": int, "float": float}
-                        )
-                    else:
-                        raise ValueError("Unsafe expression")
+                    if "import" not in expr and "__" not in expr:
+                        return eval(expr, {"value": val, "str": str, "int": int, "float": float})
+                    raise ValueError("Unsafe expression")
+
+                try:
+                    new_row[column] = _evaluate_expression(expression, value)
                 except Exception:
                     new_row[column] = value  # Keep original if evaluation fails
 
@@ -3704,10 +3729,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         result_data = []
 
         for row in data:
-            if columns:
-                key = tuple(row.get(col) for col in columns)
-            else:
-                key = tuple(row.items())
+            key = tuple(row.get(col) for col in columns) if columns else tuple(row.items())
 
             if key not in seen:
                 seen.add(key)

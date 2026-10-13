@@ -12,7 +12,6 @@ from django.test import RequestFactory, TestCase
 
 from hub.apps.observability.middleware import MetricsMiddleware
 from hub.apps.observability.otel_metrics import (
-    OPENTELEMETRY_AVAILABLE,
     http_errors_total,
     http_request_duration_seconds,
     http_requests_total,

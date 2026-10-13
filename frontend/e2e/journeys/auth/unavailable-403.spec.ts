@@ -25,7 +25,18 @@ test.describe('Unavailable and 403 pages', () => {
       await expect(
         page.getByRole('heading', { name: /Feature Unavailable|Unavailable/i })
       ).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({
+      // Phase 250.6.A.5 — /unavailable renders DisabledCapabilityPage
+      // (`.disabled-capability-page`, data-testid="disabled-capability-page").
+      // The legacy `.unavailable-page` markers were retired from this route;
+      // keep them in the alternation for /feature-unavailable direct
+      // callers (same defensive set waitForAppMainReady matches).
+      await expect(
+        page
+          .locator(
+            '.disabled-capability-page, [data-testid="disabled-capability-page"], .unavailable-page, [data-testid="unavailable-page"]'
+          )
+          .first()
+      ).toBeVisible({
         timeout: 5_000,
       });
     });

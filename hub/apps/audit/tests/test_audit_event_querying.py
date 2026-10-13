@@ -277,7 +277,7 @@ class AuditEventQueryingTest(TestCase):
             if event_data:
                 event_timestamp_str = event_data.get("timestamp")
                 if event_timestamp_str:
-                    from dateutil import parser
+                    from dateutil import parser  # type: ignore[import-untyped]
 
                     event_timestamp = parser.isoparse(event_timestamp_str)
                     if event_timestamp.tzinfo is None:

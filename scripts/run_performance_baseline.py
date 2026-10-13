@@ -54,7 +54,7 @@ User = get_user_model()
 class PerformanceBaselineCollector:
     """Collects performance baseline metrics"""
 
-    def __init__(self, django_version: str = None):
+    def __init__(self, django_version: str | None = None):
         self.django_version = django_version or django.get_version()
         self.results: dict[str, Any] = {
             "django_version": self.django_version,

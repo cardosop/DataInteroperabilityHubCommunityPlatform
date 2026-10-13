@@ -24,7 +24,7 @@ from pathlib import Path
 import httpx
 import redis
 from django.conf import settings
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
@@ -54,9 +54,10 @@ def get_real_redis_client_or_none():
             socket_timeout=2,
         )
         client.ping()
-        return client
     except Exception:
         return None
+    else:
+        return client
 
 
 class RefResolverInitializationTest(TestCase):
@@ -836,8 +837,14 @@ class RefResolverExternalRefTest(TestCase):
         self.assertEqual(request.method, "GET")
         self.assertEqual(result, {"type": "string", "format": "email"})
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_resolve_external_rate_limit_exceeded(self):
-        """Test that rate limit exceeded raises error using real Redis"""
+        """Test that rate limit exceeded raises error using real Redis.
+
+        The resolver-level limiter is disabled in test mode
+        (RATE_LIMIT_ENABLED=False) so suite-wide ref resolutions don't
+        exhaust the shared test-tenant bucket; this test opts back in.
+        """
         if not self.redis_client:
             self.skipTest("Redis not available for rate limiting tests")
 
@@ -1177,8 +1184,13 @@ class RefResolverCachingTest(TestCase):
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
         )
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_external_ref_rate_limit_error_handling(self):
-        """Test that rate limit errors provide clear messages using real Redis"""
+        """Test that rate limit errors provide clear messages using real Redis.
+
+        The resolver-level limiter is disabled in test mode; this test
+        opts back in.
+        """
         if not self.redis_client:
             self.skipTest("Redis not available for rate limiting tests")
 
@@ -1537,8 +1549,9 @@ class RefResolverCachingTest(TestCase):
         finally:
             resolver.resolve_external = original_resolve
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_external_ref_rate_limit_per_tenant(self):
-        """Test that rate limiting works at per-tenant level using real Redis"""
+        """Test that rate limiting works at per-tenant level using real Redis."""
         if not self.redis_client:
             self.skipTest("Redis not available for rate limiting tests")
 
@@ -1592,8 +1605,9 @@ class RefResolverCachingTest(TestCase):
         )
         self.assertIn("tenant", str(cm.exception.message).lower())
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_external_ref_rate_limit_per_user(self):
-        """Test that rate limiting works at per-user level using real Redis"""
+        """Test that rate limiting works at per-user level using real Redis."""
         if not self.redis_client:
             self.skipTest("Redis not available for rate limiting tests")
 
@@ -1962,13 +1976,13 @@ class RefResolverOrchestrationTest(SimpleTestCase):
         self.assertEqual(resolved["product"]["dataQuality"]["rules"]["items"][0]["ruleID"], "rule1")
 
     def test_resolve_all_refs_invalid_document_type(self):
-        """Test that non-dict documents raise ValueError"""
-        with self.assertRaises(ValueError) as cm:
+        """Test that non-dict documents raise TypeError"""
+        with self.assertRaises(TypeError) as cm:
             self.resolver.resolve_all_refs([])  # List, not dict
 
         self.assertIn("Document must be a dict", str(cm.exception))
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TypeError) as cm:
             self.resolver.resolve_all_refs("not a dict")  # String, not dict
 
         self.assertIn("Document must be a dict", str(cm.exception))

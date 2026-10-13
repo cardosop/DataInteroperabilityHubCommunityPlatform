@@ -57,7 +57,9 @@ def gcs_mock():
     try:
         # GCS mocking typically requires google-cloud-storage testing utilities
         # or a local GCS emulator
-        from google.cloud import storage
+        from google.cloud import (
+            storage,  # type: ignore[import-untyped]
+        )
 
         # Placeholder for GCS mock setup
         # In practice, you might use:
@@ -82,8 +84,6 @@ def azure_blob_mock():
     Note: Azure mocking requires additional setup - this is a placeholder structure.
     """
     try:
-        from azure.storage.blob import BlobServiceClient
-
         # Placeholder for Azure Blob mock setup
         # In practice, you might use:
         # - azurite (local Azure Storage emulator)
@@ -151,7 +151,7 @@ def httpx_mock():
     Provides a mocked HTTPX client for testing HTTPX-based HTTP interactions.
     """
     try:
-        from unittest.mock import MagicMock, Mock
+        from unittest.mock import MagicMock
 
         import httpx
 
@@ -203,7 +203,7 @@ def s3_bucket_fixture(bucket_name: str = "test-bucket", region: str = "us-east-1
 
             yield {"client": s3_client, "bucket_name": bucket_name}
     except ImportError:
-        raise ImportError("moto not installed - required for S3 mocking")
+        raise ImportError("moto not installed - required for S3 mocking") from None
 
 
 @contextmanager
@@ -232,4 +232,4 @@ def http_server_fixture(responses_config: dict[str, Any] | None = None):
 
             yield rsps
     except ImportError:
-        raise ImportError("responses not installed - required for HTTP mocking")
+        raise ImportError("responses not installed - required for HTTP mocking") from None

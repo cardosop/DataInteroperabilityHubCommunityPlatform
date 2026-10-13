@@ -1542,8 +1542,6 @@ class ODPSEventPublisher:
                         message=f"Successfully published {event_type} after {retry_count} retries",
                     )
 
-                return event_id
-
             except Exception as e:
                 last_error = e
 
@@ -1552,7 +1550,7 @@ class ODPSEventPublisher:
 
                 if not is_transient:
                     # Non-transient error - don't retry
-                    logger.error(
+                    logger.exception(
                         "odps_event_publish_non_transient_error",
                         event_type=event_type,
                         error=str(e),
@@ -1575,7 +1573,7 @@ class ODPSEventPublisher:
                 # Transient error - check if we should retry
                 if retry_count >= max_retries:
                     # Max retries exceeded
-                    logger.error(
+                    logger.exception(
                         "odps_event_publish_retry_exhausted",
                         event_type=event_type,
                         retry_count=retry_count,
@@ -1618,31 +1616,12 @@ class ODPSEventPublisher:
                 # Wait before retry
                 time.sleep(delay)
                 retry_count += 1
+            else:
+                return event_id
 
-            except Exception as e:
-                # Unexpected error - log and handle based on graceful degradation setting
-                last_error = e
-                logger.error(
-                    "odps_event_publish_unexpected_error",
-                    event_type=event_type,
-                    retry_count=retry_count,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    exc_info=True,
-                    message=f"Unexpected error publishing {event_type}",
-                )
-
-                if enable_graceful_degradation:
-                    # Log error but don't block
-                    logger.warning(
-                        "odps_event_publish_graceful_degradation",
-                        event_type=event_type,
-                        error=str(e),
-                        message=f"Event publishing failed for {event_type} but continuing (graceful degradation)",
-                    )
-                    return None
-                else:
-                    raise EventPublishError(f"Unexpected error publishing {event_type}: {e}") from e
+        # NOTE: a second ``except Exception`` here was UNREACHABLE — the
+        # first handler above catches everything (retry semantics). The
+        # post-loop fallback below covers the non-retry tail.
 
         # Should not reach here, but handle just in case
         if enable_graceful_degradation:
@@ -2512,6 +2491,20 @@ class DataMeshEventPublisher:
             event_data: Event data
             tenant_id: Tenant ID
         """
+        # W4.1 (R2-B3/B4): when the deployment runs the worker bus
+        # listener, delivery is the listener's job — firing the
+        # in-process fallback too would DOUBLE-deliver.  The flag is a
+        # deployment-wide contract: worker AND api services set it
+        # together.
+        from django.conf import settings
+
+        if getattr(settings, "EVENT_BUS_LISTENER_ENABLED", False):
+            logger.debug(
+                "mesh_webhook_in_process_trigger_skipped",
+                reason="EVENT_BUS_LISTENER_ENABLED",
+                event_type=internal_event_type,
+            )
+            return
         if not tenant_id:
             tenant_id = getattr(self, "tenant_id", None)
             if not tenant_id:
@@ -2529,9 +2522,6 @@ class DataMeshEventPublisher:
             )
         except Exception as e:
             # Log but don't fail event publishing if webhook fails
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to trigger webhook for mesh event {internal_event_type}: {e}",
                 extra={
@@ -2652,9 +2642,14 @@ class DataMeshEventPublisher:
         violation_count: int | None = None,
         **kwargs,
     ) -> str:
-        """Publish compliance.report.generated event."""
+        """Publish the mesh-scoped compliance-report event.
+
+        ``mesh.compliance.report_generated`` — deliberately distinct from
+        the compliance app's ``compliance.report.generated`` (different
+        payload shape; the shared name previously shadowed that schema).
+        """
         return self._event_publisher.publish(
-            event_type="compliance.report.generated",
+            event_type="mesh.compliance.report_generated",
             data={
                 "compliance_report_id": compliance_report_id,
                 "domain_id": domain_id,
@@ -2881,7 +2876,7 @@ class DataMeshEventPublisher:
         self,
         domain_id: str,
         previous_status: str | None = None,
-        new_status: str = None,
+        new_status: str | None = None,
         health_metrics: dict[str, Any] | None = None,
         changed_at: str | None = None,
         tenant_id: str | None = None,
@@ -2964,6 +2959,20 @@ class VirtualizationEventPublisher:
             event_data: Event data
             tenant_id: Tenant ID
         """
+        # W4.1 (R2-B3/B4): when the deployment runs the worker bus
+        # listener, delivery is the listener's job — firing the
+        # in-process fallback too would DOUBLE-deliver.  The flag is a
+        # deployment-wide contract: worker AND api services set it
+        # together.
+        from django.conf import settings
+
+        if getattr(settings, "EVENT_BUS_LISTENER_ENABLED", False):
+            logger.debug(
+                "virtualization_webhook_in_process_trigger_skipped",
+                reason="EVENT_BUS_LISTENER_ENABLED",
+                event_type=internal_event_type,
+            )
+            return
         if not tenant_id:
             tenant_id = getattr(self, "tenant_id", None)
             if not tenant_id:
@@ -2981,9 +2990,6 @@ class VirtualizationEventPublisher:
             )
         except Exception as e:
             # Log but don't fail event publishing if webhook fails
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to trigger webhook for virtualization event {internal_event_type}: {e}",
                 extra={
@@ -4636,6 +4642,7 @@ class BaaSEventPublisher:
         method: str,
         status_code: int,
         response_time_ms: int,
+        dedup_key: str | None = None,
         **kwargs,
     ) -> str:
         """Publish baas.usage.tracked event."""
@@ -4647,6 +4654,9 @@ class BaaSEventPublisher:
                 "method": method,
                 "status_code": status_code,
                 "response_time_ms": response_time_ms,
+                # R2-D7 — the event carries its caller-supplied dedup key
+                # so downstream consumers can dedup at the event level.
+                "dedup_key": dedup_key,
             },
             **kwargs,
         )
@@ -4657,7 +4667,7 @@ class BaaSEventPublisher:
         customer_id: str,
         total_amount: str,
         currency: str,
-        tenant_id: str = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish billing.report.generated event."""
@@ -4678,7 +4688,7 @@ class BaaSEventPublisher:
         report_id: str,
         customer_id: str,
         customer_email: str,
-        tenant_id: str = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish billing.report.sent event."""

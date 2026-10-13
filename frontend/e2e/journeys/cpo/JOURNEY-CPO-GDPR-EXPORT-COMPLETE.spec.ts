@@ -29,7 +29,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as zlib from 'node:zlib';
-import { getTestUser, getConsumerTestUser } from '../../fixtures/auth';
+import { getTestUser, getExternalDeveloperUser } from '../../fixtures/auth';
 import {
   createAssetViaApi,
   createDatasetViaApi,
@@ -185,7 +185,7 @@ test.describe('JOURNEY-CPO-GDPR-EXPORT-COMPLETE: GDPR Article 20 export complete
       { headers: { Authorization: `Bearer ${primaryToken}` } },
     );
     if (triggerRes.status() === 404) {
-      test.skip(true, 'GDPR export endpoint not enabled in this environment');
+      test.skip(triggerRes.status() === 404, 'GDPR export endpoint not enabled in this environment');
     }
     expect(triggerRes.ok(), `export trigger failed: ${triggerRes.status()}`).toBe(true);
     const trigger = (await triggerRes.json()) as ExportJobResponse;
@@ -279,24 +279,28 @@ test.describe('JOURNEY-CPO-GDPR-EXPORT-COMPLETE: GDPR Article 20 export complete
     ).toBe(true);
 
     // ---- Phase 6: negative — another user's ids do NOT appear in this user's export.
-    // Provision a single resource as the consumer test user; assert it is
-    // NOT in the primary user's export. This catches a regression in the
-    // user= filter on _collect_user_data.
-    const consumer = await getConsumerTestUser();
-    if (consumer.email === primary.email) {
+    // Provision a single resource as the EXTERNAL DEVELOPER (e2e_developer):
+    // a same-tenant DATA_PROVIDER who can create assets. The consumer
+    // persona (e2e_consumer) is a DATA_CONSUMER in a SEPARATE tenant —
+    // it cannot create assets at all (b6: 403 PERMISSION_DENIED), and a
+    // tenant= filter bug would never leak its other-tenant rows, making
+    // the negative assertion vacuous. A same-tenant other-user asset
+    // catches both user= regressions AND tenant= scope leaks.
+    const otherUser = await getExternalDeveloperUser();
+    if (otherUser.email === primary.email) {
       // Some envs collapse to a single test identity — skip the negative
       // assertion in that case rather than passing trivially.
       test.info().annotations.push({
         type: 'gdpr-export-negative-skipped',
-        description: 'consumer test user equals primary user — no second identity to compare',
+        description: 'developer test user equals primary user — no second identity to compare',
       });
       return;
     }
-    const otherAssetId = await createAssetViaApi(consumer, { forceNew: true });
+    const otherAssetId = await createAssetViaApi(otherUser, { forceNew: true });
     expect(otherAssetId.length).toBeGreaterThan(30);
     expect(
       exportedAssetIds,
-      `export of ${primary.email} must NOT contain consumer's asset ${otherAssetId} ` +
+      `export of ${primary.email} must NOT contain developer's asset ${otherAssetId} ` +
         `(scope leak detected)`,
     ).not.toContain(otherAssetId);
   });

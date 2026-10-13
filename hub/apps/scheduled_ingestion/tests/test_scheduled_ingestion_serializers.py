@@ -69,13 +69,13 @@ class ScheduledIngestionSerializerSuccessTest(TestCase):
         )
         serializer = ScheduledIngestionSerializer(si)
         data = serializer.data
-        self.assertEqual(data["name"], "Daily Sync")
-        self.assertEqual(data["source_type"], SourceType.S3)
-        self.assertEqual(data["schedule_type"], ScheduleType.DAILY)
-        self.assertIn("id", data)
-        self.assertIn("tenant_name", data)
-        self.assertIn("asset_name", data)
-        self.assertIn("created_by_username", data)
+        assert data["name"] == "Daily Sync"
+        assert data["source_type"] == SourceType.S3
+        assert data["schedule_type"] == ScheduleType.DAILY
+        assert "id" in data
+        assert "tenant_name" in data
+        assert "asset_name" in data
+        assert "created_by_username" in data
 
     def test_deserialize_valid_data(self):
         """Valid input deserializes and validates successfully."""
@@ -89,9 +89,9 @@ class ScheduledIngestionSerializerSuccessTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data["name"], "Weekly Load")
-        self.assertEqual(serializer.validated_data["source_type"], SourceType.GCS)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["name"] == "Weekly Load"
+        assert serializer.validated_data["source_type"] == SourceType.GCS
 
 
 class ScheduledIngestionSerializerFailureTest(TestCase):
@@ -109,8 +109,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": "[invalid",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("file_pattern", serializer.errors)
+        assert not serializer.is_valid()
+        assert "file_pattern" in serializer.errors
 
     def test_custom_cron_missing_cron_expression(self):
         """CUSTOM_CRON without cron in schedule_config raises ValidationError."""
@@ -124,10 +124,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertTrue(
-            "schedule_config" in serializer.errors or "cron" in str(serializer.errors).lower()
-        )
+        assert not serializer.is_valid()
+        assert "schedule_config" in serializer.errors or "cron" in str(serializer.errors).lower()
 
     def test_custom_cron_invalid_cron_expression(self):
         """Invalid cron expression raises ValidationError."""
@@ -141,8 +139,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("schedule_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "schedule_config" in serializer.errors
 
     def test_s3_missing_bucket(self):
         """S3 source_type without bucket raises ValidationError."""
@@ -156,8 +154,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
     def test_gcs_missing_bucket(self):
         """GCS source_type without bucket raises ValidationError."""
@@ -171,8 +169,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
     def test_azure_blob_missing_account_or_container(self):
         """AZURE_BLOB without account_name or container raises ValidationError."""
@@ -186,8 +184,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
     def test_http_missing_base_url(self):
         """HTTP source_type without base_url raises ValidationError."""
@@ -201,8 +199,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
     def test_ftp_missing_host(self):
         """FTP source_type without host raises ValidationError."""
@@ -216,8 +214,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
     def test_database_missing_host_or_database(self):
         """DATABASE without host or database in source_config raises ValidationError."""
@@ -231,8 +229,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
     def test_asset_id_nonexistent_raises_validation_error(self):
         """Providing non-existent asset_id raises ValidationError."""
@@ -248,8 +246,8 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
             "asset_id": fake_uuid,
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("asset_id", serializer.errors)
+        assert not serializer.is_valid()
+        assert "asset_id" in serializer.errors
 
 
 class ScheduledIngestionSerializerEdgeCasesTest(TestCase):
@@ -267,8 +265,8 @@ class ScheduledIngestionSerializerEdgeCasesTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data["name"], "")
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["name"] == ""
 
     def test_asset_id_null_allowed(self):
         """asset_id can be omitted (optional)."""
@@ -282,8 +280,8 @@ class ScheduledIngestionSerializerEdgeCasesTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertNotIn("asset", serializer.validated_data)
+        assert serializer.is_valid(), serializer.errors
+        assert "asset" not in serializer.validated_data
 
     def test_asset_id_valid_resolves_to_asset(self):
         """Valid asset_id is resolved to asset instance."""
@@ -304,8 +302,8 @@ class ScheduledIngestionSerializerEdgeCasesTest(TestCase):
             "asset_id": asset.id,
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data["asset"], asset)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["asset"] == asset
 
 
 class ScheduledIngestionRunSerializerTest(TestCase):
@@ -334,11 +332,11 @@ class ScheduledIngestionRunSerializerTest(TestCase):
         )
         serializer = ScheduledIngestionRunSerializer(run)
         data = serializer.data
-        self.assertEqual(data["status"], ScheduledIngestionRunStatus.COMPLETED)
-        self.assertEqual(data["scheduled_ingestion_name"], "Run Test Ingestion")
-        self.assertEqual(data["files_processed"], 5)
-        self.assertIn("id", data)
-        self.assertIn("scheduled_ingestion", data)
+        assert data["status"] == ScheduledIngestionRunStatus.COMPLETED
+        assert data["scheduled_ingestion_name"] == "Run Test Ingestion"
+        assert data["files_processed"] == 5
+        assert "id" in data
+        assert "scheduled_ingestion" in data
 
 
 class ScheduledIngestionCreateSerializerSuccessTest(TestCase):
@@ -357,8 +355,8 @@ class ScheduledIngestionCreateSerializerSuccessTest(TestCase):
             "test_connection": False,
         }
         serializer = ScheduledIngestionCreateSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertNotIn("test_connection", serializer.validated_data)
+        assert serializer.is_valid(), serializer.errors
+        assert "test_connection" not in serializer.validated_data
 
     def test_create_removes_test_connection_from_validated_data(self):
         """Validated data does not contain test_connection (popped in validate); create() never receives it."""
@@ -374,7 +372,7 @@ class ScheduledIngestionCreateSerializerSuccessTest(TestCase):
         }
         serializer = ScheduledIngestionCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        self.assertNotIn("test_connection", serializer.validated_data)
+        assert "test_connection" not in serializer.validated_data
 
 
 class ScheduledIngestionCreateSerializerFailureTest(TestCase):
@@ -393,8 +391,8 @@ class ScheduledIngestionCreateSerializerFailureTest(TestCase):
             "test_connection": True,
         }
         serializer = ScheduledIngestionCreateSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("source_config", serializer.errors)
+        assert not serializer.is_valid()
+        assert "source_config" in serializer.errors
 
 
 class ScheduledIngestionTriggerSerializerTest(TestCase):
@@ -404,15 +402,15 @@ class ScheduledIngestionTriggerSerializerTest(TestCase):
         """Empty or default parameters validate."""
         data = {}
         serializer = ScheduledIngestionTriggerSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data.get("parameters"), {})
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data.get("parameters") == {}
 
     def test_trigger_serializer_with_parameters(self):
         """Optional parameters dict is accepted and validated."""
         data = {"parameters": {"key": "value"}}
         serializer = ScheduledIngestionTriggerSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data["parameters"], {"key": "value"})
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["parameters"] == {"key": "value"}
 
 
 class ScheduledIngestionSerializerErrorHandlingTest(TestCase):
@@ -422,16 +420,16 @@ class ScheduledIngestionSerializerErrorHandlingTest(TestCase):
         """Missing required fields produce validation errors."""
         data: dict = {}
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
+        assert not serializer.is_valid()
         # Model has default for schedule_type, so it may not appear in errors.
         # source_config has default=dict on the model so may not appear in errors.
         errors = serializer.errors
-        self.assertIn("name", errors)
-        self.assertIn("source_type", errors)
-        self.assertIn("schedule_config", errors)
-        self.assertIn("file_pattern", errors)
+        assert "name" in errors
+        assert "source_type" in errors
+        assert "schedule_config" in errors
+        assert "file_pattern" in errors
         # At least these four are required; source_config may be omitted when model has default
-        self.assertGreaterEqual(len(errors), 4)
+        assert len(errors) >= 4
 
     def test_valid_cron_expression_passes(self):
         """Valid cron expression passes schedule_config validation."""
@@ -445,4 +443,4 @@ class ScheduledIngestionSerializerErrorHandlingTest(TestCase):
             "file_pattern": ".*",
         }
         serializer = ScheduledIngestionSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
+        assert serializer.is_valid(), serializer.errors

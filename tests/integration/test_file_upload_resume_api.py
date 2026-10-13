@@ -6,7 +6,6 @@ clients to resume interrupted uploads.
 """
 
 import uuid
-from io import BytesIO
 
 import pytest
 from django.test import TestCase
@@ -26,7 +25,8 @@ class TestFileUploadResumeApi(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Upload Test Tenant", slug=f"upload-{uuid.uuid4().hex[:8]}",
+            name="Upload Test Tenant",
+            slug=f"upload-{uuid.uuid4().hex[:8]}",
         )
         self.user = User.objects.create_user(
             email=f"upload-{uuid.uuid4().hex[:8]}@example.com",
@@ -51,9 +51,14 @@ class TestFileUploadResumeApi(TestCase):
         response = self.client.post(url, {}, format="json")
 
         # 200 = init succeeded, 400 = invalid state, 403 = permissions/plan required
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN,
-        ])
+        self.assertIn(  # noqa: broad-status-codes
+            response.status_code,
+            [
+                status.HTTP_200_OK,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
 
     def test_parts_endpoint_responds(self):
         """GET /files/{id}/parts/ returns uploaded parts for the file."""
@@ -62,10 +67,15 @@ class TestFileUploadResumeApi(TestCase):
 
         # 200 = parts listed, 403 = permissions/plan required, 404 = file not found,
         # 409 = no multipart upload in progress (file created but chunk init not called)
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND,
-            status.HTTP_409_CONFLICT,
-        ])
+        self.assertIn(  # noqa: broad-status-codes
+            response.status_code,
+            [
+                status.HTTP_200_OK,
+                status.HTTP_403_FORBIDDEN,
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_409_CONFLICT,
+            ],
+        )
 
     def test_resume_flow_requires_authentication(self):
         """Chunk init endpoint rejects unauthenticated requests."""

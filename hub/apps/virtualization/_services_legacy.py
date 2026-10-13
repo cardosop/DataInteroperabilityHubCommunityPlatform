@@ -8,7 +8,7 @@ Provides business logic for virtual dataset management and query execution.
 import contextlib
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 from django.utils import timezone
@@ -49,7 +49,30 @@ from hub.apps.virtualization.models import (
     VirtualDatasetStatus,
 )
 
+if TYPE_CHECKING:
+    from hub.apps.assets.models import Asset
+
 logger = logging.getLogger(__name__)
+
+# Hub source type -> connector factory type mapping. Sparql, graphql, minio,
+# federated_asset and external_resource have no connector and map to None.
+_SOURCE_TYPE_CONNECTOR_MAP: dict[str, str] = {
+    "postgresql": "DATABASE",
+    "mysql": "DATABASE",
+    "sqlserver": "DATABASE",
+    "mssql": "DATABASE",
+    "oracle": "DATABASE",
+    "sqlite": "DATABASE",
+    "rest": "HTTP",
+    "http": "HTTP",
+    "https": "HTTP",
+    "s3": "S3",
+    "gcs": "GCS",
+    "azure_blob": "AZURE_BLOB",
+    "azureblob": "AZURE_BLOB",
+    "ftp": "FTP",
+    "sftp": "SFTP",
+}
 
 
 class VirtualizationService(BaseService, VirtualizationEventPublisher):
@@ -190,9 +213,10 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             # Verify tenant isolation (compare as strings to handle UUID vs string)
             if str(execution.virtual_dataset.tenant_id) != str(effective_tenant_id):
                 raise NotFoundError(f"QueryExecution with id {query_execution_id} not found")
-            return execution
         except QueryExecution.DoesNotExist:
-            raise NotFoundError(f"QueryExecution with id {query_execution_id} not found")
+            raise NotFoundError(f"QueryExecution with id {query_execution_id} not found") from None
+        else:
+            return execution
 
     def get_query_executions(
         self,
@@ -397,21 +421,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         """
         if not source_type:
             return None
-        st = source_type.lower()
-        if st in ("postgresql", "mysql", "sqlserver", "mssql", "oracle", "sqlite"):
-            return "DATABASE"
-        if st in ("rest", "http", "https"):
-            return "HTTP"
-        if st == "s3":
-            return "S3"
-        if st == "gcs":
-            return "GCS"
-        if st in ("azure_blob", "azureblob"):
-            return "AZURE_BLOB"
-        if st in ("ftp", "sftp"):
-            return st.upper()
         # sparql, graphql, minio, federated_asset, external_resource have no connector
-        return None
+        return _SOURCE_TYPE_CONNECTOR_MAP.get(source_type.lower())
 
     def _validate_source_connectivity(
         self, sources: list[dict[str, Any]] | None, tenant_id: str
@@ -443,7 +454,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {tenant_id} not found") from None
 
         # Test connectivity to each source
         for i, source_config in enumerate(sources):
@@ -508,45 +519,51 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                         extra={"source_index": i, "source_type": source_type},
                     )
                     continue
-
-                if hasattr(connector, "test_connection"):
-                    # Some connectors return dict with 'success' key
-                    test_result = connector.test_connection(source_config)
-                    if isinstance(test_result, dict):
-                        if not test_result.get("success", False):
-                            error_msg = test_result.get("error", "Connection test failed")
-                            raise ValidationError(
-                                f"Source connectivity check failed for source {i} (type: {source_type}): {error_msg}",
-                                code="SOURCE_CONNECTIVITY_FAILED",
-                                details={
-                                    "source_index": i,
-                                    "source_type": source_type,
-                                    "error": error_msg,
-                                },
-                            )
-                    elif not test_result:
-                        # Boolean result
-                        raise ValidationError(
-                            f"Source connectivity check failed for source {i} (type: {source_type})",
-                            code="SOURCE_CONNECTIVITY_FAILED",
-                            details={"source_index": i, "source_type": source_type},
-                        )
-                else:
-                    logger.warning(
-                        f"Connector for type '{source_type}' does not support test_connection method",
-                        extra={"source_index": i, "source_type": source_type},
-                    )
-
             except Exception as e:
-                # If it's already a ValidationError, re-raise it
-                if isinstance(e, ValidationError):
-                    raise
-                # Otherwise, wrap it in a ValidationError
+                # Wrap unexpected setup errors in a ValidationError
                 raise ValidationError(
                     f"Failed to test connectivity for source {i} (type: {source_type}): {e!s}",
                     code="SOURCE_CONNECTIVITY_ERROR",
                     details={"source_index": i, "source_type": source_type, "error": str(e)},
                 ) from e
+
+            if hasattr(connector, "test_connection"):
+                try:
+                    # Some connectors return dict with 'success' key
+                    test_result = connector.test_connection(source_config)
+                except ValidationError:
+                    raise
+                except Exception as e:
+                    raise ValidationError(
+                        f"Failed to test connectivity for source {i} (type: {source_type}): {e!s}",
+                        code="SOURCE_CONNECTIVITY_ERROR",
+                        details={"source_index": i, "source_type": source_type, "error": str(e)},
+                    ) from e
+
+                if isinstance(test_result, dict):
+                    if not test_result.get("success", False):
+                        error_msg = test_result.get("error", "Connection test failed")
+                        raise ValidationError(
+                            f"Source connectivity check failed for source {i} (type: {source_type}): {error_msg}",
+                            code="SOURCE_CONNECTIVITY_FAILED",
+                            details={
+                                "source_index": i,
+                                "source_type": source_type,
+                                "error": error_msg,
+                            },
+                        )
+                elif not test_result:
+                    # Boolean result
+                    raise ValidationError(
+                        f"Source connectivity check failed for source {i} (type: {source_type})",
+                        code="SOURCE_CONNECTIVITY_FAILED",
+                        details={"source_index": i, "source_type": source_type},
+                    )
+            else:
+                logger.warning(
+                    f"Connector for type '{source_type}' does not support test_connection method",
+                    extra={"source_index": i, "source_type": source_type},
+                )
 
     def _validate_federated_asset_source(
         self, source_config: dict[str, Any], tenant, source_index: int = 0
@@ -582,7 +599,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"Invalid asset_id format at source index {source_index}: {asset_id}",
                 code="INVALID_ASSET_ID",
                 details={"source_index": source_index, "asset_id": asset_id},
-            )
+            ) from None
 
         # Get asset
         try:
@@ -592,7 +609,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"Federated asset source at index {source_index} references non-existent asset: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Validate asset is FEDERATED type
         if asset.source_type != AssetSourceType.FEDERATED:
@@ -672,7 +689,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"Invalid asset_id format at source index {source_index}: {asset_id}",
                 code="INVALID_ASSET_ID",
                 details={"source_index": source_index, "asset_id": asset_id},
-            )
+            ) from None
 
         # Get asset
         try:
@@ -682,7 +699,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"External resource source at index {source_index} references non-existent asset: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Validate asset is FEDERATED type
         if asset.source_type != AssetSourceType.FEDERATED:
@@ -712,7 +729,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     "asset_id": str(asset.id),
                     "resource_id": str(resource_id),
                 },
-            )
+            ) from None
 
         # Validate resource can be accessed (check data_strategy)
         if not asset.can_download_resource(str(resource_id)):
@@ -796,7 +813,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     f"Source at index {i} references non-existent asset: {asset_id}",
                     code="SOURCE_ASSET_NOT_FOUND",
                     details={"source_index": i, "asset_id": asset_id},
-                )
+                ) from None
 
             # Check cross-tenant access permissions
             self._validate_cross_tenant_source_access(asset, tenant_id, source_index=i)
@@ -824,7 +841,12 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 continue
 
             # Run compliance scan
-            try:
+            def _run_compliance_scan(
+                file_content=file_content,
+                file_format=file_format,
+                asset=asset,
+                i=i,
+            ) -> None:
                 compliance_result = compliance_client.scan_file(
                     file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
                 )
@@ -868,6 +890,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     },
                 )
 
+            try:
+                _run_compliance_scan()
             except ValidationError:
                 # Re-raise validation errors (compliance violations)
                 raise
@@ -903,10 +927,11 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         if asset_tenant_id == tenant_id:
             return  # Same tenant, access allowed
 
-        # Cross-tenant access - check entitlements
-        from hub.apps.marketplace.access_utils import check_entitlement
+        # Cross-tenant access — the entitlement verification resolves
+        # through the commercial hook (fail-closed in core-only mode).
+        from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
 
-        has_access, error_code, entitlement = check_entitlement(
+        has_access, error_code, entitlement = check_cross_tenant_entitlement(
             consumer_tenant_id=tenant_id, asset_id=str(asset.id), provider_tenant_id=asset_tenant_id
         )
 
@@ -953,9 +978,9 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
     def _validate_query_compliance(
         self,
         query: str,
-        query_type: QueryType,
-        sources: list[dict[str, Any]] | None,
-        tenant_id: str,
+        _query_type: QueryType,
+        _sources: list[dict[str, Any]] | None,
+        _tenant_id: str,
     ) -> None:
         """
         Validate query doesn't violate compliance rules.
@@ -1014,7 +1039,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            raise PermissionError(f"User {user_id} not found")
+            raise PermissionError(f"User {user_id} not found") from None
 
         # Platform admins have all permissions (can operate on any tenant)
         if user.is_platform_admin:
@@ -1307,19 +1332,19 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         try:
             tenant = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
         User = get_user_model()
         try:
             user = User.objects.get(id=effective_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"User with id {effective_user_id} not found")
+            raise NotFoundError(f"User with id {effective_user_id} not found") from None
 
         # Set defaults
         if version is None:
             version = "1.0.0"
         if status is None:
-            status = VirtualDatasetStatus.DRAFT  # type: ignore[assignment]  # enum member assigned to str-typed var
+            status = VirtualDatasetStatus.DRAFT  # enum member assigned to str-typed var
 
         # Validate via VirtualizationBusinessRules before any mutation
         payload_dataset = VirtualDataset(
@@ -1678,13 +1703,13 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         try:
             tenant = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
         User = get_user_model()
         try:
             user = User.objects.get(id=effective_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"User with id {effective_user_id} not found")
+            raise NotFoundError(f"User with id {effective_user_id} not found") from None
 
         # Get virtual dataset
         try:
@@ -1692,7 +1717,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 id=virtual_dataset_id, tenant_id=effective_tenant_id
             )
         except VirtualDataset.DoesNotExist:
-            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found")
+            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found") from None
 
         # Store original values for audit log
         original_values = {
@@ -1914,13 +1939,13 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         try:
             tenant = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
         User = get_user_model()
         try:
             user = User.objects.get(id=effective_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"User with id {effective_user_id} not found")
+            raise NotFoundError(f"User with id {effective_user_id} not found") from None
 
         # Get virtual dataset
         try:
@@ -1928,7 +1953,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 id=virtual_dataset_id, tenant_id=effective_tenant_id
             )
         except VirtualDataset.DoesNotExist:
-            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found")
+            raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found") from None
 
         # Store dataset info for audit log before deletion
         dataset_info = {
@@ -2261,8 +2286,6 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 execution.workflow_instance = workflow_instance
                 execution.save(update_fields=["workflow_instance"])
 
-            return execution
-
         except ValueError as e:
             # Workflow execution failed - try to get execution from workflow instance
             from hub.apps.orchestration.models import WorkflowInstance
@@ -2279,12 +2302,13 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                         execution = QueryExecution.objects.get(id=execution_id)
                         execution.workflow_instance = workflow_instance
                         execution.save(update_fields=["workflow_instance"])
-                        # Return the execution even though workflow failed
-                        # This allows callers to check the execution status
-                        return execution
                     except QueryExecution.DoesNotExist:
                         # Execution was referenced but doesn't exist (might have been rolled back)
                         pass
+                    else:
+                        # Return the execution even though workflow failed
+                        # This allows callers to check the execution status
+                        return execution
 
             # If no execution found, raise error with workflow context
             error_msg = f"Query execution failed: {e!s}"
@@ -2292,6 +2316,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 workflow_instance = workflow_instances.first()
                 error_msg += f" (workflow_instance_id: {workflow_instance.id})"
             raise ValidationError(error_msg) from e
+        else:
+            return execution
 
     def get_workflow_instance(self, execution_id: str, tenant_id: str | None = None) -> Any | None:
         """
@@ -2316,9 +2342,10 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             execution = QueryExecution.objects.get(
                 id=execution_id, virtual_dataset__tenant_id=effective_tenant_id
             )
-            return execution.workflow_instance
         except QueryExecution.DoesNotExist:
-            raise NotFoundError(f"Query execution {execution_id} not found")
+            raise NotFoundError(f"Query execution {execution_id} not found") from None
+        else:
+            return execution.workflow_instance
 
     def get_workflow_state(self, execution_id: str, tenant_id: str | None = None) -> dict[str, Any]:
         """
@@ -2929,7 +2956,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         # Additional validation can be added for other query types
 
     def _optimize_query(
-        self, query: str, query_type: QueryType, sources: list[dict[str, Any]] | None
+        self, query: str, _query_type: QueryType, _sources: list[dict[str, Any]] | None
     ) -> str:
         """
         Optimize query for execution.
@@ -3042,7 +3069,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     f"Source at index {i} references non-existent asset: {asset_id}",
                     code="SOURCE_ASSET_NOT_FOUND",
                     details={"source_index": i, "asset_id": asset_id},
-                )
+                ) from None
 
             # Check cross-tenant source access permissions
             self._validate_cross_tenant_source_access(asset, tenant_id, source_index=i)
@@ -3079,7 +3106,12 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 continue
 
             # Run compliance scan
-            try:
+            def _run_compliance_scan(
+                file_content=file_content,
+                file_format=file_format,
+                asset=asset,
+                i=i,
+            ) -> None:
                 compliance_result = compliance_client.scan_file(
                     file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
                 )
@@ -3131,6 +3163,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     },
                 )
 
+            try:
+                _run_compliance_scan()
             except ValidationError:
                 # Re-raise validation errors (compliance violations)
                 raise
@@ -3163,16 +3197,19 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         # This is a basic check - more sophisticated rule-based validation can be added
 
         # SQL-specific checks
-        if virtual_dataset.query_type == QueryType.SQL:
+        if (
+            virtual_dataset.query_type == QueryType.SQL
+            and "SELECT *" in query_upper
+            and "LIMIT" not in query_upper
+        ):
             # Check for operations that might expose sensitive data
-            if "SELECT *" in query_upper and "LIMIT" not in query_upper:
-                # Unbounded SELECT * queries might expose too much data
-                # This is a warning, not a block
-                execution.add_log_entry(
-                    "WARNING",
-                    "Query uses SELECT * without LIMIT - may expose large amounts of data",
-                    save=False,
-                )
+            # Unbounded SELECT * queries might expose too much data
+            # This is a warning, not a block
+            execution.add_log_entry(
+                "WARNING",
+                "Query uses SELECT * without LIMIT - may expose large amounts of data",
+                save=False,
+            )
 
         # Log compliance check completion
         execution.add_log_entry(
@@ -3273,15 +3310,13 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         """
         source_type = source.get("type", "").lower()
 
-        # Handle federated asset sources
-        if source_type == "federated_asset":
-            return self._execute_query_against_federated_asset(
-                query, query_type, source, parameters, timeout_seconds, source_index
-            )
-
-        # Handle external resource sources
-        if source_type == "external_resource":
-            return self._execute_query_against_external_resource(
+        # Handle federated asset / external resource sources via dispatch
+        source_handlers = {
+            "federated_asset": self._execute_query_against_federated_asset,
+            "external_resource": self._execute_query_against_external_resource,
+        }
+        if source_type in source_handlers:
+            return source_handlers[source_type](
                 query, query_type, source, parameters, timeout_seconds, source_index
             )
 
@@ -3371,7 +3406,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"Federated asset not found: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Use source-specific query if provided, otherwise use dataset query
         source_query = source.get("query") or query
@@ -3461,10 +3496,9 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
 
                         if os.path.exists(file_path):
                             os.remove(file_path)
-                    except Exception:
+                    except OSError:  # temp-file cleanup is best-effort
                         pass
 
-                    return result
                 except Exception as e:
                     logger.error(
                         f"Failed to download and query external resource for federated asset {asset_id}: {e}",
@@ -3486,6 +3520,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                             "error": str(e),
                         },
                     ) from e
+                else:
+                    return result
 
         # No resources available
         raise ValidationError(
@@ -3545,7 +3581,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"Asset not found: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Download external resource on-demand
         try:
@@ -3593,10 +3629,9 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
 
                 if os.path.exists(file_path):
                     os.remove(file_path)
-            except Exception:
+            except OSError:  # temp-file cleanup is best-effort
                 pass
 
-            return result
         except Exception:
             # Cleanup temp file on error
             try:
@@ -3604,9 +3639,11 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
 
                 if os.path.exists(file_path):
                     os.remove(file_path)
-            except Exception:
+            except OSError:  # temp-file cleanup is best-effort
                 pass
             raise
+        else:
+            return result
 
     def _execute_query_against_file_content(
         self,
@@ -3615,7 +3652,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         file_content: bytes,
         file_format: str,
         parameters: dict[str, Any],
-        timeout_seconds: int,
+        _timeout_seconds: int,
     ) -> dict[str, Any]:
         """
         Execute query against file content in memory.
@@ -3635,7 +3672,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         """
         import io
 
-        import pandas as pd
+        import pandas as pd  # type: ignore[import-untyped]
 
         # Parse file content based on format
         if file_format.upper() == "CSV":
@@ -3648,28 +3685,27 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     details={"error": str(e)},
                 ) from e
         elif file_format.upper() == "JSON":
-            try:
+
+            def _parse_json() -> pd.DataFrame:
                 import json
 
                 data = json.loads(file_content.decode("utf-8"))
                 # Handle both list and dict JSON
                 if isinstance(data, list):
-                    df = pd.DataFrame(data)
-                elif isinstance(data, dict):
+                    return pd.DataFrame(data)
+                if isinstance(data, dict):
                     # If dict, try to find list values
                     if any(isinstance(v, list) for v in data.values()):
                         # Use first list value
                         for _key, value in data.items():
                             if isinstance(value, list):
-                                df = pd.DataFrame(value)
-                                break
-                    else:
-                        # Single record dict
-                        df = pd.DataFrame([data])
-                else:
-                    raise ValidationError(
-                        "Unsupported JSON structure", code="INVALID_JSON_STRUCTURE"
-                    )
+                                return pd.DataFrame(value)
+                    # Single record dict
+                    return pd.DataFrame([data])
+                raise ValidationError("Unsupported JSON structure", code="INVALID_JSON_STRUCTURE")
+
+            try:
+                df = _parse_json()
             except Exception as e:
                 raise ValidationError(
                     f"Failed to parse JSON file: {e!s}",
@@ -3730,7 +3766,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         }
 
     def _execute_metadata_only_query(
-        self, asset: "Asset", query: str, query_type: QueryType, source_index: int = 0
+        self, asset: "Asset", _query: str, _query_type: QueryType, _source_index: int = 0
     ) -> dict[str, Any]:
         """
         Execute metadata-only query against federated asset.
@@ -3814,7 +3850,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             psycopg2 = None
 
         try:
-            import pymysql
+            import pymysql  # type: ignore[import-untyped]
         except ImportError:
             pymysql = None
 
@@ -3837,7 +3873,9 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 "Database host and database name are required", code="MISSING_DATABASE_CONFIG"
             )
 
-        try:
+        def _run_sql() -> dict[str, Any]:
+            nonlocal port
+
             if source_type == "postgresql":
                 if psycopg2 is None:
                     raise ValidationError(
@@ -3865,7 +3903,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     rows = cursor.fetchall()
 
                     # Convert to list of dictionaries
-                    data = [dict(zip(columns, row)) for row in rows]
+                    data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                     return {
                         "data": data,
@@ -3903,7 +3941,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     columns = [desc[0] for desc in cursor.description] if cursor.description else []
                     rows = cursor.fetchall()
 
-                    data = [dict(zip(columns, row)) for row in rows]
+                    data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                     return {
                         "data": data,
@@ -3937,7 +3975,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     columns = result.keys()
                     rows = result.fetchall()
 
-                    data = [dict(zip(columns, row)) for row in rows]
+                    data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                     return {
                         "data": data,
@@ -3951,6 +3989,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     f"Unsupported database type: {source_type}", code="UNSUPPORTED_DATABASE_TYPE"
                 )
 
+        try:
+            result = _run_sql()
         except Exception as e:
             logger.error(
                 f"SQL query execution failed: {e}",
@@ -3965,6 +4005,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             raise ValidationError(
                 f"SQL query execution failed: {e!s}", code="SQL_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _execute_odbc_query(
         self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
@@ -3992,7 +4033,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             raise ValidationError(
                 "pyodbc is required for ODBC connections. Install it with: pip install pyodbc",
                 code="MISSING_DEPENDENCY",
-            )
+            ) from None
 
         connection_string = source.get("connection_string")
         host = source.get("host")
@@ -4040,7 +4081,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 columns = [desc[0] for desc in cursor.description] if cursor.description else []
                 rows = cursor.fetchall()
 
-                data = [dict(zip(columns, row)) for row in rows]
+                data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                 return {
                     "data": data,
@@ -4082,10 +4123,19 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         Returns:
             Result dictionary with data and metadata
         """
-        from hub.apps.semantic.service_client import SemanticServiceClient
+        # SPARQL execution is paid-layer — semantic registers the client
+        # factory; fail closed (ValidationError) without it.
+        from hub.apps.core.commercial_hooks import get_service_client_factory
 
-        try:
-            client = SemanticServiceClient()
+        client_cls = get_service_client_factory("SEMANTIC")
+        if client_cls is None:
+            raise ValidationError(
+                "SPARQL query execution is not available in core-only deployments",
+                code="SPARQL_EXECUTION_FAILED",
+            )
+
+        def _run_sparql() -> dict[str, Any]:
+            client = client_cls()
             result = client.query_sparql(
                 query=query,
                 output_format="json",
@@ -4116,6 +4166,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 "source_type": "sparql",
             }
 
+        try:
+            result = _run_sparql()
         except Exception as e:
             logger.error(
                 f"SPARQL query execution failed: {e}", extra={"error": str(e)}, exc_info=True
@@ -4123,6 +4175,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             raise ValidationError(
                 f"SPARQL query execution failed: {e!s}", code="SPARQL_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _execute_rest_query(
         self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
@@ -4161,7 +4214,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             query_params = urllib.parse.urlencode(parameters)
             url = f"{url}?{query_params}" if "?" not in url else f"{url}&{query_params}"
 
-        try:
+        def _run_rest() -> dict[str, Any]:
             headers = source.get("headers", {})
             method = source.get("method", "GET").upper()
 
@@ -4204,6 +4257,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     "source_type": "rest",
                 }
 
+        try:
+            result = _run_rest()
         except Exception as e:
             logger.error(
                 f"REST API query execution failed: {e}",
@@ -4213,6 +4268,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             raise ValidationError(
                 f"REST API query execution failed: {e!s}", code="REST_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _execute_graphql_query(
         self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
@@ -4237,7 +4293,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 "GraphQL endpoint or url is required", code="MISSING_GRAPHQL_CONFIG"
             )
 
-        try:
+        def _run_graphql() -> dict[str, Any]:
             headers = source.get("headers", {})
             if "Content-Type" not in headers:
                 headers["Content-Type"] = "application/json"
@@ -4275,6 +4331,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     "source_type": "graphql",
                 }
 
+        try:
+            result = _run_graphql()
         except Exception as e:
             logger.error(
                 f"GraphQL query execution failed: {e}",
@@ -4284,9 +4342,10 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             raise ValidationError(
                 f"GraphQL query execution failed: {e!s}", code="GRAPHQL_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _aggregate_results(
-        self, results: list[dict[str, Any]], query_type: QueryType
+        self, results: list[dict[str, Any]], _query_type: QueryType
     ) -> list[dict[str, Any]]:
         """
         Aggregate results from multiple sources.
@@ -4366,7 +4425,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         self,
         results: list[dict[str, Any]],
         execution: QueryExecution,
-        virtual_dataset: VirtualDataset,
+        _virtual_dataset: VirtualDataset,
         quality_threshold: float = 0.7,
         profile_key: str = "intake_basic_gx",
     ) -> dict[str, Any] | None:
@@ -4527,8 +4586,6 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 },
             )
 
-            return quality_metrics
-
         except Exception as e:
             execution.add_log_entry("ERROR", f"Quality check failed: {e!s}", save=False)
             logger.error(
@@ -4537,6 +4594,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 exc_info=True,
             )
             return None
+        else:
+            return quality_metrics
 
     def get_query_result(
         self,
@@ -4695,7 +4754,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                         raise ValidationError(
                             f"Unable to parse stored result file: {execution.result_storage_path}",
                             code="INVALID_STORAGE_FORMAT",
-                        )
+                        ) from None
 
                 logger.debug(
                     f"Retrieved results from storage for execution {execution_id}",
@@ -4718,7 +4777,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 raise ValidationError(
                     f"Failed to retrieve results from storage: {e!s}",
                     code="STORAGE_RETRIEVAL_FAILED",
-                )
+                ) from e
 
         # If still no results, raise error
         if results_data is None:
@@ -4728,10 +4787,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
 
         # Ensure results_data is a list
         if not isinstance(results_data, list):
-            if isinstance(results_data, dict):
-                results_data = [results_data]
-            else:
-                results_data = []
+            results_data = [results_data] if isinstance(results_data, dict) else []
 
         # Apply pagination
         paginated_data = results_data
@@ -4795,11 +4851,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 formatted_data = csv_buffer.getvalue()
             content_type = "text/csv"
         elif format == "parquet":
-            if not paginated_data:
-                # Return empty parquet file
-                df = pd.DataFrame()
-            else:
-                df = pd.DataFrame(paginated_data)
+            # Return empty parquet file
+            df = pd.DataFrame() if not paginated_data else pd.DataFrame(paginated_data)
             parquet_buffer = io.BytesIO()
             df.to_parquet(parquet_buffer, index=False)
             formatted_data = base64.b64encode(parquet_buffer.getvalue()).decode("utf-8")

@@ -33,7 +33,7 @@ def check_health_endpoint(api_url: str, timeout: int = 10) -> tuple[bool, str]:
             return True, "Health endpoint healthy"
         else:
             return False, f"Health endpoint returned HTTP {response.status_code}"
-    except Exception as e:
+    except requests.RequestException as e:
         return False, f"Health endpoint error: {e!s}"
 
 
@@ -68,7 +68,7 @@ def check_metrics_endpoint(api_url: str, timeout: int = 10) -> tuple[bool, str, 
                 return True, "No errors in metrics", None
         else:
             return False, f"Metrics endpoint returned HTTP {response.status_code}", None
-    except Exception as e:
+    except requests.RequestException as e:
         return False, f"Metrics endpoint error: {e!s}", None
 
 
@@ -108,11 +108,11 @@ def check_performance_metrics(api_url: str, timeout: int = 10) -> tuple[bool, st
                 f"Cannot check performance (metrics endpoint HTTP {response.status_code})",
                 None,
             )
-    except Exception as e:
+    except requests.RequestException as e:
         return False, f"Performance check error: {e!s}", None
 
 
-def monitor_logs(log_file: str | None, duration: int) -> tuple[bool, list[str]]:
+def monitor_logs(log_file: str | None, _duration: int) -> tuple[bool, list[str]]:
     """Monitor application logs for errors."""
     if not log_file:
         return True, []  # Skip if no log file provided
@@ -134,7 +134,7 @@ def monitor_logs(log_file: str | None, duration: int) -> tuple[bool, list[str]]:
                     errors.append(line.strip())
     except FileNotFoundError:
         return False, [f"Log file not found: {log_file}"]
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return False, [f"Error reading log file: {e!s}"]
 
     return len(errors) == 0, errors

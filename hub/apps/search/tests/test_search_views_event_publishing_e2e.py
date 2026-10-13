@@ -13,6 +13,7 @@ Following TDD approach and engineering best practices:
 
 import uuid
 
+import redis
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -32,7 +33,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -56,15 +57,14 @@ class SearchViewsEventPublishingE2ETest(TestCase):
         # Flush Redis dedup keys so events are persisted fresh each run
         try:
             from hub.apps.core.events.deduplication import (
-                DEDUPLICATION_KEY_PREFIX,
+                clear_all_dedup_namespaces,
                 get_redis_client,
             )
 
             redis_client = get_redis_client()
             if redis_client:
-                for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
-                    redis_client.delete(key)
-        except Exception:
+                clear_all_dedup_namespaces(redis_client)
+        except (ImportError, redis.RedisError):
             pass
 
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
@@ -77,7 +77,9 @@ class SearchViewsEventPublishingE2ETest(TestCase):
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError, RuntimeError):
+            # RuntimeError covers the private-repo core-mode absence
+            # form (semantic uninstalled) — W7.1.
             pass
 
         self.client = APIClient()
@@ -415,5 +417,7 @@ class SearchViewsEventPublishingE2ETest(TestCase):
 
             post_save.connect(contract_saved, sender=Contract, weak=False)
             post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError, RuntimeError):
+            # RuntimeError covers the private-repo core-mode absence
+            # form (semantic uninstalled) — W7.1.
             pass

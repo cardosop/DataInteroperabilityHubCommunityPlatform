@@ -20,6 +20,7 @@ import json
 import logging
 import os
 
+import redis
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -31,6 +32,19 @@ _INVALIDATION_CHANNEL = "datacontract:invalidate"
 # Module-level singleton for the direct redis-py fallback.
 # Reusing one pool avoids spawning a new ConnectionPool on every contract save.
 _fallback_redis_client = None
+
+
+def _run_with_tenant_context(tenant_id, func):
+    """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
+    is set, else directly.  Phase P.9 — worker/signal code that touches
+    tenant-scoped models must be scoped per the RLS contract (mirrors
+    webhooks/tasks.py)."""
+    if tenant_id is None:
+        return func()
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return func()
 
 
 def _get_redis_client():
@@ -54,7 +68,7 @@ def _get_redis_client():
         pool_client = getattr(django_cache, "client", None)
         if pool_client is not None:
             return pool_client.get_client()
-    except Exception:
+    except (AttributeError, redis.RedisError):
         pass
 
     # Fallback: one-time creation of a dedicated pool
@@ -72,14 +86,14 @@ def _get_redis_client():
                 socket_timeout=2,
                 retry_on_timeout=False,
             )
-        except Exception:
+        except (sync_redis.RedisError, ValueError):
             return None
 
     return _fallback_redis_client
 
 
 @receiver(post_save, sender="contracts.Contract")
-def invalidate_datacontract_cache(sender, instance, **kwargs):
+def invalidate_datacontract_cache(sender, instance, **_kwargs):
     """
     Publish the spec hash of the saved contract to the invalidation channel.
 
@@ -115,12 +129,70 @@ def invalidate_datacontract_cache(sender, instance, **kwargs):
 
 
 # ---------------------------------------------------------------------------
+# Contract list query-result cache invalidation (post_save + post_delete)
+# ---------------------------------------------------------------------------
+#
+# The list endpoint (ContractCRUDMixin.list) caches every query-params
+# combination under ``query_result:{tenant_id}:{hash}`` for 5 minutes —
+# including the ``?asset_id=<id>`` queries the asset detail page issues.
+# Nothing in the create/update/delete paths flushed that cache, so a
+# freshly created contract stayed invisible on the asset page and the
+# contracts list until TTL expiry (surfaced as E2E
+# onboarding-checklist "contracts-table never renders"). These handlers
+# mirror the datasets app's list-cache invalidation.
+
+
+def _invalidate_contract_list_cache_for_instance(instance):
+    """Pattern-delete the tenant's contract list query cache.
+
+    Best-effort: failures are logged and never propagate — a Redis
+    outage must not break contract saves (staleness is bounded by
+    ``CACHE_TTL_QUERY_RESULT``).
+    """
+    tenant_id = getattr(instance, "tenant_id", None)
+    if tenant_id is None:
+        return
+
+    def _invalidate():
+        try:
+            from hub.apps.contracts.caching import invalidate_query_result_cache
+
+            invalidate_query_result_cache(str(tenant_id))
+        except Exception as exc:
+            logger.warning(
+                "contract_list_cache_invalidation_failed contract_id=%s error=%s",
+                instance.pk,
+                exc,
+            )
+
+    transaction.on_commit(_invalidate)
+
+
+@receiver(post_save, sender="contracts.Contract")
+def invalidate_contract_list_cache_on_save(sender, instance, **_kwargs):
+    """Invalidate the tenant's contracts list cache after every save."""
+    _invalidate_contract_list_cache_for_instance(instance)
+
+
+# ``post_delete`` is imported further down in this module (the tombstone
+# handler follows the same mid-file import convention); import it here
+# too so the decorator below binds at module load time.
+from django.db.models.signals import post_delete
+
+
+@receiver(post_delete, sender="contracts.Contract")
+def invalidate_contract_list_cache_on_delete(sender, instance, **_kwargs):
+    """Invalidate the tenant's contracts list cache after every delete."""
+    _invalidate_contract_list_cache_for_instance(instance)
+
+
+# ---------------------------------------------------------------------------
 # Search vector rebuild (Phase 18.2)
 # ---------------------------------------------------------------------------
 
 
 @receiver(post_save, sender="contracts.Contract")
-def rebuild_contract_search_vector(sender, instance, **kwargs):
+def rebuild_contract_search_vector(sender, instance, **_kwargs):
     """
     Enqueue a search vector rebuild for the saved Contract after commit.
 
@@ -172,7 +244,7 @@ def _hash_lineage(hub_contract_json) -> str:
 _PRIOR_LINEAGE_HASH_ATTR = "_f3_prior_lineage_hash"
 
 
-def _capture_prior_lineage_hash(sender, instance, **kwargs):
+def _capture_prior_lineage_hash(sender, instance, **_kwargs):
     """``pre_save`` listener — fetch the unsaved row's prior lineage
     hash so the post_save handler can decide whether the lineage
     subtree actually changed.
@@ -190,7 +262,12 @@ def _capture_prior_lineage_hash(sender, instance, **kwargs):
         return
 
     try:
-        prior = Contract.objects.only("hub_contract_json").get(pk=instance.pk)
+        # Phase P.9 — the prior-row read is tenant-scoped; pre_save fires
+        # outside the request cycle, so scope per the RLS contract.
+        prior = _run_with_tenant_context(
+            getattr(instance, "tenant_id", None),
+            lambda: Contract.objects.only("hub_contract_json").get(pk=instance.pk),
+        )
     except Contract.DoesNotExist:
         setattr(instance, _PRIOR_LINEAGE_HASH_ATTR, _hash_lineage({}))
         return
@@ -202,7 +279,7 @@ def _capture_prior_lineage_hash(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender="contracts.Contract")
-def publish_contract_updated_for_lineage(sender, instance, created, **kwargs):
+def publish_contract_updated_for_lineage(sender, instance, created, **_kwargs):
     """REQ-LIN-F3-001 — emit a ``contract.updated`` event when the
     lineage subtree of ``hub_contract_json`` changes.
 
@@ -245,13 +322,19 @@ def publish_contract_updated_for_lineage(sender, instance, created, **kwargs):
                 handle_contract_updated,
             )
 
-            handle_contract_updated(
-                contract_id=str(contract_id),
-                tenant_id=str(tenant_id) if tenant_id else "",
-                old_lineage_hash=old_hash,
-                new_lineage_hash=new_hash,
-                version=version,
-                actor_user_id=str(actor_user_id) if actor_user_id else "",
+            # Phase P.9 — the dispatcher reads tenant-scoped rows
+            # (Contract, LineageEdge, LineageSubscription) on commit;
+            # scope per the RLS contract.
+            _run_with_tenant_context(
+                tenant_id,
+                lambda: handle_contract_updated(
+                    contract_id=str(contract_id),
+                    tenant_id=str(tenant_id) if tenant_id else "",
+                    old_lineage_hash=old_hash,
+                    new_lineage_hash=new_hash,
+                    version=version,
+                    actor_user_id=str(actor_user_id) if actor_user_id else "",
+                ),
             )
         except Exception as exc:
             logger.warning(
@@ -291,7 +374,7 @@ from django.db.models.signals import post_delete
 
 
 @receiver(post_delete, sender="contracts.Contract")
-def fire_contract_tombstone_on_delete(sender, instance, **kwargs):
+def fire_contract_tombstone_on_delete(sender, instance, **_kwargs):
     """Fire the canonical tombstone path on Contract deletion.
 
     Runs inside ``transaction.on_commit`` so a rolled-back delete
@@ -307,10 +390,15 @@ def fire_contract_tombstone_on_delete(sender, instance, **kwargs):
                 dispatch_tombstone,
             )
 
-            dispatch_tombstone(
-                resource_type="CONTRACT",
-                resource_id=contract_id,
-                reason=REASON_CONTRACT_DELETED,
+            # Phase P.9 — dispatch_tombstone reads/writes tenant-scoped
+            # SemanticResource rows on commit; scope per the RLS contract.
+            _run_with_tenant_context(
+                getattr(instance, "tenant_id", None),
+                lambda: dispatch_tombstone(
+                    resource_type="CONTRACT",
+                    resource_id=contract_id,
+                    reason=REASON_CONTRACT_DELETED,
+                ),
             )
         except Exception as exc:
             logger.warning(

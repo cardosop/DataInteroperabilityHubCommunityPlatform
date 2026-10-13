@@ -7,7 +7,7 @@ Async tasks for sending emails via job queue.
 import contextlib
 import json
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 import structlog
 from django.conf import settings
@@ -32,13 +32,11 @@ from .templates import (
 User = get_user_model()
 logger = structlog.get_logger(__name__)
 
-_T = TypeVar("_T")
 
-
-def _run_with_tenant_context(
+def _run_with_tenant_context[T](
     tenant_id: str | None,
-    func: Callable[[], _T],
-) -> _T:
+    func: Callable[[], T],
+) -> T:
     """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
     is provided, or directly when it is ``None``.
 
@@ -352,7 +350,7 @@ def send_email_async(
 
 
 @job("job_low", timeout=60)
-def send_invitation_email(user_id: str, plaintext_token: str = None):
+def send_invitation_email(user_id: str, plaintext_token: str | None = None):
     """
     Send user invitation email.
 
@@ -399,18 +397,87 @@ def send_invitation_email(user_id: str, plaintext_token: str = None):
             success=result.get("success", False),
         )
 
-        return result
-
     except User.DoesNotExist:
-        logger.error("invitation_email_user_not_found", user_id=user_id)
+        logger.exception("invitation_email_user_not_found", user_id=user_id)
         raise
     except Exception as e:
         logger.error("invitation_email_error", user_id=user_id, error=str(e), exc_info=True)
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
-def send_password_reset_email(user_id: str, plaintext_token: str = None):
+def send_impersonation_started_email(session_id: str):
+    """
+    Send the impersonation transparency email (Phase 235.4.7).
+
+    Notifies the impersonated user that a PLATFORM_ADMIN opened a
+    support session on their account — the spec's courtesy
+    notification, templated by
+    ``notifications/emails/impersonation_started.html``.
+
+    Args:
+        session_id: ImpersonationSession UUID to notify about.
+
+    The session read routes via the ``admin`` BYPASSRLS alias (the
+    CLAUDE.md cross-tenant management convention — same as the expire
+    sweep) so the worker can resolve the row regardless of the RLS
+    GUC state at task-run time.
+    """
+    from hub.apps.tenants.models import ImpersonationSession
+
+    try:
+        sess = (
+            ImpersonationSession.objects.using("admin")
+            .select_related("impersonator", "impersonated_user", "impersonated_tenant")
+            .get(pk=session_id)
+        )
+    except (ImpersonationSession.DoesNotExist, ValueError):
+        logger.warning(
+            "impersonation_email_session_not_found",
+            session_id=session_id,
+        )
+        return None
+
+    target = sess.impersonated_user
+    tenant = sess.impersonated_tenant
+    if tenant is None:
+        logger.warning(
+            "impersonation_email_no_tenant",
+            session_id=session_id,
+        )
+        return None
+
+    context = {
+        "user": target,
+        "tenant": tenant,
+        "impersonator_email": sess.impersonator.email if sess.impersonator else None,
+        "started_at": sess.started_at.isoformat(),
+        "expires_at": sess.expires_at.isoformat(),
+        "max_minutes": sess.max_minutes,
+        "reason": sess.reason,
+    }
+    result = send_email_async(
+        email_type=EmailType.IMPERSONATION_STARTED,
+        to_email=target.email,
+        subject=(f"Platform support opened a session on your account at {tenant.name}"),
+        template_name="notifications/emails/impersonation_started.html",
+        context=context,
+        tenant_id=str(tenant.id),
+        user_id=str(target.id),
+    )
+    logger.info(
+        "impersonation_email_sent",
+        session_id=session_id,
+        email=target.email,
+        success=result.get("success", False),
+    )
+    return result
+
+
+@job("job_low", timeout=60)
+def send_password_reset_email(user_id: str, plaintext_token: str | None = None):
     """
     Send password reset email.
 
@@ -457,18 +524,18 @@ def send_password_reset_email(user_id: str, plaintext_token: str = None):
             success=result.get("success", False),
         )
 
-        return result
-
     except User.DoesNotExist:
-        logger.error("password_reset_email_user_not_found", user_id=user_id)
+        logger.exception("password_reset_email_user_not_found", user_id=user_id)
         raise
     except Exception as e:
         logger.error("password_reset_email_error", user_id=user_id, error=str(e), exc_info=True)
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
-def send_email_verification_email(user_id: str, plaintext_token: str = None):
+def send_email_verification_email(user_id: str, plaintext_token: str | None = None):
     """
     Send email verification link (Phase 204).
 
@@ -517,10 +584,8 @@ def send_email_verification_email(user_id: str, plaintext_token: str = None):
             email=user.email,
             success=result.get("success", False),
         )
-        return result
-
     except User.DoesNotExist:
-        logger.error("email_verification_user_not_found", user_id=user_id)
+        logger.exception("email_verification_user_not_found", user_id=user_id)
         raise
     except Exception as e:
         logger.error(
@@ -530,6 +595,8 @@ def send_email_verification_email(user_id: str, plaintext_token: str = None):
             exc_info=True,
         )
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -591,7 +658,7 @@ def send_job_completion_email(job_id: str):
                     resource_type="JOB",
                     resource_id=job.id,
                 )
-        except Exception:
+        except ImportError:
             logger.warning(
                 "in_app_job_completion_notification_failed", job_id=job_id, exc_info=True
             )
@@ -603,14 +670,14 @@ def send_job_completion_email(job_id: str):
             success=result.get("success", False),
         )
 
-        return result
-
     except Job.DoesNotExist:
-        logger.error("job_completion_email_job_not_found", job_id=job_id)
+        logger.exception("job_completion_email_job_not_found", job_id=job_id)
         raise
     except Exception as e:
         logger.error("job_completion_email_error", job_id=job_id, error=str(e), exc_info=True)
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -672,7 +739,7 @@ def send_job_failure_email(job_id: str):
                     resource_type="JOB",
                     resource_id=job.id,
                 )
-        except Exception:
+        except ImportError:
             logger.warning("in_app_job_failure_notification_failed", job_id=job_id, exc_info=True)
 
         logger.info(
@@ -682,14 +749,14 @@ def send_job_failure_email(job_id: str):
             success=result.get("success", False),
         )
 
-        return result
-
     except Job.DoesNotExist:
-        logger.error("job_failure_email_job_not_found", job_id=job_id)
+        logger.exception("job_failure_email_job_not_found", job_id=job_id)
         raise
     except Exception as e:
         logger.error("job_failure_email_error", job_id=job_id, error=str(e), exc_info=True)
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -700,6 +767,12 @@ def send_odps_creation_completion_email(contract_id: str):
     Args:
         contract_id: Contract UUID
     """
+
+    def _propagate_email_failure(result):
+        # Propagate failure to caller so synchronous callers (e.g. tests, CLI) get an exception
+        if not result.get("success"):
+            raise EmailServiceError(result.get("error", "Email send failed"))
+
     try:
         from hub.apps.contracts.models import Contract
 
@@ -756,7 +829,7 @@ def send_odps_creation_completion_email(contract_id: str):
                     resource_type="CONTRACT",
                     resource_id=contract.id,
                 )
-        except Exception:
+        except ImportError:
             logger.warning(
                 "in_app_contract_creation_notification_failed",
                 contract_id=contract_id,
@@ -771,13 +844,12 @@ def send_odps_creation_completion_email(contract_id: str):
         )
 
         # Propagate failure to caller so synchronous callers (e.g. tests, CLI) get an exception
-        if not result.get("success"):
-            raise EmailServiceError(result.get("error", "Email send failed"))
-
-        return result
+        _propagate_email_failure(result)
 
     except Contract.DoesNotExist:
-        logger.error("odps_creation_completion_email_contract_not_found", contract_id=contract_id)
+        logger.exception(
+            "odps_creation_completion_email_contract_not_found", contract_id=contract_id
+        )
         raise
     except Exception as e:
         logger.error(
@@ -787,6 +859,8 @@ def send_odps_creation_completion_email(contract_id: str):
             exc_info=True,
         )
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -862,7 +936,7 @@ def send_odps_normalization_failure_email(
                     resource_type="CONTRACT",
                     resource_id=contract.id,
                 )
-        except Exception:
+        except ImportError:
             logger.warning(
                 "in_app_contract_normalization_failure_notification_failed",
                 contract_id=contract_id,
@@ -876,10 +950,10 @@ def send_odps_normalization_failure_email(
             success=result.get("success", False),
         )
 
-        return result
-
     except Contract.DoesNotExist:
-        logger.error("odps_normalization_failure_email_contract_not_found", contract_id=contract_id)
+        logger.exception(
+            "odps_normalization_failure_email_contract_not_found", contract_id=contract_id
+        )
         raise
     except Exception as e:
         logger.error(
@@ -889,6 +963,8 @@ def send_odps_normalization_failure_email(
             exc_info=True,
         )
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -1000,10 +1076,8 @@ def send_odps_linking_status_email(
             success=result.get("success", False),
         )
 
-        return result
-
     except Contract.DoesNotExist:
-        logger.error(
+        logger.exception(
             "odps_linking_status_email_contract_not_found", odps_contract_id=odps_contract_id
         )
         raise
@@ -1015,6 +1089,8 @@ def send_odps_linking_status_email(
             exc_info=True,
         )
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -1115,10 +1191,8 @@ def send_marketplace_sync_completion_email(
             success=result.get("success", False),
         )
 
-        return result
-
     except MarketplaceSyncJob.DoesNotExist:
-        logger.error(
+        logger.exception(
             "marketplace_sync_completion_email_sync_job_not_found", sync_job_id=sync_job_id
         )
         raise
@@ -1130,6 +1204,8 @@ def send_marketplace_sync_completion_email(
             exc_info=True,
         )
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -1227,10 +1303,10 @@ def send_marketplace_sync_failure_email(
             success=result.get("success", False),
         )
 
-        return result
-
     except MarketplaceSyncJob.DoesNotExist:
-        logger.error("marketplace_sync_failure_email_sync_job_not_found", sync_job_id=sync_job_id)
+        logger.exception(
+            "marketplace_sync_failure_email_sync_job_not_found", sync_job_id=sync_job_id
+        )
         raise
     except Exception as e:
         logger.error(
@@ -1240,6 +1316,8 @@ def send_marketplace_sync_failure_email(
             exc_info=True,
         )
         raise
+    else:
+        return result
 
 
 @job("job_low", timeout=60)
@@ -1332,10 +1410,8 @@ def send_marketplace_connection_test_failure_email(
             success=result.get("success", False),
         )
 
-        return result
-
     except MarketplaceConnection.DoesNotExist:
-        logger.error(
+        logger.exception(
             "marketplace_connection_test_failure_email_connection_not_found",
             connection_id=connection_id,
         )
@@ -1348,3 +1424,5 @@ def send_marketplace_connection_test_failure_email(
             exc_info=True,
         )
         raise
+    else:
+        return result

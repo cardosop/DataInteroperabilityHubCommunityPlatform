@@ -17,7 +17,7 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ComplianceRun
-        fields = [
+        fields = (
             "id",
             "tenant",
             "asset",
@@ -48,8 +48,8 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
             "completed_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "job",
@@ -71,7 +71,7 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
             "completed_at",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def get_estimated_population_ratio(self, obj):
         """Read from regulation_mapping_json.metadata."""

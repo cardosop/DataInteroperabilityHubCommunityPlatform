@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date
+from typing import TYPE_CHECKING
 
 from django.utils import timezone
 
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.processor_agreements.models import ProcessorAgreement, ProcessorAgreementStatus
+
+if TYPE_CHECKING:
+    from datetime import date
 
 
 def run_processor_agreement_expiry_scan(

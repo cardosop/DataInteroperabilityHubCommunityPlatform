@@ -6,11 +6,9 @@ Opened via ``report_presigned_url`` embedded in the ``compliance.completed`` web
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from django.core.signing import BadSignature
-from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -23,6 +21,11 @@ from hub.apps.compliance.webhook_emission import (
     decode_report_presigned_token,
 )
 from hub.apps.tenants.request_tenant import tenant_context
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from rest_framework.authentication import BaseAuthentication
 
 
 class ComplianceWebhookReportSummaryThrottle(ScopedRateThrottle):

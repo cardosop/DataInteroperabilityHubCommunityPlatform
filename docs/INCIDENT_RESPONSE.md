@@ -8,7 +8,7 @@
 | Level | Definition | Response Time | Escalation |
 |-------|-----------|---------------|------------|
 | **SEV0** | Critical: data breach, tenant isolation bypass, RLS failure, credential leak | Immediate (<15 min) | All-hands page, CEO, CISO |
-| **SEV1** | High: service outage, auth bypass, MFA bypass, audit log tampering | <30 min | Oncall + Platform Lead |
+| **SEV1** | High: service outage, authentication/SSO bypass, audit log tampering | <30 min | Oncall + Platform Lead |
 | **SEV2** | Medium: performance degradation, rate limit misconfiguration, partial outage | <2 hours | Oncall engineer |
 | **SEV3** | Low: non-critical bug, cosmetic issue, documentation error | Next business day | Assigned to team |
 

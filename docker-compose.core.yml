@@ -22,6 +22,13 @@ services:
     # Fresh-volume postgres initdb can outrun the settings startup probe —
     # retry until the database accepts connections (idempotent).
     restart: unless-stopped
+    # First boot also runs on-boot migrations; the base healthcheck window
+    # (2m start_period + 5×30s retries ≈ 4.5m) gives up before gunicorn
+    # binds on slow disks. Deep-merge widens the window; fast CI runners
+    # go healthy in seconds regardless.
+    healthcheck:
+      start_period: 10m
+      retries: 10
     environment:
       HUB_CORE_ONLY: "1"
       POSTGRES_HOST: postgres
@@ -69,7 +76,29 @@ services:
       redis-channels:
         condition: service_healthy
 
+  frontend:
+    # The SPA is served by nginx regardless of api health — the base
+    # `service_healthy` condition aborts the whole `up` while the api is
+    # in its restart loop during a fresh-volume postgres initdb.
+    restart: unless-stopped
+    depends_on: !reset
+      api-service:
+        condition: service_started
+
   traefik:
+    # Same convergence class as api/worker: the api may be unhealthy for
+    # the first minutes on slow disks; traefik retries instead of exiting.
+    restart: unless-stopped
+    # Core static config (no docker provider) + core healthcheck probe:
+    # the base /api/rawdata probe targets the paid ckan layer and 404s
+    # forever in core mode; the base image's docker client is refused by
+    # modern daemons (min API 1.44).
+    volumes: !reset
+      - ./infrastructure/traefik/traefik.core.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-letsencrypt:/letsencrypt
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/version"]
     depends_on: !reset
       api-service:
         condition: service_started
@@ -153,7 +182,24 @@ services:
     profiles: ["core-excluded"]
   prometheus:
     profiles: ["core-excluded"]
+    # Phase P.8 — when monitoring IS enabled in the core stack, mount the
+    # core-safe scrape config. The shipped prometheus.yml scrapes paid-only
+    # services (semantic/dq/compliance/datacontract/prefect/search + k8s-only
+    # sidecars); in the OSS tree those targets do not exist, `up == 0`
+    # holds, and the ServiceDown / SemanticFusekiDown / PrefectDown rules
+    # page for services the deployment does not have. Compose merges
+    # volumes by container path, so this entry REPLACES the base file's
+    # config mount (traefik.core.yml precedent).
+    volumes:
+      - ./monitoring/prometheus/prometheus.core.yml:/etc/prometheus/prometheus.yml:ro
   grafana:
     profiles: ["core-excluded"]
   alertmanager:
     profiles: ["core-excluded"]
+    # Phase P.8 — the base compose mounts ./monitoring/alertmanager/
+    # alertmanager.yml, which does NOT ship in the public tree (its routes
+    # reference env placeholders only a deploy pipeline substitutes). The
+    # core-safe config is a no-op: routes are inert without paid-layer
+    # alerts and the receiver declares no delivery channel.
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.core.yml:/etc/alertmanager/alertmanager.yml:ro

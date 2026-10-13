@@ -87,7 +87,7 @@ def create_access_request(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create access request: {e}")
+        raise click.ClickException(f"Failed to create access request: {e}") from e
 
 
 @access_request.command("get")
@@ -137,7 +137,7 @@ def get_access_request(access_request_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get access request: {e}")
+        raise click.ClickException(f"Failed to get access request: {e}") from e
 
 
 @access_request.command("list")
@@ -196,7 +196,7 @@ def list_access_requests(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list access requests: {e}")
+        raise click.ClickException(f"Failed to list access requests: {e}") from e
 
 
 @access_request.command("approve")
@@ -232,7 +232,7 @@ def approve_access_request(access_request_id: str, comments: str | None, output_
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to approve access request: {e}")
+        raise click.ClickException(f"Failed to approve access request: {e}") from e
 
 
 @access_request.command("reject")
@@ -268,7 +268,7 @@ def reject_access_request(access_request_id: str, reason: str, output_format: st
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to reject access request: {e}")
+        raise click.ClickException(f"Failed to reject access request: {e}") from e
 
 
 # ── 118E.9: governance workflows ─────────────────────────
@@ -322,7 +322,7 @@ def list_workflows(wf_status, limit, offset, output_format):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list workflows: {e}")
+        raise click.ClickException(f"Failed to list workflows: {e}") from e
 
 
 @workflows.command("get")
@@ -348,7 +348,7 @@ def get_workflow(workflow_id, output_format):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get workflow: {e}")
+        raise click.ClickException(f"Failed to get workflow: {e}") from e
 
 
 @workflows.command("retry")
@@ -362,4 +362,4 @@ def retry_workflow(workflow_id):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to retry workflow: {e}")
+        raise click.ClickException(f"Failed to retry workflow: {e}") from e

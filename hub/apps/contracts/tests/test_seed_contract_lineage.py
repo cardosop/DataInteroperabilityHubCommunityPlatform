@@ -45,6 +45,7 @@ class SeedContractLineageCommandTest(TestCase):
     def setUp(self):
         super().setUp()
         import uuid
+
         # Use instance-level setUp instead of setUpTestData so the DB
         # transaction is active when creating test fixtures (pytest-django
         # transaction=True only wraps test methods, not class setup).

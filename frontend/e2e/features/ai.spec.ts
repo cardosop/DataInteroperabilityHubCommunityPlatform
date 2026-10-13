@@ -14,6 +14,17 @@ import { assertCapabilityGatedPageLoads, loginAndNavigateToRoute } from '../fixt
 // `ml_mvp_in_scope=false` (docs/CRITICAL_UC_JOURNEY_IDS.yaml), AI specs are
 // tagged @post-mvp so the traceability gate does not count them against
 // critical-coverage. Re-tag when the AI capability flips back into MVP.
+//
+// Gate-off union (Phase 250.6.A.5): when the capability is OFF, /unavailable
+// renders DisabledCapabilityPage (`.disabled-capability-page` /
+// `[data-testid="disabled-capability-page"]`), NOT the legacy
+// `.unavailable-page` markers (those only cover ComingSoonPage's
+// `.unavailable-page` class). The legacy markers alone left the union with
+// zero matches and the 3s terminal assertion failed (b7 #1/#2).
+const GATE_OFF_UNION =
+  '.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .coming-soon-page, [data-testid="coming-soon-page"]';
+const NAV_CONTENT_UNION = `${GATE_OFF_UNION}, .error-display, [data-testid="error-display"], h1`;
+
 test.describe('Feature: AI (capability-gated) @post-mvp', () => {
   test.setTimeout(120000);
 
@@ -22,9 +33,9 @@ test.describe('Feature: AI (capability-gated) @post-mvp', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/ai/search', {
         timeout: 60000,
-        contentSelector: '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
+        contentSelector: `.ai-search-page, ${NAV_CONTENT_UNION}`,
       });
-      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page', {
+      await assertCapabilityGatedPageLoads(page, `.ai-search-page, ${GATE_OFF_UNION}`, {
         timeout: 30000,
       });
     });
@@ -47,11 +58,11 @@ test.describe('Feature: AI (capability-gated) @post-mvp', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
-        contentSelector: '.schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
+        contentSelector: `.schema-matching-page, ${NAV_CONTENT_UNION}`,
       });
       await assertCapabilityGatedPageLoads(
         page,
-        '.schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page',
+        `.schema-matching-page, ${GATE_OFF_UNION}`,
         { timeout: 30000 }
       );
     });

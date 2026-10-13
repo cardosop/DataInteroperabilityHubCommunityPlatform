@@ -6,20 +6,11 @@
  * and displays a detection badge. Supports file drop, paste, and typing.
  */
 
-import { useState, useRef, useCallback, useEffect, type RefObject } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { detectSpecType, type DetectedSpec } from '../utils/detectSpecType';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useLatestRef } from '../hooks/useLatestRef';
 import './ContractFileReader.css';
-
-/**
- * Stores the latest callback in a ref so effects don't re-run
- * when the parent passes inline functions.
- */
-function useLatestRef<T>(value: T): RefObject<T> {
-  const ref = useRef(value);
-  ref.current = value;
-  return ref;
-}
 
 const DEFAULT_MAX_SIZE = 5 * 1024 * 1024; // 5MB
 

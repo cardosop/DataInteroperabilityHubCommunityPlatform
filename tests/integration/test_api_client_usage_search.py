@@ -123,7 +123,7 @@ class TestAPIClientUsageSearch:
     def test_api_v1_endpoints_found(self):
         """Test that /api/v1 endpoints were found"""
         report = self.report
-        api_v1_endpoints = [ep for ep in report["endpoint_mappings"].keys() if "/api/v1/" in ep]
+        api_v1_endpoints = [ep for ep in report["endpoint_mappings"] if "/api/v1/" in ep]
         assert len(api_v1_endpoints) > 0, "No /api/v1 endpoints found"
 
     def test_sdk_client_usages_found(self):
@@ -141,9 +141,7 @@ class TestAPIClientUsageSearch:
     def test_no_empty_endpoints(self):
         """Test that no empty endpoints were found"""
         report = self.report
-        empty_endpoints = [
-            ep for ep in report["endpoint_mappings"].keys() if not ep or ep.strip() == ""
-        ]
+        empty_endpoints = [ep for ep in report["endpoint_mappings"] if not ep or ep.strip() == ""]
         assert len(empty_endpoints) == 0, f"Found {len(empty_endpoints)} empty endpoints"
 
     def test_endpoint_diversity(self):
@@ -208,7 +206,6 @@ class TestAPIClientUsageSearch:
     def test_file_paths_valid(self):
         """Test that file paths are valid"""
         report = self.report
-        Path(__file__).parent.parent.parent
 
         for call in report["api_calls"][:20]:  # Check first 20
             file_path = call["file_path"]
@@ -231,7 +228,7 @@ class TestAPIClientUsageSearch:
         """Test that search has comprehensive coverage"""
         report = self.report
         # Should find API calls in multiple directories
-        file_paths = set(call["file_path"] for call in report["api_calls"])
+        file_paths = {call["file_path"] for call in report["api_calls"]}
 
         # Should have files from different areas
         areas = ["hub", "sdk", "cli", "tests", "scripts"]

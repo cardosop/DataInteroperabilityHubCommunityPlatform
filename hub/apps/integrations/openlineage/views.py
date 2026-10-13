@@ -325,7 +325,7 @@ def openlineage_events_view(request):
 
     try:
         validate_openlineage_event(event)
-    except Exception as exc:  # jsonschema.ValidationError + others
+    except Exception as exc:
         logger.info(
             "openlineage_inbound_validation_failed",
             extra={"tenant_id": str(key.tenant_id), "error": str(exc)[:512]},

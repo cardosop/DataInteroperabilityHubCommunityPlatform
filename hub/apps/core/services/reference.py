@@ -7,8 +7,9 @@ without direct model imports.
 """
 
 from collections import defaultdict
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
+from django.core.exceptions import AppRegistryNotReady
 from django.db import models
 
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
@@ -27,7 +28,7 @@ class ReferenceService(BaseService):
     service_name = "reference_service"
 
     # Registry of model classes by app name and model name
-    _model_registry: dict[str, dict[str, type[models.Model]]] = {}
+    _model_registry: ClassVar[dict[str, dict[str, type[models.Model]]]] = {}
 
     @classmethod
     def register_model(cls, app_name: str, model_name: str, model_class: type[models.Model]):
@@ -141,7 +142,7 @@ class ReferenceService(BaseService):
         try:
             return model_class.objects.get(**query_filters)
         except model_class.DoesNotExist:
-            raise NotFoundError(model_name, resource_id)
+            raise NotFoundError(model_name, resource_id) from None
 
     def validate_multiple_references(
         self, references: list[dict[str, Any]], tenant_id: str | None = None
@@ -287,10 +288,10 @@ class ReferenceService(BaseService):
             query_filters["tenant_id"] = tenant_id
 
         # Execute batch query
-        existing_ids = set(
+        existing_ids = {
             str(id)
             for id in model_class.objects.filter(**query_filters).values_list("id", flat=True)
-        )
+        }
 
         # Build results dictionary
         results = {}
@@ -317,7 +318,7 @@ def _register_common_models():
     try:
         if not apps.ready:
             return
-    except:
+    except AppRegistryNotReady:
         return
 
     try:
@@ -371,7 +372,7 @@ _original_get_model_class = ReferenceService.get_model_class
 
 
 @classmethod
-def get_model_class_with_registration(cls, app_name: str, model_name: str):
+def get_model_class_with_registration(_cls, app_name: str, model_name: str):
     """Get model class with lazy registration."""
     _register_common_models()
     return _original_get_model_class(app_name, model_name)

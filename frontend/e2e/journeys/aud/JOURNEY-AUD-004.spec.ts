@@ -81,7 +81,20 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
       expect(page.url()).toContain('/audit');
       await page.goto('/mesh');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      // The full reload wipes module memory and the 11.1 design leaves no
+      // stored access_token — the app re-authenticates via the silent
+      // cookie refresh BEFORE the router settles. A fixed 2s sleep raced
+      // that boot (the URL was still /login mid-refresh and the terminal-
+      // state assertion failed). Wait for a terminal URL instead.
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
+      await page
+        // 60s = the auth store's own INIT_MAX_MS safety window — the boot
+        // shows "Checking authentication…" until the silent refresh
+        // resolves, and under E2E load that can outlast a 20s budget
+        // (measured: the page was still on the init spinner at 20s and
+        // the terminal-state assertion saw /login-less-but-not-ready).
+        .waitForURL(/\/(mesh|403|coming-soon)/, { timeout: 60_000 })
+        .catch(() => null);
       const meshUrl = page.url();
       // Auditor IS authenticated: /login should not appear. Three valid terminal
       // states: /mesh (feature reachable), /403 (RBAC denial), /coming-soon
@@ -95,8 +108,19 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
       // content assertion is meaningful (the page renders the static ComingSoon
       // component, not mesh data). Only assert mesh content when we landed on /mesh.
       if (meshUrl.includes('/mesh') && !meshUrl.includes('/coming-soon')) {
-        const hasContent =
-          (await page.locator('.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').count()) > 0;
+        // A URL of /mesh does not mean the page rendered: the full reload
+        // re-boots the SPA (init screen → silent auth refresh → route tree),
+        // so waitForURL above resolves while only the boot screen is in the
+        // DOM (b5 failure: URL /mesh, zero content selectors). Wait for the
+        // mesh shell — or an API terminal state — to actually mount before
+        // counting. `.mesh-domain-list-page` is the page root (rendered for
+        // list/empty/skeleton alike); `.error-display` covers API failure.
+        const content = page.locator(
+          '.mesh-domain-list-page, .error-display, [data-testid="error-display"]'
+        );
+        // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
+        await expect(content.first()).toBeVisible({ timeout: 60000 }).catch(() => null);
+        const hasContent = (await content.count()) > 0;
         expect(hasContent).toBe(true) /* acceptable states */;
       }
     });

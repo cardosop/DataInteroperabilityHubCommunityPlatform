@@ -17,7 +17,6 @@ All tests use real implementations (no mocks/stubs) to ensure integration.
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus

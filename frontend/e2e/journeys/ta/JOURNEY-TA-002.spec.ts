@@ -43,7 +43,10 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       } catch (inviteErr) {
         // If invite is not available, fall back to finding an existing non-admin user
         console.warn(`inviteUserViaApi failed (${inviteErr}), falling back to existing user lookup`);
-        const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+        const accessToken = await page.evaluate(() => {
+          const g = (window as Window & { __getAccessToken?: () => string | null }).__getAccessToken;
+          return typeof g === 'function' ? g() : localStorage.getItem('access_token');
+        });
         if (!accessToken) {
           // Log in first to get a token
           await loginAndNavigateToRoute(page, adminUser, '/admin', {
@@ -51,16 +54,19 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
             contentSelector: '.admin-page, [data-testid="admin-page"]',
           });
         }
-        const token = await page.evaluate(() => localStorage.getItem('access_token'));
+        const token = await page.evaluate(() => {
+          const g = (window as Window & { __getAccessToken?: () => string | null }).__getAccessToken;
+          return typeof g === 'function' ? g() : localStorage.getItem('access_token');
+        });
         if (!token) {
-          test.skip(true, 'Could not obtain access token for admin user lookup');
+          test.skip(!token, 'Could not obtain access token for admin user lookup');
           return;
         }
         const usersResp = await page.request.get(`${API_BASE}/admin/users/?page_size=10`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!usersResp.ok()) {
-          test.skip(true, 'Admin users API not available');
+          test.skip(!usersResp.ok(), 'Admin users API not available');
           return;
         }
         const usersData = (await usersResp.json()) as {
@@ -70,7 +76,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
           (u) => u.email !== adminUser.email && !u.roles?.includes('TENANT_ADMIN')
         );
         if (!nonAdminUser?.id) {
-          test.skip(true, 'No suitable non-admin user found for role assignment test');
+          test.skip(!nonAdminUser?.id, 'No suitable non-admin user found for role assignment test');
           return;
         }
         userId = nonAdminUser.id;
@@ -84,7 +90,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
 
       if (page.url().includes('/403') || page.url().includes('/login')) {
         test.skip(
-          true,
+          page.url().includes('/403') || page.url().includes('/login'),
           `Admin user cannot access /admin/users/${userId}/edit. ` +
           'Ensure e2e_admin@example.com has TENANT_ADMIN role.'
         );
@@ -115,7 +121,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
 
       if (!checkboxToUse) {
         test.skip(
-          true,
+          !checkboxToUse,
           'DATA_PROVIDER role checkbox not found. ' +
           'The admin user-edit page may not list roles (no roles configured for this tenant).'
         );

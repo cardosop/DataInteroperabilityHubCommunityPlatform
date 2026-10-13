@@ -31,7 +31,6 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { Modal } from '../../../shared/components/Modal';
 import { useScheduledIngestions } from '../../scheduledIngestion/hooks/useScheduledIngestion';
-import type { ScheduledIngestionListFilters } from '../../../shared/types/scheduledIngestion';
 import { formatScheduleSummary } from '../utils/scheduleSummary';
 import './DatasetScheduleEditModal.css';
 
@@ -48,8 +47,12 @@ export function DatasetScheduleEditModal({
   datasetName,
   onClose,
 }: DatasetScheduleEditModalProps): JSX.Element | null {
+  // The asset-scoped lookup is load-bearing: without the asset_id
+  // filter the modal would list EVERY schedule in the tenant (a
+  // cross-dataset leak). Without an assetId (or while closed) the
+  // query is disabled — no fetch fires.
   const { data, isLoading, error, refetch } = useScheduledIngestions(
-    (open ? {} : null) as ScheduledIngestionListFilters,
+    open && assetId ? { asset_id: assetId } : null,
   );
 
   if (!open) return null;

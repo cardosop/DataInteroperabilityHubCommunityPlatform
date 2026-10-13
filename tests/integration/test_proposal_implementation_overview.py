@@ -1,7 +1,7 @@
 """
 Proposal Implementation Overview Validation Tests
 
-Comprehensive tests to validate that openspec/changes/odps1/proposal.md Implementation Overview
+Comprehensive tests to validate that openspec/changes/archive/odps1/proposal.md Implementation Overview
 accurately reflects Phase 9.7 details, effort estimates, and dependencies.
 
 All tests validate against real documentation - no mocks or stubs.
@@ -22,7 +22,7 @@ class ProposalImplementationOverviewTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.project_root = Path(__file__).parent.parent.parent
-        self.openspec_path = self.project_root / "openspec" / "changes" / "odps1"
+        self.openspec_path = self.project_root / "openspec" / "changes" / "archive" / "odps1"
         self.proposal_doc = self.openspec_path / "proposal.md"
 
     def test_proposal_documentation_exists(self):

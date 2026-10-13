@@ -4,7 +4,7 @@ Webhook operations for DataHub SDK.
 Provides methods for managing webhook subscriptions, delivery history, and testing.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -28,11 +28,11 @@ class WebhooksAPI:
     async def create(
         self,
         url: str,
-        event_types: List[str],
-        secret: Optional[str] = None,
+        event_types: list[str],
+        secret: str | None = None,
         active: bool = True,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create webhook subscription.
 
@@ -46,7 +46,7 @@ class WebhooksAPI:
         Returns:
             Created webhook subscription
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "url": url,
             "event_types": event_types,
             "active": active,
@@ -59,10 +59,10 @@ class WebhooksAPI:
 
     async def list(
         self,
-        active: Optional[bool] = None,
+        active: bool | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List webhook subscriptions.
 
@@ -74,7 +74,7 @@ class WebhooksAPI:
         Returns:
             Paginated response with webhooks
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -83,7 +83,7 @@ class WebhooksAPI:
 
         return await self.client.get("webhooks/webhooks/", params=params)
 
-    async def get(self, webhook_id: str) -> Dict[str, Any]:
+    async def get(self, webhook_id: str) -> dict[str, Any]:
         """
         Get webhook subscription by ID.
 
@@ -99,7 +99,7 @@ class WebhooksAPI:
         self,
         webhook_id: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update webhook subscription.
 
@@ -126,8 +126,8 @@ class WebhooksAPI:
         webhook_id: str,
         page: int = 1,
         page_size: int = 50,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get webhook delivery history.
 
@@ -140,7 +140,7 @@ class WebhooksAPI:
         Returns:
             Paginated response with delivery history
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -149,7 +149,7 @@ class WebhooksAPI:
 
         return await self.client.get(f"webhooks/webhooks/{webhook_id}/deliveries/", params=params)
 
-    async def test(self, webhook_id: str) -> Dict[str, Any]:
+    async def test(self, webhook_id: str) -> dict[str, Any]:
         """
         Test webhook subscription.
 

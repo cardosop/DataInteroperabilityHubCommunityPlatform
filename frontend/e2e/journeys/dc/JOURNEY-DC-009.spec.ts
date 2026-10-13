@@ -27,7 +27,7 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
       // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
+        .locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
@@ -39,13 +39,13 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
       const hasContent =
         (await page.locator('.communities-page').count()) > 0 ||
         (await page.locator('.communities-tab').count()) > 0 ||
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
         (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         // app-main is always present once the route resolves — proves the shell rendered
         (await page.locator('.app-main, [data-testid="app-main"]').first().count()) > 0;
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onCommunities).toBe(true);

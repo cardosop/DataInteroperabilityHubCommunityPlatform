@@ -223,7 +223,7 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
 
         # Step 1: Create ODPS contract via Product-First flow using synchronous workflow execution
         # Use workflow directly to avoid async transaction isolation issues in tests
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         # Disable external ref resolution in tests to avoid timeouts
         # External refs require network access and can hang
@@ -303,6 +303,7 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
             # Audit log may not be created immediately — log a warning
             # so the test output flags it but doesn't fail the test.
             import logging
+
             logging.getLogger(__name__).warning(
                 "Audit log verification deferred (non-critical): %s", e
             )
@@ -504,9 +505,9 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
                 self.prepare_contract_for_activation(odps_contract_id)
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(
-                    "ODPS contract activation prep failed (may not exist if linking "
-                    "failed): %s", e
+                    "ODPS contract activation prep failed (may not exist if linking failed): %s", e
                 )
         self.prepare_asset_for_activation(asset_id)
         activate_response = self.activate_asset(asset_id)
@@ -540,7 +541,7 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data = self._create_odps_product_first_data(include_marketplace=True)
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -640,7 +641,7 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data = self._create_odps_product_first_data(include_strategy=True)
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -693,7 +694,7 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data = self._create_odps_product_first_data(multilingual=True)
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -1022,7 +1023,7 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data["product"]["contract"] = {"spec": self._create_odcs_contract_data()}
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -1120,7 +1121,7 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data["product"]["contract"] = {"spec": self._create_odcs_contract_data()}
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -1158,7 +1159,9 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
             if list_links_response.status_code == status.HTTP_200_OK:
                 links = list_links_response.data.get("links", [])
                 odps_links = [
-                    l for l in links if l.get("original_spec_type") == OriginalSpecType.ODPS.value
+                    link
+                    for link in links
+                    if link.get("original_spec_type") == OriginalSpecType.ODPS.value
                 ]
                 self.assertGreater(len(odps_links), 0, "Should have ODPS links")
 
@@ -1169,7 +1172,9 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
             if list_odps_links_response.status_code == status.HTTP_200_OK:
                 links = list_odps_links_response.data.get("links", [])
                 odcs_links = [
-                    l for l in links if l.get("original_spec_type") == OriginalSpecType.ODCS.value
+                    link
+                    for link in links
+                    if link.get("original_spec_type") == OriginalSpecType.ODCS.value
                 ]
                 self.assertGreater(len(odcs_links), 0, "Should have ODCS links")
 
@@ -1214,7 +1219,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         """Set up test fixtures"""
         super().setUp()
 
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Create provider tenant and user (subscription required for asset/listing creation)
         self.provider_tenant = Tenant.objects.create(
@@ -1381,7 +1386,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         }
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -1451,7 +1456,9 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         self.assertGreater(len(listings), 0, "Should have listings")
 
         # Find our listing
-        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
+        our_listing = next(
+            (listing for listing in listings if listing["id"] == str(listing_id)), None
+        )
         self.assertIsNotNone(our_listing, "Should find our listing")
 
         # Step 4: Consumer views product details with ODPS information
@@ -1509,7 +1516,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data = self._create_odps_data_with_access_methods()
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),
@@ -1635,7 +1642,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         odps_data = self._create_odps_data_with_access_methods()
 
         # Use synchronous workflow execution for reliable E2E testing
-        from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+        from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 
         result = ProductCreationWorkflow.execute(
             original_raw=json.dumps(odps_data, indent=2),

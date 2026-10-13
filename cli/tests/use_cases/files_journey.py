@@ -93,9 +93,8 @@ def test_generate_presigned_url():
         or body.get("upload_url")
         or body.get("signed_url")
     )
-    assert isinstance(url_value, str) and url_value.startswith("http"), (
-        f"Presigned URL is not a valid HTTP URL: {url_value}"
-    )
+    assert isinstance(url_value, str), f"Presigned URL is not a valid HTTP URL: {url_value}"
+    assert url_value.startswith("http"), f"Presigned URL is not a valid HTTP URL: {url_value}"
 
 
 def test_file_list():

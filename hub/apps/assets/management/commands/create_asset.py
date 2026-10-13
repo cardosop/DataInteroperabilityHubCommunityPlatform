@@ -68,7 +68,7 @@ class Command(BaseCommand):
             help=("Validate and execute the service path but rollback persistence."),
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         tenant_id = options["tenant"]
         key = options["key"]
         name = options["name"]

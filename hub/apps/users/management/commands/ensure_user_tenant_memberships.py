@@ -18,7 +18,7 @@ from hub.apps.users.services import UserTenantMembershipService
 class Command(BaseCommand):
     help = "Ensure all users with tenant_id have UserTenantMembership (fixes 403 on API access)"
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         service = UserTenantMembershipService()
         users = User.objects.filter(tenant_id__isnull=False).select_related("tenant")
         added = 0

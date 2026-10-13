@@ -48,10 +48,13 @@ class AthenaConnector(WarehouseConnector):
         asset_id: str = "",
         request_id: str = "",
     ):
-        super().__init__(connection_config, timeout_ms)
-        self._tenant_id = tenant_id
-        self._asset_id = asset_id
-        self._request_id = request_id
+        super().__init__(
+            connection_config,
+            timeout_ms,
+            tenant_id=tenant_id,
+            asset_id=asset_id,
+            request_id=request_id,
+        )
         self._client = None
         self._glue_client = None
 
@@ -158,7 +161,12 @@ class AthenaConnector(WarehouseConnector):
             cost_units=round(cost, 6),
             cost_unit_label="bytes_scanned",
         )
-        self._record_cost(self._tenant_id, cost, "bytes_scanned")
+        self._record_cost(
+            self._tenant_id,
+            cost,
+            "bytes_scanned",
+            meta={"query_execution_id": query_id},
+        )
         return result_obj
 
     def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
@@ -172,9 +180,10 @@ class AthenaConnector(WarehouseConnector):
             )
         )
         response = self._glue_client.get_table(DatabaseName=db, Name=tbl)
-        # Glue get_table is a free metadata operation — record for
-        # observability but with zero cost (no bytes scanned).
-        self._record_cost(self._tenant_id, 0.0, "bytes_scanned")
+        # Glue get_table is a free metadata operation — keep the zero-cost
+        # metric observation, never a ledger row (P7 task 7.5: no query
+        # executed).
+        self._emit_cost_metric(self._tenant_id, 0.0, "bytes_scanned")
         columns = response["Table"].get("StorageDescriptor", {}).get("Columns", [])
         partitions = response["Table"].get("PartitionKeys", [])
         return [

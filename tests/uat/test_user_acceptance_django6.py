@@ -22,6 +22,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import ContractStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
 
@@ -149,7 +150,10 @@ class DataQualityChecksTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-        self.tenant = TenantFactory.create_tenant()
+        # DQ runs are gated on the tenant feature flag (240.4.B.2) AND an
+        # active subscription (paid endpoint) — enable both for the UAT.
+        self.tenant = TenantFactory.create_tenant(data_quality_enabled=True)
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
@@ -194,7 +198,10 @@ class ComplianceChecksTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        # Compliance runs are a paid endpoint — the tenant needs an active
+        # subscription for the UAT to reach the workflow.
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",

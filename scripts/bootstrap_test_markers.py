@@ -60,7 +60,7 @@ def uses_db(source: str) -> bool:
 def has_tier1_marker(file_path: Path) -> str | None:
     try:
         c = file_path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return None
     for m in ("unit", "integration", "e2e"):
         if f"pytest.mark.{m}" in c:
@@ -78,7 +78,7 @@ def classify_file(file_path: Path) -> str | None:
             return "unit"
     try:
         src = file_path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return None
     for ip in INTEGRATION_PATHS:
         if ip in rel:
@@ -113,7 +113,7 @@ def classify_file(file_path: Path) -> str | None:
 def count_test_nodes(file_path: Path) -> int:
     try:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
         return 0
     return sum(
         1
@@ -131,7 +131,7 @@ def apply_marker_to_file(file_path: Path, marker: str) -> int:
     Returns number of nodes decorated."""
     try:
         src = file_path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return 0
     try:
         tree = ast.parse(src, filename=str(file_path))

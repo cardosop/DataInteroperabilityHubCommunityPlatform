@@ -139,7 +139,7 @@ class ValidateRateLimitsTest(TestCase):
     # GAP-0.2.3.3: validate_rate_limits tests
     def test_valid_rate_limits_for_each_category(self):
         """Test valid rate limits for each category"""
-        for category in PLATFORM_MAX_RATE_LIMITS.keys():
+        for category in PLATFORM_MAX_RATE_LIMITS:
             platform_max = PLATFORM_MAX_RATE_LIMITS[category]
             limits = {}
 

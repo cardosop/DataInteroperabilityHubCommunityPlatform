@@ -22,9 +22,10 @@ def _api(path, method="get", **kwargs):
     url = f"{BASE_URL}{path}"
     try:
         r = requests.request(method, url, timeout=TIMEOUT, **kwargs)
-        return r
     except (requests.ConnectionError, requests.Timeout):
         pytest.skip(f"Service unavailable at {url}")
+    else:
+        return r
 
 
 class TestSecretsSmoke:

@@ -10,7 +10,7 @@ import time
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.utils import InternalError, OperationalError
+from django.db.utils import IntegrityError, InternalError, OperationalError
 
 from .models import WorkflowDefinition
 
@@ -93,10 +93,7 @@ class WorkflowVersionManager:
         else:
             # Auto-increment patch version
             latest = cls.get_latest_version(workflow_name)
-            if latest:
-                version = cls._increment_patch_version(latest.version)
-            else:
-                version = "1.0.0"
+            version = cls._increment_patch_version(latest.version) if latest else "1.0.0"
 
         # Resolve created_by user if provided (best-effort).
         created_by = None
@@ -159,7 +156,8 @@ class WorkflowVersionManager:
                 # raises a proper unique-violation error (which the caller
                 # handles as "already exists") or succeeds.
                 if WorkflowDefinition.objects.filter(
-                    name=workflow_name, version=version,
+                    name=workflow_name,
+                    version=version,
                 ).exists():
                     row_persisted = True
                     break
@@ -170,7 +168,10 @@ class WorkflowVersionManager:
                     "bulk_create with ignore_conflicts returned silently "
                     "but row not found for workflow %s v%s — retrying "
                     "without ignore_conflicts (attempt %d/%d)",
-                    workflow_name, version, attempt + 1, max_retries + 1,
+                    workflow_name,
+                    version,
+                    attempt + 1,
+                    max_retries + 1,
                 )
                 with transaction.atomic():
                     WorkflowDefinition.objects.bulk_create(
@@ -191,7 +192,8 @@ class WorkflowVersionManager:
                 if is_duplicate:
                     # Another process inserted the row — fetch and return it.
                     existing = WorkflowDefinition.objects.filter(
-                        name=workflow_name, version=version,
+                        name=workflow_name,
+                        version=version,
                     ).first()
                     if existing:
                         logger.info(
@@ -214,7 +216,8 @@ class WorkflowVersionManager:
                     # attempting another insert (which would wait
                     # on the lock again).
                     existing = WorkflowDefinition.objects.filter(
-                        name=workflow_name, version=version,
+                        name=workflow_name,
+                        version=version,
                     ).first()
                     if existing:
                         logger.info(
@@ -255,24 +258,22 @@ class WorkflowVersionManager:
         # protected from aborted-transaction fallout.
         try:
             with transaction.atomic():
-                wf_def = WorkflowDefinition.objects.get(
-                    name=workflow_name, version=version
+                wf_def = WorkflowDefinition.objects.get(name=workflow_name, version=version)
+                WorkflowDefinition.objects.filter(name=workflow_name).exclude(id=wf_def.id).update(
+                    is_active=False
                 )
-                WorkflowDefinition.objects.filter(
-                    name=workflow_name
-                ).exclude(id=wf_def.id).update(is_active=False)
         except OperationalError as e:
             logger.warning(
                 "Could not deactivate other versions for workflow %s v%s "
                 "due to lock contention: %s.  The new version is active; "
                 "deactivation will be retried on the next registration.",
-                workflow_name, version, e,
+                workflow_name,
+                version,
+                e,
             )
             # Fetch the row outside the aborted inner savepoint — the outer
             # transaction is still healthy.
-            wf_def = WorkflowDefinition.objects.get(
-                name=workflow_name, version=version
-            )
+            wf_def = WorkflowDefinition.objects.get(name=workflow_name, version=version)
 
         return wf_def
 

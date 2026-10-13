@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { mlService } from '../services/mlService';
 import type {
   MLModelCreateRequest,
@@ -16,7 +17,7 @@ import type {
 export function useMLModels(filters: MLListFilters = {}) {
   return useQuery({
     queryKey: ['ml', 'models', filters],
-    queryFn: () => mlService.listModels(filters),
+    queryFn: async () => normalizePaginated(await mlService.listModels(filters)),
   });
 }
 
@@ -72,7 +73,7 @@ export function useDeleteMLModel() {
 export function useTrainingJobs(filters: MLListFilters = {}) {
   return useQuery({
     queryKey: ['ml', 'training', 'jobs', filters],
-    queryFn: () => mlService.listTrainingJobs(filters),
+    queryFn: async () => normalizePaginated(await mlService.listTrainingJobs(filters)),
   });
 }
 
@@ -113,7 +114,7 @@ export function useCancelTrainingJob() {
 export function useInferenceDeployments(filters: MLListFilters = {}) {
   return useQuery({
     queryKey: ['ml', 'inference', 'deployments', filters],
-    queryFn: () => mlService.listInferenceDeployments(filters),
+    queryFn: async () => normalizePaginated(await mlService.listInferenceDeployments(filters)),
   });
 }
 

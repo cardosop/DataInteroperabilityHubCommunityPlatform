@@ -1043,7 +1043,7 @@ def sync_pull(self, ...):
 
 - **Base Connector Class**: `hub/apps/integrations/base.py` - Complete interface documentation
 - **Pattern Verification Tests**: `hub/apps/integrations/tests/test_connector_pattern.py` - Test suite for pattern compliance
-- **Workflow Integration**: `hub/apps/orchestration/workflows/marketplace_sync.py` - Workflow implementation
+- **Workflow Integration**: `hub/apps/marketplace/workflows/marketplace_sync.py` - Workflow implementation (paid-layer marketplace app; absent in core-only deployments)
 - **Service Layer**: `hub/apps/integrations/services.py` - `create_federated_asset_with_contracts()` implementation
 
 ---

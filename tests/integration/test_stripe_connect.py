@@ -17,7 +17,6 @@ import os
 import pytest
 import requests
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -39,12 +38,8 @@ class TestStripeConnectIntegration:
                 login_resp = requests.post(
                     f"{self._api_base()}/auth/login/",
                     json={
-                        "email": os.environ.get(
-                            "HUB_E2E_EMAIL", "e2e-provider@meshant.com"
-                        ),
-                        "password": os.environ.get(
-                            "HUB_E2E_PASSWORD", "e2e-test-password"
-                        ),
+                        "email": os.environ.get("HUB_E2E_EMAIL", "e2e-provider@meshant.com"),
+                        "password": os.environ.get("HUB_E2E_PASSWORD", "e2e-test-password"),
                     },
                     timeout=10,
                 )

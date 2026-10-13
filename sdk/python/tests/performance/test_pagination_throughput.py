@@ -20,7 +20,7 @@ from tests.use_cases._api_helpers import api_get
 
 BUDGET_MS = 30_000.0
 PAGE_SIZE = 100
-MAX_PAGES = 100  # 100 pages × 100 items = 10k
+MAX_PAGES = 100  # 100 pages x 100 items = 10k
 
 
 def test_pagination_throughput_under_budget():

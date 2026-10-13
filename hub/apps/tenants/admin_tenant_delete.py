@@ -35,7 +35,6 @@ import logging
 from datetime import timedelta
 
 from django.db import transaction
-from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -56,7 +55,7 @@ logger = logging.getLogger(__name__)
 class AdminTenantDeleteView(APIView):
     """PLATFORM_ADMIN endpoint for soft-deleting a tenant with 90-day grace."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     @extend_schema(
         operation_id="admin_tenant_soft_delete",
@@ -176,16 +175,26 @@ class AdminTenantDeleteView(APIView):
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
 
-            # Happy path — state mutation + audit emission under the
-            # row lock so the next concurrent caller sees the new state.
-            now = timezone.now()
-            Tenant.all_objects.filter(pk=tenant.pk).update(
-                scheduled_for_deletion_at=now,
-                deleted_at=now,
-                status=TenantStatus.DELETED,
-                updated_at=now,
+            # Happy path — W4.3 (R2-I4): route the state mutation through
+            # ``TenantService.delete_tenant`` instead of ``QuerySet.update``.
+            # The update() path skipped ``save()``, so the post_save
+            # federated tombstone signal (Phase 250.5.A.5) never fired and
+            # consumer-side ``ExternalResourceReference`` rows never got
+            # their ``source_tenant_deleted_at`` grace stamp — the consumer
+            # 90-day grace never materialised. The service call runs
+            # ``Tenant.soft_delete()`` (save() → signal → tombstone) under
+            # the same row lock/atomic block, keeping the concurrency
+            # contract intact.
+            from .services import TenantService
+
+            service = TenantService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
             )
-            tenant.refresh_from_db()
+            tenant = service.delete_tenant(
+                tenant_id=str(tenant.id),
+                reason="admin soft-delete (Phase 235.3 endpoint)",
+            )
             create_audit_event(
                 resource_type="TENANT",
                 action=_audit_et.TENANT_SOFT_DELETED,
@@ -196,7 +205,7 @@ class AdminTenantDeleteView(APIView):
                 details={
                     "slug": tenant.slug,
                     "display_name": tenant.name,
-                    "scheduled_for_deletion_at": now.isoformat(),
+                    "scheduled_for_deletion_at": tenant.scheduled_for_deletion_at.isoformat(),
                     "deleted_by": str(request.user.id),
                     "tenant_id": str(tenant.id),
                 },

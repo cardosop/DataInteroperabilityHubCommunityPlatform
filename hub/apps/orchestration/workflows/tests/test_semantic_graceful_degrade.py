@@ -45,6 +45,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings as _settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -115,6 +116,17 @@ def _seed_asset_and_workflow(tenant, user, *, status=AssetStatus.DRAFT):
 # ---------------------------------------------------------------------------
 # 250.7.A.1 — field shape
 # ---------------------------------------------------------------------------
+
+
+# The suite exercises the semantic mapping degradation paths (paid
+# semantic layer); the module is skipped in core-only mode.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="semantic mapping degradation suite requires the paid semantic layer",
+    ),
+]
 
 
 class AssetSemanticStatusFieldTest(TestCase):
@@ -266,7 +278,7 @@ class ActivationSemanticMappingDegradedTest(TestCase):
         ).count()
 
         with patch(
-            "hub.apps.orchestration.workflows.asset_creation.map_asset_to_semantic",
+            "hub.apps.semantic.utils.map_asset_to_semantic",
             side_effect=RuntimeError("Fuseki unreachable"),
         ):
             # The activate task is the wrapper that calls

@@ -34,6 +34,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
+@pytest.mark.journey("JOURNEY-TOPOLOGY-VISUALIZATION")
 class TopologyViewSetTestCase(TestCase):
     """Base test case for TopologyViewSet tests"""
 

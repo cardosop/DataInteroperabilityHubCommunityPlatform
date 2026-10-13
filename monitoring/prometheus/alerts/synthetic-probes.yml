@@ -1,0 +1,146 @@
+# 280.B.2.4 — Synthetic Prober Alert Rules.
+#
+# Fires when any critical-journey synthetic probe fails >1% of the time
+# over a 5-minute window.  Each probe targets one of the 4 critical
+# endpoints: login, asset_list, search, health.
+#
+# Probe failure definition:
+#   The probe did NOT receive the expected HTTP status (200 for all 4),
+#   OR the probe request timed out (10s), OR a connection error occurred.
+#
+# Metric contract (emitted by hub/apps/health/synthetic_probes.py):
+#   synthetic_probe_failures_total{probe="<name>"}
+#   synthetic_probe_success_total{probe="<name>"}
+#   synthetic_probe_latency_ms{probe="<name>"}      (gauge, latest value)
+groups:
+  - name: synthetic_probe_alerts
+    rules:
+
+      # ── Aggregate: any probe failure rate > 1% for 5 min ──────────
+      - alert: SyntheticProbeFailureRateHigh
+        expr: |
+          (
+            sum(rate(synthetic_probe_failures_total[5m]))
+            /
+            (
+              sum(rate(synthetic_probe_success_total[5m])) +
+              sum(rate(synthetic_probe_failures_total[5m]))
+            )
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: synthetic-probers
+        annotations:
+          summary: "Synthetic probe failure rate >1% for 5m"
+          description: |
+            The aggregate failure rate across all synthetic probes has
+            exceeded 1% for 5 minutes (current: {{ $value | humanizePercentage }}).
+            This indicates a systemic API issue affecting critical journeys.
+            Check individual probe metrics:
+              synthetic_probe_failures_total{probe="login"}
+              synthetic_probe_failures_total{probe="asset_list"}
+              synthetic_probe_failures_total{probe="search"}
+              synthetic_probe_failures_total{probe="health"}
+          runbook_url: "docs/runbooks/synthetic-probes.md"
+
+      # ── Per-probe alerts ───────────────────────────────────────────
+      - alert: SyntheticProbeLoginFailing
+        expr: |
+          rate(synthetic_probe_failures_total{probe="login"}[5m])
+          /
+          (
+            rate(synthetic_probe_success_total{probe="login"}[5m]) +
+            rate(synthetic_probe_failures_total{probe="login"}[5m])
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: synthetic-probers
+          probe: login
+        annotations:
+          summary: "Login probe failure rate >1% for 5m"
+          description: |
+            The login synthetic probe is failing at {{ $value | humanizePercentage }}.
+            Login is the entry point for all authenticated journeys — this
+            indicates an auth-service or database issue.
+          runbook_url: "docs/runbooks/synthetic-probes.md#login-probe-failing"
+
+      - alert: SyntheticProbeAssetListFailing
+        expr: |
+          rate(synthetic_probe_failures_total{probe="asset_list"}[5m])
+          /
+          (
+            rate(synthetic_probe_success_total{probe="asset_list"}[5m]) +
+            rate(synthetic_probe_failures_total{probe="asset_list"}[5m])
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: synthetic-probers
+          probe: asset_list
+        annotations:
+          summary: "Asset list probe failure rate >1% for 5m"
+          description: |
+            The asset_list synthetic probe is failing at {{ $value | humanizePercentage }}.
+            Asset listing is the most-accessed endpoint — this indicates
+            a database, cache, or API-service issue.
+          runbook_url: "docs/runbooks/synthetic-probes.md#asset-list-probe-failing"
+
+      - alert: SyntheticProbeSearchFailing
+        expr: |
+          rate(synthetic_probe_failures_total{probe="search"}[5m])
+          /
+          (
+            rate(synthetic_probe_success_total{probe="search"}[5m]) +
+            rate(synthetic_probe_failures_total{probe="search"}[5m])
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: synthetic-probers
+          probe: search
+        annotations:
+          summary: "Search probe failure rate >1% for 5m"
+          description: |
+            The search synthetic probe is failing at {{ $value | humanizePercentage }}.
+            Search is the primary discovery mechanism — this indicates
+            a search-index, search-service, or API-gateway issue.
+          runbook_url: "docs/runbooks/synthetic-probes.md#search-probe-failing"
+
+      - alert: SyntheticProbeHealthFailing
+        expr: |
+          rate(synthetic_probe_failures_total{probe="health"}[5m])
+          /
+          (
+            rate(synthetic_probe_success_total{probe="health"}[5m]) +
+            rate(synthetic_probe_failures_total{probe="health"}[5m])
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: synthetic-probers
+          probe: health
+        annotations:
+          summary: "Health probe failure rate >1% for 5m"
+          description: |
+            The health synthetic probe is failing at {{ $value | humanizePercentage }}.
+            The /health endpoint is the most basic liveness check — failure
+            indicates the API server itself is unreachable or crashed.
+          runbook_url: "docs/runbooks/synthetic-probes.md#health-probe-failing"
+
+      # ── Latency degradation (warning only) ─────────────────────────
+      - alert: SyntheticProbeLatencyHigh
+        expr: |
+          synthetic_probe_latency_ms > 3000
+        for: 10m
+        labels:
+          severity: warning
+          component: synthetic-probers
+        annotations:
+          summary: "Synthetic probe latency >3s for 10m (probe: {{ $labels.probe }})"
+          description: |
+            Probe {{ $labels.probe }} latency is {{ $value }}ms, exceeding
+            the 3s warning threshold for 10 minutes. This may indicate
+            database slowness or resource contention.
+          runbook_url: "docs/runbooks/synthetic-probes.md#high-latency"

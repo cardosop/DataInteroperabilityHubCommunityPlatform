@@ -145,8 +145,11 @@ class DatasetModelTest(DatasetsTestBase):
         # Missing tenant — the NOT NULL FK constraint raises IntegrityError.
         with self.assertRaises(IntegrityError) as cm:
             Dataset.objects.create(file=self.file, version=1, format="CSV")
-        self.assertIn("tenant", str(cm.exception).lower(),
-                      "IntegrityError must reference the missing tenant_id column")
+        self.assertIn(
+            "tenant",
+            str(cm.exception).lower(),
+            "IntegrityError must reference the missing tenant_id column",
+        )
 
     def test_create_dataset_invalid_file(self):
         """Test dataset creation with invalid file reference raises IntegrityError"""

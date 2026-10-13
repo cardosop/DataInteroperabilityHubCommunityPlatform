@@ -107,7 +107,7 @@ class ServiceHealthCheck:
                     try:
                         health_data = response.json()
                         result["details"] = health_data
-                    except:
+                    except ValueError:
                         pass
                 else:
                     result["status"] = "unhealthy"

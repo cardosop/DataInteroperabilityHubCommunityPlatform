@@ -9,6 +9,7 @@ Tests handling of:
 - Invalid data
 """
 
+import contextlib
 import json
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -654,12 +655,10 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         traverser = LineageTraverser(contract=dummy)
 
         # Should handle None contract_id gracefully
-        try:
+        # Raising exception is also acceptable for invalid input
+        with contextlib.suppress(ValueError, TypeError, AttributeError):
             traverser.traverse_top_down(contract_id=None, contract_depth=10)
             # No exception raised -- graceful handling confirmed
-        except (ValueError, TypeError, AttributeError):
-            # Raising exception is also acceptable for invalid input
-            pass
 
     def test_lineage_traversal_with_invalid_contract_id(self):
         """Test lineage traversal with invalid contract_id format."""
@@ -674,24 +673,20 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         traverser = LineageTraverser(contract=dummy)
 
         # Should handle invalid contract_id gracefully
-        try:
+        # Raising exception is also acceptable for invalid input
+        with contextlib.suppress(ValueError, TypeError, AttributeError):
             traverser.traverse_top_down(contract_id="invalid-uuid-format", contract_depth=10)
             # No exception raised -- graceful handling confirmed
-        except (ValueError, TypeError, AttributeError, Exception):
-            # Raising exception is also acceptable for invalid input
-            pass
 
     def test_resolve_lineage_reference_with_none_values(self):
         """Test resolving lineage reference with None values."""
         ref = LineageReference(namespace=None, name=None, model_name=None, field=None)
 
         # Should handle None values gracefully
-        try:
+        # Raising exception is also acceptable for invalid input
+        with contextlib.suppress(ValueError, TypeError, AttributeError):
             resolve_lineage_reference(ref)
             # No exception raised -- graceful handling confirmed
-        except (ValueError, TypeError, AttributeError):
-            # Raising exception is also acceptable for invalid input
-            pass
 
     def test_normalization_with_mixed_valid_invalid_data(self):
         """Test normalization with mix of valid and invalid data."""

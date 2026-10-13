@@ -9,7 +9,8 @@ isolation and explicit overrides for git_sha / timestamp.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from dataclasses import FrozenInstanceError
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,6 +21,9 @@ from tests.fixtures.perf_record import (
     perf_results_dir,
     write_perf_record,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Schema lock
@@ -118,7 +122,7 @@ def test_percentiles_are_sorted_ascending() -> None:
 
 
 def test_rejects_empty_measurements() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="measurements_ms must be non-empty"):
         build_perf_record(
             test_name="t",
             measurements_ms=[],
@@ -129,7 +133,7 @@ def test_rejects_empty_measurements() -> None:
 
 
 def test_rejects_negative_measurement() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="measurements_ms contains invalid"):
         build_perf_record(
             test_name="t",
             measurements_ms=[1.0, -2.0, 3.0],
@@ -140,7 +144,7 @@ def test_rejects_negative_measurement() -> None:
 
 
 def test_rejects_zero_or_negative_budget() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"budget_ms must be > 0"):
         build_perf_record(
             test_name="t",
             measurements_ms=[1.0],
@@ -207,5 +211,5 @@ def test_perfrecord_is_frozen() -> None:
         p95_ms=1.0,
         p99_ms=1.0,
     )
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         record.test_name = "mutated"  # type: ignore[misc]

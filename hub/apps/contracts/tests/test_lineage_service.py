@@ -359,10 +359,7 @@ class LineageServiceTest(ContractsTransactionTestBase):
         )
 
         # Service may return a dict keyed by format or a plain string
-        if isinstance(visualization, dict):
-            content = visualization.get("dot", "")
-        else:
-            content = visualization
+        content = visualization.get("dot", "") if isinstance(visualization, dict) else visualization
         self.assertIsInstance(content, str)
         self.assertIn("digraph", content.lower())
 

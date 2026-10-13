@@ -11,9 +11,11 @@ All lineage references use the format: namespace/name/model_name/field_name
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import DatabaseError, models
 
 # Import Contract model - will be available at runtime.
@@ -22,6 +24,7 @@ try:
     from hub.apps.contracts.models import Contract
 except ImportError:
     import logging
+
     logging.getLogger(__name__).warning(
         "Contract model not available; lineage resolution will be non-functional."
     )
@@ -85,17 +88,22 @@ class LineageReference:
 
         # Try to find contract by namespace/name
         try:
-            # Check cache first
-            cache_key = f"lineage:contract:{self.namespace}:{self.name}"
+            # Check cache first. The key hashes the raw namespace/name —
+            # they are user-controlled strings that may contain spaces or
+            # non-ASCII characters, which Django rejects with
+            # CacheKeyWarning (and memcached errors on).
+            raw_key = f"{self.namespace}:{self.name}"
+            cache_key = f"lineage:contract:{hashlib.sha256(raw_key.encode()).hexdigest()}"
             contract_id = cache.get(cache_key)
             if contract_id:
                 try:
                     contract = Contract.objects.get(id=contract_id)
+                except Contract.DoesNotExist:
+                    pass
+                else:
                     self._resolved_contract = contract
                     self._is_broken = False
                     return contract
-                except Contract.DoesNotExist:
-                    pass
 
             # Query by hub_contract_json
             contracts = Contract.objects.filter(hub_contract_json__info__name=self.name)
@@ -122,8 +130,10 @@ class LineageReference:
             return None
         except Exception:
             import logging
+
             logging.getLogger(__name__).warning(
-                "Unexpected error resolving lineage contract ref=%s", self,
+                "Unexpected error resolving lineage contract ref=%s",
+                self,
                 exc_info=True,
             )
             self._is_broken = True
@@ -241,19 +251,20 @@ def extract_contract_level_lineage(odcs_contract: dict[str, Any]) -> dict[str, A
     contract_refs = []
     if isinstance(transform_sources, list):
         for source in transform_sources:
-            if isinstance(source, dict):
-                # If it's a contract reference (has namespace/name but no model/field)
-                if ("namespace" in source or "name" in source) and (
-                    "model" not in source and "model_name" not in source and "field" not in source
-                ):
-                    contract_refs.append(
-                        {
-                            "namespace": source.get("namespace"),
-                            "name": source.get("name"),
-                            "version": source.get("version"),
-                            "description": source.get("description"),
-                        }
-                    )
+            # If it's a contract reference (has namespace/name but no model/field)
+            if (
+                isinstance(source, dict)
+                and ("namespace" in source or "name" in source)
+                and ("model" not in source and "model_name" not in source and "field" not in source)
+            ):
+                contract_refs.append(
+                    {
+                        "namespace": source.get("namespace"),
+                        "name": source.get("name"),
+                        "version": source.get("version"),
+                        "description": source.get("description"),
+                    }
+                )
 
     if contract_refs:
         lineage_section["contracts"] = contract_refs
@@ -292,21 +303,20 @@ def extract_model_level_lineage(odcs_schema: dict[str, Any]) -> dict[str, Any] |
     model_refs = []
     if isinstance(transform_sources, list):
         for source in transform_sources:
-            if isinstance(source, dict):
-                # If it's a model reference (has namespace/name/model but no field)
-                if (
-                    ("namespace" in source or "name" in source)
-                    and ("model" in source or "model_name" in source)
-                    and "field" not in source
-                ):
-                    model_refs.append(
-                        {
-                            "namespace": source.get("namespace"),
-                            "name": source.get("name"),
-                            "model_name": source.get("model") or source.get("model_name"),
-                            "description": source.get("description"),
-                        }
-                    )
+            # If it's a model reference (has namespace/name/model but no field)
+            if isinstance(source, dict) and (
+                ("namespace" in source or "name" in source)
+                and ("model" in source or "model_name" in source)
+                and "field" not in source
+            ):
+                model_refs.append(
+                    {
+                        "namespace": source.get("namespace"),
+                        "name": source.get("name"),
+                        "model_name": source.get("model") or source.get("model_name"),
+                        "description": source.get("description"),
+                    }
+                )
 
     if model_refs:
         lineage_section["models"] = model_refs
@@ -403,6 +413,10 @@ class LineageTraverser:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
             return {"error": "Contract not found", "contract_id": contract_id}
+        except ValidationError:
+            # Malformed UUID input (Django 6 raises ValidationError from
+            # UUIDField prep) — treat as an invalid reference, not a crash.
+            return {"error": "Invalid contract id format", "contract_id": contract_id}
 
         hub_contract = contract.hub_contract_json
         if not isinstance(hub_contract, dict):

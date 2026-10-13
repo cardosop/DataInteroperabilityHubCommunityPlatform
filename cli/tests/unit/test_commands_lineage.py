@@ -376,7 +376,7 @@ class TestLineageImpact:
         assert call_args[0][0] == "contracts/contract-1/impact-analysis/"
         assert call_args[1]["params"]["depth"] == 5
         # include_fields defaults to True
-        assert call_args[1]["params"]["include_fields"] == True
+        assert call_args[1]["params"]["include_fields"]
 
     def test_get_impact_analysis_many_assets(self, runner, mock_api_client):
         """Test getting impact analysis with many affected assets (truncation)"""

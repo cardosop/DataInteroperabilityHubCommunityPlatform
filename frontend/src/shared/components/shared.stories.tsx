@@ -31,10 +31,6 @@ export const ButtonLoading: ButtonStory = { args: { variant: 'primary', children
 
 // ── EmptyState ──────────────────────────────────────────────────────────
 import { EmptyState } from './EmptyState';
-const EmptyStateMeta: Meta<typeof EmptyState> = {
-  title: 'Shared/EmptyState',
-  component: EmptyState,
-};
 export const EmptyStateDefault: StoryObj<typeof EmptyState> = {
   render: () => <EmptyState title="No assets yet" description="Create your first asset to get started." />,
 };
@@ -50,10 +46,6 @@ export const EmptyStateWithAction: StoryObj<typeof EmptyState> = {
 
 // ── Banner ──────────────────────────────────────────────────────────────
 import { Banner } from './Banner';
-const BannerMeta: Meta<typeof Banner> = {
-  title: 'Shared/Banner',
-  component: Banner,
-};
 export const BannerInfo: StoryObj<typeof Banner> = {
   render: () => <Banner variant="info" message="Your plan will renew on June 1, 2026." />,
 };
@@ -69,10 +61,6 @@ export const BannerSuccess: StoryObj<typeof Banner> = {
 
 // ── ConfirmDialog ───────────────────────────────────────────────────────
 import { ConfirmDialog } from './ConfirmDialog';
-const ConfirmDialogMeta: Meta<typeof ConfirmDialog> = {
-  title: 'Shared/ConfirmDialog',
-  component: ConfirmDialog,
-};
 export const ConfirmDialogDefault: StoryObj<typeof ConfirmDialog> = {
   render: () => (
     <ConfirmDialog
@@ -89,10 +77,6 @@ export const ConfirmDialogDefault: StoryObj<typeof ConfirmDialog> = {
 
 // ── DestructiveConfirmDialog ────────────────────────────────────────────
 import { DestructiveConfirmDialog } from './DestructiveConfirmDialog';
-const DestructiveConfirmMeta: Meta<typeof DestructiveConfirmDialog> = {
-  title: 'Shared/DestructiveConfirmDialog',
-  component: DestructiveConfirmDialog,
-};
 export const DestructiveConfirm: StoryObj<typeof DestructiveConfirmDialog> = {
   render: () => (
     <DestructiveConfirmDialog
@@ -109,10 +93,6 @@ export const DestructiveConfirm: StoryObj<typeof DestructiveConfirmDialog> = {
 
 // ── Breadcrumbs ─────────────────────────────────────────────────────────
 import { Breadcrumbs } from './Breadcrumbs';
-const BreadcrumbsMeta: Meta<typeof Breadcrumbs> = {
-  title: 'Shared/Breadcrumbs',
-  component: Breadcrumbs,
-};
 export const BreadcrumbsTwoLevel: StoryObj<typeof Breadcrumbs> = {
   render: () => (
     <Breadcrumbs
@@ -137,10 +117,6 @@ export const BreadcrumbsThreeLevel: StoryObj<typeof Breadcrumbs> = {
 
 // ── Skeleton (loading) ──────────────────────────────────────────────────
 import { Skeleton } from './Skeleton';
-const SkeletonMeta: Meta<typeof Skeleton> = {
-  title: 'Shared/Skeleton',
-  component: Skeleton,
-};
 export const SkeletonText: StoryObj<typeof Skeleton> = {
   render: () => <Skeleton variant="text" width="100%" />,
 };
@@ -153,20 +129,12 @@ export const SkeletonCircle: StoryObj<typeof Skeleton> = {
 
 // ── ComingSoonPage ──────────────────────────────────────────────────────
 import { ComingSoonPage } from './ComingSoonPage';
-const ComingSoonMeta: Meta<typeof ComingSoonPage> = {
-  title: 'Shared/ComingSoonPage',
-  component: ComingSoonPage,
-};
 export const ComingSoon: StoryObj<typeof ComingSoonPage> = {
   render: () => <ComingSoonPage featureName="Advanced Analytics" />,
 };
 
 // ── CodeBlock ───────────────────────────────────────────────────────────
 import { CodeBlock } from './CodeBlock';
-const CodeBlockMeta: Meta<typeof CodeBlock> = {
-  title: 'Shared/CodeBlock',
-  component: CodeBlock,
-};
 export const CodeBlockJSON: StoryObj<typeof CodeBlock> = {
   render: () => (
     <CodeBlock
@@ -178,10 +146,6 @@ export const CodeBlockJSON: StoryObj<typeof CodeBlock> = {
 
 // ── BulkActionBar ───────────────────────────────────────────────────────
 import { BulkActionBar } from './BulkActionBar';
-const BulkActionBarMeta: Meta<typeof BulkActionBar> = {
-  title: 'Shared/BulkActionBar',
-  component: BulkActionBar,
-};
 export const BulkActionBarDefault: StoryObj<typeof BulkActionBar> = {
   render: () => (
     <BulkActionBar
@@ -198,10 +162,6 @@ export const BulkActionBarDefault: StoryObj<typeof BulkActionBar> = {
 
 // ── ActivityTimeline ────────────────────────────────────────────────────
 import { ActivityTimeline } from './ActivityTimeline';
-const ActivityTimelineMeta: Meta<typeof ActivityTimeline> = {
-  title: 'Shared/ActivityTimeline',
-  component: ActivityTimeline,
-};
 export const ActivityTimelineDefault: StoryObj<typeof ActivityTimeline> = {
   render: () => (
     <ActivityTimeline

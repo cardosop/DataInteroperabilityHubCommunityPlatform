@@ -23,7 +23,7 @@ export function PurposeManagerPage() {
     setError(null);
     try {
       const { data } = await apiClient.getClient().get<{ results?: Purpose[] } | Purpose[]>(
-        '/api/v1/governance/consent-purposes/',
+        'consent/consent-purposes/',
       );
       const rows = Array.isArray(data) ? data : (data.results ?? []);
       setItems(rows);
@@ -46,8 +46,11 @@ export function PurposeManagerPage() {
       // ``apiClient.baseURL`` is ``/api/v1`` — pass the relative path
       // only, otherwise the request lands at ``/api/v1/api/v1/…`` and
       // 404s. Mirrors the convention used by every other caller in
-      // this file and across the SPA.
-      await apiClient.getClient().post('governance/consent-purposes/', {
+      // this file and across the SPA. The consent API lives at
+      // /api/v1/consent/ (hub/apps/consent/urls.py), not /governance/
+      // (close-test-coverage-gaps 4.4 — the pre-fix GET above also
+      // carried a double-prefix full path).
+      await apiClient.getClient().post('consent/consent-purposes/', {
         key,
         name,
         description: '',

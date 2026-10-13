@@ -48,8 +48,8 @@ try:
     _METRICS_AVAILABLE = True
 except ImportError:
     _METRICS_AVAILABLE = False
-    Counter = None  # type: ignore[assignment]
-    Gauge = None  # type: ignore[assignment]
+    Counter = None
+    Gauge = None
 
 _probe_failures: dict = {}
 _probe_successes: dict = {}

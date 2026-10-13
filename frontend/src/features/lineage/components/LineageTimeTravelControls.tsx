@@ -65,7 +65,7 @@ export function LineageTimeTravelControls({
   onReset,
 }: LineageTimeTravelControlsProps) {
   const { t } = useTranslation();
-  const { isCapabilityAvailable, isLoading: capsLoading } = useCapabilities();
+  const { isCapabilityAvailable } = useCapabilities();
 
   const [draftDate, setDraftDate] = useState<string>(() => isoToLocal(asOf));
   const [draftVersion, setDraftVersion] = useState<string>(
@@ -80,13 +80,15 @@ export function LineageTimeTravelControls({
   }, [version]);
 
   // DoD-G8 — gate behind the lineage.snapshots capability flag per
-  // REQ-LIN-F5-003. The hook fail-opens (returns true) on capabilities
-  // load timeout, so a slow capabilities endpoint doesn't suppress
-  // the controls indefinitely. While loading we render nothing rather
-  // than flashing the controls in a transient OFF/ON sequence.
-  if (capsLoading) {
-    return null;
-  }
+  // REQ-LIN-F5-003. The service fail-opens this key on EVERY transient
+  // load failure (fallback map carries it; the runtime overlay treats a
+  // missing snapshot as available), so only an explicit wire ``false``
+  // hides the controls. We deliberately do NOT gate on the hook's
+  // ``isLoading``: before the first load resolves the map is empty and
+  // ``isCapabilityAvailable`` already answers false, and waiting on
+  // ``isLoading`` re-introduces a 30s local-timeout race against the
+  // E2E's 30s waitFor that timed the lineage-time-travel spec out under
+  // batch churn (b7).
   if (!isCapabilityAvailable('lineage.snapshots')) {
     return null;
   }

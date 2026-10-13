@@ -5,7 +5,7 @@ Provides methods for listing providers, creating import jobs,
 polling status, and cancelling federated marketplace imports.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from .client import DataHubClient
 
@@ -25,7 +25,7 @@ class FederatedImportAPI:
         """
         self.client = client
 
-    async def list_providers(self) -> Dict[str, Any]:
+    async def list_providers(self) -> dict[str, Any]:
         """List supported federated import providers.
 
         Returns:
@@ -39,7 +39,7 @@ class FederatedImportAPI:
         credential_ref: str,
         external_listing_id: str = "",
         data_strategy: str = "METADATA_ONLY",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a federated import job.
 
         Args:
@@ -51,7 +51,7 @@ class FederatedImportAPI:
         Returns:
             Created job dict with id, status, provider_id.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "provider_id": provider_id,
             "credential_ref": credential_ref,
             "data_strategy": data_strategy,
@@ -60,7 +60,7 @@ class FederatedImportAPI:
             payload["external_listing_id"] = external_listing_id
         return await self.client.post("integrations/federated-import/imports/", data=payload)
 
-    async def get_import_status(self, job_id: str) -> Dict[str, Any]:
+    async def get_import_status(self, job_id: str) -> dict[str, Any]:
         """Get the status of a federated import job.
 
         Args:
@@ -71,7 +71,7 @@ class FederatedImportAPI:
         """
         return await self.client.get(f"integrations/federated-import/imports/{job_id}/")
 
-    async def cancel_import(self, job_id: str) -> Dict[str, Any]:
+    async def cancel_import(self, job_id: str) -> dict[str, Any]:
         """Cancel a pending or running federated import job.
 
         Args:

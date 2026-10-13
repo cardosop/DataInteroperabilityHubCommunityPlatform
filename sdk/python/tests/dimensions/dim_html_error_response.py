@@ -37,7 +37,7 @@ class _HtmlErrorHandler(BaseHTTPRequestHandler):
         pass
 
 
-@pytest.fixture()
+@pytest.fixture
 def html_error_server():
     port = unique_port()
     server = HTTPServer(("127.0.0.1", port), _HtmlErrorHandler)

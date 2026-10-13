@@ -65,6 +65,11 @@ test.describe('226.G4 — Plan-limit-reached modal @critical @guardrail', () => 
         '.asset-create-page, [data-testid="asset-create-page"], form, .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page);
+    // Phase 250.6.B — the create route opens on the type-picker step;
+    // re-enter via the deep-link bypass so the form renders directly
+    // (picker coverage lives in journeys/dpo/asset-type-picker.spec.ts).
+    await page.goto('/assets/create?skip=picker', { waitUntil: 'domcontentloaded' });
+    await waitForLoadingComplete(page);
 
     // Inject the canonical 403 shape on the next asset-create POST. The
     // shape mirrors PlanLimitService.check_limit's actual response — if

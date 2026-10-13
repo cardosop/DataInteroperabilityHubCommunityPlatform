@@ -6,6 +6,11 @@ runs (list, get, submit, cancel), plan-limits.
 """
 
 from datahub_cli.main import cli
+from tests.fixtures.test_data import fresh_id
+
+# Unique per test process (and per xdist worker) so a static literal
+# can never collide across parallel runs — Phase 216.X.2.
+ASSET_ID = fresh_id("asset")
 
 
 class TestTransformationPipelineList:
@@ -97,15 +102,24 @@ class TestTransformationPipelineCreate:
                 "create",
                 "--name",
                 "new_pipeline",
-                "--dbt-project",
-                "analytics",
-                "--git-repo",
-                "https://github.com/org/repo.git",
+                "--config",
+                '{"version": "1.0.0", "steps": [{"name": "clean", "type": "transform"}]}',
             ],
         )
 
         assert result.exit_code == 0
         assert "new_pipeline" in result.output
+        mock_api_client.post.assert_called_once_with(
+            "transformation/pipelines/",
+            json_data={
+                "name": "new_pipeline",
+                "pipeline_definition": {
+                    "version": "1.0.0",
+                    "steps": [{"name": "clean", "type": "transform"}],
+                },
+            },
+            timeout=120,
+        )
 
     def test_create_pipeline_error(self, runner, mock_api_client):
         """Test create with validation error"""
@@ -119,8 +133,8 @@ class TestTransformationPipelineCreate:
                 "create",
                 "--name",
                 "duplicate",
-                "--dbt-project",
-                "analytics",
+                "--config",
+                '{"version": "1.0.0", "steps": [{"name": "clean", "type": "transform"}]}',
             ],
         )
 
@@ -194,16 +208,41 @@ class TestTransformationRuns:
 
     def test_submit_run(self, runner, mock_api_client):
         """Test submitting a pipeline run"""
-        mock_api_client.post.return_value = {"id": "run-new", "status": "QUEUED"}
+        mock_api_client.post.return_value = {
+            "execution_id": "run-new",
+            "status": "PENDING",
+            "pipeline_id": "pipe-1",
+            "asset_id": ASSET_ID,
+        }
 
-        result = runner.invoke(cli, ["transformation", "runs", "submit", "--pipeline-id", "pipe-1"])
+        result = runner.invoke(
+            cli,
+            [
+                "transformation",
+                "runs",
+                "submit",
+                "--pipeline-id",
+                "pipe-1",
+                "--asset-id",
+                ASSET_ID,
+            ],
+        )
 
         assert result.exit_code == 0
-        assert "QUEUED" in result.output
+        assert "PENDING" in result.output
+        mock_api_client.post.assert_called_once_with(
+            "transformation/pipelines/pipe-1/execute/",
+            json_data={"asset_id": ASSET_ID, "execution_mode": "ASYNC"},
+            timeout=120,
+        )
 
     def test_cancel_run(self, runner, mock_api_client):
         """Test cancelling a run"""
-        mock_api_client.post.return_value = {"status": "CANCELLED"}
+        mock_api_client.post.return_value = {
+            "execution_id": "run-1",
+            "status": "CANCELLED",
+            "message": "Execution cancelled successfully",
+        }
 
         result = runner.invoke(cli, ["transformation", "runs", "cancel", "run-1"])
 
@@ -216,14 +255,21 @@ class TestTransformationPlanLimits:
 
     def test_plan_limits(self, runner, mock_api_client):
         """Test viewing transformation plan limits"""
+        # ``billing/subscription/current/`` returns ``limits`` populated from
+        # the plan's ``limits_json``; transformation keys are
+        # ``max_transformation_pipelines`` / ``max_transformation_runs_per_month``.
         mock_api_client.get.return_value = {
-            "max_pipelines": 10,
-            "current_pipelines": 3,
-            "max_runs_per_day": 50,
-            "runs_today": 12,
+            "plan_name": "Pro",
+            "plan_slug": "pro",
+            "limits": {
+                "max_transformation_pipelines": 10,
+                "max_transformation_runs_per_month": 50,
+                "max_ml_models": 3,
+            },
         }
 
         result = runner.invoke(cli, ["transformation", "plan-limits"])
 
         assert result.exit_code == 0
         assert "10" in result.output
+        mock_api_client.get.assert_called_once_with("billing/subscription/current/")

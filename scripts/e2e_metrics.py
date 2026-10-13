@@ -25,9 +25,12 @@ import json
 import subprocess
 import sys
 from collections import defaultdict
-from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 SCHEMA_VERSION = 1
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -77,9 +80,7 @@ def _is_except_exception_pass(handler: ast.ExceptHandler) -> bool:
     t = handler.type
     if t is None:
         return True
-    if isinstance(t, ast.Name) and t.id == "Exception":
-        return True
-    return False
+    return bool(isinstance(t, ast.Name) and t.id == "Exception")
 
 
 def _is_orm_call(node: ast.AST) -> bool:
@@ -94,9 +95,7 @@ def _is_orm_call(node: ast.AST) -> bool:
     if not isinstance(inner, ast.Attribute) or inner.attr != "objects":
         return False
     # and inner.value must be a capitalised identifier (class-like)
-    if isinstance(inner.value, ast.Name) and inner.value.id[:1].isupper():
-        return True
-    return False
+    return bool(isinstance(inner.value, ast.Name) and inner.value.id[:1].isupper())
 
 
 def _references_status_code(expr: ast.AST) -> bool:

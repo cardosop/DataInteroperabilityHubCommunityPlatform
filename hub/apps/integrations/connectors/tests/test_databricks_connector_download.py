@@ -77,7 +77,7 @@ class TestDatabricksConnectorDownloadResource(TestCase):
         with self.assertRaises(NotImplementedError) as context:
             self.connector.download_resource("test_share", "/tmp/test.csv")
         # Verify the error message indicates SQL execution requires setup
-        self.assertIn("SQL execution", str(context.exception))
+        assert "SQL execution" in str(context.exception)
 
         # Verify helper methods were called
         mock_consume.assert_called_once_with("test_share")
@@ -134,8 +134,8 @@ class TestDatabricksConnectorConsumeShare(TestCase):
 
         result = self.connector._consume_share("test_share")
 
-        self.assertIsNotNone(result)
-        self.assertIn("name", result)
+        assert result is not None
+        assert "name" in result
 
     @patch.object(DatabricksConnector, "_get_share_details")
     def test_consume_share_not_found(self, mock_get_details):
@@ -167,7 +167,7 @@ class TestDatabricksConnectorCreateCatalog(TestCase):
 
         result = self.connector._create_catalog_from_share("test_share")
 
-        self.assertEqual(result, "test_share_catalog")
+        assert result == "test_share_catalog"
 
     @patch.object(DatabricksConnector, "_request_with_retry")
     def test_create_catalog_from_share_new(self, mock_request):
@@ -180,7 +180,7 @@ class TestDatabricksConnectorCreateCatalog(TestCase):
 
         result = self.connector._create_catalog_from_share("test_share")
 
-        self.assertEqual(result, "test_share_catalog")
+        assert result == "test_share_catalog"
 
 
 class TestDatabricksConnectorExtractSchema(TestCase):
@@ -209,12 +209,12 @@ class TestDatabricksConnectorExtractSchema(TestCase):
 
         result = self.connector._extract_schema_from_table("catalog.schema.table")
 
-        self.assertIn("schema", result)
-        self.assertIn("fields", result["schema"])
-        self.assertEqual(len(result["schema"]["fields"]), 2)
-        self.assertEqual(result["schema"]["fields"][0]["name"], "col1")
-        self.assertEqual(result["schema"]["fields"][0]["type"], "string")
-        self.assertEqual(result["schema"]["fields"][1]["type"], "number")
+        assert "schema" in result
+        assert "fields" in result["schema"]
+        assert len(result["schema"]["fields"]) == 2
+        assert result["schema"]["fields"][0]["name"] == "col1"
+        assert result["schema"]["fields"][0]["type"] == "string"
+        assert result["schema"]["fields"][1]["type"] == "number"
 
     @patch.object(DatabricksConnector, "_request_with_retry")
     def test_extract_schema_from_table_not_found(self, mock_request):
@@ -229,14 +229,14 @@ class TestDatabricksConnectorExtractSchema(TestCase):
         with self.assertRaises(NotFoundError) as context:
             self.connector._extract_schema_from_table("catalog.schema.nonexistent")
 
-        self.assertIn("not found", str(context.exception).lower())
+        assert "not found" in str(context.exception).lower()
 
     def test_extract_schema_from_table_invalid_format(self):
         """Test _extract_schema_from_table with invalid table name format."""
         # ValueError is caught and re-raised as ConnectionError
         with self.assertRaises(ConnectionError) as context:
             self.connector._extract_schema_from_table("invalid")
-        self.assertIn("Invalid table name format", str(context.exception))
+        assert "Invalid table name format" in str(context.exception)
 
 
 class TestDatabricksConnectorMapType(TestCase):
@@ -253,36 +253,36 @@ class TestDatabricksConnectorMapType(TestCase):
 
     def test_map_databricks_type_string(self):
         """Test mapping string types."""
-        self.assertEqual(self.connector._map_databricks_type("STRING"), "string")
-        self.assertEqual(self.connector._map_databricks_type("VARCHAR"), "string")
-        self.assertEqual(self.connector._map_databricks_type("BINARY"), "string")
+        assert self.connector._map_databricks_type("STRING") == "string"
+        assert self.connector._map_databricks_type("VARCHAR") == "string"
+        assert self.connector._map_databricks_type("BINARY") == "string"
 
     def test_map_databricks_type_number(self):
         """Test mapping number types."""
-        self.assertEqual(self.connector._map_databricks_type("INT"), "number")
-        self.assertEqual(self.connector._map_databricks_type("BIGINT"), "number")
-        self.assertEqual(self.connector._map_databricks_type("FLOAT"), "number")
-        self.assertEqual(self.connector._map_databricks_type("DOUBLE"), "number")
-        self.assertEqual(self.connector._map_databricks_type("DECIMAL"), "number")
+        assert self.connector._map_databricks_type("INT") == "number"
+        assert self.connector._map_databricks_type("BIGINT") == "number"
+        assert self.connector._map_databricks_type("FLOAT") == "number"
+        assert self.connector._map_databricks_type("DOUBLE") == "number"
+        assert self.connector._map_databricks_type("DECIMAL") == "number"
 
     def test_map_databricks_type_boolean(self):
         """Test mapping boolean type."""
-        self.assertEqual(self.connector._map_databricks_type("BOOLEAN"), "boolean")
+        assert self.connector._map_databricks_type("BOOLEAN") == "boolean"
 
     def test_map_databricks_type_datetime(self):
         """Test mapping datetime types."""
-        self.assertEqual(self.connector._map_databricks_type("TIMESTAMP"), "datetime")
-        self.assertEqual(self.connector._map_databricks_type("DATE"), "datetime")
+        assert self.connector._map_databricks_type("TIMESTAMP") == "datetime"
+        assert self.connector._map_databricks_type("DATE") == "datetime"
 
     def test_map_databricks_type_array(self):
         """Test mapping array type."""
-        self.assertEqual(self.connector._map_databricks_type("ARRAY<STRING>"), "array")
+        assert self.connector._map_databricks_type("ARRAY<STRING>") == "array"
 
     def test_map_databricks_type_object(self):
         """Test mapping object types."""
-        self.assertEqual(self.connector._map_databricks_type("STRUCT"), "object")
-        self.assertEqual(self.connector._map_databricks_type("MAP"), "object")
+        assert self.connector._map_databricks_type("STRUCT") == "object"
+        assert self.connector._map_databricks_type("MAP") == "object"
 
     def test_map_databricks_type_unknown(self):
         """Test mapping unknown type defaults to string."""
-        self.assertEqual(self.connector._map_databricks_type("UNKNOWN_TYPE"), "string")
+        assert self.connector._map_databricks_type("UNKNOWN_TYPE") == "string"

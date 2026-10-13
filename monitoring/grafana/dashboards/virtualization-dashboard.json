@@ -1,0 +1,359 @@
+{
+  "title": "Virtualization Dashboard",
+  "tags": [
+    "hub",
+    "virtualization",
+    "datasets",
+    "queries"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Virtual Datasets Created (Total)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(virtualization_dataset_created_total) by (tenant_id, query_type, status)",
+          "legendFormat": "{{tenant_id}} {{query_type}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Dataset Creation Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(virtualization_dataset_created_total[5m])) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Datasets/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Dataset Creation Duration (P95)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(virtualization_dataset_creation_duration_seconds_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P95",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Active Virtual Datasets",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(virtualization_dataset_count) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Query Executions Started (Total)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(virtualization_query_execution_started_total) by (tenant_id, execution_mode)",
+          "legendFormat": "{{tenant_id}} {{execution_mode}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Query Execution Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(virtualization_query_execution_started_total[5m])) by (tenant_id, execution_mode)",
+          "legendFormat": "{{tenant_id}} {{execution_mode}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 12
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Queries/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Query Execution Success Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(virtualization_query_execution_completed_total{status=\"COMPLETED\"}[5m])) by (tenant_id) / sum(rate(virtualization_query_execution_started_total[5m])) by (tenant_id)) * 100",
+          "legendFormat": "{{tenant_id}} Success Rate",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Success Rate %"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 80,
+                "color": "yellow"
+              },
+              {
+                "value": 95,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Query Execution Failures",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(virtualization_query_execution_failed_total[5m])) by (tenant_id, error_type)",
+          "legendFormat": "{{tenant_id}} {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Cache Hit Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(virtualization_query_result_cache_hits_total[5m])) by (tenant_id) / (sum(rate(virtualization_query_result_cache_hits_total[5m])) by (tenant_id) + sum(rate(virtualization_query_result_cache_misses_total[5m])) by (tenant_id))) * 100",
+          "legendFormat": "{{tenant_id}} Hit Rate",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Hit Rate %"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 50,
+                "color": "yellow"
+              },
+              {
+                "value": 80,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Active Query Executions",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(virtualization_query_execution_active_count) by (tenant_id, execution_mode)",
+          "legendFormat": "{{tenant_id}} {{execution_mode}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 10,
+                "color": "yellow"
+              },
+              {
+                "value": 50,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -54,7 +54,6 @@ def run_django_test(app_path: str, timeout: int = 600) -> dict:
             }
         )
 
-        return stats
     except subprocess.TimeoutExpired:
         return {
             "app": app_path,
@@ -63,7 +62,7 @@ def run_django_test(app_path: str, timeout: int = 600) -> dict:
             "status": "TIMEOUT",
             "output": f"Test execution timed out after {timeout} seconds",
         }
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return {
             "app": app_path,
             "exit_code": 1,
@@ -71,6 +70,8 @@ def run_django_test(app_path: str, timeout: int = 600) -> dict:
             "status": "ERROR",
             "error": str(e),
         }
+    else:
+        return stats
 
 
 def parse_django_test_output(output: str) -> dict[str, int]:

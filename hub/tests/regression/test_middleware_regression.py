@@ -16,7 +16,6 @@ from hub.apps.observability.middleware import MetricsMiddleware
 from hub.apps.rate_limiting.middleware import RateLimitMiddleware
 from hub.apps.tenants.middleware import TenantSuspensionMiddleware
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
 
 User = get_user_model()
 
@@ -45,7 +44,10 @@ class MiddlewareRegressionTest(TestCase):
 
     def test_request_id_middleware_regression(self):
         """Verify RequestIDMiddleware works correctly after Django 6 upgrade."""
-        get_response = lambda request: HttpResponse()
+
+        def get_response(_request):
+            return HttpResponse()
+
         middleware = RequestIDMiddleware(get_response)
 
         request = self.factory.get("/api/v1/assets/")
@@ -65,7 +67,10 @@ class MiddlewareRegressionTest(TestCase):
 
     def test_tenant_scoping_middleware_regression(self):
         """Verify TenantScopingMiddleware works correctly after Django 6 upgrade."""
-        get_response = lambda request: HttpResponse()
+
+        def get_response(_request):
+            return HttpResponse()
+
         middleware = TenantScopingMiddleware(get_response)
 
         request = self.factory.get("/api/v1/assets/")
@@ -82,7 +87,10 @@ class MiddlewareRegressionTest(TestCase):
 
     def test_tenant_suspension_middleware_regression(self):
         """Verify TenantSuspensionMiddleware works correctly after Django 6 upgrade."""
-        get_response = lambda request: HttpResponse()
+
+        def get_response(_request):
+            return HttpResponse()
+
         middleware = TenantSuspensionMiddleware(get_response)
 
         # Test with active tenant
@@ -98,7 +106,10 @@ class MiddlewareRegressionTest(TestCase):
 
     def test_rate_limit_middleware_regression(self):
         """Verify RateLimitMiddleware works correctly after Django 6 upgrade."""
-        get_response = lambda request: HttpResponse()
+
+        def get_response(_request):
+            return HttpResponse()
+
         middleware = RateLimitMiddleware(get_response)
 
         request = self.factory.get("/api/v1/assets/")
@@ -117,7 +128,10 @@ class MiddlewareRegressionTest(TestCase):
 
     def test_metrics_middleware_regression(self):
         """Verify MetricsMiddleware works correctly after Django 6 upgrade."""
-        get_response = lambda request: HttpResponse()
+
+        def get_response(_request):
+            return HttpResponse()
+
         middleware = MetricsMiddleware(get_response)
 
         request = self.factory.get("/api/v1/assets/")
@@ -149,7 +163,9 @@ class MiddlewareRegressionTest(TestCase):
         """Verify middleware performance hasn't degraded after Django 6 upgrade."""
         import time
 
-        get_response = lambda request: HttpResponse()
+        def get_response(_request):
+            return HttpResponse()
+
         middleware = RequestIDMiddleware(get_response)
 
         request = self.factory.get("/api/v1/assets/")

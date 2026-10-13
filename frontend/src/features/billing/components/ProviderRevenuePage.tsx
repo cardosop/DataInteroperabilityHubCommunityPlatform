@@ -62,10 +62,9 @@ export function ProviderRevenuePage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(
-        `/api/v1/billing/connect/payouts/?page=${pageNum}&page_size=20`,
-        { credentials: 'include' },
-      );
+      const resp = await fetch(`/api/v1/billing/connect/payouts/?page=${pageNum}&page_size=20`, {
+        credentials: 'include',
+      });
       if (resp.status === 404) {
         setPayouts([]);
         setTotal(0);
@@ -77,7 +76,7 @@ export function ProviderRevenuePage() {
         throw new Error(`HTTP ${resp.status}`);
       }
       const data: PayoutsResponse = await resp.json();
-      setPayouts(data.results);
+      setPayouts(data.results ?? []);
       setNumPages(data.num_pages);
       setTotal(data.count);
     } catch (err) {
@@ -124,8 +123,8 @@ export function ProviderRevenuePage() {
         >
           <h3>One or more payouts have failed</h3>
           <p>
-            Contact support if the issue persists. Check the Stripe
-            Dashboard for detailed failure reasons.
+            Contact support if the issue persists. Check the Stripe Dashboard for detailed failure
+            reasons.
           </p>
         </div>
       )}

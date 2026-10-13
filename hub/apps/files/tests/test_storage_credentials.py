@@ -23,9 +23,11 @@ from django.test import TestCase, override_settings
 # moved into a function body), the ``@patch`` decorators below
 # silently become no-ops.  This import forces a fast-fail at
 # collection time so we never ship a test whose mock is stale.
-import hub.apps.files.storage  # noqa: E402
-assert hub.apps.files.storage.boto3 is not None, \
+import hub.apps.files.storage
+
+assert hub.apps.files.storage.boto3 is not None, (
     "boto3 is not importable from hub.apps.files.storage; patch targets must be updated"
+)
 
 
 class EmptyCredentialsBypassTest(TestCase):
@@ -171,7 +173,7 @@ class STSProbeTest(TestCase):
         mock_sts.get_caller_identity.side_effect = NoCredentialsError()
         mock_boto3_client.return_value = mock_sts
 
-        with pytest.raises(RuntimeError, match="STS get_caller_identity.*failed in staging"):
+        with pytest.raises(RuntimeError, match=r"STS get_caller_identity.*failed in staging"):
             S3StorageClient._run_sts_probe("staging", {})
 
     @patch("hub.apps.files.storage.boto3.client")

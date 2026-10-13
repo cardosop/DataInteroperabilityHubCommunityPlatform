@@ -6,6 +6,7 @@ Tests verify AWS security best practices. No mocks or stubs; uses real connector
 and real AWS when testing error mapping (skips when credentials not available).
 """
 
+import contextlib
 import os
 import uuid
 
@@ -29,7 +30,9 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         """Set up test fixtures. Ensure DB connection is open after prior tests (avoids connection already closed)."""
         connection.ensure_connection()
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-security-{uid}")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-security-{uid}"
+        )
 
     def test_iam_credentials_validation(self):
         """Test IAM credentials validation"""
@@ -137,15 +140,13 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         # Re-authenticate with new credentials
         # Note: This will fail connection test with invalid credentials, but that's expected
         # The important thing is that the connector accepts new credentials for authentication
-        try:
+        # Expected when credentials are invalid - connector still accepted the new credentials
+        with contextlib.suppress(ConnectionError, PermissionError):
             connector.authenticate(
                 {"aws_access_key_id": "new-key", "aws_secret_access_key": "new-secret"}
             )
             # If authentication succeeds (unlikely with invalid credentials), verify authenticated flag
             # If it fails, that's also acceptable - the test verifies the method accepts new credentials
-        except (ConnectionError, PermissionError):
-            # Expected when credentials are invalid - connector still accepted the new credentials
-            pass
 
         # Verify connector updated credentials (even if authentication failed)
         # The connector should have updated its internal credential state

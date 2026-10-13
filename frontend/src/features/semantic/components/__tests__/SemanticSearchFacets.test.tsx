@@ -6,17 +6,52 @@
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+// The component uses react-i18next's useTranslation directly, which
+// warns (NO_I18NEXT_INSTANCE) when no instance is reachable. Provide
+// the app's shared instance so tests mirror the real I18nextProvider
+// mounted at the app root.
+import { I18nextProvider } from 'react-i18next';
+import instance from '../../../../shared/i18n/instance';
 import { SemanticSearchFacets } from '../SemanticSearchFacets';
-import { apiClient } from '../../../../shared/api/client';
+
+
+// The component is gated behind CapabilityRoute("semantic_search"); make
+// the capability available in tests (canonical pattern from
+// CapabilityRoute.test.tsx) and wrap renders in a Router (CapabilityRoute
+// renders <Navigate> otherwise — it may only be used inside a Router).
+vi.mock('../../../../shared/hooks/useCapabilities', () => ({
+  useCapabilities: () => ({
+    capabilities: { semantic_search: { available: true } },
+    isLoading: false,
+    isCapabilityAvailable: (key: string) => key === 'semantic_search',
+    getCapability: () => null,
+  }),
+}));
+
+function renderFacets(props: Partial<typeof defaultProps> = {}) {
+  return render(
+    <I18nextProvider i18n={instance}>
+      <MemoryRouter>
+        <SemanticSearchFacets {...defaultProps} {...props} />
+      </MemoryRouter>
+    </I18nextProvider>
+  );
+}
+
+const apiMocks = vi.hoisted(() => ({ get: vi.fn() }));
 
 vi.mock('../../../../shared/api/client', () => ({
   apiClient: {
-    get: vi.fn(),
+    // Stable get fn across every getClient() call — the component calls
+    // getClient() per render, so a per-call fresh vi.fn() never sees the
+    // test's mockResolvedValue (measured 2026-08-28).
+    getClient: () => ({ get: apiMocks.get }),
   },
 }));
 
-const mockGet = apiClient.get as ReturnType<typeof vi.fn>;
+const mockGet = apiMocks.get;
 
 const defaultProps = {
   query: 'test query',
@@ -33,13 +68,13 @@ describe('SemanticSearchFacets', () => {
 
   it('renders loading state initially', () => {
     mockGet.mockReturnValue(new Promise(() => {})); // never resolves
-    render(<SemanticSearchFacets {...defaultProps} />);
+    renderFacets();
     expect(screen.getByTestId('semantic-search-facets')).toBeDefined();
   });
 
   it('renders empty state when no facets returned', async () => {
     mockGet.mockResolvedValue({ data: { facets: [] } });
-    render(<SemanticSearchFacets {...defaultProps} />);
+    renderFacets();
     await waitFor(() => {
       expect(screen.getByTestId('facets-empty')).toBeDefined();
     });
@@ -60,7 +95,7 @@ describe('SemanticSearchFacets', () => {
         ],
       },
     });
-    render(<SemanticSearchFacets {...defaultProps} />);
+    renderFacets();
     await waitFor(() => {
       expect(screen.getByTestId('facet-ontology-type')).toBeDefined();
     });
@@ -82,7 +117,7 @@ describe('SemanticSearchFacets', () => {
         ],
       },
     });
-    render(<SemanticSearchFacets {...defaultProps} />);
+    renderFacets();
     await waitFor(() => {
       expect(screen.getByTestId('facet-rdf-class')).toBeDefined();
     });
@@ -102,11 +137,13 @@ describe('SemanticSearchFacets', () => {
       },
     });
     render(
-      <SemanticSearchFacets
-        {...defaultProps}
-        selectedOntologyType="dcat:Dataset"
-        onOntologyTypeChange={onTypeChange}
-      />
+      <I18nextProvider i18n={instance}>
+        <SemanticSearchFacets
+          {...defaultProps}
+          selectedOntologyType="dcat:Dataset"
+          onOntologyTypeChange={onTypeChange}
+        />
+      </I18nextProvider>
     );
     await waitFor(() => {
       expect(screen.getByTestId('facet-ontology-type-dcat:Dataset')).toBeDefined();
@@ -119,7 +156,7 @@ describe('SemanticSearchFacets', () => {
 
   it('shows SPARQL timeout error with retry button', async () => {
     mockGet.mockRejectedValue({ status: 504 });
-    render(<SemanticSearchFacets {...defaultProps} />);
+    renderFacets();
     await waitFor(() => {
       expect(screen.getByTestId('facets-error')).toBeDefined();
     });
@@ -129,7 +166,7 @@ describe('SemanticSearchFacets', () => {
   it('retries on retry button click after error', async () => {
     mockGet.mockRejectedValueOnce({ status: 504 });
     mockGet.mockResolvedValueOnce({ data: { facets: [] } });
-    render(<SemanticSearchFacets {...defaultProps} />);
+    renderFacets();
     await waitFor(() => {
       expect(screen.getByTestId('facets-retry-btn')).toBeDefined();
     });
@@ -140,7 +177,11 @@ describe('SemanticSearchFacets', () => {
 
   it('does not fetch when query is empty', () => {
     mockGet.mockResolvedValue({ data: { facets: [] } });
-    render(<SemanticSearchFacets {...defaultProps} query="" />);
+    render(
+      <I18nextProvider i18n={instance}>
+        <SemanticSearchFacets {...defaultProps} query="" />
+      </I18nextProvider>
+    );
     expect(mockGet).not.toHaveBeenCalled();
   });
 });

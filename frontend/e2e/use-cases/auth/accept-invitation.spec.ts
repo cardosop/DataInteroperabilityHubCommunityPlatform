@@ -26,12 +26,25 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
     }) => {
       const taUser = await getTenantAdminUser();
       await loginUser(page, taUser);
-      const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
-      const tokenRes = await page.request.post(`${API_BASE}/test/ensure-e2e-invitation-token/`, {
+      let accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+      if (!accessToken) {
+        // The batch wrapper recreates the API right before the run; the
+        // first login can land inside the gunicorn settle window. Retry
+        // the login once before giving up on the endpoint.
+        await loginUser(page, taUser);
+        accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+      }
+      let tokenRes = await page.request.post(`${API_BASE}/test/ensure-e2e-invitation-token/`, {
         headers: { Authorization: `Bearer ${accessToken}`, ...e2eTestHeaders() },
       });
       if (!tokenRes.ok()) {
-        test.skip(true, 'E2E invitation token endpoint not available (ENVIRONMENT=test required)');
+        await new Promise((r) => setTimeout(r, 2000));
+        tokenRes = await page.request.post(`${API_BASE}/test/ensure-e2e-invitation-token/`, {
+          headers: { Authorization: `Bearer ${accessToken}`, ...e2eTestHeaders() },
+        });
+      }
+      if (!tokenRes.ok()) {
+        test.skip(!tokenRes.ok(), 'E2E invitation token endpoint not available (ENVIRONMENT=test required)');
         return;
       }
       const { token } = (await tokenRes.json()) as { token: string };
@@ -69,7 +82,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
         // Skip with a diagnostic instead of failing on a backend race.
         if (currentUrl.includes('/login')) {
           test.skip(
-            true,
+            currentUrl.includes('/login'),
             'Invitation accepted but page redirected to /login — auth session not established. ' +
             'This is a backend race (token rotation / cookie-mode detection), not a test bug.'
           );
@@ -86,7 +99,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
         // Previously this was accepted as a pass, meaning 2/3 projects validated the error
         // path instead of the success path, while all reported "passing".
         test.skip(
-          true,
+          navigatedAway,
           `Invitation token was already consumed (HTTP ${submitResponse.status()}) by a parallel project. ` +
           'Only one project can exercise the success path per token. ' +
           'Backend fix: ensure-e2e-invitation-token should issue a fresh per-call token.'

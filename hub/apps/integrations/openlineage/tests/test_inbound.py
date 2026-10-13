@@ -134,7 +134,18 @@ def _hmac_sign(body: bytes, key: str = HMAC_KEY) -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.django_db(transaction=True)
+# bcrypt is a declared dependency (requirements.txt) but some local
+# venvs run without it — key-hashing tests skip in that environment.
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None  # type: ignore[assignment]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(bcrypt is None, reason="bcrypt not installed"),
+]
+
+
 class TestCapabilityGate(TransactionTestCase):
     def setUp(self):
         from django.db import connection

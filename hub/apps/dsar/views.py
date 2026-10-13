@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import ClassVar
 
 from django.conf import settings as django_settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from drf_spectacular.utils import extend_schema
 
 from hub.apps.dsar.captcha import verify_hcaptcha
 from hub.apps.dsar.email_notify import send_dsar_otp_email
@@ -35,6 +35,7 @@ from hub.apps.dsar.workflow import (
     transition_status,
 )
 from hub.apps.files.storage import S3StorageClient
+from hub.apps.tenants.models import Tenant
 
 
 def _localized_fulfil_iso(row: DSARRequest, tz_name: str) -> str | None:
@@ -57,10 +58,12 @@ def _client_ip(request) -> str:
 
 
 class PublicDsarSubmitView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [DsarPublicIPThrottle]
+    permission_classes = (AllowAny,)
+    throttle_classes = (DsarPublicIPThrottle,)
 
-    @extend_schema(description="Submit a new DSAR (Data Subject Access Request) via the public ingress")
+    @extend_schema(
+        description="Submit a new DSAR (Data Subject Access Request) via the public ingress"
+    )
     def post(self, request):
         ser = PublicDsarSubmitSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -76,7 +79,15 @@ class PublicDsarSubmitView(APIView):
             )
 
         idem_key = (request.META.get("HTTP_IDEMPOTENCY_KEY", "").strip()[:128]) or ""
-        tenant_id = str(ser.validated_data["tenant_id"])
+        # W1.2b (oss-release-remediation): resolve the tenant from its
+        # PUBLIC slug — the client no longer supplies a scoping UUID.
+        tenant = Tenant.objects.filter(slug=ser.validated_data["tenant_slug"]).first()
+        if tenant is None:
+            return Response(
+                {"detail": "Unknown tenant."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        tenant_id = str(tenant.id)
 
         window_h = int(getattr(django_settings, "DSAR_PUBLIC_IDEMPOTENCY_WINDOW_HOURS", 24))
         cutoff = timezone.now() - timedelta(hours=window_h)
@@ -144,10 +155,12 @@ class PublicDsarSubmitView(APIView):
 
 
 class PublicDsarVerifyOtpView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [DsarPublicIPThrottle]
+    permission_classes = (AllowAny,)
+    throttle_classes = (DsarPublicIPThrottle,)
 
-    @extend_schema(description="Verify an OTP code for a DSAR request submitted via the public ingress")
+    @extend_schema(
+        description="Verify an OTP code for a DSAR request submitted via the public ingress"
+    )
     def post(self, request, dsar_id):
         row = get_object_or_404(DSARRequest, id=dsar_id)
         ser = PublicDsarOtpSerializer(data=request.data)
@@ -162,11 +175,13 @@ class PublicDsarVerifyOtpView(APIView):
 
 
 class PublicDsarStatusByTokenView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [DsarPublicIPThrottle]
+    permission_classes = (AllowAny,)
+    throttle_classes = (DsarPublicIPThrottle,)
 
-    @extend_schema(description="Retrieve the status of a DSAR request by its public reference token")
-    def get(self, request, reference_token):
+    @extend_schema(
+        description="Retrieve the status of a DSAR request by its public reference token"
+    )
+    def get(self, _request, reference_token):
         row = get_object_or_404(DSARRequest, public_reference_token=reference_token)
         payload = DSARRequestSerializer(instance=row).data
         sub_tz = row.subject_timezone or "UTC"
@@ -191,9 +206,9 @@ class DSARRequestViewSet(viewsets.ModelViewSet):
     """Tenant-authenticated handlers (queues, fulfilment tooling)."""
 
     serializer_class = DSARRequestSerializer
-    permission_classes = [IsDsarHandler]
+    permission_classes = (IsDsarHandler,)
     throttle_classes = [DsarPublicIPThrottle]  # 283.3.2.4 — G8 Rate gate
-    http_method_names = ["get", "head", "patch", "options", "post"]
+    http_method_names: ClassVar[list[str]] = ["get", "head", "patch", "options", "post"]
     queryset = DSARRequest.objects.all()
 
     def perform_create(self, serializer):
@@ -236,7 +251,7 @@ class DSARRequestViewSet(viewsets.ModelViewSet):
         return Response(DSARRequestSerializer(instance=row).data)
 
     @action(detail=True, methods=["post"])
-    def issue_download_url(self, request, pk=None):
+    def issue_download_url(self, _request, pk=None):
         row = self.get_object()
         if not row.response_object_key:
             return Response(

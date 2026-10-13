@@ -42,7 +42,7 @@ class TestJobsList:
         assert "job-2" in result.output
         assert "DQ_RUN" in result.output
         assert "RUNNING" in result.output
-        mock_api_client.get.assert_called_once_with("jobs/jobs/", params={"limit": 20, "offset": 0})
+        mock_api_client.get.assert_called_once_with("jobs/", params={"limit": 20, "offset": 0})
 
     def test_list_jobs_success_json_format(self, runner, mock_api_client):
         """Test listing jobs in JSON format"""
@@ -79,7 +79,7 @@ class TestJobsList:
 
         assert result.exit_code == 0
         mock_api_client.get.assert_called_once_with(
-            "jobs/jobs/", params={"type": "DQ_RUN", "status": "RUNNING", "limit": 10, "offset": 5}
+            "jobs/", params={"type": "DQ_RUN", "status": "RUNNING", "limit": 10, "offset": 5}
         )
 
     def test_list_jobs_empty_result(self, runner, mock_api_client):
@@ -137,7 +137,7 @@ class TestJobsGet:
         assert "DQ_RUN" in result.output
         assert "COMPLETED" in result.output
         assert "DATASET" in result.output
-        mock_api_client.get.assert_called_once_with("jobs/jobs/job-1/")
+        mock_api_client.get.assert_called_once_with("jobs/job-1/")
 
     def test_get_job_with_error_message(self, runner, mock_api_client):
         """Test getting a job with error message"""
@@ -191,7 +191,7 @@ class TestJobsCancel:
         assert result.exit_code == 0
         assert "cancelled successfully" in result.output
         assert "CANCELLED" in result.output
-        mock_api_client.post.assert_called_once_with("jobs/jobs/job-1/cancel/")
+        mock_api_client.post.assert_called_once_with("jobs/job-1/cancel/")
 
     def test_cancel_job_json_output(self, runner, mock_api_client):
         """Test cancelling a job with JSON output"""

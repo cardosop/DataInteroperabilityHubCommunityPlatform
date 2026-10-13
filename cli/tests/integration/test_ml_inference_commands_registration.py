@@ -33,7 +33,9 @@ class TestMLInferenceCommandsRegistrationRealAPI:
 
                 # Health endpoint is at /health/ not /api/v1/health/
                 response = requests.get(
-                    os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
+                    os.environ.get("MESHANT_API_URL", "http://localhost:8000").removesuffix(
+                        "/api/v1"
+                    )
                     + "/health/",
                     timeout=2,
                 )
@@ -41,7 +43,7 @@ class TestMLInferenceCommandsRegistrationRealAPI:
                     break
             except Exception:
                 if attempt < max_retries - 1:
-                    time.sleep(1)  # noqa: sleep-needed — retry loop
+                    time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 else:
                     pytest.skip("API service not available at http://localhost:8000")
 

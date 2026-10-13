@@ -13,7 +13,7 @@ Estimates effort for all APIs in the development backlog considering:
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -86,7 +86,7 @@ class APIEffortEstimator:
     """Estimates effort for API development tasks."""
 
     # Base effort by gap type (hours)
-    BASE_EFFORT = {
+    BASE_EFFORT: ClassVar[dict[GapType, dict[ComplexityLevel, float]]] = {
         GapType.MISSING: {
             ComplexityLevel.SIMPLE: 3.0,
             ComplexityLevel.MEDIUM: 6.0,
@@ -107,7 +107,7 @@ class APIEffortEstimator:
         },
     }
 
-    COMPLEXITY_MULTIPLIERS = {
+    COMPLEXITY_MULTIPLIERS: ClassVar[dict[ComplexityLevel, float]] = {
         ComplexityLevel.SIMPLE: 1.0,
         ComplexityLevel.MEDIUM: 1.5,
         ComplexityLevel.COMPLEX: 2.0,
@@ -115,26 +115,50 @@ class APIEffortEstimator:
     }
 
     # Dependency effort (hours)
-    DATABASE_EFFORT = {"none": 0.0, "simple": 2.0, "medium": 4.0, "complex": 8.0}
-    EXTERNAL_SERVICE_EFFORT = {"none": 0.0, "simple": 4.0, "medium": 8.0, "complex": 16.0}
-    INFRASTRUCTURE_EFFORT = {"none": 0.0, "simple": 2.0, "medium": 4.0, "complex": 8.0}
-    SERVICE_INTEGRATION_EFFORT = {"none": 0.0, "single": 2.0, "multiple": 4.0, "complex": 8.0}
-    WORKFLOW_INTEGRATION_EFFORT = {"none": 0.0, "simple": 4.0, "complex": 8.0}
+    DATABASE_EFFORT: ClassVar[dict[str, float]] = {
+        "none": 0.0,
+        "simple": 2.0,
+        "medium": 4.0,
+        "complex": 8.0,
+    }
+    EXTERNAL_SERVICE_EFFORT: ClassVar[dict[str, float]] = {
+        "none": 0.0,
+        "simple": 4.0,
+        "medium": 8.0,
+        "complex": 16.0,
+    }
+    INFRASTRUCTURE_EFFORT: ClassVar[dict[str, float]] = {
+        "none": 0.0,
+        "simple": 2.0,
+        "medium": 4.0,
+        "complex": 8.0,
+    }
+    SERVICE_INTEGRATION_EFFORT: ClassVar[dict[str, float]] = {
+        "none": 0.0,
+        "single": 2.0,
+        "multiple": 4.0,
+        "complex": 8.0,
+    }
+    WORKFLOW_INTEGRATION_EFFORT: ClassVar[dict[str, float]] = {
+        "none": 0.0,
+        "simple": 4.0,
+        "complex": 8.0,
+    }
 
     # Testing effort (hours)
-    UNIT_TEST_EFFORT = {
+    UNIT_TEST_EFFORT: ClassVar[dict[ComplexityLevel, float]] = {
         ComplexityLevel.SIMPLE: 1.0,
         ComplexityLevel.MEDIUM: 2.0,
         ComplexityLevel.COMPLEX: 4.0,
         ComplexityLevel.VERY_COMPLEX: 8.0,
     }
-    INTEGRATION_TEST_EFFORT = {
+    INTEGRATION_TEST_EFFORT: ClassVar[dict[ComplexityLevel, float]] = {
         ComplexityLevel.SIMPLE: 1.0,
         ComplexityLevel.MEDIUM: 2.0,
         ComplexityLevel.COMPLEX: 4.0,
         ComplexityLevel.VERY_COMPLEX: 8.0,
     }
-    E2E_TEST_EFFORT = {
+    E2E_TEST_EFFORT: ClassVar[dict[ComplexityLevel, float]] = {
         ComplexityLevel.SIMPLE: 0.5,
         ComplexityLevel.MEDIUM: 1.0,
         ComplexityLevel.COMPLEX: 2.0,
@@ -143,7 +167,7 @@ class APIEffortEstimator:
 
     # Documentation effort (hours)
     API_DOC_EFFORT = 0.5  # OpenAPI spec exists
-    CODE_DOC_EFFORT = {
+    CODE_DOC_EFFORT: ClassVar[dict[ComplexityLevel, float]] = {
         ComplexityLevel.SIMPLE: 0.5,
         ComplexityLevel.MEDIUM: 0.5,
         ComplexityLevel.COMPLEX: 1.0,

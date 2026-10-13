@@ -20,7 +20,7 @@ test.describe('Payment Failure', () => {
     });
 
     if (loginRes.status() !== 200) {
-      test.skip(true, 'DC user not available');
+      test.skip(loginRes.status() !== 200, 'DC user not available');
       return;
     }
 

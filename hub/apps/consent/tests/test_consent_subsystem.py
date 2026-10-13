@@ -316,5 +316,4 @@ class ConsentWebhookGateTests(TestCase):
             purpose__key=WEBHOOK_PURPOSE_KEY,
             status=ConsentRecordStatus.GRANTED,
         ).exists()
-        self.assertTrue(granted,
-                        "Webhook consent gate: GRANTED record must exist")
+        self.assertTrue(granted, "Webhook consent gate: GRANTED record must exist")

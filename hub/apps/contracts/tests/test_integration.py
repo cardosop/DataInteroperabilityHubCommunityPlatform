@@ -35,13 +35,13 @@ class DataContractCLIIntegrationTest(ContractsAPITestBase):
         cli_client.base_url = self.service_url
         try:
             health = cli_client.health_check()
-            if health.get("status") != "healthy":
-                raise unittest.SkipTest(
-                    f"DataContract CLI service is not healthy at {self.service_url}"
-                )
         except Exception as e:
             raise unittest.SkipTest(
                 f"DataContract CLI service not available at {self.service_url}: {e!s}"
+            ) from e
+        if health.get("status") != "healthy":
+            raise unittest.SkipTest(
+                f"DataContract CLI service is not healthy at {self.service_url}"
             )
 
     @override_settings(DATACONTRACT_SERVICE_URL="http://localhost:8080")
@@ -75,10 +75,14 @@ class DataContractCLIIntegrationTest(ContractsAPITestBase):
         response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
 
         # Should get a response (external validation service may be unavailable)
-        self.assertIn(
+        self.assertIn(  # noqa: broad-status-codes
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED,
-             status.HTTP_502_BAD_GATEWAY, status.HTTP_503_SERVICE_UNAVAILABLE],
+            [
+                status.HTTP_200_OK,
+                status.HTTP_202_ACCEPTED,
+                status.HTTP_502_BAD_GATEWAY,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+            ],
         )
 
     @override_settings(DATACONTRACT_SERVICE_URL="http://localhost:8080")

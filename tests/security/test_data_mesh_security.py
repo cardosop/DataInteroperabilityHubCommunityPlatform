@@ -32,12 +32,15 @@ class DataMeshSecurityTestBase(TestCase):
             slug=f"mesh-security-tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            # Mesh domains are feature-gated per tenant (285.5.2.2).
+            data_mesh_enabled=True,
         )
         self.tenant_b = Tenant.objects.create(
             name="Mesh Security Tenant B",
             slug=f"mesh-security-tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            data_mesh_enabled=True,
         )
         self.user_a = self._create_user("meshseca@example.com", self.tenant_a)
         self.user_b = self._create_user("meshsecb@example.com", self.tenant_b)

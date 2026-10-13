@@ -55,29 +55,36 @@ def warehouses_connections_get(connection_id):
 @warehouses_connections.command("create")
 @click.option("--name", required=True)
 @click.option(
-    "--db-type",
+    "--warehouse-type",
     required=True,
-    type=click.Choice(["postgresql", "mysql", "snowflake", "bigquery", "redshift", "databricks"]),
+    type=click.Choice(["SNOWFLAKE", "BIGQUERY", "DATABRICKS", "ATHENA"]),
 )
-@click.option("--host", required=True)
-@click.option("--port", type=int, default=5432)
-@click.option("--database", required=True)
-@click.option("--username", required=True)
-@click.option("--password", prompt=True, hide_input=True)
-@click.option("--ssl/--no-ssl", default=True)
-def warehouses_connections_create(name, db_type, host, port, database, username, password, ssl):
-    """Create a new warehouse connection."""
+@click.option(
+    "--config",
+    "config_json",
+    help="Connection config as JSON string (host, credentials, ...)",
+)
+@click.option("--region", default="", help="Warehouse region")
+@click.option("--private-endpoint-url", default="", help="PrivateLink / PSC endpoint URL")
+@click.option("--is-active/--no-is-active", default=True)
+def warehouses_connections_create(
+    name, warehouse_type, config_json, region, private_endpoint_url, is_active
+):
+    """Create a new warehouse connection.
+
+    Mirrors ``WarehouseConnectionCreateSerializer``:
+    ``name``, ``warehouse_type``, ``config``, ``region``,
+    ``private_endpoint_url``, ``is_active``.
+    """
     resp = api_client.post(
         "warehouses/connections/",
-        json={
+        json_data={
             "name": name,
-            "db_type": db_type,
-            "host": host,
-            "port": port,
-            "database": database,
-            "username": username,
-            "password": password,
-            "ssl": ssl,
+            "warehouse_type": warehouse_type,
+            "config": json.loads(config_json) if config_json else {},
+            "region": region,
+            "private_endpoint_url": private_endpoint_url,
+            "is_active": is_active,
         },
     )
     click.echo(json.dumps(resp, indent=2))
@@ -115,7 +122,7 @@ def warehouses_connections_delete(connection_id, confirm):
 @click.argument("connection_id")
 def warehouses_connections_test(connection_id):
     """Test a warehouse connection."""
-    resp = api_client.post(f"warehouses/connections/{connection_id}/test/", json={})
+    resp = api_client.post(f"warehouses/connections/{connection_id}/test/", json_data={})
     click.echo(json.dumps(resp, indent=2))
 
 
@@ -155,18 +162,21 @@ def warehouses_acls_get(acl_id):
 
 
 @warehouses_acls.command("create")
-@click.option("--connection-id", required=True)
-@click.option("--principal", required=True, help="User or role name")
-@click.option("--permission", required=True, type=click.Choice(["read", "write", "admin"]))
-def warehouses_acls_create(connection_id, principal, permission):
-    """Create an ACL entry."""
+@click.option("--connection", required=True, help="Warehouse connection ID")
+@click.option("--user", default=None, help="User ID the ACL applies to")
+@click.option("--role", required=True, type=click.Choice(["ADMIN", "OPERATOR", "VIEWER"]))
+def warehouses_acls_create(connection, user, role):
+    """Create an ACL entry.
+
+    Mirrors ``WarehouseConnectionACLSerializer`` fields:
+    ``connection``, ``user``, ``role``.
+    """
+    payload = {"connection": connection, "role": role}
+    if user:
+        payload["user"] = user
     resp = api_client.post(
         "warehouses/acls/",
-        json={
-            "connection_id": connection_id,
-            "principal": principal,
-            "permission": permission,
-        },
+        json_data=payload,
     )
     click.echo(json.dumps(resp, indent=2))
 
@@ -186,41 +196,20 @@ def warehouses_acls_delete(acl_id, confirm):
 
 
 @warehouses.command("query")
-@click.option("--connection-id", required=True)
-@click.option("--sql", required=True, help="SQL query to execute")
-def warehouses_query(connection_id, sql):
-    """Execute a live SQL query against a warehouse."""
+@click.option("--asset-id", required=True, help="LIVE_QUERY asset ID to query")
+@click.option("--limit", type=int, default=100, help="Max rows per page")
+@click.option("--cursor", default=None, help="Opaque cursor for pagination")
+def warehouses_query(asset_id, limit, cursor):
+    """Query a LIVE_QUERY warehouse asset.
+
+    GET /api/v1/warehouses/query/?asset_id=<id>&limit=<n>&cursor=<...>
+    """
+    params = {"asset_id": asset_id, "limit": limit}
+    if cursor:
+        params["cursor"] = cursor
     resp = api_client.get(
         "warehouses/query/",
-        params={"connection_id": connection_id, "sql": sql},
-    )
-    click.echo(json.dumps(resp, indent=2))
-
-
-# ── Delta Sharing ───────────────────────────────────────────────────────
-
-
-@warehouses.group("share")
-def warehouses_share():
-    """Delta Sharing operations."""
-
-
-@warehouses_share.command("list")
-@click.argument("asset_id")
-def warehouses_share_list(asset_id):
-    """List Delta Sharing tables for an asset."""
-    data = api_client.get(f"warehouses/share/{asset_id}/")
-    click.echo(json.dumps(data, indent=2))
-
-
-@warehouses_share.command("query")
-@click.argument("asset_id")
-@click.option("--sql", required=True, help="SQL query against shared table")
-def warehouses_share_query(asset_id, sql):
-    """Query a Delta Sharing table."""
-    resp = api_client.get(
-        f"warehouses/share/{asset_id}/query/",
-        params={"sql": sql},
+        params=params,
     )
     click.echo(json.dumps(resp, indent=2))
 

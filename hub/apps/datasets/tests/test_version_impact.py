@@ -331,13 +331,17 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
 
     def test_analyze_impact_with_tenant_id_filter(self):
         """analyze_impact with tenant_id respects tenant boundaries."""
-        from hub.apps.tenants.models import KYCStatus, Tenant
         from hub.apps.datasets.version_impact import VersionImpactAnalyzer
+        from hub.apps.tenants.models import KYCStatus, Tenant
 
         dataset = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
-            format="CSV", schema_json={"fields": [{"name": "id", "type": "integer"}]},
-            version=1, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            format="CSV",
+            schema_json={"fields": [{"name": "id", "type": "integer"}]},
+            version=1,
+            created_by=self.user,
         )
 
         other = Tenant.objects.create(
@@ -346,8 +350,6 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
             kyc_status=KYCStatus.VERIFIED,
         )
         analyzer = VersionImpactAnalyzer()
-        result = analyzer.analyze_impact(
-            dataset_id=str(dataset.id), tenant_id=str(other.id)
-        )
+        result = analyzer.analyze_impact(dataset_id=str(dataset.id), tenant_id=str(other.id))
         # Cross-tenant query should return empty or error result
         self.assertIsInstance(result, dict)

@@ -281,7 +281,8 @@ class TestAuditFtsApi:
         body = resp.json()
         results = body.get("results", body) if isinstance(body, dict) else body
         ids = [row["id"] for row in results]
-        assert str(high.id) in ids and str(low.id) in ids
+        assert str(high.id) in ids
+        assert str(low.id) in ids
         # High-weight (action match) precedes low-weight (details match).
         assert ids.index(str(high.id)) < ids.index(str(low.id))
 

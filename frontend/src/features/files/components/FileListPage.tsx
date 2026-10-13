@@ -1,10 +1,12 @@
 /**
  * File List Page
  * Global file list with table, filters (asset_id, dataset_id if API supports), pagination,
- * view details (modal), delete with confirmation, upload. Uses fileService.list(), getById(), delete().
+ * view details (navigates to /files/{id} — Phase 260.4.B page, no legacy modal),
+ * delete with confirmation, upload. Uses fileService.list(), getById(), delete().
  */
 
 import { useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -15,7 +17,7 @@ import { useDebouncedValue } from '../../../shared/hooks/useDebouncedValue';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import type { File as FileType } from '../../../shared/types/files';
 import { useDeleteFile, useFiles } from '../hooks/useFiles';
-import { FileDetailModal } from './FileDetailModal';
+import { useResumableUploads } from '../hooks/useResumableUploads';
 import { FileUpload } from './FileUpload';
 import './FileListPage.css';
 import { Button } from '../../../shared/components/Button';
@@ -27,13 +29,22 @@ function formatBytes(bytes: number): string {
 }
 
 export function FileListPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [assetIdFilter, setAssetIdFilter] = useState('');
   const [datasetIdFilter, setDatasetIdFilter] = useState('');
-  const [detailFile, setDetailFile] = useState<FileType | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FileType | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  // Phase 260.3.F.3 — the resume prompt must surface on page load when a
+  // resumable-upload checkpoint exists (the "reload → resume" contract),
+  // not only when the user happens to open the Upload modal. Auto-open the
+  // modal on mount when the durable localStorage map has live checkpoints;
+  // after a Discard the modal stays open (dropzone visible) with the
+  // prompt gone — exactly what the E2E asserts.
+  const { checkpoints: resumableCheckpoints } = useResumableUploads();
+  const [showUploadModal, setShowUploadModal] = useState(
+    () => resumableCheckpoints.length > 0
+  );
 
   const toast = useToast();
   // PR 5.3: debounce both text filters so typing doesn't spam the API.
@@ -50,7 +61,10 @@ export function FileListPage() {
   const deleteMutation = useDeleteFile();
 
   const handleViewDetails = (file: FileType) => {
-    setDetailFile(file);
+    // Phase 260.4.B — detail surface is a deep-linkable page, not the
+    // legacy FileDetailModal. Both the name button and the View action
+    // navigate to /files/{id}.
+    navigate(`/files/${file.id}`);
   };
 
   const handleDeleteClick = (file: FileType, e: React.MouseEvent) => {
@@ -136,7 +150,7 @@ export function FileListPage() {
             </thead>
             <tbody>
               {results.map((file) => (
-                <tr key={file.id} className="file-list-row" data-file-name={file.name}>
+                <tr key={file.id} className="file-list-row" data-file-name={file.name} data-file-id={file.id}>
                   <td>
                     <button
                       type="button"
@@ -154,6 +168,18 @@ export function FileListPage() {
                     >
                       {file.status}
                     </span>
+                    {/* Phase 260.2.D — surface the malware scan verdict in the
+                        list: an INFECTED file must be visible without opening
+                        the detail page (the EICAR E2E asserts the pill on the
+                        list row). */}
+                    {file.scan_status && file.scan_status !== 'PENDING_SCAN' && (
+                      <span
+                        className={`file-scan-pill file-scan-pill-${file.scan_status.toLowerCase()}`}
+                        data-scan-status={file.scan_status}
+                      >
+                        {file.scan_status}
+                      </span>
+                    )}
                   </td>
                   <td>{new Date(file.created_at).toLocaleString()}</td>
                   <td>
@@ -249,8 +275,6 @@ export function FileListPage() {
       </div>
 
       {mainContent}
-
-      {detailFile && <FileDetailModal file={detailFile} onClose={() => setDetailFile(null)} />}
 
       {showUploadModal && (
         <Modal

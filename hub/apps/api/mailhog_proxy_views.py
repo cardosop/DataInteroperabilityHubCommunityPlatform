@@ -135,10 +135,7 @@ def _validate_message_id(message_id: str) -> bool:
     # MailHog ID format.
     if message_id.startswith(".") or message_id.endswith("."):
         return False
-    for ch in message_id:
-        if not (ch.isalnum() or ch in "-_.@"):
-            return False
-    return True
+    return all(ch.isalnum() or ch in "-_.@" for ch in message_id)
 
 
 def _generic_503(reason: str) -> Response:
@@ -188,7 +185,7 @@ def _proxy_get(upstream_url: str) -> tuple[Any, int]:
     try:
         return response.json(), response.status_code
     except ValueError as exc:
-        raise requests.HTTPError(f"upstream non-JSON: {exc}")
+        raise requests.HTTPError(f"upstream non-JSON: {exc}") from exc
 
 
 @extend_schema(exclude=True, tags=["API"])

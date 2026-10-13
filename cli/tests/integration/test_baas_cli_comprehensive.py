@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -33,27 +35,20 @@ import uuid
 from datetime import datetime, timedelta
 
 import pytest
-import requests
+
+# Phase U / U.3 — the public tree excludes hub.apps.baas (paid);
+# these suites drive full-mode baas flows, so the whole module
+# skips cleanly there instead of collection/runtime erroring.
+pytest.importorskip("hub.apps.baas")
 from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestBaaSCLIComprehensive:
@@ -205,8 +200,8 @@ except Exception as e:
             if result.returncode == 0:
                 in_key = False
                 api_key = None
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line == "AUTH_API_KEY_START":
                         in_key = True
                         continue
@@ -221,8 +216,8 @@ except Exception as e:
                     return api_key
 
                 # Fallback: try to find API key in output (last long line that looks like a key)
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if (
                         line
                         and len(line) > 30
@@ -241,10 +236,10 @@ except Exception as e:
                                 "}" in line,
                             ]
                         )
-                    ):
                         # Check if it looks like an API key (alphanumeric with dashes/underscores)
-                        if all(c.isalnum() or c in "-_" for c in line):
-                            return line
+                        and all(c.isalnum() or c in "-_" for c in line)
+                    ):
+                        return line
         except subprocess.TimeoutExpired:
             print("Django shell command timed out", file=sys.stderr)
         except Exception as e:
@@ -256,8 +251,8 @@ except Exception as e:
 
     # ==================== API KEY COMMANDS ====================
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_create_all_tiers(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_create_all_tiers(self, api_service_available):
         """Test creating API keys with all tiers"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -285,8 +280,8 @@ except Exception as e:
             if hasattr(self, "created_api_keys"):
                 self.created_api_keys.append(data["id"])
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_create_with_expiration(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_create_with_expiration(self, api_service_available):
         """Test creating API key with expiration date"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -311,8 +306,8 @@ except Exception as e:
         data = json.loads(result.output)
         assert "expires_at" in data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_create_table_format(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_create_table_format(self, api_service_available):
         """Test creating API key in table format"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -335,8 +330,8 @@ except Exception as e:
         assert "IMPORTANT" in result.output
         assert "Save this API key securely" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_create_validation_errors(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_create_validation_errors(self, api_service_available):
         """Test API key creation validation errors"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -362,8 +357,8 @@ except Exception as e:
         assert result.exit_code != 0
         assert "format" in result.output.lower() or "invalid" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_list_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_list_all_formats(self, api_service_available):
         """Test listing API keys in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -379,8 +374,8 @@ except Exception as e:
         assert result.exit_code == 0
         assert "ID" in result.output or "No API keys found" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_list_with_filters(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_list_with_filters(self, api_service_available):
         """Test listing API keys with all filters"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -403,8 +398,8 @@ except Exception as e:
         assert isinstance(data, list)
         assert len(data) <= 10
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_get_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_get_all_formats(self, api_service_available):
         """Test getting API key in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -441,8 +436,8 @@ except Exception as e:
         assert api_key_id in result.output
         assert "not displayed" in result.output.lower() or "security" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_get_not_found(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_get_not_found(self, api_service_available):
         """Test getting non-existent API key"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -452,8 +447,8 @@ except Exception as e:
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "404" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_update_all_fields(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_update_all_fields(self, api_service_available):
         """Test updating API key with all fields"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -512,8 +507,8 @@ except Exception as e:
         data = json.loads(result.output)
         assert "expires_at" in data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_update_validation_errors(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_update_validation_errors(self, api_service_available):
         """Test API key update validation errors"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -548,8 +543,8 @@ except Exception as e:
             or "at least one field" in result.output.lower()
         )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_api_keys_revoke_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_api_keys_revoke_all_formats(self, api_service_available):
         """Test revoking API key in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -587,8 +582,8 @@ except Exception as e:
 
     # ==================== USAGE TRACKING COMMANDS ====================
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_all_formats(self, api_service_available):
         """Test usage stats in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -609,8 +604,8 @@ except Exception as e:
         assert "Usage Statistics" in result.output
         assert "Total Requests" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_stats_with_all_filters(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_stats_with_all_filters(self, api_service_available):
         """Test usage stats with all filters"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -658,8 +653,8 @@ except Exception as e:
         )
         assert result.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_all_formats(self, api_service_available):
         """Test usage by-endpoint in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -675,8 +670,8 @@ except Exception as e:
         assert result.exit_code == 0
         assert "Endpoint" in result.output or "No usage data found" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_endpoint_with_filters(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_endpoint_with_filters(self, api_service_available):
         """Test usage by-endpoint with all filters"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -720,8 +715,8 @@ except Exception as e:
         )
         assert result.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_by_tenant_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_by_tenant_all_formats(self, api_service_available):
         """Test usage by-tenant in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -739,8 +734,8 @@ except Exception as e:
         if result.exit_code == 0:
             assert "Tenant ID" in result.output or "No usage data found" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_usage_validation_errors(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_usage_validation_errors(self, api_service_available):
         """Test usage command validation errors"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -774,8 +769,8 @@ except Exception as e:
 
     # ==================== DEVELOPER PORTAL COMMANDS ====================
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_docs_show_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_docs_show_all_formats(self, api_service_available):
         """Test docs show in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -798,8 +793,8 @@ except Exception as e:
         assert result.exit_code == 0
         assert "#" in result.output  # Markdown headers
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_docs_openapi_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_docs_openapi_all_formats(self, api_service_available):
         """Test docs openapi in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -820,8 +815,8 @@ except Exception as e:
             # Expected if PyYAML not installed
             assert "PyYAML" in result.output or "yaml" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_docs_sdks_all_formats(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_docs_sdks_all_formats(self, api_service_available):
         """Test docs sdks in all formats"""
         if not self.api_key:
             pytest.skip("No API key available")
@@ -839,8 +834,8 @@ except Exception as e:
         # Should have SDK entries
         assert len(data) >= 0  # May be empty if not configured
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_docs_validation_errors(self, api_available):
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
+    def test_docs_validation_errors(self, api_service_available):
         """Test docs command validation errors"""
         if not self.api_key:
             pytest.skip("No API key available")

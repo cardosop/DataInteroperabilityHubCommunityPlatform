@@ -52,6 +52,36 @@ test.describe('Feature: Files', () => {
       await loginUser(page, user);
       await page.goto('/files');
       await waitForAppMainReady(page, { timeout: 60000 });
+
+      // Error terminal: the list fetch can die under churn (b7 #24: the
+      // 17:1x stall cluster NETWORK_ERROR'd the fetch and NEITHER the
+      // empty state nor the table rendered, so the orContentSelector
+      // below burned 30s opaquely). The error surface carries a Retry
+      // button — click it ONCE and wait for the RECOVERY signal (rows or
+      // empty state) so a transient blip doesn't mask the real contract.
+      // A persistent error still fails assertEdgeBehavior below.
+      const errorDisplay = page
+        .locator('.error-display, [data-testid="error-display"]')
+        .first();
+      if ((await errorDisplay.count()) > 0) {
+        const retryBtn = page.locator('[data-testid="error-display-retry"]').first();
+        if ((await retryBtn.count()) > 0) {
+          // intentional: the retry click is best-effort — a sustained
+          // outage just leaves the error visible and the recovery wait
+          // below expires.
+          await retryBtn.click().catch(() => null);
+        }
+        // intentional: advisory recovery wait — a persistent outage just
+        // leaves the error visible and assertEdgeBehavior below reports it.
+        await page
+          .locator(
+            '.file-list-table, [data-testid="file-list-table"], [data-testid="file-list-empty-state"], .empty-state, [data-testid="empty-state"]'
+          )
+          .first()
+          .waitFor({ state: 'visible', timeout: 30_000 })
+          .catch(() => null);
+      }
+
       await assertEdgeBehavior(page, {
         emptyStateSelector: '[data-testid="file-list-empty-state"], .empty-state, [data-testid="empty-state"]',
         orContentSelector: '.file-list-table, [data-testid="file-list-table"]',

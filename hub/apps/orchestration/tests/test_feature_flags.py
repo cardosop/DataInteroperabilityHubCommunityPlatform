@@ -89,7 +89,9 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=False):
             flags = WorkflowBusinessRulesFeatureFlags()
             self.assertFalse(flags.enabled_globally)
-            self.assertFalse(flags.is_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id)))
+            self.assertFalse(
+                flags.is_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id))
+            )
 
     def test_gradual_rollout_percentage(self):
         """Test gradual rollout percentage configuration"""
@@ -342,10 +344,14 @@ class TestFeatureFlagsIntegration(FeatureFlagsTestBase):
 
             # Same instance should have same result
             result1 = flags.is_enabled(
-                self.workflow_def.name, tenant_id=str(self.tenant.id), workflow_instance_id=instance_id
+                self.workflow_def.name,
+                tenant_id=str(self.tenant.id),
+                workflow_instance_id=instance_id,
             )
             result2 = flags.is_enabled(
-                self.workflow_def.name, tenant_id=str(self.tenant.id), workflow_instance_id=instance_id
+                self.workflow_def.name,
+                tenant_id=str(self.tenant.id),
+                workflow_instance_id=instance_id,
             )
             self.assertEqual(result1, result2)
 
@@ -371,10 +377,14 @@ class TestFeatureFlagsConvenienceFunctions(FeatureFlagsTestBase):
         """Test is_business_rules_validation_enabled convenience function"""
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True):
             self.assertTrue(
-                is_business_rules_validation_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id))
+                is_business_rules_validation_enabled(
+                    self.workflow_def.name, tenant_id=str(self.tenant.id)
+                )
             )
 
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=False):
             self.assertFalse(
-                is_business_rules_validation_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id))
+                is_business_rules_validation_enabled(
+                    self.workflow_def.name, tenant_id=str(self.tenant.id)
+                )
             )

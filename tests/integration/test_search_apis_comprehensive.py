@@ -416,22 +416,24 @@ class TestSearchAPI(TestCase):
     # ========== QUERY PARAMETER VALIDATION ==========
 
     def test_search_missing_query_parameter(self):
-        """Test search without query parameter"""
+        """Test search without query parameter.
+
+        The deprecated /api/v1/search/search/ ViewSet REQUIRES ``q``
+        (QUERY_REQUIRED); the filter-only empty-q browse mode lives on the
+        unified /api/search/ surface (see hub/apps/search/views.py note).
+        """
         self.client.force_authenticate(user=self.user_a)
         response = self.client.get("/api/v1/search/search/")
 
-        # Empty query should still work (returns all results with filters)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_search_empty_query(self):
-        """Test search with empty query"""
+        """Test search with empty query — 400 QUERY_REQUIRED on the
+        deprecated ViewSet surface (same contract as missing ``q``)."""
         self.client.force_authenticate(user=self.user_a)
         response = self.client.get("/api/v1/search/search/", {"q": ""})
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Empty query should return all results (with filters applied)
-        self.assertGreaterEqual(response.data["total"], 0)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_search_invalid_limit(self):
         """Test search with invalid limit"""

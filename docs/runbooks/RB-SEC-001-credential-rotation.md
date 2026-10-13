@@ -1,8 +1,8 @@
 # RB-SEC-001 — Credential Rotation Runbook
 
 **Owner**: Platform Engineering  
-**Last reviewed**: 2026-05-13  
-**Next review**: 2026-08-13  
+**Last reviewed**: 2026-09-14  
+**Next review**: 2026-12-13  
 
 ## Scope
 
@@ -48,10 +48,14 @@ If the Lambda fails:
 4. Delete old key from GCP Console
 
 ### Databricks
-1. Generate new PAT: Databricks Workspace → User Settings → Developer → Generate New Token
-2. Update `WarehouseConnection.config.personal_access_token`
+1. Rotate via the Hub's credential endpoint: `POST /api/v1/databricks/workspaces/{id}/credentials/{cid}/rotate/` (PAT: token-management on-behalf-of + delete-old; M2M: client-secret re-issue) — or generate a new PAT: Databricks Workspace → User Settings → Developer → Generate New Token
+2. Update `WarehouseConnection.config` with the new material (`host`, `token`)
 3. Verify: `SHOW TABLES` via connector
 4. Revoke old token
+
+The Databricks egress allowlist, the nightly workflow's OIDC trust
+setup, and the `DATABRICKS_E2E_*` rotation cadence live in
+[RB-SEC-003](RB-SEC-003-databricks-egress-credential-rotation.md).
 
 ### Athena
 1. Rotate IAM access key via AWS Console or `aws iam update-access-key`
@@ -92,5 +96,5 @@ After any rotation:
 ## Maintenance
 
 - **Owner**: Platform Engineering
-- **Last reviewed**: 2026-05-13
-- **Next review**: 2026-08-11
+- **Last reviewed**: 2026-09-14
+- **Next review**: 2026-12-13

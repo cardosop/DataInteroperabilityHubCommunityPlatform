@@ -99,7 +99,7 @@ class TestAPIInventoryCompleteness(TestCase):
     def test_inventory_has_expected_apps(self):
         """Test that inventory contains expected apps"""
         endpoints_by_app = read_inventory(self.inventory_path)
-        found_apps = {app.lower() for app in endpoints_by_app.keys()}
+        found_apps = {app.lower() for app in endpoints_by_app}
 
         expected_apps = {"compliance", "dq", "auth", "audit"}
         missing_apps = expected_apps - found_apps
@@ -368,10 +368,11 @@ class TestAPIInventoryAgainstActualEndpoints(TestCase):
         for pattern in resolver.url_patterns:
             if hasattr(pattern, "pattern"):
                 pattern_str = str(pattern.pattern)
-                if "api/v1" in pattern_str or pattern_str == "api/v1/":
-                    if hasattr(pattern, "url_patterns"):
-                        api_resolver = pattern
-                        break
+                if ("api/v1" in pattern_str or pattern_str == "api/v1/") and hasattr(
+                    pattern, "url_patterns"
+                ):
+                    api_resolver = pattern
+                    break
 
         if api_resolver:
             self._parse_resolver(api_resolver, "/api/v1/", endpoints)

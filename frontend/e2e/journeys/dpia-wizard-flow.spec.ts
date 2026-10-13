@@ -4,15 +4,22 @@
  * Journeys covered:
  *   1. DPIA create — new DPIA via wizard, fill Basics step, advance to
  *      Processing, Risks & Measures, Review, and submit.
- *   2. DPIA review — DPO reviews submitted DPIA (APPROVED / REJECTED /
- *      REQUIRES_CONSULTATION).
- *   3. DPIA consultation complete — post-consultation resolution.
+ *   2. DPIA review — the reviewer approves the submitted DPIA.
+ *   3. DPIA wizard page renders without white-screen.
  *
- * Closes the E2E gate for dpia (score 90→95).
+ * close-test-coverage-gaps 4.4 rewrite: the original draft logged in via
+ * the API only (no browser session), navigated as an unauthenticated
+ * DATA_PROVIDER, and leaned on `.catch(() => false)` probes that silently
+ * passed on /403 + /login. With the 4.4 seeder contract (compliance_dpia
+ * ON), the wizard and review surfaces render for real — the spec now runs
+ * the wizard as TENANT_ADMIN (create + submit) and the review as
+ * PLATFORM_ADMIN (the E2E persona holding the DPO/LEGAL_ADMIN review
+ * authority), through REAL browser logins and real assertions.
+ *
  * Real backend only — no mocks.
  */
-import { test, expect } from '../../fixtures/guardedTest';
-import { getTestUser, loginViaApi } from '../../fixtures/auth';
+import { test, expect } from '../fixtures/guardedTest';
+import { getPlatformAdminUser, getTenantAdminUser, loginUser } from '../fixtures/auth';
 
 test.describe('284.F.5 — DPIA wizard flow @critical @dpia', () => {
   test.setTimeout(120_000);
@@ -20,159 +27,95 @@ test.describe('284.F.5 — DPIA wizard flow @critical @dpia', () => {
   test('DPIA create — wizard steps from Basics to submit', async ({
     page,
   }) => {
-    const user = await getTestUser();
-    await loginViaApi(user.email, user.password);
-
-    // Navigate to new DPIA wizard.
-    await page.goto('/governance/dpia/new');
+    const user = await getTenantAdminUser();
+    await loginUser(page, user);
     await page.waitForLoadState('domcontentloaded');
 
-    // If the capability is disabled, the page shows a Banner — skip gracefully.
-    const banner = page.locator('[data-testid="dpia-wizard"], .tenant-form-group');
-    const wizardVisible = await banner.isVisible({ timeout: 10_000 }).catch(() => false);
-    if (!wizardVisible) {
-      test.skip(true, 'DPIA capability disabled or wizard not mounted');
-      return;
-    }
+    // Navigate to the new-DPIA wizard (route param "new" = create mode).
+    await page.goto('/governance/dpia/new');
+    await expect(page.getByTestId('dpia-wizard')).toBeVisible({ timeout: 15_000 });
 
     // ── Step 0: Basics ────────────────────────────────────────────
-    // Fill title.
-    const titleInput = page.locator('#dpia-title');
-    if (await titleInput.isVisible()) {
-      await titleInput.fill(`E2E DPIA ${Date.now()}`);
-    }
+    await page.locator('#dpia-title').fill(`E2E DPIA ${Date.now()}`);
+    await page.locator('#dpia-regime').selectOption('GDPR');
 
-    // Select regime.
-    const regimeSelect = page.locator('#dpia-regime');
-    if (await regimeSelect.isVisible()) {
-      await regimeSelect.selectOption('GDPR');
-    }
-
-    // Advance to next step (Processing).
-    const nextButton = page.getByRole('button', { name: /next/i });
-    if (await nextButton.isVisible()) {
-      await nextButton.click();
-      await page.waitForTimeout(500);
-    }
+    // Advance to step 1 (Processing).
+    await page.getByRole('button', { name: /next/i }).click();
+    await expect(page.locator('#dpia-proc')).toBeVisible({ timeout: 15_000 });
 
     // ── Step 1: Processing ────────────────────────────────────────
-    // The processing narrative textarea has id="dpia-proc" in the component.
-    const processingTextarea = page.locator('#dpia-proc');
-    if (await processingTextarea.isVisible()) {
-      await processingTextarea.fill(
-        'E2E test processing narrative — customer analytics pipeline.',
-      );
-    }
+    await page
+      .locator('#dpia-proc')
+      .fill('E2E test processing narrative — customer analytics pipeline.');
 
-    // Advance to Risks & Measures.
-    if (await nextButton.isVisible()) {
-      await nextButton.click();
-      await page.waitForTimeout(500);
-    }
+    // Advance to step 2 (Risks & Measures).
+    await page.getByRole('button', { name: /next/i }).click();
+    await expect(page.locator('#dpia-risk')).toBeVisible({ timeout: 15_000 });
 
     // ── Step 2: Risks & Measures ──────────────────────────────────
-    // Risk narrative textarea id="dpia-risk", mitigations id="dpia-mit".
-    const riskTextarea = page.locator('#dpia-risk');
-    if (await riskTextarea.isVisible()) {
-      await riskTextarea.fill(
-        'E2E test risk narrative — re-identification risk, data minimisation mitigations.',
-      );
-    }
+    await page
+      .locator('#dpia-risk')
+      .fill('E2E test risk narrative — re-identification risk, data minimisation mitigations.');
+    await page
+      .locator('#dpia-mit')
+      .fill('Pseudonymisation at ingest, 7-day retention for raw logs, access logged to audit.');
 
-    const mitigationsTextarea = page.locator('#dpia-mit');
-    if (await mitigationsTextarea.isVisible()) {
-      await mitigationsTextarea.fill(
-        'Pseudonymisation at ingest, 7-day retention for raw logs, access logged to audit.',
-      );
-    }
+    // Advance to step 3 (Review).
+    await page.getByRole('button', { name: /next/i }).click();
 
-    // Advance to Review.
-    if (await nextButton.isVisible()) {
-      await nextButton.click();
-      await page.waitForTimeout(500);
-    }
-
-    // ── Step 3: Review ────────────────────────────────────────────
-    // The review step shows a summary. The "Submit for review" button
-    // triggers dpiaService.submit() → redirect to review queue.
-    const submitButton = page.getByRole('button', { name: /submit for review/i });
-    if (await submitButton.isVisible()) {
-      // noverify: read-only submission — transitions status to IN_REVIEW
-      // and redirects to /governance/dpia/review-queue.
-      await submitButton.click();
-      await page.waitForTimeout(2000);
-    }
-
-    // The page should not crash — either it redirected or it shows
-    // a success state.
-    const noCrash = await page.locator('body').isVisible();
-    expect(noCrash).toBeTruthy();
+    // ── Step 3: Review → submit for review ─────────────────────────
+    // dpiaService.submit() → status IN_REVIEW → redirect to the queue.
+    await page.getByRole('button', { name: /submit for review/i }).click();
+    await page.waitForURL(/\/governance\/dpia\/review-queue/, { timeout: 15_000 });
+    await expect(page.getByTestId('dpia-review-queue')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
   });
 
-  test('DPIA review page — DPO reviews submitted DPIA', async ({ page }) => {
-    const user = await getTestUser();
-    await loginViaApi(user.email, user.password);
+  test('DPIA review page — reviewer approves the submitted DPIA', async ({ page }) => {
+    const reviewer = await getPlatformAdminUser();
+    await loginUser(page, reviewer);
+    await page.waitForLoadState('domcontentloaded');
 
     // Navigate to the DPIA review queue.
     await page.goto('/governance/dpia/review-queue');
+    await expect(page.getByTestId('dpia-review-queue')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'DPIA review queue' })).toBeVisible();
+
+    // The wizard test above submits a DPIA into the IN_REVIEW queue —
+    // click into the first pending review (rows navigate via a
+    // "Review" Button, not an anchor).
+    const firstReviewButton = page.getByRole('button', { name: 'Review', exact: true }).first();
+    test.skip(
+      (await firstReviewButton.count()) === 0,
+      'No IN_REVIEW DPIA records in the queue (the wizard test seeds one — data-dependent)',
+    );
+    await firstReviewButton.click();
     await page.waitForLoadState('domcontentloaded');
 
-    // The review queue page should render.
-    await expect(page.locator('h1, h2, [data-testid="dpia-review-queue"]').first()).toBeVisible({
-      timeout: 15_000,
-    });
+    // The review page has outcome controls.
+    await expect(page.getByTestId('dpia-review-page')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#dpia-outcome')).toBeVisible();
+    await page.locator('#dpia-outcome').selectOption('APPROVED');
+    await page.locator('#dpia-dpo').fill('E2E review — approved with LOW residual risk.');
 
-    // If there are DPIA records in the queue, click into the first one.
-    const firstRow = page.locator('a[href*="/governance/dpia/"][href*="/review"]').first();
-    const rowVisible = await firstRow.isVisible({ timeout: 5_000 }).catch(() => false);
+    await page.getByRole('button', { name: /submit decision/i }).click();
 
-    if (rowVisible) {
-      await firstRow.click();
-      await page.waitForLoadState('domcontentloaded');
-
-      // The review page should have outcome controls.
-      const reviewPage = page.locator('[data-testid="dpia-review-page"]');
-      const reviewVisible = await reviewPage.isVisible({ timeout: 10_000 }).catch(() => false);
-
-      if (reviewVisible) {
-        // The review page uses a <select id="dpia-outcome"> for the decision,
-        // with options APPROVED / REJECTED / REQUIRES_CONSULTATION.
-        const outcomeSelect = page.locator('#dpia-outcome');
-        if (await outcomeSelect.isVisible().catch(() => false)) {
-          await outcomeSelect.selectOption('APPROVED');
-        }
-
-        // Submit button text is "Submit decision" per the component.
-        const reviewSubmit = page.getByRole('button', { name: /submit decision/i });
-        if (await reviewSubmit.isVisible().catch(() => false)) {
-          await reviewSubmit.click();
-          await page.waitForTimeout(1500);
-        }
-      }
-    }
-
-    // The page should not crash.
-    const noCrash = await page.locator('body').isVisible();
-    expect(noCrash).toBeTruthy();
+    // Post-decision the page navigates back to the queue.
+    await page.waitForURL(/\/governance\/dpia\/review-queue/, { timeout: 15_000 });
+    await expect(page.getByTestId('dpia-review-queue')).toBeVisible({ timeout: 10_000 });
   });
 
   test('DPIA wizard page renders without white-screen', async ({ page }) => {
-    const user = await getTestUser();
-    await loginViaApi(user.email, user.password);
+    const user = await getTenantAdminUser();
+    await loginUser(page, user);
+    await page.waitForLoadState('domcontentloaded');
 
     await page.goto('/governance/dpia/new');
     await page.waitForLoadState('domcontentloaded');
 
-    // Either the wizard is mounted or a capability-disabled banner is shown.
-    // Neither case should white-screen.
-    const hasContent = await page
-      .locator(
-        '[data-testid="dpia-wizard"], .tenant-form-group, [role="banner"], .Banner, h2',
-      )
-      .first()
-      .isVisible({ timeout: 10_000 })
-      .catch(() => false);
-
-    expect(hasContent).toBeTruthy();
+    // The wizard mounts with the step rail and the Basics step fields.
+    await expect(page.getByTestId('dpia-wizard')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#dpia-title')).toBeVisible();
+    await expect(page.locator('#dpia-regime')).toBeVisible();
   });
 });

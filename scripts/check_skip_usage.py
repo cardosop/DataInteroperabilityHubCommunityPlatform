@@ -31,7 +31,7 @@ def count_tests_and_skips(filepath: Path) -> tuple[int, int]:
     """Return (total_test_functions, skipped_test_functions) for a file."""
     try:
         content = filepath.read_text()
-    except Exception:
+    except (OSError, ValueError):
         return 0, 0
 
     lines = content.split("\n")

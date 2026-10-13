@@ -68,7 +68,6 @@ class WebhooksBusinessRulesInitializationTest(TestCase):
         self.assertIsNone(rules.user_id)
 
 
-
 class WebhooksBusinessRulesRegistrationTest(TestCase):
     """Test WebhooksBusinessRules registration in business rules registry"""
 
@@ -455,9 +454,7 @@ class WebhooksBusinessRulesTenantPermissionsTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-        self.rules = WebhooksBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = WebhooksBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -469,21 +466,19 @@ class WebhooksBusinessRulesTenantPermissionsTest(TestCase):
 
     def test_validate_tenant_context_valid(self):
         """Tenant context validation passes when webhook belongs to tenant."""
-        result = self.rules._validate_tenant_context(
-            webhook=self.webhook, tenant=self.tenant
-        )
+        result = self.rules._validate_tenant_context(webhook=self.webhook, tenant=self.tenant)
         self.assertTrue(result.is_valid)
 
     def test_validate_tenant_context_mismatched_webhook(self):
         """Tenant context validation fails when webhook belongs to different tenant."""
         other_uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other {other_uid}", slug=f"other-{other_uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"Other {other_uid}",
+            slug=f"other-{other_uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
-        result = self.rules._validate_tenant_context(
-            webhook=self.webhook, tenant=other_tenant
-        )
+        result = self.rules._validate_tenant_context(webhook=self.webhook, tenant=other_tenant)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
 
@@ -502,8 +497,10 @@ class WebhooksBusinessRulesTenantPermissionsTest(TestCase):
         """Permissions validation warns when user belongs to different tenant."""
         other_uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other {other_uid}", slug=f"other-{other_uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"Other {other_uid}",
+            slug=f"other-{other_uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{other_uid}@example.com",

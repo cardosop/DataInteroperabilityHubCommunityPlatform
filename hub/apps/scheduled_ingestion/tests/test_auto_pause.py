@@ -83,9 +83,9 @@ class ScheduledIngestionAutoPauseTest(TestCase):
         apply_run_completion_side_effects(run, "FAILED")
 
         si.refresh_from_db()
-        self.assertEqual(si.status, ScheduledIngestionStatus.PAUSED)
-        self.assertEqual(si.consecutive_failure_count, 5)
-        self.assertIsNotNone(si.last_error_at)
+        assert si.status == ScheduledIngestionStatus.PAUSED
+        assert si.consecutive_failure_count == 5
+        assert si.last_error_at is not None
 
     @override_settings(MAX_CONSECUTIVE_FAILURES=5)
     def test_success_resets_failure_count(self):
@@ -103,9 +103,9 @@ class ScheduledIngestionAutoPauseTest(TestCase):
         apply_run_completion_side_effects(run, "COMPLETED")
 
         si.refresh_from_db()
-        self.assertEqual(si.consecutive_failure_count, 0)
-        self.assertEqual(si.status, ScheduledIngestionStatus.ACTIVE)
-        self.assertIsNone(si.last_error_at)
+        assert si.consecutive_failure_count == 0
+        assert si.status == ScheduledIngestionStatus.ACTIVE
+        assert si.last_error_at is None
 
     @override_settings(MAX_CONSECUTIVE_FAILURES=5)
     def test_failure_below_threshold_sets_error(self):
@@ -120,5 +120,5 @@ class ScheduledIngestionAutoPauseTest(TestCase):
         apply_run_completion_side_effects(run, "FAILED")
 
         si.refresh_from_db()
-        self.assertEqual(si.status, ScheduledIngestionStatus.ERROR)
-        self.assertEqual(si.consecutive_failure_count, 3)
+        assert si.status == ScheduledIngestionStatus.ERROR
+        assert si.consecutive_failure_count == 3

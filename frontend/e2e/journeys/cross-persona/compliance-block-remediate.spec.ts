@@ -28,7 +28,11 @@ import {
 import { waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan', () => {
-  test.setTimeout(120000);
+  // 240s: three persona UI logins (clearAuthStorage + fresh login each) plus a
+  // compliance-run wait stack past 120s in tail-of-batch runs (auth rate-limit
+  // backoff under parallel load). 120s was too tight and produced mid-flow
+  // budget expirations on slow batches.
+  test.setTimeout(240000);
 
   test('DPO creates asset → CPO scans compliance → DPO reviews → CPO re-scans', async ({
     page,
@@ -43,12 +47,12 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     // ── Step 2: CPO triggers compliance scan via API ─────────────────────
     let compRunId: string | undefined;
     try {
-      compRunId = await triggerComplianceRunViaApi(cpoUser, { asset_id: assetId });
+      compRunId = await triggerComplianceRunViaApi(cpoUser, { assetId });
     } catch (err) {
       const msg = String(err);
       // Only skip if compliance service is genuinely unavailable (404/503)
       if (/404|503|unavailable|no valid endpoint/i.test(msg)) {
-        test.skip(true, `Compliance service not available: ${msg.slice(0, 200)}`);
+        test.skip(/404|503|unavailable|no valid endpoint/i.test(msg), `Compliance service not available: ${msg.slice(0, 200)}`);
         return;
       }
       throw new Error(`Compliance scan trigger failed: ${msg}`);
@@ -62,7 +66,7 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     } catch (err) {
       const msg = String(err);
       if (/did not reach terminal state/i.test(msg)) {
-        test.skip(true, `Compliance run did not complete within 120s: ${msg.slice(0, 200)}`);
+        test.skip(/did not reach terminal state/i.test(msg), `Compliance run did not complete within 120s: ${msg.slice(0, 200)}`);
         return;
       }
       throw err;
@@ -77,11 +81,18 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     await loginAsPersona(page, getComplianceOfficerUser);
     await page.goto('/compliance');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector(
-      '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
-      { timeout: 30000 }
-    );
-    test.skip(page.url().includes('/login'), 'CPO auth redirect — infra issue');
+    try {
+      await page.waitForSelector(
+        '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+        { timeout: 30000 }
+      );
+    } catch (err) {
+      // Skip only when the wait lost to an auth hard-redirect (token family
+      // revoked under parallel E2E load); otherwise rethrow — an error-display
+      // resolves the wait and fails the D85 assertion below with a clear message.
+      test.skip(page.url().includes('/login'), 'CPO auth redirect — infra issue');
+      throw err;
+    }
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     // D85: error-display is not acceptable in success verification
@@ -96,11 +107,21 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     await loginAsPersona(page, getTestUser);
     await page.goto(`/assets/${assetId}`);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector(
-      '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]',
-      { timeout: 30000 }
-    );
-    test.skip(page.url().includes('/login'), 'DPO auth redirect — infra issue');
+    try {
+      await page.waitForSelector(
+        '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
+        { timeout: 30000 }
+      );
+    } catch (err) {
+      // Skip only when the wait lost to an auth hard-redirect (token family
+      // revoked under parallel E2E load); otherwise rethrow — AssetDetailPage
+      // renders .asset-detail-page ONLY on success (skeleton while loading,
+      // ErrorDisplay on fetch/tenant failure), so an error state resolves the
+      // wait and fails the D85 assertion below with a clear message instead of
+      // an opaque 30s selector timeout.
+      test.skip(page.url().includes('/login'), 'DPO auth redirect — infra issue');
+      throw err;
+    }
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
@@ -112,7 +133,7 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     // ── Step 6: CPO re-scans compliance (verifies scan can be repeated) ──
     let reRunId: string | undefined;
     try {
-      reRunId = await triggerComplianceRunViaApi(cpoUser, { asset_id: assetId });
+      reRunId = await triggerComplianceRunViaApi(cpoUser, { assetId });
     } catch (err) {
       // Re-scan trigger failure is acceptable — annotate but don't fail the cross-persona test
       test.info().annotations.push({
@@ -131,13 +152,16 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     await loginAsPersona(page, getComplianceOfficerUser);
     await page.goto('/compliance');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector(
-      '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
-      { timeout: 30000 }
-    );
-    if (page.url().includes('/login')) {
-      test.skip(true, 'CPO re-login auth redirect');
-      return;
+    try {
+      await page.waitForSelector(
+        '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+        { timeout: 30000 }
+      );
+    } catch (err) {
+      // Same live skip as steps 4/5: only an auth hard-redirect is infra-skip;
+      // anything else rethrows.
+      test.skip(page.url().includes('/login'), 'CPO re-login auth redirect');
+      throw err;
     }
     await waitForLoadingComplete(page, { timeout: 15000 });
 

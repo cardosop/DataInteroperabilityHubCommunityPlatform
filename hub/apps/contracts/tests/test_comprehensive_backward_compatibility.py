@@ -48,6 +48,7 @@ except ImportError:
         "all ODCS backward-compatibility tests will be silently skipped. "
         "In CI this should be a hard failure.",
         RuntimeWarning,
+        stacklevel=2,
     )
 
 # For future CI integration, add @pytest.mark.skipif on ODCS test classes:

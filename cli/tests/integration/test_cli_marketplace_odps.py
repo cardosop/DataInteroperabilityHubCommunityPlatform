@@ -24,18 +24,7 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 def _create_test_api_key():
@@ -83,8 +72,8 @@ print(api_key_value)
         )
         if result.returncode == 0:
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 if (
                     line
                     and len(line) > 30
@@ -216,7 +205,7 @@ def odps_contract_with_pricing():
 class TestCLIMarketplaceODPS:
     """Tests for marketplace commands with ODPS integration"""
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_list_with_odps_pricing_filter(
         self, odps_contract_with_pricing, setup_config
     ):
@@ -237,7 +226,7 @@ class TestCLIMarketplaceODPS:
             # Table format is also acceptable
             pass
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_create_listing_with_odps_config(
         self, odps_contract_with_pricing, setup_config
     ):
@@ -259,7 +248,7 @@ class TestCLIMarketplaceODPS:
         # a marketplace connection to be set up first
         # This test verifies ODPS data is accessible for marketplace operations
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_purchase_with_odps_access_methods(
         self, odps_contract_with_pricing, setup_config
     ):
@@ -281,7 +270,7 @@ class TestCLIMarketplaceODPS:
             # Table format is acceptable
             pass
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_all_marketplace_commands_with_odps_integration(
         self, odps_contract_with_pricing, setup_config
     ):
@@ -310,7 +299,7 @@ class TestCLIMarketplaceODPS:
         result_sync = runner.invoke(cli, ["marketplace", "sync", "list", "--format", "json"])
         assert result_sync.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_odps_pricing_integration(self, odps_contract_with_pricing, setup_config):
         """Test marketplace integration with ODPS pricing plans"""
         runner = CliRunner()
@@ -334,7 +323,7 @@ class TestCLIMarketplaceODPS:
 
         assert result_table.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_odps_access_methods_integration(
         self, odps_contract_with_pricing, setup_config
     ):
@@ -360,7 +349,7 @@ class TestCLIMarketplaceODPS:
 
         assert result_table.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_contract_odps_info_display(self, odps_contract_with_pricing, setup_config):
         """Test that marketplace-related ODPS info is displayed correctly"""
         runner = CliRunner()

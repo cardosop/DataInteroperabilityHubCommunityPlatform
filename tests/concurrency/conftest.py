@@ -21,4 +21,3 @@ def _raise_statement_timeout():
     """
     with connection.cursor() as cur:
         cur.execute("SET statement_timeout = '120s'")
-    yield

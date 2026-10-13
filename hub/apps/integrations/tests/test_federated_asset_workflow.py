@@ -207,9 +207,8 @@ class FederatedAssetWorkflowTest(TestCase):
         # Real semantic mapping functions will be called - they handle errors gracefully
         # Create test CSV file
         csv_content = b"id,name\n1,Test\n2,Data\n"
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(csv_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(csv_content)
 
         # Create real test connector
         class TestDownloadConnector(DataMarketplaceConnector):
@@ -625,9 +624,8 @@ class FederatedAssetWorkflowTest(TestCase):
         # Real semantic mapping functions will be called - they handle errors gracefully
         # Create test CSV file
         csv_content = b"id,name\n1,Test\n2,Data\n"
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(csv_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(csv_content)
 
         # Create real test connector
         class TestDownloadConnector2(DataMarketplaceConnector):

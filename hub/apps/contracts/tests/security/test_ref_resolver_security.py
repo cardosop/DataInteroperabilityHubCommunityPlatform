@@ -141,9 +141,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=False, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (redis.RedisError, ValueError):
         return None
+    else:
+        return client
 
 
 class RefResolverURLValidationTest(TestCase):
@@ -215,7 +216,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that JavaScript URLs are rejected through public API"""
         url = "javascript:alert('XSS')"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -226,7 +227,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that file:// URLs are rejected through public API"""
         url = "file:///etc/passwd"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -237,7 +238,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that data: URLs are rejected through public API"""
         url = "data:text/html,<script>alert('XSS')</script>"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -248,7 +249,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that URLs without host are rejected through public API"""
         url = "https:///path/to/schema.json"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_INVALID_REF)
         self.assertIn("missing host", cm.exception.message.lower())
@@ -257,7 +258,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that URLs with empty host are rejected through public API"""
         url = "https://"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_INVALID_REF)
 
@@ -274,7 +275,7 @@ class RefResolverURLValidationTest(TestCase):
         )
 
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_INVALID_REF)
         self.assertIn("exceeds maximum", cm.exception.message.lower())
@@ -283,7 +284,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that malformed URLs are rejected through public API"""
         url = "not a valid url"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         # Malformed URLs are rejected - the actual error code depends on where parsing fails
         # If URL parsing fails, it's INVALID_REF; if scheme validation fails, it's SECURITY_VIOLATION
@@ -300,11 +301,9 @@ class RefResolverURLValidationTest(TestCase):
         url = "javascript:alert('XSS')"
         # Mock security logger to verify logging behavior (acceptable for testing logging)
         with patch.object(self.resolver._security_logger, "log_security_violation") as mock_log:
-            try:
+            with contextlib.suppress(ODPSRefResolutionError):
                 # Test through public API - resolve_external() validates URL internally and logs violations
                 self.resolver.resolve_external(url)
-            except ODPSRefResolutionError:
-                pass
 
             # Verify security violation was logged
             mock_log.assert_called_once()
@@ -355,7 +354,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_dot_dot_slash(self):
         """Test that ../ path traversal is rejected"""
         attack_path = "../../../etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -364,7 +363,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_multiple_dot_dot(self):
         """Test that multiple ../ path traversal is rejected"""
         attack_path = "../../../../etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -373,7 +372,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_absolute_path(self):
         """Test that absolute paths are rejected"""
         attack_path = "/etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -383,7 +382,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_windows_absolute_path(self):
         """Test that Windows absolute paths are rejected"""
         attack_path = "C:\\Windows\\System32\\config\\sam"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
         # Should be rejected as absolute path or invalid ref
         self.assertIn(
@@ -397,7 +396,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_double_dot_encoding(self):
         """Test that double dot encoding (....//) is rejected"""
         attack_path = "....//....//etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -425,7 +424,14 @@ class RefResolverPathTraversalTest(TestCase):
             self.assertEqual(call_args.kwargs["severity"], SecuritySeverity.HIGH)
 
 
-@override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
+@override_settings(
+    REDIS_URL="redis://redis-cache-test:6379/0",
+    # Test mode hardcodes RATE_LIMIT_ENABLED=False (settings.py is_test_env
+    # branch) so suite-wide resolutions don't exhaust the shared bucket;
+    # THIS class deliberately tests enforcement against real Redis, so the
+    # switch must be on here (resolve_external gates check_rate_limit on it).
+    RATE_LIMIT_ENABLED=True,
+)
 class RefResolverRateLimitingTest(TestCase):
     """Test rate limiting security controls using real Redis.
 
@@ -504,7 +510,7 @@ class RefResolverRateLimitingTest(TestCase):
         # Test that RefResolver respects rate limiting (call real resolve_external;
         # rate limit check runs before HTTP, so no mock needed)
         url = "https://example.com/schema.json"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
@@ -602,7 +608,7 @@ class RefResolverSizeLimitTest(TestCase):
             httpx_transport=httpx.MockTransport(handler),
         )
 
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             resolver.resolve_external("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -640,7 +646,7 @@ class RefResolverSizeLimitTest(TestCase):
             resolver._total_size = 4001  # Set total size
 
             # Test through public API - resolve_local() checks total size limit internally
-            with self.assertRaises(ODPSRefResolutionError):
+            with self.assertRaises(ODPSRefResolutionError) as cm:
                 resolver.resolve_local(str(test_file.relative_to(temp_dir)))
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -698,7 +704,7 @@ class RefResolverSizeLimitTest(TestCase):
         with server:
             self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError):
+            with self.assertRaises(ODPSRefResolutionError) as cm:
                 resolver.resolve_external(url)
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -734,7 +740,7 @@ class RefResolverSizeLimitTest(TestCase):
         with server:
             self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError):
+            with self.assertRaises(ODPSRefResolutionError) as cm:
                 resolver.resolve_external(url)
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -795,7 +801,7 @@ class RefResolverTimeoutTest(TestCase):
         resolver._start_time = time.time() - 3  # 3 seconds ago (timeout_total=2)
 
         # resolve() calls _check_timeout() first, which raises before HTTP
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             resolver.resolve("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -839,7 +845,7 @@ class RefResolverTimeoutTest(TestCase):
         # resolve() calls _check_timeout() first; set _start_time in past to trigger timeout
         resolver._start_time = time.time() - 3  # 3 seconds ago (timeout_total=2)
 
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             resolver.resolve("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -873,7 +879,7 @@ class RefResolverTimeoutTest(TestCase):
         with server:
             self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError):
+            with self.assertRaises(ODPSRefResolutionError) as cm:
                 resolver.resolve(url)
             self.assertIn(
                 cm.exception.error_code,
@@ -904,11 +910,9 @@ class RefResolverSecurityLoggingTest(TestCase):
         url = "javascript:alert('XSS')"
         # Mock security logger to verify logging behavior (acceptable for testing logging)
         with patch.object(self.resolver._security_logger, "log_security_violation") as mock_log:
-            try:
+            with contextlib.suppress(ODPSRefResolutionError):
                 # Test through public API - resolve_external() validates URL internally and logs violations
                 self.resolver.resolve_external(url)
-            except ODPSRefResolutionError:
-                pass
 
             mock_log.assert_called_once()
             call_args = mock_log.call_args
@@ -972,7 +976,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         with server:
             resolver.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError):
+            with self.assertRaises(ODPSRefResolutionError) as cm:
                 resolver.resolve_external(url)
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -999,7 +1003,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         # resolve() calls _check_timeout() first; set _start_time in past to trigger timeout
         resolver._start_time = time.time() - 3  # 3 seconds ago (exceeds 2s timeout)
 
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             resolver.resolve("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -1019,11 +1023,9 @@ class RefResolverSecurityLoggingTest(TestCase):
         url = "javascript:alert('XSS')"
         # Mock security logger to verify logging behavior (acceptable for testing logging)
         with patch.object(self.resolver._security_logger, "log_security_violation") as mock_log:
-            try:
+            with contextlib.suppress(ODPSRefResolutionError):
                 # Test through public API - resolve_external() validates URL internally and logs violations
                 self.resolver.resolve_external(url)
-            except ODPSRefResolutionError:
-                pass
 
             mock_log.assert_called_once()
             call_args = mock_log.call_args
@@ -1034,7 +1036,7 @@ class RefResolverSecurityLoggingTest(TestCase):
     def test_url_validation_with_none_url(self):
         """Test URL validation with None URL raises TypeError or validation error."""
         with self.assertRaises((TypeError, ValueError, ODPSRefResolutionError)):
-            self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
+            self.resolver.resolve_external(None)  # test: edge-case type exercise
 
     def test_url_validation_with_empty_url(self):
         """Test URL validation with empty URL raises validation error."""
@@ -1077,7 +1079,7 @@ class RefResolverSecurityLoggingTest(TestCase):
     def test_path_traversal_with_none_path(self):
         """Test path traversal prevention with None path raises TypeError."""
         with self.assertRaises((TypeError, ValueError, ODPSRefResolutionError)):
-            self.resolver.resolve_local(None)  # type: ignore[misc]  # test: edge-case type exercise
+            self.resolver.resolve_local(None)  # test: edge-case type exercise
 
     def test_path_traversal_with_empty_path(self):
         """Test path traversal prevention with empty path raises error."""
@@ -1088,7 +1090,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         """Test path traversal prevention with very long path."""
         very_long_path = "/" + "a" * 10000
         # Very long paths that are absolute should be rejected as security violation.
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(very_long_path)
         self.assertIn(
             cm.exception.error_code,
@@ -1106,7 +1108,7 @@ class RefResolverSecurityLoggingTest(TestCase):
             is_allowed, _error = check_rate_limit(
                 tenant_id=None,
                 user_id="test-user",
-                redis_client=self.redis_client,  # type: ignore[misc]  # test: edge-case type exercise
+                redis_client=self.redis_client,  # test: edge-case type exercise
             )
             self.assertFalse(is_allowed, "None tenant_id must not be allowed")
         except (ValueError, TypeError):
@@ -1142,7 +1144,7 @@ class RefResolverSecurityLoggingTest(TestCase):
             httpx_transport=httpx.MockTransport(handler),
         )
 
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             resolver.resolve_external("https://example.com/schema.json")
         # Empty body should produce either a resolution failure or invalid ref.
         self.assertIn(
@@ -1188,7 +1190,7 @@ class RefResolverSecurityLoggingTest(TestCase):
             enable_caching=False,
             httpx_transport=httpx.MockTransport(handler),
         )
-        resolver._start_time = None  # type: ignore[misc]  # test: edge-case type exercise
+        resolver._start_time = None  # test: edge-case type exercise
 
         # resolve() calls _check_timeout(), which should initialize _start_time
         # when it is None, then proceed with resolution.
@@ -1201,7 +1203,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         """Test security logging with None event_type raises TypeError."""
         with self.assertRaises((TypeError, ValueError)):
             self.resolver._security_logger.log_security_violation(
-                event_type=None,  # type: ignore[misc]  # test: edge-case type exercise
+                event_type=None,  # test: edge-case type exercise
                 severity=SecuritySeverity.HIGH,
                 tenant_id="test-tenant",
                 user_id="test-user",
@@ -1212,7 +1214,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         with self.assertRaises((TypeError, ValueError)):
             self.resolver._security_logger.log_security_violation(
                 event_type=SecurityEventType.INVALID_URL,
-                severity=None,  # type: ignore[misc]  # test: edge-case type exercise
+                severity=None,  # test: edge-case type exercise
                 tenant_id="test-tenant",
                 user_id="test-user",
             )
@@ -1233,7 +1235,7 @@ class RefResolverSecurityLoggingTest(TestCase):
 
         # The host is not in the allowlist, so is_url_allowed should reject it.
         # No HTTP call should be made — the security check runs first.
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code,
@@ -1244,7 +1246,7 @@ class RefResolverSecurityLoggingTest(TestCase):
     def test_path_traversal_with_special_characters(self):
         """Test path traversal prevention with special characters."""
         attack_path = "../../../etc/passwd<>&\"'"
-        with self.assertRaises(ODPSRefResolutionError):
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code,

@@ -111,7 +111,6 @@ class VersionDiscoveryResponseShapeTest(TestCase):
             self.assertIn(key, eps, f"Missing endpoint: {key}")
 
 
-
 class VersionDiscoveryDeprecatedEndpointsTest(TestCase):
     """Verifies deprecated endpoints appear in the response."""
 

@@ -129,22 +129,25 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* Badge text shades: 800/900-level tokens keep ≥4.5:1 contrast against the
+   *-light chip backgrounds in light mode (the 500-level tokens measure
+   ~1.5–3.3:1 and fail WCAG 2 AA when model rows render). */
 .status-badge.status-training,
 .status-badge.status-deploying {
   background: var(--color-warning-light);
-  color: var(--color-warning);
+  color: var(--color-warning-800);
 }
 
 .status-badge.status-trained,
 .status-badge.status-deployed {
   background: var(--color-success-light);
-  color: var(--color-success);
+  color: var(--color-success-900);
 }
 
 .status-badge.status-failed,
 .status-badge.status-undeployed {
   background: var(--color-error-light);
-  color: var(--color-error);
+  color: var(--color-error-900);
 }
 
 .status-badge.status-archived {
@@ -164,7 +167,7 @@
 
 .status-badge.status-completed {
   background: var(--color-success-light);
-  color: var(--color-success);
+  color: var(--color-success-900);
 }
 
 .status-badge.status-cancelled {
@@ -193,7 +196,7 @@
   margin-top: var(--spacing-md);
   padding: var(--spacing-sm);
   background: var(--color-error-light);
-  color: var(--color-error);
+  color: var(--color-error-900);
   border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
 }
@@ -205,4 +208,24 @@
 
 .deployment-meta a:hover {
   text-decoration: underline;
+}
+
+/* Dark theme — the *-light chip backgrounds remap to dark tints, so the
+   800/900-level light-mode text shades above would be unreadable; restore
+   the light status tokens (remapped per [data-theme='dark'] in index.css). */
+[data-theme='dark'] .status-badge.status-training,
+[data-theme='dark'] .status-badge.status-deploying {
+  color: var(--color-warning);
+}
+
+[data-theme='dark'] .status-badge.status-trained,
+[data-theme='dark'] .status-badge.status-deployed,
+[data-theme='dark'] .status-badge.status-completed {
+  color: var(--color-success);
+}
+
+[data-theme='dark'] .status-badge.status-failed,
+[data-theme='dark'] .status-badge.status-undeployed,
+[data-theme='dark'] .job-error {
+  color: var(--color-error);
 }

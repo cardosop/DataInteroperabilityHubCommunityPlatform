@@ -9,23 +9,23 @@ Service clients (DQServiceClient, ComplianceServiceClient, etc.) use real client
 handling when external microservices are unavailable.
 """
 
-import time
+import contextlib
 import uuid
 
 import pytest
+from botocore.exceptions import BotoCoreError
+from django.db import DatabaseError
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.dq.service_client import DQServiceClient
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.files.storage import S3StorageClient, StorageError
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.jobs.tasks import (
     _execute_compliance_run_job,
     _execute_contract_migration_job,
     _execute_contract_validation_job,
     _execute_dq_run_job,
-    _execute_job_logic,
     _execute_semantic_mapping_job,
     process_job,
 )
@@ -41,9 +41,10 @@ def check_dq_service_available():
     try:
         client = DQServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 def check_compliance_service_available():
@@ -51,9 +52,10 @@ def check_compliance_service_available():
     try:
         client = ComplianceServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 def check_semantic_service_available():
@@ -61,14 +63,15 @@ def check_semantic_service_available():
     try:
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 @override_settings(
-    AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
+    AWS_STORAGE_BUCKET_NAME="hub-test",
+    AWS_ACCESS_KEY_ID="minio",
     AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     EVENT_BUS_ASYNC_PERSISTENCE=False,
@@ -117,7 +120,7 @@ class JobProcessorsTest(TestCase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self._storage_available = True
-        except Exception:
+        except (BotoCoreError, RuntimeError):
             self.storage_client = None
 
     def tearDown(self):
@@ -180,7 +183,7 @@ class DQRunJobProcessorTest(JobProcessorsTest):
                 self.file.storage_path = storage_path
                 self.file.save(update_fields=["storage_path"])
                 self.storage_upload_succeeded = True
-            except Exception as e:
+            except (StorageError, DatabaseError) as e:
                 self._storage_upload_error = str(e)
 
     def test_execute_dq_run_job_success(self):
@@ -209,9 +212,7 @@ class DQRunJobProcessorTest(JobProcessorsTest):
         self.dq_run.refresh_from_db()
         from hub.apps.dq.models import DQRunStatus
 
-        self.assertIn(
-            self.dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]
-        )
+        self.assertIn(self.dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED])
 
         # If succeeded, verify result matches DB state with value checks
         if self.dq_run.status == DQRunStatus.SUCCEEDED:
@@ -284,10 +285,9 @@ class DQRunJobProcessorTest(JobProcessorsTest):
             self.skipTest("MinIO storage not available in test environment")
         # Delete uploaded file to simulate a missing-file scenario.
         if self.storage_client and self.file.storage_path:
-            try:
+            # Already gone — that's fine for this test
+            with contextlib.suppress(FileNotFoundError):
                 self.storage_client.delete_file(self.file.storage_path)
-            except FileNotFoundError:
-                pass  # Already gone — that's fine for this test
 
         with self.assertRaises(Exception) as cm:
             _execute_dq_run_job(self.job)
@@ -357,7 +357,7 @@ class ComplianceRunJobProcessorTest(JobProcessorsTest):
                 self.file.storage_path = storage_path
                 self.file.save(update_fields=["storage_path"])
                 self.storage_upload_succeeded = True
-            except Exception as e:
+            except (StorageError, DatabaseError) as e:
                 self._storage_upload_error = str(e)
 
     def test_execute_compliance_run_job_success(self):
@@ -482,7 +482,9 @@ class ContractValidationJobProcessorTest(JobProcessorsTest):
             # Verify result structure
             self.assertEqual(result["status"], "completed")
             # interpret_validation_status may return VALID, WARNING_ONLY, ERROR, or SKIPPED
-            self.assertIn(result["validation_status"], ["VALID", "WARNING_ONLY", "ERROR", "SKIPPED"])
+            self.assertIn(
+                result["validation_status"], ["VALID", "WARNING_ONLY", "ERROR", "SKIPPED"]
+            )
             self.assertEqual(result["contract_id"], str(self.contract_id))
             self.assertIn("errors", result)
             self.assertIn("warnings", result)
@@ -515,8 +517,10 @@ class ContractValidationJobProcessorTest(JobProcessorsTest):
             # Validation errors (e.g., contract not found, required fields) are acceptable
             error_msg = str(e).lower()
             self.assertTrue(
-                "not found" in error_msg or "required" in error_msg
-                or "unavailable" in error_msg or "connection" in error_msg,
+                "not found" in error_msg
+                or "required" in error_msg
+                or "unavailable" in error_msg
+                or "connection" in error_msg,
                 f"Unexpected ValueError: {e}",
             )
 
@@ -895,11 +899,16 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
 
         # Verify mark_started was called (unless job failed at validation before execution, e.g. DQ run not found)
         self.job.refresh_from_db()
-        if self.job.status == JobStatus.FAILED and self.job.result_json.get("error_code") == "VALIDATION_ERROR":
+        if (
+            self.job.status == JobStatus.FAILED
+            and self.job.result_json.get("error_code") == "VALIDATION_ERROR"
+        ):
             # Job failed before mark_started (e.g. DQ run not found); cancellation path was not reached
             self.assertFalse(mark_started_called)
         else:
-            self.assertTrue(mark_started_called, "Expected mark_started to be called when job reached execution")
+            self.assertTrue(
+                mark_started_called, "Expected mark_started to be called when job reached execution"
+            )
             self.assertEqual(self.job.status, JobStatus.CANCELLED)
 
         # When cancellation path was reached, verify slot release
@@ -942,7 +951,10 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
 
         # Verify job status is CANCELLED, COMPLETED, or FAILED (VALIDATION_ERROR if DQ run not found before execution)
         self.job.refresh_from_db()
-        if self.job.status == JobStatus.FAILED and self.job.result_json.get("error_code") == "VALIDATION_ERROR":
+        if (
+            self.job.status == JobStatus.FAILED
+            and self.job.result_json.get("error_code") == "VALIDATION_ERROR"
+        ):
             # Job failed before execution (e.g. DQ run not found); cancellation path was not reached
             self.assertIsNotNone(self.job.error_message)
         else:

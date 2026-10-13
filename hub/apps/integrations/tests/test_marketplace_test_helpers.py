@@ -229,7 +229,7 @@ class TestBackwardCompatibility(TestCase):
         # Should return URL or None
         if url:
             self.assertIsInstance(url, str)
-            self.assertTrue(url.startswith("http://") or url.startswith("https://"))
+            self.assertTrue(url.startswith(("http://", "https://")))
 
     def test_get_test_api_key(self):
         """Test backward compatibility function get_test_api_key()"""
@@ -305,7 +305,7 @@ class TestCKANTestHelpersIntegration(TestCase):
         try:
             connector = create_test_connector(
                 instance_name=None,
-                verify_connection=False,  # type: ignore[arg-type]  # test: edge-case type exercise
+                verify_connection=False,  # test: edge-case type exercise
             )
             # Should handle gracefully (may use default)
             if connector:
@@ -332,7 +332,7 @@ class TestCKANTestHelpersIntegration(TestCase):
 
     def test_marketplace_available_with_none_instance_name(self):
         """Test marketplace_available() error handling with None instance_name"""
-        result = marketplace_available(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+        result = marketplace_available(None)  # test: edge-case type exercise
         self.assertFalse(result)
 
     def test_marketplace_available_with_empty_instance_name(self):
@@ -342,7 +342,7 @@ class TestCKANTestHelpersIntegration(TestCase):
 
     def test_get_test_marketplace_config_with_none(self):
         """Test get_test_marketplace_config() error handling with None"""
-        config = get_test_marketplace_config(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+        config = get_test_marketplace_config(None)  # test: edge-case type exercise
         self.assertIsNone(config)
 
     def test_get_test_marketplace_config_with_empty_string(self):

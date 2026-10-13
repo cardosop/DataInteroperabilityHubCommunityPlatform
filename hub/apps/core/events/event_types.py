@@ -120,7 +120,13 @@ EVENT_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
             "properties": {
                 "asset_id": {"type": "string", "format": "uuid"},
                 "name": {"type": "string"},
-                "domain": {"type": "string"},
+                # ``asset.domain or None`` — a domain-less asset publishes
+                # null, which the strict "string" type rejected, dropping
+                # the WHOLE event at the schema gate (b7 #43/#44 re-run:
+                # webhook-delivery E2E polled 60s for a delivery row that
+                # could never be created because asset.created never
+                # reached the bus). Nullable like contract_id below.
+                "domain": {"type": ["string", "null"]},
                 "status": {"type": "string"},
                 "contract_id": {"type": ["string", "null"], "format": "uuid"},
             },
@@ -1658,7 +1664,11 @@ EVENT_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
             },
         }
     },
-    "compliance.report.generated": {
+    # Mesh-scoped name — this entry previously used the key
+    # "compliance.report.generated", silently shadowing the compliance
+    # app's schema (same key earlier in this registry). The mesh event
+    # carries a domain-compliance payload, not a report payload.
+    "mesh.compliance.report_generated": {
         "data": {
             "type": "object",
             "required": ["compliance_report_id", "domain_id"],
@@ -2326,6 +2336,8 @@ EVENT_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
                 "response_time_ms": {"type": "integer"},
                 "tenant_id": {"type": ["string", "null"], "format": "uuid"},
                 "user_id": {"type": ["string", "null"], "format": "uuid"},
+                # R2-D7 — caller-supplied event dedup key (W2.5).
+                "dedup_key": {"type": ["string", "null"]},
             },
         }
     },

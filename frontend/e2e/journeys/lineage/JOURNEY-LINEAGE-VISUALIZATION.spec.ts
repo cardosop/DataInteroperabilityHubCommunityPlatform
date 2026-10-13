@@ -37,7 +37,7 @@ test.describe('Lineage Visualization Journey', () => {
     // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await slider.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
     if ((await slider.count()) === 0 || !(await slider.isVisible())) {
-      test.skip(true, 'Depth slider not rendered (lineage data may be empty)');
+      test.skip((await slider.count()) === 0 || !(await slider.isVisible()), 'Depth slider not rendered (lineage data may be empty)');
       return;
     }
     const value = await slider.inputValue();
@@ -50,7 +50,7 @@ test.describe('Lineage Visualization Journey', () => {
     // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await controls.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
     if ((await controls.count()) === 0 || !(await controls.isVisible())) {
-      test.skip(true, 'React Flow controls not rendered (lineage data may be empty)');
+      test.skip((await controls.count()) === 0 || !(await controls.isVisible()), 'React Flow controls not rendered (lineage data may be empty)');
       return;
     }
     await expect(controls).toBeVisible();

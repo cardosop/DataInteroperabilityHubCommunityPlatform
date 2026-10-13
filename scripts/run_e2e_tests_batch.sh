@@ -10,11 +10,16 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# Activate virtual environment
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
-elif [ -d "venv" ]; then
+# Activate virtual environment.
+# `venv/` FIRST: it is the canonical host-side interpreter
+# (docs/test-infrastructure/host-env-matrix.md). This used to prefer `.venv/`,
+# which on a machine carrying both picks the less-provisioned env and then
+# fails mid-test with an unrelated-looking ModuleNotFoundError.
+# Precedence now matches scripts/run_tenant_migration_verification.sh.
+if [ -d "venv" ]; then
     source venv/bin/activate
+elif [ -d ".venv" ]; then
+    source .venv/bin/activate
 fi
 
 export DJANGO_SETTINGS_MODULE=hub.settings

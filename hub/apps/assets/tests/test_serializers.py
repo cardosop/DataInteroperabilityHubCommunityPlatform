@@ -397,13 +397,22 @@ class AssetSerializerTest(TestCase):
         from hub.apps.files.models import File, FileStatus
 
         f = File.objects.create(
-            tenant=self.tenant, name="ds.csv", content_type="text/csv",
-            size=1000, status=FileStatus.ACTIVE, storage_path="t/ds.csv",
-            content_sha256="abc", created_by=self.user,
+            tenant=self.tenant,
+            name="ds.csv",
+            content_type="text/csv",
+            size=1000,
+            status=FileStatus.ACTIVE,
+            storage_path="t/ds.csv",
+            content_sha256="abc",
+            created_by=self.user,
         )
         ds = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=f,
-            schema_json={"fields": []}, format="CSV", version=1,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=f,
+            schema_json={"fields": []},
+            format="CSV",
+            version=1,
             created_by=self.user,
         )
 
@@ -475,8 +484,11 @@ class AssetSerializerTest(TestCase):
         from hub.apps.compliance.models import ComplianceRun
 
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="SUCCEEDED", risk_level="LOW", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="SUCCEEDED",
+            risk_level="LOW",
+            allowed_to_store=True,
         )
 
         data = AssetSerializer(self.asset).data
@@ -488,12 +500,18 @@ class AssetSerializerTest(TestCase):
         from hub.apps.compliance.models import ComplianceRun
 
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="FAILED", risk_level="HIGH", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="FAILED",
+            risk_level="HIGH",
+            allowed_to_store=True,
         )
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="SUCCEEDED", risk_level="LOW", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="SUCCEEDED",
+            risk_level="LOW",
+            allowed_to_store=True,
         )
 
         data = AssetSerializer(self.asset).data
@@ -511,29 +529,35 @@ class DataFirstAssetCreateSerializerTest(TestCase):
 
     def test_valid_data_first_asset_create(self):
         """Valid file_id + key + name passes validation."""
-        serializer = DataFirstAssetCreateSerializer(data={
-            "file_id": str(uuid.uuid4()),
-            "key": "valid-key",
-            "name": "Test Asset",
-        })
+        serializer = DataFirstAssetCreateSerializer(
+            data={
+                "file_id": str(uuid.uuid4()),
+                "key": "valid-key",
+                "name": "Test Asset",
+            }
+        )
         self.assertTrue(serializer.is_valid(), f"Errors: {serializer.errors}")
 
     def test_missing_file_id_is_invalid(self):
         """Missing file_id is rejected."""
-        serializer = DataFirstAssetCreateSerializer(data={
-            "key": "valid-key",
-            "name": "Test Asset",
-        })
+        serializer = DataFirstAssetCreateSerializer(
+            data={
+                "key": "valid-key",
+                "name": "Test Asset",
+            }
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("file_id", serializer.errors)
 
     def test_invalid_key_format_is_rejected(self):
         """Invalid key format is rejected."""
-        serializer = DataFirstAssetCreateSerializer(data={
-            "file_id": str(uuid.uuid4()),
-            "key": "INVALID_KEY_WITH_UPPERCASE",
-            "name": "Test Asset",
-        })
+        serializer = DataFirstAssetCreateSerializer(
+            data={
+                "file_id": str(uuid.uuid4()),
+                "key": "INVALID_KEY_WITH_UPPERCASE",
+                "name": "Test Asset",
+            }
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("key", serializer.errors)
 
@@ -543,9 +567,11 @@ class AttachDatasetSerializerTest(TestCase):
 
     def test_valid_uuid_passes(self):
         """Valid dataset_id UUID passes validation."""
-        serializer = AttachDatasetSerializer(data={
-            "dataset_id": str(uuid.uuid4()),
-        })
+        serializer = AttachDatasetSerializer(
+            data={
+                "dataset_id": str(uuid.uuid4()),
+            }
+        )
         self.assertTrue(serializer.is_valid(), f"Errors: {serializer.errors}")
 
     def test_missing_dataset_id_is_invalid(self):
@@ -560,9 +586,11 @@ class AttachContractSerializerTest(TestCase):
 
     def test_valid_uuid_passes(self):
         """Valid contract_id UUID passes validation."""
-        serializer = AttachContractSerializer(data={
-            "contract_id": str(uuid.uuid4()),
-        })
+        serializer = AttachContractSerializer(
+            data={
+                "contract_id": str(uuid.uuid4()),
+            }
+        )
         self.assertTrue(serializer.is_valid(), f"Errors: {serializer.errors}")
 
     def test_missing_contract_id_is_invalid(self):
@@ -580,8 +608,18 @@ class ExternalResourceSerializerTest(TestCase):
         serializer = ExternalResourceSerializer()
         fields = set(serializer.fields.keys())
         expected = {
-            "id", "resource_id", "name", "url", "format", "size_bytes",
-            "marketplace_type", "metadata", "created_at", "updated_at",
-            "is_downloaded", "file_id", "dataset_id",
+            "id",
+            "resource_id",
+            "name",
+            "url",
+            "format",
+            "size_bytes",
+            "marketplace_type",
+            "metadata",
+            "created_at",
+            "updated_at",
+            "is_downloaded",
+            "file_id",
+            "dataset_id",
         }
         self.assertEqual(fields, expected)

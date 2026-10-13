@@ -15,6 +15,9 @@ def postprocess_drop_mvp_gated_paths(
     request: Any,
     public: bool,
 ) -> dict[str, Any]:
+    # ``request`` is unused but its NAME is part of the contract:
+    # drf_spectacular dispatches POSTPROCESSING_HOOKS by keyword
+    # (hook(result=..., generator=..., request=..., public=...)).
     if not getattr(settings, "MVP_MODE", False):
         return result
     paths = result.get("paths")

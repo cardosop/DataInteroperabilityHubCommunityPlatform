@@ -29,7 +29,11 @@ async function activateAssetViaAPI(page: Page, assetId: string): Promise<boolean
     const apiBaseUrl = getApiBaseUrl();
     const result = await page.evaluate(
       async ({ assetId, apiBase }: { assetId: string; apiBase: string }) => {
-        const token = localStorage.getItem('access_token');
+        const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      const token =
+        (typeof g === 'function' ? g() : null) ??
+        localStorage.getItem('access_token');
         if (!token) return { success: false, error: 'No token' };
         const base = apiBase.replace(/\/$/, '');
 
@@ -332,7 +336,11 @@ async function createListingViaAPI(
       apiBase: string;
       timeoutMs: number;
     }) => {
-      const token = localStorage.getItem('access_token');
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      const token =
+        (typeof g === 'function' ? g() : null) ??
+        localStorage.getItem('access_token');
       if (!token) return { success: false, error: 'No token' };
       const title = `Test Listing ${Date.now()}`;
       const shortDescription = 'Test marketplace listing description';
@@ -415,13 +423,18 @@ test.describe('Phase 4 Marketplace Journey @deprecated', () => {
     await createButton.first().click();
 
     await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-    await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
+    // Phase 250.6.B — the create route opens on the type-picker step;
+    // re-enter via the deep-link bypass to drive the form directly
+    // (picker coverage lives in journeys/dpo/asset-type-picker.spec.ts).
+    await page.goto('/assets/create?skip=picker', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('input[id="asset-key"]', { timeout: 30000 });
 
     const assetKey = `test-asset-marketplace-${Date.now()}`;
     await page.fill('input[id="asset-name"]', 'Test Asset for Marketplace');
     await page.fill('input[id="asset-key"]', assetKey);
     await page.fill('textarea[id="asset-description"]', 'Test asset for marketplace listing');
-    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
+    // Phase 250.3.B.5 (D250.4) — the legacy visibility select no longer
+    // exists on the form; visibility is derived server-side from status.
 
     const submitButton = page.locator('button:has-text("Create Asset")');
     await submitButton.waitFor({ timeout: 10000 });

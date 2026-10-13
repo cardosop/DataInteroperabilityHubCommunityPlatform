@@ -264,7 +264,10 @@ def test_future_ai_and_social_modules_must_carry_marker(module_stem: str) -> Non
     """
     module_file = COMMANDS_DIR / f"{module_stem}.py"
     if not module_file.exists():
-        pytest.skip(f"{module_file.name} does not exist yet — guard inactive")
+        pytest.skip(
+            f"{module_file.name} does not exist yet — guard inactive "
+            "TICKET=PH216-AI-CLI EXPIRES=2026-12-31"
+        )
     module = importlib.import_module(f"datahub_cli.commands.{module_stem}")
     group = getattr(module, module_stem, None)
     assert isinstance(group, click.Group), (

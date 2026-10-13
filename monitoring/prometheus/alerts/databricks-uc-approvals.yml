@@ -1,0 +1,48 @@
+# Phase 2 (openspec add-databricks-uc-write task 2.8) — UC change-request
+# approval-pipeline alerts.
+#
+# Metrics emitted by hub/apps/databricks_admin/metrics.py (the U4
+# transition side effects refresh the gauges on every lifecycle event):
+#   databricks_uc_change_requests_total{event, tenant_id}
+#   databricks_uc_approval_duration_seconds
+#   databricks_uc_change_pending_approvals{tenant_id}
+#   databricks_uc_change_oldest_pending_seconds{tenant_id}
+#
+# Alert definitions:
+#   DatabricksUCApprovalBacklog — too many requests awaiting approval
+#   DatabricksUCApprovalStale    — the oldest pending request is too old
+#
+# Runbook: docs/user-guides/databricks-control-plane.md (the approval
+# workflow surface; approvers resolve the queue in the U4 inbox).
+
+groups:
+  - name: databricks_uc_approvals
+    rules:
+      # ------------------------------------------------------------------
+      # DatabricksUCApprovalBacklog
+      # More than 20 requests awaiting approval for over an hour — the
+      # approver queue is backed up (approvers may be unaware, or a
+      # workflow step has no authorized approver).
+      # ------------------------------------------------------------------
+      - alert: DatabricksUCApprovalBacklog
+        expr: sum(databricks_uc_change_pending_approvals) > 20
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks UC change-request approval backlog"
+          description: "{{ $value }} UC change requests are awaiting approval (threshold: 20). Check the U4 approver inbox and the approval workflow steps."
+
+      # ------------------------------------------------------------------
+      # DatabricksUCApprovalStale
+      # The tenant's oldest pending request is older than 72h — approvals
+      # are stalling (the change pipeline is blocked).
+      # ------------------------------------------------------------------
+      - alert: DatabricksUCApprovalStale
+        expr: databricks_uc_change_oldest_pending_seconds > 259200
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks UC approval is stale"
+          description: "Tenant {{ $labels.tenant_id }}'s oldest pending UC change request is {{ $value | humanize }}s old (threshold: 72h). Notify the approvers or review the workflow step."

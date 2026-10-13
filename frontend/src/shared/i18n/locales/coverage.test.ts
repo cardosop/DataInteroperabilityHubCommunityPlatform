@@ -69,14 +69,14 @@ describe('i18n translation coverage (280.C.1.1)', () => {
   it('es translations have reasonable minimum length', () => {
     // No translation should be a single character (likely a mistake)
     const tooShort = EN_KEYS.filter(
-      (k) => ALL_I18N_ES[k] !== ALL_I18N_EN[k] && ALL_I18N_ES[k].length === 1,
+      (k) => ALL_I18N_ES[k] !== ALL_I18N_EN[k] && ALL_I18N_ES[k].length === 1
     );
     expect(tooShort).toEqual([]);
   });
 
   it('fr translations have reasonable minimum length', () => {
     const tooShort = EN_KEYS.filter(
-      (k) => ALL_I18N_FR[k] !== ALL_I18N_EN[k] && ALL_I18N_FR[k].length === 1,
+      (k) => ALL_I18N_FR[k] !== ALL_I18N_EN[k] && ALL_I18N_FR[k].length === 1
     );
     expect(tooShort).toEqual([]);
   });
@@ -111,7 +111,10 @@ describe('i18n translation coverage (280.C.1.1)', () => {
   });
 
   // ── Key count baseline ──────────────────────────────────────────────
-  it('English locale has at least 170 keys (baseline for feature coverage)', () => {
-    expect(TOTAL_KEYS).toBeGreaterThanOrEqual(170);
+  it('English locale has at least 64 keys (baseline for feature coverage)', () => {
+    // Baseline updated 2026-08-21: the June i18n refactor replaced the
+    // 179-key flat en set with 64 feature-namespaced keys (LINEAGE_*,
+    // ASSETS_*, MARKETPLACE_* groups) — es/fr were re-synced to it (2.4a).
+    expect(TOTAL_KEYS).toBeGreaterThanOrEqual(64);
   });
 });

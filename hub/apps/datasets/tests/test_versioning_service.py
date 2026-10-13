@@ -87,14 +87,18 @@ class VersioningServiceTest(DatasetsTestBase):
         )
 
         self.assertIsInstance(history, list)
-        self.assertGreaterEqual(len(history), 1,
-                                "Version history must contain at least the dataset itself")
+        self.assertGreaterEqual(
+            len(history), 1, "Version history must contain at least the dataset itself"
+        )
         # Each entry must be a Dataset with version metadata.
         for entry in history:
-            self.assertTrue(hasattr(entry, "version"),
-                            f"History entry {entry} missing 'version' attribute")
-            self.assertTrue(hasattr(entry, "semantic_version"),
-                            f"History entry {entry} missing 'semantic_version' attribute")
+            self.assertTrue(
+                hasattr(entry, "version"), f"History entry {entry} missing 'version' attribute"
+            )
+            self.assertTrue(
+                hasattr(entry, "semantic_version"),
+                f"History entry {entry} missing 'semantic_version' attribute",
+            )
 
     # ========== FAILURE SCENARIOS ==========
 

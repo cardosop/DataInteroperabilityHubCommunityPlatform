@@ -47,7 +47,7 @@ import uuid
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
-from django.db import transaction, DatabaseError
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -176,7 +176,7 @@ class Command(BaseCommand):
             help="Limit to a single tenant (testing / one-off ops).",
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         dry_run = bool(opts.get("dry_run"))
         no_dry_run = bool(opts.get("no_dry_run"))
         batch_size = int(opts.get("batch_size") or DEFAULT_BATCH_SIZE)

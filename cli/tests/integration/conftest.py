@@ -6,7 +6,19 @@ plus a session-level auto-skip when the main Meshant API on port 8000 is not
 reachable. CLI integration tests SHOULD never fail because a dev box has no
 local API service running — they should skip cleanly. The actual integration
 runs happen in CI where docker compose is up.
+
+W16 (Phase T.4): the auto-skip is the shared ``tests._env_skip`` policy —
+in CI an unreachable API RAISES instead of skipping (the environment failure
+announces itself); local runs keep the graceful skip.
 """
+
+# Django-backed modules in this directory import ``hub``/Django models at
+# module scope, so settings must be configured before collection.  Kept
+# here (not in the suite-root conftest) so unit batches never import
+# ``hub.settings`` — that import opens a real PostgreSQL connection.
+from tests._django_bootstrap import ensure_django
+
+ensure_django()
 
 import os
 import subprocess
@@ -14,19 +26,9 @@ import time
 
 import pytest
 import requests
+from tests._env_skip import auto_skip_unreachable_api
 
-_api_test_port = os.environ.get("API_TEST_PORT", "8000")
-_DEFAULT_API_BASE = f"http://localhost:{_api_test_port}"
-
-
-def _api_is_reachable(url: str) -> bool:
-    """Return True if the Meshant API root responds within the timeout."""
-    try:
-        response = requests.get(url, timeout=2)
-    except requests.RequestException:
-        return False
-    # Any response (even 404 from root) proves the service is up.
-    return response.status_code < 500
+from envpolicy import skip_or_fail
 
 
 def pytest_collection_modifyitems(config, items):
@@ -43,32 +45,18 @@ def pytest_collection_modifyitems(config, items):
     Opt-out: set ``MESHANT_FORCE_INTEGRATION=1`` to bypass the skip and run
     every integration test even when the API is unreachable (useful for
     triaging which tests would fail in CI).
+
+    W16: in CI an unreachable API fails the run loudly.
     """
-    if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
-        return
-    api_url = os.environ.get(
-        "MESHANT_API_URL",
-        f"{_DEFAULT_API_BASE}/api/v1",
+    auto_skip_unreachable_api(
+        items,
+        suite_label="CLI integration tests",
+        path_scopes=("/tests/integration/",),
     )
-    # Probe the API root once per session.
-    api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
-    if _api_is_reachable(api_root):
-        return
-    skip_marker = pytest.mark.skip(
-        reason=(
-            f"Meshant API not reachable at {api_root}. CLI integration "
-            "tests require a live backend; start docker compose or set "
-            "MESHANT_FORCE_INTEGRATION=1 to override."
-        )
-    )
-    for item in items:
-        # Only skip items under tests/integration/ — leave unit tests alone.
-        if "/tests/integration/" in str(item.fspath):
-            item.add_marker(skip_marker)
 
 
 def check_service_health(
-    service_name: str, port: int, health_path: str = "/health", max_wait: int = 30
+    _service_name: str, port: int, health_path: str = "/health", max_wait: int = 30
 ) -> bool:
     """
     Check if a service is healthy.
@@ -92,7 +80,7 @@ def check_service_health(
             # isn't up yet.  Let the retry loop keep trying.
             pass
         if attempt < max_wait - 1:
-            time.sleep(1)  # noqa: sleep-needed — polling loop
+            time.sleep(1)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
     return False
 
 
@@ -143,7 +131,7 @@ def odh_inference_scheduler_available():
     port = 8097
 
     if not start_service_if_needed(service_name, port):
-        pytest.skip(
+        skip_or_fail(
             f"ODH Inference Scheduler service not available on port {port}. "
             f"Start with: docker compose up -d {service_name}"
         )
@@ -162,7 +150,7 @@ def odh_training_operator_available():
     port = 8096
 
     if not start_service_if_needed(service_name, port):
-        pytest.skip(
+        skip_or_fail(
             f"ODH Training Operator service not available on port {port}. "
             f"Start with: docker compose up -d {service_name}"
         )

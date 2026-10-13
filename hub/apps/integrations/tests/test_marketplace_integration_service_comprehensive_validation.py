@@ -92,6 +92,7 @@ from hub.apps.integrations.base import (
     MarketplaceResource,
     MarketplaceType,
     SyncDirection,
+    SyncResult,
     SyncStatus,
 )
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
@@ -113,7 +114,17 @@ from tests.utils.wait_helpers import wait_for_event_persistence
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.slow, pytest.mark.journey("JOURNEY-MP-001"), pytest.mark.journey("JOURNEY-MP-002"), pytest.mark.journey("JOURNEY-MP-003"), pytest.mark.journey("JOURNEY-MP-004"), pytest.mark.journey("JOURNEY-MP-005"), pytest.mark.journey("JOURNEY-MP-006"), pytest.mark.journey("JOURNEY-MP-007")]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.slow,
+    pytest.mark.journey("JOURNEY-MP-001"),
+    pytest.mark.journey("JOURNEY-MP-002"),
+    pytest.mark.journey("JOURNEY-MP-003"),
+    pytest.mark.journey("JOURNEY-MP-004"),
+    pytest.mark.journey("JOURNEY-MP-005"),
+    pytest.mark.journey("JOURNEY-MP-006"),
+    pytest.mark.journey("JOURNEY-MP-007"),
+]
 
 
 class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase):
@@ -323,14 +334,13 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
             except Exception as e:
                 # Handle unique constraint violations by regenerating unique suffix
                 error_msg = str(e).lower()
-                if "unique" in error_msg and "violation" in error_msg:
+                if "unique" in error_msg and "violation" in error_msg and attempt < max_retries - 1:
                     # Unique constraint violation - regenerate unique suffix and retry
-                    if attempt < max_retries - 1:
-                        connection.ensure_connection()
-                        time.sleep(  # noqa: sleep-needed — polling loop
-                            0.5
-                        )  # INTENTIONAL: retry backoff for unique constraint violation
-                        continue
+                    connection.ensure_connection()
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
+                        0.5
+                    )  # INTENTIONAL: retry backoff for unique constraint violation
+                    continue
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
                     raise
@@ -393,6 +403,8 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                 return destination_path
 
             def map_to_hub_asset(self, listing: MarketplaceListing):
+                if listing is None:
+                    raise ValueError("listing must be provided")
                 return MarketplaceAssetMapping(
                     asset_data={"name": listing.title},
                     source_type=AssetSourceType.FEDERATED,
@@ -435,29 +447,35 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
             MarketplaceType.CUSTOM,
         ]
 
+        def _make_test_connector(mt_value, _base=TestConnectorBase):
+            """Factory so ``marketplace_type`` binds THIS loop iteration's
+            value — a property body late-binding ``mt`` would return the
+            FINAL iteration's marketplace type for every class."""
+
+            class TestConnector(_base):
+                @property
+                def marketplace_type(self):
+                    return mt_value
+
+            return TestConnector
+
         for mt in all_marketplace_types:
             # Unregister existing connector if present (to use test connector)
             # This ensures test connectors are used instead of real connectors
             if MarketplaceConnectorFactory.is_supported(mt):
-                try:
+                with contextlib.suppress(ValueError):
+                    # May not be registered
                     MarketplaceConnectorFactory.unregister_connector(mt)
-                except ValueError:
-                    pass  # May not be registered
 
             class_name = f"Test{mt.name}Connector"
 
-            class TestConnector(TestConnectorBase):
-                @property
-                def marketplace_type(self):
-                    return mt
-
+            TestConnector = _make_test_connector(mt)
             TestConnector.__name__ = class_name
             test_connectors[mt] = TestConnector
 
-            try:
+            with contextlib.suppress(Exception):
+                # May already be registered
                 MarketplaceConnectorFactory.register_connector(mt, TestConnector)
-            except Exception:
-                pass  # May already be registered
 
         # Store for cleanup
         self._test_connectors = test_connectors
@@ -482,11 +500,10 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
 
         # Unregister test connectors
         if hasattr(self, "_test_connectors"):
-            for mt in self._test_connectors.keys():
-                try:
+            for mt in self._test_connectors:
+                with contextlib.suppress(ValueError):
+                    # May not be registered
                     MarketplaceConnectorFactory.unregister_connector(mt)
-                except ValueError:
-                    pass  # May not be registered
 
         # Ensure connection is open so TransactionTestCase teardown (flush) succeeds
         # and subsequent tests in the same process do not see "connection already closed".
@@ -998,7 +1015,7 @@ class SyncJobTest(MarketplaceIntegrationComprehensiveValidationTestBase):
         )
 
         # Cancel sync job using service method
-        # ROOT CAUSE: SyncStatus enum doesn't have CANCELLED - cancelled jobs are marked as FAILED
+        # Cancellation is now a first-class terminal status (SyncStatus.CANCELLED).
         cancelled_job = self.service1.cancel_sync_job(
             sync_job_id=str(sync_job.id),
             tenant_id=str(self.tenant1.id),
@@ -1006,8 +1023,8 @@ class SyncJobTest(MarketplaceIntegrationComprehensiveValidationTestBase):
             reason="Test cancellation",
         )
 
-        # Verify sync job was cancelled (status is FAILED with cancellation error)
-        self.assertEqual(cancelled_job.status, SyncStatus.FAILED.value)
+        # Verify sync job was cancelled (status is CANCELLED with cancellation error)
+        self.assertEqual(cancelled_job.status, SyncStatus.CANCELLED.value)
         # Errors is a list - check if cancellation is mentioned in any error
         # Errors can be strings or dicts depending on how they're added
         error_text = ""
@@ -1601,7 +1618,7 @@ class MetadataMappingTest(MarketplaceIntegrationComprehensiveValidationTestBase)
         )
 
         # Test with invalid data
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):
             # Invalid listing data
             connector.map_to_hub_asset(None)
 
@@ -2694,16 +2711,15 @@ class MarketplaceIntegrationDatabaseStateTest(
 
         # Test transaction rollback
         sync_job_id = None
-        try:
-            with transaction.atomic():
-                sync_job = self._create_test_sync_job(connection)
-                sync_job_id = sync_job.id
+        with (
+            contextlib.suppress(Exception),
+            transaction.atomic(),
+        ):
+            sync_job = self._create_test_sync_job(connection)
+            sync_job_id = sync_job.id
 
-                # Simulate error
-                raise Exception("Test rollback")
-        except Exception:
-            # Exception caught - transaction should be rolled back
-            pass
+            # Simulate error
+            raise Exception("Test rollback")
 
         # Verify rollback (sync job should not exist)
         # ROOT CAUSE: TransactionTestCase doesn't support nested transactions the same way

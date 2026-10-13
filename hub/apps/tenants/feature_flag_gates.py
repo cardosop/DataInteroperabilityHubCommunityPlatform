@@ -17,16 +17,18 @@ Usage in ViewSets:
 
 from __future__ import annotations
 
-from typing import Union
+from typing import TYPE_CHECKING
 
-from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.response import Response
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest
 
 from hub.apps.tenants.models import Tenant
 
 # Each gate returns either the resolved Tenant (success) or a 403 Response (blocked).
-GateResult = Union[Tenant, Response]
+GateResult = Tenant | Response
 
 
 def _gate_disabled(flag_name: str, error_code: str) -> Response:

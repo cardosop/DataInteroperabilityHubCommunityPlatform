@@ -28,13 +28,13 @@ corrupted parent field. Skip when MinIO is unavailable.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.services import (
     DatasetService,
     extract_sample_data_from_storage,
@@ -43,6 +43,9 @@ from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
+
+if TYPE_CHECKING:
+    from hub.apps.datasets.models import Dataset
 
 User = get_user_model()
 

@@ -48,6 +48,8 @@ async function seedContractWithoutLineage(page, accessToken: string): Promise<st
     },
   });
   if (!res.ok()) {
+    // intentional: best-effort error-body read — the status code is the
+    // actionable part; an empty body just shortens the diagnostic.
     const text = await res.text().catch(() => '');
     throw new Error(
       `Empty-state setup: POST ${API_BASE}/contracts/ failed ${res.status()}. ` +
@@ -62,11 +64,15 @@ async function seedContractWithoutLineage(page, accessToken: string): Promise<st
 test.describe('Feature: Lineage — empty-state branch', () => {
   test.setTimeout(120000);
 
-  test('contract without lineage entries renders empty-state component', async ({ page }) => {
+  test('contract without cross-contract lineage renders derived self-structure graph', async ({ page }) => {
     const user = await getTestUser();
     await loginUser(page, user);
 
-    const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return typeof g === 'function' ? g() : localStorage.getItem('access_token');
+    });
     if (!accessToken) throw new Error('No access_token after loginUser.');
 
     const contractId = await seedContractWithoutLineage(page, accessToken);
@@ -88,25 +94,41 @@ test.describe('Feature: Lineage — empty-state branch', () => {
     await lineageTab.waitFor({ state: 'visible', timeout: 10000 });
     await lineageTab.click();
 
-    // REQ-LIN-005: empty-state component is rendered for a contract
-    // with no lineage entries. The strict-content spec asserts the
-    // graph branch; this spec asserts the empty branch. Each spec
-    // owns ONE branch so a regression in either fails fast.
+    // REQ-LIN-005 context: the lineage visualization DERIVES the
+    // contract's own structural nodes (contract → model → field) from
+    // the normalized schema, so a schema-bearing contract with no
+    // cross-contract lineage renders the SELF-STRUCTURE graph — the
+    // graph branch, NOT the empty-state branch. The empty-state tiers
+    // remain unit-covered (ContractLineageVisualization.test.tsx mocks
+    // nodes/links directly); the structural floor blocks truly
+    // structureless contracts at creation, so the tiers are
+    // unreachable through this E2E path (b7 re-run #10: the graph
+    // rendered "3 nodes · 2 links" for the seeded no-lineage contract).
+    // This spec now pins the derived-self contract instead: graph
+    // renders, with exactly the root contract node's structure and
+    // zero external dependency edges.
     await page
-      .locator('.empty-state, [data-testid="empty-state"]')
+      .locator('.react-flow__renderer, .react-flow')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 });
 
-    const emptyCount = await page
-      .locator('.empty-state, [data-testid="empty-state"]')
-      .count();
-    expect(emptyCount).toBeGreaterThan(0);
+    const nodeCount = await page.locator('.react-flow__node').count();
+    expect(nodeCount).toBeGreaterThanOrEqual(1);
 
-    // The graph must NOT render — that branch belongs to the
-    // strict-content spec.
-    const graphCount = await page
-      .locator('.react-flow__renderer, .react-flow')
+    // Zero EMPTY-STATE surfaces: the self-structure branch owns this state.
+    const emptyCount = await page
+      .locator('.empty-state, [data-testid="empty-state"], [data-testid="contract-lineage-empty"], [data-testid="contract-lineage-empty-structureless"]')
       .count();
-    expect(graphCount).toBe(0);
+    expect(emptyCount).toBe(0);
+
+    // The seed is deterministic (one model with one field), so the
+    // derived self-structure is exactly: contract + model + field
+    // nodes, contract→model and model→field links. Pinning the summary
+    // count proves the graph shows the contract's OWN structure and no
+    // external dependency inflated it. NOTE: the summary span lives in
+    // the header ABOVE the react-flow container (ContractLineageVisu-
+    // alization.tsx renders it outside the canvas) — scope to the page,
+    // not to .react-flow.
+    await expect(page.getByText(/3 nodes · 2 links/)).toBeVisible({ timeout: 10000 });
   });
 });

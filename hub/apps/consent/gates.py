@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from hub.apps.consent.models import ConsentPurpose, ConsentRecord, ConsentRecordStatus
 from hub.apps.core.services.base import ValidationError
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
+    from hub.apps.users.models import User
 
 SIGNUP_PURPOSE_KEY = "signup.privacy"
 MARKETPLACE_PURPOSE_KEY = "marketplace.access"

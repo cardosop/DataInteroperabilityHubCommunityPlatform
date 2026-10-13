@@ -80,12 +80,12 @@ def _make_job(tenant, asset):
 
 def _make_compliance_run(tenant, asset, job, **overrides):
     """Create a ComplianceRun.  save() calls full_clean() which requires asset/dataset/file."""
-    defaults = dict(
-        tenant=tenant,
-        asset=asset,
-        job=job,
-        status=ComplianceRunStatus.SUCCEEDED,
-    )
+    defaults = {
+        "tenant": tenant,
+        "asset": asset,
+        "job": job,
+        "status": ComplianceRunStatus.SUCCEEDED,
+    }
     defaults.update(overrides)
     run = ComplianceRun(**defaults)
     # Bypass full_clean for fields set via overrides so we can set arbitrary JSON.

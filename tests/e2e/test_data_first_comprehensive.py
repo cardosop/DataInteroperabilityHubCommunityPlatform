@@ -147,12 +147,13 @@ class DataFirstFlowSuccessTests(E2ETestBase):
         """Test data-first flow with Parquet file format"""
         try:
             import io
-            import pandas as pd
+
+            import pandas as pd  # type: ignore[import-untyped]
         except ImportError:
             pytest.skip("pandas not available for Parquet file creation")
 
         try:
-            import pyarrow  # noqa: F401 — validate availability for to_parquet
+            import pyarrow
         except ImportError:
             pytest.skip("pyarrow not available for Parquet file creation")
 
@@ -351,7 +352,13 @@ class DataFirstFlowEdgeCasesTests(E2ETestBase):
             self.assertIn("size", str(response.data).lower())
 
     def test_unsupported_file_format(self):
-        """Test handling of unsupported file format"""
+        """Test handling of unsupported file format.
+
+        Phase 260.2.B — the magic-byte gate rejects an upload whose declared
+        content-type does not match its head bytes at /complete/ time
+        (400 FILE_FORMAT_MISMATCH).  A bogus xlsx (zero-filled content, no
+        OOXML zip magic) is therefore stopped BEFORE dataset creation.
+        """
         asset_id = self.create_asset(key="unsupported-format", name="Unsupported Format")
 
         # Try to upload unsupported format
@@ -365,21 +372,18 @@ class DataFirstFlowEdgeCasesTests(E2ETestBase):
             format="json",
         )
 
-        # Should either reject at init or during dataset creation
+        # Should either reject at init or at upload completion
         if response.status_code == status.HTTP_201_CREATED:
             file_id = response.data["file_id"]
-            self.complete_file_upload(file_id)
 
-            # Dataset creation should fail with format error
-            dataset_response = self.client.post(
-                "/api/v1/datasets/", {"file_id": file_id, "asset_id": asset_id}, format="json"
-            )
-
-            # Should return error for unsupported format
-            self.assertNotEqual(
-                dataset_response.status_code,
-                status.HTTP_201_CREATED,
-                "Unsupported format should be rejected",
+            # completion is rejected by the magic-byte check — the helper
+            # raises with the API's FILE_FORMAT_MISMATCH response.
+            with self.assertRaises(Exception) as ctx:
+                self.complete_file_upload(file_id)
+            self.assertIn(
+                "FILE_FORMAT_MISMATCH",
+                str(ctx.exception),
+                "Unsupported format should be rejected at upload completion",
             )
         else:
             # Rejected at init stage

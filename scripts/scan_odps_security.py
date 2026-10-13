@@ -25,7 +25,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 try:
@@ -50,7 +50,7 @@ class ODPSSecurityScanner:
     """ODPS security vulnerability scanner"""
 
     # Security patterns
-    PATH_TRAVERSAL_PATTERNS = [
+    PATH_TRAVERSAL_PATTERNS: ClassVar[list[str]] = [
         r"\.\./",  # ../ (Unix)
         r"\.\.\\",  # ..\ (Windows)
         r"\.\./\.\./",  # Multiple levels
@@ -64,7 +64,7 @@ class ODPSSecurityScanner:
         r"\.\.%5C",  # URL-encoded ..\
     ]
 
-    MALICIOUS_URL_PATTERNS = [
+    MALICIOUS_URL_PATTERNS: ClassVar[list[str]] = [
         r"javascript:",  # JavaScript protocol
         r"data:text/html",  # Data URI with HTML
         r"vbscript:",  # VBScript protocol
@@ -73,7 +73,7 @@ class ODPSSecurityScanner:
         r"phar:",  # PHAR protocol
     ]
 
-    SCRIPT_INJECTION_PATTERNS = [
+    SCRIPT_INJECTION_PATTERNS: ClassVar[list[str]] = [
         r"<script",  # Script tags
         r"</script>",  # Closing script tags
         r"onerror=",  # Event handlers
@@ -85,7 +85,7 @@ class ODPSSecurityScanner:
         r"document\.write",  # Document write
     ]
 
-    COMMAND_INJECTION_PATTERNS = [
+    COMMAND_INJECTION_PATTERNS: ClassVar[list[str]] = [
         r";\s*(rm|wget|curl|cat|ls|pwd|whoami)",  # Command separators
         r"\|\s*(sh|bash|python|perl|ruby)",  # Pipes to shells
         r"\$\(",  # Command substitution
@@ -93,7 +93,7 @@ class ODPSSecurityScanner:
         r"\$\{[^}]+\}",  # Variable expansion
     ]
 
-    XXE_PATTERNS = [
+    XXE_PATTERNS: ClassVar[list[str]] = [
         r"<!DOCTYPE",
         r"<!ENTITY",
         r"SYSTEM",
@@ -260,11 +260,7 @@ class ODPSSecurityScanner:
                 continue
 
             # Check for path traversal in local refs
-            if (
-                ref_value.startswith("./")
-                or ref_value.startswith("../")
-                or not ref_value.startswith("#")
-            ):
+            if ref_value.startswith(("./", "../")) or not ref_value.startswith("#"):
                 # This is a local or external ref
                 # Check for path traversal
                 for pattern in self.PATH_TRAVERSAL_PATTERNS:
@@ -376,7 +372,7 @@ class ODPSSecurityScanner:
 
         return refs
 
-    def _get_field_context(self, data: dict[str, Any], position: int) -> str:
+    def _get_field_context(self, _data: dict[str, Any], _position: int) -> str:
         """Get field context for a position in JSON string"""
         # For now, return a generic context
         # A more sophisticated implementation would track the JSON path

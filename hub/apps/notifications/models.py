@@ -44,6 +44,8 @@ class EmailType(models.TextChoices):
     API_KEY_REVOKED = "API_KEY_REVOKED", "API Key Revoked"
     API_KEY_EXPIRING = "API_KEY_EXPIRING", "API Key Expiring"
     API_KEY_EXPIRED = "API_KEY_EXPIRED", "API Key Expired"
+    # Platform-support impersonation transparency email (Phase 235.4.7)
+    IMPERSONATION_STARTED = "IMPERSONATION_STARTED", "Impersonation Started"
 
     # Customer billing (Phase 116A.8)
     CUSTOMER_BILLING_REPORT = "CUSTOMER_BILLING_REPORT", "Customer Billing Report"
@@ -196,7 +198,7 @@ class EmailDelivery(models.Model):
     def __str__(self):
         return f"{self.email_type} to {self.to_email} ({self.status})"
 
-    def mark_sent(self, message_id: str = None):
+    def mark_sent(self, message_id: str | None = None):
         """Mark email as sent"""
         self.status = EmailDeliveryStatus.SENT
         self.sent_at = timezone.now()
@@ -217,7 +219,7 @@ class EmailDelivery(models.Model):
         self.error_message = error_message
         self.save(update_fields=["status", "failed_at", "error_message", "updated_at"])
 
-    def mark_bounced(self, error_message: str = None):
+    def mark_bounced(self, error_message: str | None = None):
         """Mark email as bounced"""
         self.status = EmailDeliveryStatus.BOUNCED
         self.failed_at = timezone.now()

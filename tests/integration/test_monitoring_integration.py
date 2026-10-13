@@ -5,6 +5,8 @@ Tests metrics export, distributed tracing, and log aggregation.
 Uses real services (no mocks).
 """
 
+from unittest.mock import patch
+
 import pytest
 import structlog
 from django.contrib.auth import get_user_model
@@ -150,7 +152,7 @@ class DistributedTracingIntegrationTest(TestCase):
             pytest.skip("OpenTelemetry SDK not installed")
 
         if tracer is None:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 "OpenTelemetry SDK not available (opentelemetry-exporter-otlp "
                 "may not be installed or Jaeger/OTLP collector unreachable)"
             )
@@ -184,7 +186,6 @@ class DistributedTracingIntegrationTest(TestCase):
     def test_trace_context_propagation(self):
         """Test that trace context can be propagated"""
         try:
-            from opentelemetry import trace
             from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
             propagator = TraceContextTextMapPropagator()
@@ -193,11 +194,61 @@ class DistributedTracingIntegrationTest(TestCase):
             pytest.skip("OpenTelemetry not installed")
 
     def test_tracing_sampling_configuration(self):
-        """Test that trace sampling is configured"""
+        """Trace sampling is 100% in dev (DEBUG=True), 10% in production."""
 
-        # Sampling rate: 100% in dev, 10% in production.
-        # Configuration logic exists — reaching this point without exception
-        # confirms the sampling settings are loadable.
+        def _raise_missing_module(module_name):
+            raise ImportError(module_name)
+
+        try:
+            import importlib.util
+
+            for module_name in (
+                "opentelemetry",
+                "opentelemetry.exporter.otlp.proto.grpc.trace_exporter",
+                "opentelemetry.instrumentation.django",
+                "opentelemetry.instrumentation.httpx",
+                "opentelemetry.instrumentation.requests",
+                "opentelemetry.sdk.trace.export",
+            ):
+                if importlib.util.find_spec(module_name) is None:
+                    _raise_missing_module(module_name)
+        except ImportError:
+            pytest.skip("OpenTelemetry not installed")
+
+        side_effect_patches = [
+            patch("hub.apps.observability.tracing._add_trace_context_to_logs"),
+            patch("opentelemetry.sdk.trace.export.BatchSpanProcessor"),
+            patch("opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter"),
+            patch("opentelemetry.instrumentation.django.DjangoInstrumentor"),
+            patch("opentelemetry.instrumentation.requests.RequestsInstrumentor"),
+            patch("opentelemetry.instrumentation.httpx.HTTPXClientInstrumentor"),
+        ]
+
+        def _captured_sampler_rate(debug):
+            """Run setup and capture the provider it builds, without
+            touching the process-global TracerProvider (opentelemetry
+            forbids overriding it once set)."""
+            from contextlib import ExitStack
+
+            captured = {}
+
+            with ExitStack() as stack:
+                stack.enter_context(override_settings(DEBUG=debug, OPENTELEMETRY_ENABLED=True))
+                for patcher in side_effect_patches:
+                    stack.enter_context(patcher)
+                stack.enter_context(
+                    patch(
+                        "opentelemetry.trace.set_tracer_provider",
+                        side_effect=lambda provider: captured.setdefault("provider", provider),
+                    )
+                )
+                setup_opentelemetry()
+
+            provider = captured.get("provider")
+            return getattr(getattr(provider, "sampler", None), "rate", None)
+
+        self.assertEqual(_captured_sampler_rate(debug=True), 1.0)
+        self.assertEqual(_captured_sampler_rate(debug=False), 0.10)
 
     def test_jaeger_exporter_configuration(self):
         """Test that Jaeger exporter is configured from environment.
@@ -347,8 +398,11 @@ class LogAggregationIntegrationTest(TestCase):
         """Test that exceptions are formatted in logs"""
         logger = structlog.get_logger(__name__)
 
-        try:
+        def _raise_test_error():
             raise ValueError("Test error")
+
+        try:
+            _raise_test_error()
         except Exception:
             # Verify logger.exception() formats and logs without raising
             logger.exception("Exception occurred")

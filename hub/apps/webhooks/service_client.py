@@ -113,7 +113,6 @@ class WebhookDeliveryClient:
                 # raise for real errors (4xx/5xx).
                 if follow_redirects or response.status_code >= 400:
                     response.raise_for_status()
-                return response
             except httpx.HTTPStatusError:
                 # 4xx (and 3xx when following redirects) — don't retry
                 raise
@@ -131,6 +130,8 @@ class WebhookDeliveryClient:
                     time.sleep(delay)
                     continue
                 raise
+            else:
+                return response
         raise Exception("Max retries exceeded for webhook delivery.")
 
     def deliver_webhook(
@@ -245,11 +246,11 @@ class WebhookDeliveryClient:
             if hasattr(self._circuit_breaker, "_state"):
                 # Internal state check - circuit breaker is working
                 return True, "Webhook delivery client is healthy"
-
-            return True, "Webhook delivery client is healthy"
         except (AttributeError, RuntimeError) as e:
-            logger.error("webhook_client_health_check_failed", error=str(e))
+            logger.exception("webhook_client_health_check_failed", error=str(e))
             return False, f"Health check error: {e!s}"
+        else:
+            return True, "Webhook delivery client is healthy"
 
     def close(self):
         """

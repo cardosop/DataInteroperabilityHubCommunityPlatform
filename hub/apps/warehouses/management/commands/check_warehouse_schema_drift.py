@@ -31,7 +31,7 @@ class Command(BaseCommand):
             help="Report drift without updating Dataset flags.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from hub.apps.assets.models import Asset, DataStrategy
         from hub.apps.audit.utils import create_audit_event
         from hub.apps.warehouses.schema_drift import check_schema_drift

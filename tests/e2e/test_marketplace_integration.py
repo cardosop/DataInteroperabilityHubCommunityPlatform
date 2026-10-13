@@ -231,9 +231,9 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
 
         # Step 5: Events — depends on async infrastructure that may not be
         # configured in all test environments.
-        _events = Event.objects.filter(
-            event_type__startswith="marketplace.sync"
-        ).order_by("-created_at")
+        _events = Event.objects.filter(event_type__startswith="marketplace.sync").order_by(
+            "-created_at"
+        )
 
     def test_sync_push_with_invalid_asset(self):
         """Test sync push with non-existent asset"""
@@ -352,9 +352,9 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
 
         # Step 5: Events — depends on async infrastructure that may not be
         # configured in all test environments.
-        _events = Event.objects.filter(
-            event_type__startswith="marketplace.sync"
-        ).order_by("-created_at")
+        _events = Event.objects.filter(event_type__startswith="marketplace.sync").order_by(
+            "-created_at"
+        )
 
     def test_sync_pull_with_specific_listings(self):
         """Test sync pull with specific listing IDs"""

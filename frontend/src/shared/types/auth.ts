@@ -11,7 +11,6 @@ export interface RegisterRequest {
   email: string;
   password: string;
   name: string;
-  tenant_id?: string | null;
 }
 
 export interface RegisterResponse {

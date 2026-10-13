@@ -52,13 +52,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django_rq import get_queue
 from rest_framework import status
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 
+from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.auth.models import APIKey
-from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.core.events.models import Event
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantPlan
 from hub.apps.users.models import Role, UserRole, UserStatus
@@ -204,8 +203,9 @@ class RegisterEndpointTest(TestCase):
         user = User.objects.get(email="newuser@example.com")
         self.assertTrue(user.check_password("SecureP@ss123!"))
 
-    def test_register_with_tenant_returns_201(self):
-        """Test registration with tenant returns 201."""
+    def test_register_with_tenant_id_denied_403(self):
+        """R2-B1: a client-supplied tenant_id is a tenant-join attempt —
+        public registration is personal-tenant-only; the attempt is denied."""
         response = self.client.post(
             "/api/v1/auth/register/",
             {
@@ -217,10 +217,11 @@ class RegisterEndpointTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "REGISTRATION_JOIN_DENIED")
 
-    def test_register_with_tenant_returns_tenant_id(self):
-        """Test registration with tenant returns tenant_id."""
+    def test_register_with_tenant_id_denied_does_not_create_user(self):
+        """A denied tenant-join attempt must not create any user row."""
         response = self.client.post(
             "/api/v1/auth/register/",
             {
@@ -232,10 +233,52 @@ class RegisterEndpointTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(User.objects.filter(email="tenantuser@example.com").exists())
 
-    def test_register_with_tenant_associates_user(self):
-        """Test registration with tenant associates user with tenant."""
+    def test_register_with_unknown_tenant_id_denied_identically(self):
+        """No tenant-existence oracle: a random UUID is denied with the
+        EXACT same envelope as an existing tenant's UUID — the response
+        carries no tenant-validity signal whatsoever."""
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": "tenantuser@example.com",
+                "password": "SecureP@ss123!",
+                "name": "Tenant User",
+                "tenant_id": str(uuid.uuid4()),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data,
+            {
+                "detail": "Registration is for personal accounts only. "
+                "To join a tenant, use an invitation.",
+                "code": "REGISTRATION_JOIN_DENIED",
+                "details": {},
+            },
+        )
+
+    def test_register_with_null_tenant_id_denied(self):
+        """Even an explicit null tenant_id is an attempt — denied."""
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": "tenantuser@example.com",
+                "password": "SecureP@ss123!",
+                "name": "Tenant User",
+                "tenant_id": None,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_register_tenant_join_attempt_emits_audit(self):
+        """A denied tenant-join attempt is recorded for abuse analysis."""
         response = self.client.post(
             "/api/v1/auth/register/",
             {
@@ -246,10 +289,27 @@ class RegisterEndpointTest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        user = User.objects.get(email="tenantuser@example.com")
-        self.assertEqual(user.tenant, self.tenant)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        event = AuditEvent.objects.filter(action="REGISTRATION_JOIN_DENIED").latest(
+            "timestamp"
+        )
+        self.assertEqual(event.result, "DENIED")
+        self.assertEqual(
+            event.details_json.get("attempted_tenant_id"), str(self.tenant.id)
+        )
+        # The attempt's email is recorded but PII-redacted by the audit
+        # pipeline (the standard redact_pii pass) — presence is the pin.
+        self.assertIn("email", event.details_json)
+
+    def test_register_serializer_has_no_tenant_id_field(self):
+        """The public registration contract no longer advertises tenant_id
+        (or the join-only signup_consent) — removed from the schema."""
+        from hub.apps.auth.serializers import RegisterSerializer
+
+        fields = RegisterSerializer().fields
+        self.assertNotIn("tenant_id", fields)
+        self.assertNotIn("signup_consent", fields)
 
     def test_register_duplicate_email_returns_409(self):
         """Test registration with duplicate email returns 409 (Conflict)."""
@@ -352,10 +412,9 @@ class RegisterEndpointTest(TestCase):
 
         self.assertIn("email", response.data)
 
-    def test_register_invalid_tenant_returns_400(self):
-        """Test registration with invalid tenant returns 400."""
-        import uuid
-
+    def test_register_invalid_tenant_denied(self):
+        """Any tenant_id — valid or not — is denied identically (no
+        tenant-existence oracle; the old 400 leaked validity signals)."""
         invalid_tenant_id = uuid.uuid4()
 
         response = self.client.post(
@@ -369,29 +428,12 @@ class RegisterEndpointTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "REGISTRATION_JOIN_DENIED")
 
-    def test_register_invalid_tenant_has_error(self):
-        """Test registration with invalid tenant has tenant_id error."""
-        import uuid
-
-        invalid_tenant_id = uuid.uuid4()
-
-        response = self.client.post(
-            "/api/v1/auth/register/",
-            {
-                "email": "user@example.com",
-                "password": "SecureP@ss123!",
-                "name": "User",
-                "tenant_id": str(invalid_tenant_id),
-            },
-            format="json",
-        )
-
-        self.assertIn("tenant_id", response.data)
-
-    def test_register_inactive_tenant_returns_400(self):
-        """Test registration with inactive tenant returns 400."""
+    def test_register_inactive_tenant_denied(self):
+        """An inactive tenant's UUID is denied with the same envelope
+        (no tenant-status oracle either)."""
         inactive_tenant = Tenant.objects.create(
             name="Inactive Tenant",
             slug="inactive-tenant",
@@ -410,29 +452,8 @@ class RegisterEndpointTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_register_inactive_tenant_has_error(self):
-        """Test registration with inactive tenant has tenant_id error."""
-        inactive_tenant = Tenant.objects.create(
-            name="Inactive Tenant",
-            slug="inactive-tenant",
-            status="SUSPENDED",
-            kyc_status="UNVERIFIED",
-        )
-
-        response = self.client.post(
-            "/api/v1/auth/register/",
-            {
-                "email": "user@example.com",
-                "password": "SecureP@ss123!",
-                "name": "User",
-                "tenant_id": str(inactive_tenant.id),
-            },
-            format="json",
-        )
-
-        self.assertIn("tenant_id", response.data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "REGISTRATION_JOIN_DENIED")
 
     def test_register_missing_email_returns_400(self):
         """Test registration with missing email returns 400."""
@@ -563,6 +584,16 @@ class RegisterPersonalTenantTest(TestCase):
 
     def test_register_without_tenant_id_personal_tenant_has_active_subscription(self):
         """Personal tenant has active Subscription (required for write operations)."""
+        # Phase 313 — billing is the paid layer; import lazily and skip in
+        # core-only mode (no subscriptions exist there by construction).
+        # W7.1: the sanctioned guard covers BOTH absence forms —
+        # RuntimeError (private repo, app uninstalled) and
+        # ModuleNotFoundError (public tree, module absent).
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("billing (paid layer) not installed in core-only mode")  # noqa: skip-in-body
+
         email = "sub@example.com"
         response = self.client.post(
             "/api/v1/auth/register/",
@@ -575,8 +606,10 @@ class RegisterPersonalTenantTest(TestCase):
         subscription = Subscription.objects.get(tenant=user.tenant)
         self.assertEqual(subscription.status, SubscriptionStatus.ACTIVE)
 
-    def test_register_with_tenant_id_unchanged_behavior(self):
-        """Registration with tenant_id provided works as before (unchanged behavior)."""
+    def test_register_with_tenant_id_now_denied(self):
+        """R2-B1: the old cross-tenant join via tenant_id is DENIED —
+        registration is personal-tenant-only; the tenant in the response
+        (when any) is the user's own personal tenant, never a supplied one."""
         response = self.client.post(
             "/api/v1/auth/register/",
             {
@@ -588,10 +621,9 @@ class RegisterPersonalTenantTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
-        user = User.objects.get(email="tenantuser@example.com")
-        self.assertEqual(user.tenant_id, self.tenant.id)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "REGISTRATION_JOIN_DENIED")
+        self.assertFalse(User.objects.filter(email="tenantuser@example.com").exists())
 
     def test_register_without_tenant_id_publishes_user_created_with_tenant_id(self):
         """user.created event includes tenant_id when personal tenant created."""
@@ -742,7 +774,6 @@ class RegisterEventPublishingTest(TestCase):
                 "email": email,
                 "password": "SecureP@ss123!",
                 "name": "Event User",
-                "tenant_id": str(self.tenant.id),
             },
             format="json",
         )
@@ -775,7 +806,9 @@ class RegisterEventPublishingTest(TestCase):
         self.assertEqual(event.event_type, "user.created")
         self.assertEqual(event.data["email"], email)
         self.assertIn("user_id", event.data)
-        self.assertEqual(str(event.tenant_id), str(self.tenant.id))
+        # The event's tenant is the user's OWN personal tenant (the response's
+        # tenant_id), never a client-supplied one.
+        self.assertEqual(str(event.tenant_id), str(response.data["tenant_id"]))
 
     def test_register_sends_welcome_email(self):
         """
@@ -793,7 +826,6 @@ class RegisterEventPublishingTest(TestCase):
                 "email": email,
                 "password": "SecureP@ss123!",
                 "name": "Email User",
-                "tenant_id": str(self.tenant.id),
             },
             format="json",
         )
@@ -1147,6 +1179,105 @@ class RegisterMeSecurityTest(TestCase):
         )
         # A single request must always pass even with rate limiting enabled.
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_anonymous_register_against_foreign_tenant_denied(self):
+        """R2-B1 evidence pin: an anonymous client cannot enroll into an
+        existing tenant through public registration — the attempt is 403
+        REGISTRATION_JOIN_DENIED (audited, never silently accepted)."""
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": f"foreign-{uuid.uuid4().hex[:8]}@example.com",
+                "password": "SecureP@ss123!",
+                "name": "Foreign User",
+                "tenant_id": str(self.tenant.id),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "REGISTRATION_JOIN_DENIED")
+        self.assertFalse(
+            User.objects.filter(email__startswith="foreign-").exists(),
+            "a denied attempt must not create a user",
+        )
+
+
+@override_settings(AUTH_REGISTER_RATE_LIMIT="10/min")
+class RegisterThrottleTest(TestCase):
+    """R2-B1: public registration carries a per-IP RegisterThrottle.
+
+    The production rate is 10/min per client IP — the 11th register
+    within the minute is 429 RATE_LIMIT_EXCEEDED and emits the
+    REGISTRATION_RATE_LIMIT_EXCEEDED audit event (the Phase 273
+    `_on_throttled` pattern). The rate is pinned here via
+    override_settings so the boundary is exercised deterministically.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        _ensure_default_plans()
+        cache.clear()
+
+    def test_eleventh_register_in_a_minute_is_throttled(self):
+        for i in range(10):
+            response = self.client.post(
+                "/api/v1/auth/register/",
+                {
+                    "email": f"throttle-{i}@example.com",
+                    "password": "SecureP@ss123!",
+                    "name": "Throttle User",
+                },
+                format="json",
+            )
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_201_CREATED,
+                f"register #{i} must succeed within the rate",
+            )
+
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": "throttle-11@example.com",
+                "password": "SecureP@ss123!",
+                "name": "Throttle User",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        # DRF's Throttled goes through the exception handler — the
+        # canonical error envelope (code nested under "error").
+        self.assertEqual(response.data["error"]["code"], "RATE_LIMIT_EXCEEDED")
+        self.assertFalse(User.objects.filter(email="throttle-11@example.com").exists())
+
+    def test_throttled_register_emits_rate_limit_audit(self):
+        """The 429 path emits the per-surface rate-limit audit event
+        (the Phase 273 ``_on_throttled`` convention)."""
+        for i in range(11):
+            self.client.post(
+                "/api/v1/auth/register/",
+                {
+                    "email": f"throttle-audit-{i}@example.com",
+                    "password": "SecureP@ss123!",
+                    "name": "Throttle User",
+                },
+                format="json",
+            )
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="REGISTRATION_RATE_LIMIT_EXCEEDED"
+            ).exists()
+        )
+
+    def test_cache_key_is_per_client_ip(self):
+        from rest_framework.request import Request
+
+        from hub.apps.auth.throttles import RegisterThrottle
+
+        request = Request(APIRequestFactory().post("/api/v1/auth/register/"))
+        key = RegisterThrottle().get_cache_key(request, None)
+        self.assertEqual(key, "throttle_auth_register_127.0.0.1")
 
 
 class RegisterMePerformanceTest(TestCase):

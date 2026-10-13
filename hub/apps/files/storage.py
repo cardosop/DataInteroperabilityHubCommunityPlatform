@@ -3,13 +3,15 @@ S3-Compatible Storage Utilities
 
 Utilities for interacting with S3-compatible storage (MinIO, S3, GCS, Azure).
 """
+
+import contextlib
+from collections.abc import Iterator
+from typing import Any
+
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError, EndpointConnectionError
+from botocore.exceptions import BotoCoreError, ClientError, EndpointConnectionError
 from django.conf import settings
-from typing import Optional, Dict, Any
-from datetime import timedelta
-
 
 # ---------------------------------------------------------------------------
 # Domain exception hierarchy for storage operations.
@@ -77,11 +79,7 @@ def _translate_client_error(
         An instance of the matching ``StorageError`` subclass with the
         original exception chained via ``raise ... from error``.
     """
-    code = (
-        error.response.get("Error", {}).get("Code", "")
-        if hasattr(error, "response")
-        else ""
-    )
+    code = error.response.get("Error", {}).get("Code", "") if hasattr(error, "response") else ""
     exc_cls = _S3_ERROR_CODE_MAP.get(code, default)
     full_message = f"{message}: {error}" if message else str(error)
     return exc_cls(full_message)
@@ -102,7 +100,7 @@ class S3StorageClient:
         self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
 
         # Check environment variable first (highest priority)
-        env_endpoint = os.getenv('AWS_S3_ENDPOINT_URL')
+        env_endpoint = os.getenv("AWS_S3_ENDPOINT_URL")
         if env_endpoint:
             self.endpoint_url = env_endpoint
         else:
@@ -110,7 +108,7 @@ class S3StorageClient:
             # in staging/production — settings.py deliberately leaves it unset
             # so boto3 signs URLs against `<bucket>.s3.<region>.amazonaws.com`,
             # which is browser-reachable and IRSA-authenticated).
-            self.endpoint_url = getattr(settings, 'AWS_S3_ENDPOINT_URL', None)
+            self.endpoint_url = getattr(settings, "AWS_S3_ENDPOINT_URL", None)
 
             # If endpoint from settings doesn't work, try to detect correct one.
             # Skip the localhost-fallback chain when endpoint_url is None: that
@@ -122,14 +120,15 @@ class S3StorageClient:
                 # Try to verify the endpoint hostname is resolvable
                 import socket
                 from urllib.parse import urlparse
+
                 hostname_resolved = True
                 try:
                     parsed = urlparse(self.endpoint_url)
                     host = parsed.hostname
-                    if host and host != 'localhost':
+                    if host and host != "localhost":
                         # Try to resolve hostname
                         socket.gethostbyname(host)
-                except (socket.gaierror, Exception):
+                except (socket.gaierror, ValueError):
                     hostname_resolved = False
 
                 if not hostname_resolved:
@@ -143,30 +142,32 @@ class S3StorageClient:
                     # in the file-upload code path on staging. Fixed by gating the entire
                     # alternative-endpoint resolution on `not hostname_resolved` so the
                     # variables are only read when they are actually defined.
-                    is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+                    is_in_docker = (
+                        os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
+                    )
                     is_test_env = (
-                        'pytest' in sys.modules or
-                        'unittest' in sys.modules or
-                        os.getenv('PYTEST_CURRENT_TEST') or
-                        'test' in sys.argv or
-                        os.getenv('ENVIRONMENT') == 'test'
+                        "pytest" in sys.modules
+                        or "unittest" in sys.modules
+                        or os.getenv("PYTEST_CURRENT_TEST")
+                        or "test" in sys.argv
+                        or os.getenv("ENVIRONMENT") == "test"
                     )
 
                     if is_in_docker:
                         # In Docker, use service name first (works within Docker network)
                         try:
-                            socket.gethostbyname('minio')
+                            socket.gethostbyname("minio")
                             # Service name resolves, use it
-                            self.endpoint_url = 'http://minio:9000'
-                        except (socket.gaierror, Exception):
+                            self.endpoint_url = "http://minio:9000"
+                        except socket.gaierror:
                             # Service name doesn't resolve, use localhost
                             if is_test_env:
-                                self.endpoint_url = 'http://localhost:9010'  # Test port
+                                self.endpoint_url = "http://localhost:9010"  # Test port
                             else:
-                                self.endpoint_url = 'http://localhost:9000'  # Dev port
+                                self.endpoint_url = "http://localhost:9000"  # Dev port
                     else:
                         # Outside Docker, use localhost
-                        self.endpoint_url = 'http://localhost:9000'
+                        self.endpoint_url = "http://localhost:9000"
             else:
                 # endpoint_url is None — explicit "use native AWS S3" signal
                 # set by hub/settings.py for staging/production deployments.
@@ -183,11 +184,9 @@ class S3StorageClient:
                 # uses (ENVIRONMENT) so we don't depend on `/.dockerenv`,
                 # which containerd-based runtimes (EKS) do not create.
                 deployed_environment = (
-                    os.getenv('ENVIRONMENT')
-                    or os.getenv('DJANGO_ENVIRONMENT')
-                    or ''
+                    os.getenv("ENVIRONMENT") or os.getenv("DJANGO_ENVIRONMENT") or ""
                 ).lower()
-                if deployed_environment in {'staging', 'production', 'prod'}:
+                if deployed_environment in {"staging", "production", "prod"}:
                     # Leave endpoint_url as None — boto3 will use AWS defaults.
                     pass
                 else:
@@ -196,44 +195,45 @@ class S3StorageClient:
                     # machines. This branch is unreachable in deployed envs
                     # because settings.py sets a non-None default there.
                     is_in_docker = (
-                        os.path.exists('/.dockerenv')
-                        or os.getenv('DOCKER_CONTAINER') == 'true'
+                        os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
                     )
                     is_test_env = (
-                        'pytest' in sys.modules
-                        or 'unittest' in sys.modules
-                        or os.getenv('PYTEST_CURRENT_TEST')
-                        or 'test' in sys.argv
+                        "pytest" in sys.modules
+                        or "unittest" in sys.modules
+                        or os.getenv("PYTEST_CURRENT_TEST")
+                        or "test" in sys.argv
                     )
                     if is_in_docker:
                         try:
                             import socket
-                            socket.gethostbyname('minio')
-                            self.endpoint_url = 'http://minio:9000'
-                        except (socket.gaierror, Exception):
+
+                            socket.gethostbyname("minio")
+                            self.endpoint_url = "http://minio:9000"
+                        except socket.gaierror:
                             self.endpoint_url = (
-                                'http://localhost:9010' if is_test_env else 'http://localhost:9000'
+                                "http://localhost:9010" if is_test_env else "http://localhost:9000"
                             )
                     else:
-                        self.endpoint_url = 'http://localhost:9000'
+                        self.endpoint_url = "http://localhost:9000"
 
-        self.use_ssl = getattr(settings, 'AWS_S3_USE_SSL', True)
+        self.use_ssl = getattr(settings, "AWS_S3_USE_SSL", True)
 
         # Create S3 client. In test, use timeouts that allow slow MinIO (e.g. Docker/CI)
         # without hanging indefinitely; in prod use standard values.
         import os as _os
+
         _is_test = (
-            'pytest' in sys.modules or
-            'unittest' in sys.modules or
-            _os.getenv('PYTEST_CURRENT_TEST') or
-            'test' in sys.argv or
-            getattr(settings, 'TESTING', False)
+            "pytest" in sys.modules
+            or "unittest" in sys.modules
+            or _os.getenv("PYTEST_CURRENT_TEST")
+            or "test" in sys.argv
+            or getattr(settings, "TESTING", False)
         )
         _connect_timeout = 10 if _is_test else 60
         _read_timeout = 30 if _is_test else 60
         s3_config = Config(
-            signature_version='s3v4',
-            retries={'max_attempts': 2 if _is_test else 3, 'mode': 'standard'},
+            signature_version="s3v4",
+            retries={"max_attempts": 2 if _is_test else 3, "mode": "standard"},
             connect_timeout=_connect_timeout,
             read_timeout=_read_timeout,
         )
@@ -255,44 +255,42 @@ class S3StorageClient:
         # (thinking it meant "use IRSA") which produced presigned URLs with
         # <AWSAccessKeyId>IRSA</AWSAccessKeyId> → InvalidAccessKeyId from S3.
         import re as _re
-        _ak = (getattr(settings, 'AWS_ACCESS_KEY_ID', '') or '').strip()
-        _sk = (getattr(settings, 'AWS_SECRET_ACCESS_KEY', '') or '').strip()
+
+        _ak = (getattr(settings, "AWS_ACCESS_KEY_ID", "") or "").strip()
+        _sk = (getattr(settings, "AWS_SECRET_ACCESS_KEY", "") or "").strip()
         # Real AWS access key IDs are 16-128 alphanumeric characters.
         # MinIO keys (used in dev/test) are also alphanumeric but shorter.
         # Reject obvious placeholders: "IRSA", "minio", "minio_staging",
         # "none", "placeholder", single words < 8 chars that aren't AK-like.
         _ak_looks_real = bool(
-            _ak
-            and _sk
-            and len(_ak) >= 8
-            and _re.match(r'^[A-Za-z0-9/+=]+$', _ak)
+            _ak and _sk and len(_ak) >= 8 and _re.match(r"^[A-Za-z0-9/+=]+$", _ak)
         )
-        client_kwargs = dict(
-            endpoint_url=self.endpoint_url,
-            use_ssl=self.use_ssl,
-            verify=getattr(settings, 'AWS_S3_VERIFY', True),
-            config=s3_config,
-        )
+        client_kwargs = {
+            "endpoint_url": self.endpoint_url,
+            "use_ssl": self.use_ssl,
+            "verify": getattr(settings, "AWS_S3_VERIFY", True),
+            "config": s3_config,
+        }
         # Detect whether we are talking to a non-AWS endpoint (MinIO).
         # MinIO accepts any access-key/secret-key pair; the credential
         # shape check below only applies to real AWS.
         _is_minio = bool(
             self.endpoint_url
             and (
-                'minio' in self.endpoint_url.lower()
-                or 'localhost' in self.endpoint_url
-                or '127.0.0.1' in self.endpoint_url
+                "minio" in self.endpoint_url.lower()
+                or "localhost" in self.endpoint_url
+                or "127.0.0.1" in self.endpoint_url
             )
         )
         if _is_minio:
             # MinIO — always pass whatever credentials we have.  They may
             # be short (e.g. "minio") or dev defaults, but MinIO does not
             # enforce the AWS IAM credential format.
-            client_kwargs['aws_access_key_id'] = _ak
-            client_kwargs['aws_secret_access_key'] = _sk
+            client_kwargs["aws_access_key_id"] = _ak
+            client_kwargs["aws_secret_access_key"] = _sk
         elif _ak_looks_real:
-            client_kwargs['aws_access_key_id'] = _ak
-            client_kwargs['aws_secret_access_key'] = _sk
+            client_kwargs["aws_access_key_id"] = _ak
+            client_kwargs["aws_secret_access_key"] = _sk
         else:
             # Do NOT pass invalid credentials and do NOT mutate os.environ.
             # Scrubbing env vars is a one-way global mutation that breaks
@@ -301,25 +299,19 @@ class S3StorageClient:
             # through to IRSA/IMDS naturally via its credential chain.
             pass
 
-        self.client = boto3.client('s3', **client_kwargs)
+        self.client = boto3.client("s3", **client_kwargs)
 
         # Phase 213.H.5 — startup STS probe. In staging/production, verify
         # that the boto3 credential chain resolved to a valid identity.
         # Fail-fast at pod startup beats silent file-upload failures 30 min
         # later. Skipped in tests and local dev to avoid STS calls.
-        _env_name = (
-            os.getenv('ENVIRONMENT')
-            or os.getenv('DJANGO_ENVIRONMENT')
-            or ''
-        ).lower()
-        if (
-            _env_name in {'staging', 'production', 'prod'}
-            and not _is_test
-        ):
+        _env_name = (os.getenv("ENVIRONMENT") or os.getenv("DJANGO_ENVIRONMENT") or "").lower()
+        if _env_name in {"staging", "production", "prod"} and not _is_test:
             # Extract only credential kwargs for STS (not S3-specific ones)
             _sts_kwargs = {
-                k: v for k, v in client_kwargs.items()
-                if k not in ('endpoint_url', 'config', 'use_ssl', 'verify')
+                k: v
+                for k, v in client_kwargs.items()
+                if k not in ("endpoint_url", "config", "use_ssl", "verify")
             }
             self._run_sts_probe(_env_name, _sts_kwargs)
 
@@ -337,9 +329,10 @@ class S3StorageClient:
         fighting the ``_is_test`` guard in ``__init__``.
         """
         import logging as _logging
+
         _logger = _logging.getLogger(__name__)
         try:
-            _sts = boto3.client('sts', **sts_kwargs)
+            _sts = boto3.client("sts", **sts_kwargs)
             _identity = _sts.get_caller_identity()
             _logger.info(
                 "S3StorageClient: STS identity resolved",
@@ -348,7 +341,6 @@ class S3StorageClient:
                     "account": _identity.get("Account"),
                 },
             )
-            return _identity
         except Exception as exc:
             raise RuntimeError(
                 f"S3StorageClient: STS get_caller_identity() failed in "
@@ -358,6 +350,8 @@ class S3StorageClient:
                 f"AWS_SECRET_ACCESS_KEY env vars. "
                 f"Original error: {type(exc).__name__}: {exc}"
             ) from exc
+        else:
+            return _identity
 
     def _ensure_bucket_exists(self):
         """Ensure the bucket exists, create it if it doesn't."""
@@ -367,23 +361,25 @@ class S3StorageClient:
         try:
             # Try to check if bucket exists
             self.client.head_bucket(Bucket=self.bucket_name)
-        except (ClientError, EndpointConnectionError, Exception) as e:
+        except (ClientError, EndpointConnectionError, BotoCoreError) as e:
             # If connection fails due to hostname resolution, try alternative endpoints
             error_str = str(e).lower()
             is_connection_error = (
-                isinstance(e, EndpointConnectionError) or
-                'name resolution' in error_str or
-                'could not connect' in error_str or
-                'gaierror' in error_str
+                isinstance(e, EndpointConnectionError)
+                or "name resolution" in error_str
+                or "could not connect" in error_str
+                or "gaierror" in error_str
             )
             if is_connection_error:
                 # Hostname doesn't resolve, try alternative endpoints
-                is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+                is_in_docker = (
+                    os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
+                )
                 is_test_env = (
-                    'pytest' in sys.modules or
-                    'unittest' in sys.modules or
-                    os.getenv('PYTEST_CURRENT_TEST') or
-                    'test' in sys.argv
+                    "pytest" in sys.modules
+                    or "unittest" in sys.modules
+                    or os.getenv("PYTEST_CURRENT_TEST")
+                    or "test" in sys.argv
                 )
 
                 if is_in_docker:
@@ -392,14 +388,14 @@ class S3StorageClient:
                     if is_test_env:
                         # In test environment (docker-compose.test: minio-test), try both names and ports
                         alternative_endpoints = [
-                            'http://minio-test:9000',
-                            'http://minio:9000',
-                            'http://localhost:9010',
-                            'http://localhost:9000',
+                            "http://minio-test:9000",
+                            "http://minio:9000",
+                            "http://localhost:9010",
+                            "http://localhost:9000",
                         ]
                     else:
                         # In dev environment, try service name first, then localhost
-                        alternative_endpoints = ['http://minio:9000', 'http://localhost:9000']
+                        alternative_endpoints = ["http://minio:9000", "http://localhost:9000"]
 
                     for alt_endpoint in alternative_endpoints:
                         if self.endpoint_url == alt_endpoint:
@@ -408,47 +404,49 @@ class S3StorageClient:
                             self.endpoint_url = alt_endpoint
                             # Recreate client with new endpoint
                             s3_config = Config(
-                                signature_version='s3v4',
-                                retries={'max_attempts': 3, 'mode': 'standard'}
+                                signature_version="s3v4",
+                                retries={"max_attempts": 3, "mode": "standard"},
                             )
-                            _fallback_kwargs = dict(
-                                endpoint_url=self.endpoint_url,
-                                use_ssl=self.use_ssl,
-                                verify=getattr(settings, 'AWS_S3_VERIFY', True),
-                                config=s3_config,
-                            )
-                            _fak = getattr(settings, 'AWS_ACCESS_KEY_ID', '') or ''
-                            _fsk = getattr(settings, 'AWS_SECRET_ACCESS_KEY', '') or ''
+                            _fallback_kwargs = {
+                                "endpoint_url": self.endpoint_url,
+                                "use_ssl": self.use_ssl,
+                                "verify": getattr(settings, "AWS_S3_VERIFY", True),
+                                "config": s3_config,
+                            }
+                            _fak = getattr(settings, "AWS_ACCESS_KEY_ID", "") or ""
+                            _fsk = getattr(settings, "AWS_SECRET_ACCESS_KEY", "") or ""
                             if _fak.strip() and _fsk.strip():
-                                _fallback_kwargs['aws_access_key_id'] = _fak
-                                _fallback_kwargs['aws_secret_access_key'] = _fsk
-                            self.client = boto3.client('s3', **_fallback_kwargs)
+                                _fallback_kwargs["aws_access_key_id"] = _fak
+                                _fallback_kwargs["aws_secret_access_key"] = _fsk
+                            self.client = boto3.client("s3", **_fallback_kwargs)
                             # Retry bucket check with new endpoint
                             try:
                                 self.client.head_bucket(Bucket=self.bucket_name)
-                                # Successfully connected, return
-                                return
-                            except (ClientError, EndpointConnectionError) as retry_error:
+                            except (ClientError, EndpointConnectionError):
                                 # Try to create bucket
                                 try:
                                     self.client.create_bucket(Bucket=self.bucket_name)
-                                    # Successfully created bucket, return
-                                    return
                                 except (ClientError, EndpointConnectionError):
                                     # This endpoint also failed, try next one
                                     continue
-                        except Exception:
+                                else:
+                                    # Successfully created bucket, return
+                                    return
+                            else:
+                                # Successfully connected, return
+                                return
+                        except BotoCoreError:
                             # Failed to create client with this endpoint, try next
                             continue
                     # All endpoints failed, keep original endpoint (will fail with clear error)
                     self.endpoint_url = self._original_endpoint
 
             # Handle bucket creation for other errors
-            error_code = ''
+            error_code = ""
             if isinstance(e, ClientError):
-                error_code = e.response.get('Error', {}).get('Code', '')
+                error_code = e.response.get("Error", {}).get("Code", "")
 
-            if error_code == '404' or error_code == 'NoSuchBucket':
+            if error_code in {"404", "NoSuchBucket"}:
                 # Bucket doesn't exist, try to create it
                 try:
                     if self.endpoint_url:
@@ -456,20 +454,18 @@ class S3StorageClient:
                         self.client.create_bucket(Bucket=self.bucket_name)
                     else:
                         # AWS S3 - may need region
-                        region = getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1')
+                        region = getattr(settings, "AWS_S3_REGION_NAME", "us-east-1")
                         self.client.create_bucket(
                             Bucket=self.bucket_name,
-                            CreateBucketConfiguration={'LocationConstraint': region}
+                            CreateBucketConfiguration={"LocationConstraint": region},
                         )
-                except ClientError as create_error:
+                except ClientError:
                     # Bucket might already exist (race condition) or we don't have permissions
                     # Try to verify it exists now
-                    try:
-                        self.client.head_bucket(Bucket=self.bucket_name)
-                    except ClientError:
+                    with contextlib.suppress(ClientError):
                         # Still doesn't exist and we can't create it
                         # This is OK - operations will fail with clear error messages
-                        pass
+                        self.client.head_bucket(Bucket=self.bucket_name)
             # Other errors (403, etc.) are OK - we'll get clear error messages when using the bucket
 
     def generate_presigned_upload_url(
@@ -477,10 +473,10 @@ class S3StorageClient:
         key: str,
         content_type: str,
         expires_in: int = 3600,
-        max_size: Optional[int] = None,
+        max_size: int | None = None,
         use_put: bool = True,
-        for_browser: bool = False
-    ) -> Dict[str, Any]:
+        for_browser: bool = False,
+    ) -> dict[str, Any]:
         """
         Generate pre-signed URL for file upload.
 
@@ -508,44 +504,53 @@ class S3StorageClient:
             browser_endpoint = None
             if for_browser and self.endpoint_url:
                 import os
-                if 'minio-test:9000' in self.endpoint_url:
+
+                if "minio-test:9000" in self.endpoint_url:
                     # Test stack: minio-test exposed on host as localhost:9010
-                    port = os.getenv('MINIO_TEST_API_PORT', '9010')
-                    browser_endpoint = self.endpoint_url.replace('minio-test:9000', f'localhost:{port}')
-                elif 'minio:9000' in self.endpoint_url:
-                    browser_endpoint = self.endpoint_url.replace('minio:9000', 'localhost:9000')
+                    port = os.getenv("MINIO_TEST_API_PORT", "9010")
+                    browser_endpoint = self.endpoint_url.replace(
+                        "minio-test:9000", f"localhost:{port}"
+                    )
+                elif "minio:9000" in self.endpoint_url:
+                    # Dev convention: minio exposed as localhost:9000.
+                    # Phase U.6: compose staging exposes MinIO on a dedicated
+                    # host port (MINIO_API_PORT) — honor it like the test
+                    # stack honors MINIO_TEST_API_PORT.
+                    port = os.getenv("MINIO_API_PORT", "9000")
+                    browser_endpoint = self.endpoint_url.replace("minio:9000", f"localhost:{port}")
             if browser_endpoint:
                 import boto3
                 from botocore.config import Config
+
                 s3_config = Config(
-                    signature_version='s3v4',
-                    s3={'addressing_style': 'path'},
-                    retries={'max_attempts': 3, 'mode': 'standard'}
+                    signature_version="s3v4",
+                    s3={"addressing_style": "path"},
+                    retries={"max_attempts": 3, "mode": "standard"},
                 )
-                _bak = getattr(settings, 'AWS_ACCESS_KEY_ID', '') or ''
-                _bsk = getattr(settings, 'AWS_SECRET_ACCESS_KEY', '') or ''
-                _browser_kwargs = dict(
-                    endpoint_url=browser_endpoint,
-                    use_ssl=self.use_ssl,
-                    verify=getattr(settings, 'AWS_S3_VERIFY', True),
-                    config=s3_config,
-                )
+                _bak = getattr(settings, "AWS_ACCESS_KEY_ID", "") or ""
+                _bsk = getattr(settings, "AWS_SECRET_ACCESS_KEY", "") or ""
+                _browser_kwargs = {
+                    "endpoint_url": browser_endpoint,
+                    "use_ssl": self.use_ssl,
+                    "verify": getattr(settings, "AWS_S3_VERIFY", True),
+                    "config": s3_config,
+                }
                 if _bak.strip() and _bsk.strip():
-                    _browser_kwargs['aws_access_key_id'] = _bak
-                    _browser_kwargs['aws_secret_access_key'] = _bsk
-                browser_client = boto3.client('s3', **_browser_kwargs)
+                    _browser_kwargs["aws_access_key_id"] = _bak
+                    _browser_kwargs["aws_secret_access_key"] = _bsk
+                browser_client = boto3.client("s3", **_browser_kwargs)
                 client_to_use = browser_client
-            
+
             if use_put:
                 # Generate presigned PUT URL (simpler, for direct browser uploads)
                 upload_url = client_to_use.generate_presigned_url(
-                    'put_object',
+                    "put_object",
                     Params={
-                        'Bucket': self.bucket_name,
-                        'Key': key,
-                        'ContentType': content_type,
+                        "Bucket": self.bucket_name,
+                        "Key": key,
+                        "ContentType": content_type,
                     },
-                    ExpiresIn=expires_in
+                    ExpiresIn=expires_in,
                 )
 
                 # Phase 213.H.6 — validate AKID in X-Amz-Credential.
@@ -555,11 +560,13 @@ class S3StorageClient:
                 # accepted.  Real AKIA*/ASIA* keys are 20 chars;
                 # IRSA STS keys longer.
                 _MIN_AKID_LEN = 5
-                from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+                from urllib.parse import parse_qs as _parse_qs
+                from urllib.parse import urlparse as _urlparse
+
                 _qs = _parse_qs(_urlparse(upload_url).query)
-                _cred = (_qs.get('X-Amz-Credential') or [''])[0]
+                _cred = (_qs.get("X-Amz-Credential") or [""])[0]
                 if _cred:
-                    _akid_part = _cred.split('/')[0]
+                    _akid_part = _cred.split("/")[0]
                     if not _akid_part or len(_akid_part) < _MIN_AKID_LEN:
                         raise RuntimeError(
                             f"Presigned URL has invalid AKID '{_akid_part}' in "
@@ -572,34 +579,33 @@ class S3StorageClient:
                         )
 
                 return {
-                    'upload_url': upload_url,
-                    'fields': {},  # Not used for PUT
-                    'key': key
+                    "upload_url": upload_url,
+                    "fields": {},  # Not used for PUT
+                    "key": key,
                 }
             else:
                 # Generate presigned POST URL (with fields, for form-based uploads)
-                conditions = [
-                    {'Content-Type': content_type}
-                ]
+                conditions = [{"Content-Type": content_type}]
                 if max_size:
-                    conditions.append(['content-length-range', 1, max_size])
+                    conditions.append(["content-length-range", 1, max_size])
 
                 presigned_post = client_to_use.generate_presigned_post(
                     Bucket=self.bucket_name,
                     Key=key,
-                    Fields={'Content-Type': content_type},
+                    Fields={"Content-Type": content_type},
                     Conditions=conditions,
-                    ExpiresIn=expires_in
+                    ExpiresIn=expires_in,
                 )
 
                 return {
-                    'upload_url': presigned_post['url'],
-                    'fields': presigned_post['fields'],
-                    'key': key
+                    "upload_url": presigned_post["url"],
+                    "fields": presigned_post["fields"],
+                    "key": key,
                 }
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to generate presigned upload URL",
+                e,
+                "Failed to generate presigned upload URL",
                 default=StorageWriteError,
             ) from e
 
@@ -607,7 +613,8 @@ class S3StorageClient:
         self,
         key: str,
         expires_in: int = 3600,
-        filename: Optional[str] = None
+        filename: str | None = None,
+        for_browser: bool = False,
     ) -> str:
         """
         Generate pre-signed URL for file download.
@@ -616,37 +623,66 @@ class S3StorageClient:
             key: S3 object key (path)
             expires_in: URL expiration time in seconds (default: 1 hour)
             filename: Optional filename for Content-Disposition header
+            for_browser: When True and the storage endpoint is a Docker
+                service hostname (``minio-test:9000`` / ``minio:9000``),
+                regenerate the URL against the host-published endpoint
+                (``localhost:9010`` in the test stack, ``localhost:9000``
+                in dev). Browsers and host-side clients cannot resolve
+                Docker service names — without this, download GETs fail
+                with EHOSTUNREACH (observed: GDPR Article 20 export
+                download in b6, and the multipart part-PUT sibling fixed
+                in views.py).
 
         Returns:
             Pre-signed download URL
         """
         try:
-            params = {
-                'Bucket': self.bucket_name,
-                'Key': key
-            }
+            params = {"Bucket": self.bucket_name, "Key": key}
 
             if filename:
-                params['ResponseContentDisposition'] = f'attachment; filename="{filename}"'
+                params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
 
             url = self.client.generate_presigned_url(
-                'get_object',
-                Params=params,
-                ExpiresIn=expires_in
+                "get_object", Params=params, ExpiresIn=expires_in
             )
 
-            return url
+            if for_browser and ("minio:9000" in url or "minio-test:9000" in url):
+                import os
+
+                if "minio-test:9000" in self.endpoint_url:
+                    port = os.environ.get("MINIO_TEST_API_PORT", "9010")
+                    browser_endpoint = self.endpoint_url.replace(
+                        "minio-test:9000", f"localhost:{port}"
+                    )
+                else:
+                    browser_endpoint = self.endpoint_url.replace("minio:9000", "localhost:9000")
+                browser_client = boto3.client(
+                    "s3",
+                    endpoint_url=browser_endpoint,
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    use_ssl=self.use_ssl,
+                    verify=getattr(settings, "AWS_S3_VERIFY", True),
+                    config=Config(
+                        signature_version="s3v4",
+                        s3={"addressing_style": "path"},
+                        retries={"max_attempts": 3, "mode": "standard"},
+                    ),
+                )
+                url = browser_client.generate_presigned_url(
+                    "get_object", Params=params, ExpiresIn=expires_in
+                )
+
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to generate presigned download URL",
+                e,
+                "Failed to generate presigned download URL",
                 default=StorageReadError,
             ) from e
+        else:
+            return url
 
-    def initiate_multipart_upload(
-        self,
-        key: str,
-        content_type: str
-    ) -> str:
+    def initiate_multipart_upload(self, key: str, content_type: str) -> str:
         """
         Initiate a multipart upload for chunked uploads.
 
@@ -659,23 +695,18 @@ class S3StorageClient:
         """
         try:
             response = self.client.create_multipart_upload(
-                Bucket=self.bucket_name,
-                Key=key,
-                ContentType=content_type
+                Bucket=self.bucket_name, Key=key, ContentType=content_type
             )
-            return response['UploadId']
+            return response["UploadId"]
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to initiate multipart upload",
+                e,
+                "Failed to initiate multipart upload",
                 default=StorageWriteError,
             ) from e
 
     def generate_presigned_part_url(
-        self,
-        key: str,
-        upload_id: str,
-        part_number: int,
-        expires_in: int = 3600
+        self, key: str, upload_id: str, part_number: int, expires_in: int = 3600
     ) -> str:
         """
         Generate pre-signed URL for uploading a single part in multipart upload.
@@ -691,28 +722,102 @@ class S3StorageClient:
         """
         try:
             url = self.client.generate_presigned_url(
-                'upload_part',
+                "upload_part",
                 Params={
-                    'Bucket': self.bucket_name,
-                    'Key': key,
-                    'UploadId': upload_id,
-                    'PartNumber': part_number
+                    "Bucket": self.bucket_name,
+                    "Key": key,
+                    "UploadId": upload_id,
+                    "PartNumber": part_number,
                 },
-                ExpiresIn=expires_in
+                ExpiresIn=expires_in,
             )
-            return url
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to generate presigned part URL",
+                e,
+                "Failed to generate presigned part URL",
                 default=StorageWriteError,
             ) from e
+        else:
+            return url
 
-    def complete_multipart_upload(
+    def iter_multipart_uploads(
+        self,
+    ) -> Iterator[dict]:
+        """
+        Iterate every in-progress multipart upload in the bucket.
+
+        Yields:
+            Dicts with 'key', 'upload_id' and 'initiated' (aware datetime).
+        """
+        try:
+            kwargs: dict = {"Bucket": self.bucket_name}
+            while True:
+                response = self.client.list_multipart_uploads(**kwargs)
+                for u in response.get("Uploads", []):
+                    initiated = u.get("Initiated")
+                    if initiated is not None and initiated.tzinfo is None:
+                        from django.utils import timezone as _dj_timezone
+
+                        initiated = _dj_timezone.make_aware(initiated, _dj_timezone.utc)
+                    yield {
+                        "key": u.get("Key"),
+                        "upload_id": u.get("UploadId"),
+                        "initiated": initiated,
+                    }
+                if not response.get("IsTruncated"):
+                    break
+                kwargs["KeyMarker"] = response.get("NextKeyMarker")
+                kwargs["UploadIdMarker"] = response.get("NextUploadIdMarker")
+        except ClientError as e:
+            raise _translate_client_error(
+                e,
+                "Failed to list multipart uploads",
+                default=StorageReadError,
+            ) from e
+
+    def list_multipart_parts(
         self,
         key: str,
         upload_id: str,
-        parts: list
-    ) -> Dict[str, Any]:
+    ) -> list:
+        """
+        List the uploaded parts of an in-progress multipart upload.
+
+        Args:
+            key: S3 object key (path)
+            upload_id: Multipart upload ID
+
+        Returns:
+            List of part dicts with snake_case keys ('part_number',
+            'etag', 'size') — the completion view consumes
+            ``p["part_number"]`` directly.
+        """
+        try:
+            parts: list = []
+            kwargs: dict = {"Bucket": self.bucket_name, "Key": key, "UploadId": upload_id}
+            while True:
+                response = self.client.list_parts(**kwargs)
+                parts.extend(
+                    {
+                        "part_number": p.get("PartNumber"),
+                        "etag": p.get("ETag"),
+                        "size": p.get("Size"),
+                    }
+                    for p in response.get("Parts", [])
+                )
+                if not response.get("IsTruncated"):
+                    break
+                kwargs["PartNumberMarker"] = response.get("NextPartNumberMarker")
+        except ClientError as e:
+            raise _translate_client_error(
+                e,
+                "Failed to list multipart upload parts",
+                default=StorageReadError,
+            ) from e
+        else:
+            return parts
+
+    def complete_multipart_upload(self, key: str, upload_id: str, parts: list) -> dict[str, Any]:
         """
         Complete a multipart upload.
 
@@ -729,20 +834,18 @@ class S3StorageClient:
                 Bucket=self.bucket_name,
                 Key=key,
                 UploadId=upload_id,
-                MultipartUpload={'Parts': parts}
+                MultipartUpload={"Parts": parts},
             )
-            return response
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to complete multipart upload",
+                e,
+                "Failed to complete multipart upload",
                 default=StorageWriteError,
             ) from e
+        else:
+            return response
 
-    def abort_multipart_upload(
-        self,
-        key: str,
-        upload_id: str
-    ):
+    def abort_multipart_upload(self, key: str, upload_id: str):
         """
         Abort a multipart upload.
 
@@ -751,14 +854,11 @@ class S3StorageClient:
             upload_id: Multipart upload ID
         """
         try:
-            self.client.abort_multipart_upload(
-                Bucket=self.bucket_name,
-                Key=key,
-                UploadId=upload_id
-            )
+            self.client.abort_multipart_upload(Bucket=self.bucket_name, Key=key, UploadId=upload_id)
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to abort multipart upload",
+                e,
+                "Failed to abort multipart upload",
                 default=StorageWriteError,
             ) from e
 
@@ -770,13 +870,11 @@ class S3StorageClient:
             key: S3 object key (path)
         """
         try:
-            self.client.delete_object(
-                Bucket=self.bucket_name,
-                Key=key
-            )
+            self.client.delete_object(Bucket=self.bucket_name, Key=key)
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to delete file",
+                e,
+                "Failed to delete file",
                 default=StorageWriteError,
             ) from e
 
@@ -784,7 +882,7 @@ class S3StorageClient:
         self,
         prefix: str,
         *,
-        bucket: Optional[str] = None,
+        bucket: str | None = None,
     ) -> int:
         """Delete every object under ``prefix`` in ``bucket``.
 
@@ -830,7 +928,8 @@ class S3StorageClient:
         try:
             paginator = self.client.get_paginator("list_objects_v2")
             for page in paginator.paginate(
-                Bucket=target_bucket, Prefix=prefix,
+                Bucket=target_bucket,
+                Prefix=prefix,
             ):
                 contents = page.get("Contents") or []
                 if not contents:
@@ -841,9 +940,7 @@ class S3StorageClient:
                 self.client.delete_objects(
                     Bucket=target_bucket,
                     Delete={
-                        "Objects": [
-                            {"Key": obj["Key"]} for obj in contents
-                        ],
+                        "Objects": [{"Key": obj["Key"]} for obj in contents],
                         "Quiet": True,
                     },
                 )
@@ -871,22 +968,19 @@ class S3StorageClient:
             Exception: If storage is unreachable or a non-404 error occurs.
         """
         try:
-            self.client.head_object(
-                Bucket=self.bucket_name,
-                Key=key
-            )
-            return True
+            self.client.head_object(Bucket=self.bucket_name, Key=key)
         except EndpointConnectionError as e:
-            raise StorageConnectionError(
-                f"Storage unavailable: {e}"
-            ) from e
+            raise StorageConnectionError(f"Storage unavailable: {e}") from e
         except ClientError as e:
-            if e.response['Error']['Code'] == '404':
+            if e.response["Error"]["Code"] == "404":
                 return False
             raise _translate_client_error(
-                e, "Failed to check file existence",
+                e,
+                "Failed to check file existence",
                 default=StorageReadError,
             ) from e
+        else:
+            return True
 
     def get_file_size(self, key: str) -> int:
         """
@@ -899,14 +993,12 @@ class S3StorageClient:
             File size in bytes
         """
         try:
-            response = self.client.head_object(
-                Bucket=self.bucket_name,
-                Key=key
-            )
-            return response['ContentLength']
+            response = self.client.head_object(Bucket=self.bucket_name, Key=key)
+            return response["ContentLength"]
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to get file size",
+                e,
+                "Failed to get file size",
                 default=StorageReadError,
             ) from e
 
@@ -931,10 +1023,11 @@ class S3StorageClient:
             if max_bytes is not None:
                 kwargs["Range"] = f"bytes=0-{max_bytes - 1}"
             response = self.client.get_object(**kwargs)
-            return response['Body'].read()
+            return response["Body"].read()
         except ClientError as e:
             raise _translate_client_error(
-                e, "Failed to download file",
+                e,
+                "Failed to download file",
                 default=StorageReadError,
             ) from e
 
@@ -1001,21 +1094,17 @@ class S3StorageClient:
             self._ensure_bucket_exists()
             self._bucket_checked = True
 
-        key = (
-            f"{tenant_id}/{file_id}/{file_name}"
-            if file_name
-            else f"{tenant_id}/{file_id}"
-        )
+        key = f"{tenant_id}/{file_id}/{file_name}" if file_name else f"{tenant_id}/{file_id}"
 
         try:
             # Get content type from file_content if available
-            content_type = getattr(file_content, 'content_type', 'application/octet-stream')
+            content_type = getattr(file_content, "content_type", "application/octet-stream")
 
             # Read content if it's a file-like object
-            if hasattr(file_content, 'read'):
+            if hasattr(file_content, "read"):
                 content = file_content.read()
                 # Reset file pointer if possible
-                if hasattr(file_content, 'seek'):
+                if hasattr(file_content, "seek"):
                     file_content.seek(0)
             else:
                 content = file_content
@@ -1032,7 +1121,6 @@ class S3StorageClient:
                 put_kwargs["ContentLength"] = len(content)
             self.client.put_object(**put_kwargs)
 
-            return key
         except (ClientError, Exception) as e:
             # If connection error, try alternative endpoint (handled in _ensure_bucket_exists)
             error_str = str(e).lower()
@@ -1049,22 +1137,27 @@ class S3StorageClient:
                 # Retry the operation
                 try:
                     self.client.put_object(**put_kwargs)
-                    return key
                 except (ClientError, Exception) as retry_error:
                     if isinstance(retry_error, ClientError):
                         raise _translate_client_error(
-                            retry_error, "Failed to save file after retry",
+                            retry_error,
+                            "Failed to save file after retry",
                             default=StorageWriteError,
                         ) from retry_error
                     raise StorageWriteError(
                         f"Failed to save file after retry: {retry_error}"
                     ) from retry_error
+                else:
+                    return key
             if isinstance(e, ClientError):
                 raise _translate_client_error(
-                    e, "Failed to save file",
+                    e,
+                    "Failed to save file",
                     default=StorageWriteError,
                 ) from e
             raise StorageWriteError(f"Failed to save file: {e}") from e
+        else:
+            return key
 
     # ------------------------------------------------------------------
     # Resource lifecycle
@@ -1095,12 +1188,8 @@ class S3StorageClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
-        return None  # do not suppress exceptions
 
     def __del__(self) -> None:
         """Last-resort cleanup guard — prefer explicit ``.close()`` or ``with``."""
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass
-

@@ -169,7 +169,7 @@ def _normalize_version_string(version_str: str) -> str:
     version_str = version_str.strip()
 
     # Remove "v" prefix if present
-    if version_str.startswith("v") or version_str.startswith("V"):
+    if version_str.startswith(("v", "V")):
         version_str = version_str[1:]
 
     # Check for suffix (e.g., "-preview")

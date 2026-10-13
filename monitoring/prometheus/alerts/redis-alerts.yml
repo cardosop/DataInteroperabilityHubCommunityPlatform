@@ -1,0 +1,119 @@
+groups:
+  - name: redis_alerts
+    interval: 30s
+    rules:
+      # Redis Memory Usage Alert (>80% threshold)
+      - alert: RedisMemoryUsageHigh
+        expr: |
+          (
+            redis_memory_used_bytes{redis_instance=~"cache|queue|events|channels"}
+            /
+            redis_memory_max_bytes{redis_instance=~"cache|queue|events|channels"}
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} memory usage is high"
+          description: "Redis {{ $labels.redis_instance }} memory usage is {{ $value | humanizePercentage }} (threshold: 80%). Current: {{ $labels.redis_memory_used_bytes | humanize1024 }}B / {{ $labels.redis_memory_max_bytes | humanize1024 }}B"
+
+      # Redis Memory Usage Critical (>95% threshold)
+      - alert: RedisMemoryUsageCritical
+        expr: |
+          (
+            redis_memory_used_bytes{redis_instance=~"cache|queue|events|channels"}
+            /
+            redis_memory_max_bytes{redis_instance=~"cache|queue|events|channels"}
+          ) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} memory usage is critical"
+          description: "Redis {{ $labels.redis_instance }} memory usage is {{ $value | humanizePercentage }} (threshold: 95%). Immediate action required."
+
+      # Redis Connection Pool Exhaustion (>90% threshold)
+      - alert: RedisConnectionPoolExhaustion
+        expr: |
+          (
+            redis_connected_clients{redis_instance=~"cache|queue|events|channels"}
+            /
+            redis_maxclients{redis_instance=~"cache|queue|events|channels"}
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} connection pool is nearly exhausted"
+          description: "Redis {{ $labels.redis_instance }} has {{ $value | humanizePercentage }} of max connections in use (threshold: 90%). Current: {{ $labels.redis_connected_clients }} / {{ $labels.redis_maxclients }}"
+
+      # Redis Connection Pool Critical (>95% threshold)
+      - alert: RedisConnectionPoolCritical
+        expr: |
+          (
+            redis_connected_clients{redis_instance=~"cache|queue|events|channels"}
+            /
+            redis_maxclients{redis_instance=~"cache|queue|events|channels"}
+          ) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} connection pool is critical"
+          description: "Redis {{ $labels.redis_instance }} has {{ $value | humanizePercentage }} of max connections in use (threshold: 95%). Immediate action required."
+
+      # Redis Latency Spike (>100ms p95)
+      - alert: RedisLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(redis_commands_duration_seconds_bucket{redis_instance=~"cache|queue|events|channels"}[5m])) by (redis_instance, le)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} latency is high"
+          description: "Redis {{ $labels.redis_instance }} p95 latency is {{ $value | humanize }}s (threshold: 100ms)"
+
+      # Redis Latency Critical (>500ms p95)
+      - alert: RedisLatencyCritical
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(redis_commands_duration_seconds_bucket{redis_instance=~"cache|queue|events|channels"}[5m])) by (redis_instance, le)
+          ) > 0.5
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} latency is critical"
+          description: "Redis {{ $labels.redis_instance }} p95 latency is {{ $value | humanize }}s (threshold: 500ms). Immediate action required."
+
+      # Redis Down
+      - alert: RedisDown
+        expr: up{job=~"redis-cache|redis-queue|redis-events|redis-channels"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.job }} exporter is down"
+          description: "Redis exporter for {{ $labels.job }} has been down for more than 1 minute."
+
+      # Redis Command Rate High
+      - alert: RedisCommandRateHigh
+        expr: |
+          sum(rate(redis_commands_total{redis_instance=~"cache|queue|events|channels"}[5m])) by (redis_instance) > 10000
+        for: 10m
+        labels:
+          severity: info
+          component: redis
+        annotations:
+          summary: "Redis {{ $labels.redis_instance }} command rate is high"
+          description: "Redis {{ $labels.redis_instance }} is processing {{ $value | humanize }} commands/second"
+

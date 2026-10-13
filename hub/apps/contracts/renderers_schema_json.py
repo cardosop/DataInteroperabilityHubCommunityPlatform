@@ -85,7 +85,7 @@ class StructuredSuffixContentNegotiation(DefaultContentNegotiation):
         for accept_media_type in accept_list:
             try:
                 accept_parsed = _MediaType(accept_media_type)
-            except Exception:
+            except ValueError:
                 continue
             # Only fire the suffix relaxation when the client
             # explicitly asked for ``application/json`` (or any

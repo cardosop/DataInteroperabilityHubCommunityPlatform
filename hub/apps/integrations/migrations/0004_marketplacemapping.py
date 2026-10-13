@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 'db_table': 'marketplace_mappings',
                 'ordering': ['-created_at'],
                 'indexes': [models.Index(fields=['tenant', 'connection'], name='marketplace_tenant__43e923_idx'), models.Index(fields=['connection', 'hub_asset'], name='marketplace_connect_0b2496_idx'), models.Index(fields=['tenant', 'hub_asset'], name='marketplace_tenant__58c3cc_idx'), models.Index(fields=['external_listing_id'], name='marketplace_externa_f710ad_idx')],
-                'constraints': [models.UniqueConstraint(fields=('connection', 'hub_asset'), name='unique_connection_asset_mapping')],
+                'constraints': [models.UniqueConstraint(fields=['connection', 'hub_asset'], name='unique_connection_asset_mapping')],
             },
         ),
     ]

@@ -27,24 +27,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
-            + "/health/",
-            timeout=2,
-        )
-        return response.status_code in (200, 503)
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="session")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip("API service not available at http://localhost:8000")
     return True
 
@@ -134,8 +123,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -148,8 +137,8 @@ print('API_KEY_END')
 
             # Fallback: extract from last long line
             if not api_key:
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if (
                         (
                             line
@@ -171,8 +160,8 @@ print('API_KEY_END')
     return None
 
 
-@pytest.fixture(autouse=True, scope="function")
-def setup_config(api_available, api_key):
+@pytest.fixture(autouse=True)
+def setup_config(api_service_available, api_key):
     """Set up API base URL and authentication for all tests"""
     api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
     config.set_api_base_url(api_base_url)
@@ -188,7 +177,7 @@ def setup_config(api_available, api_key):
 
 
 @pytest.fixture(scope="session")
-def api_key(api_available):
+def api_key(api_service_available):
     """Get API key from config - session scoped to avoid recreation and ensure consistency"""
     # Try to get from environment first
     api_key = os.environ.get("DATAHUB_API_KEY") or os.environ.get("TEST_API_KEY")
@@ -210,8 +199,8 @@ def runner():
     return CliRunner()
 
 
-@pytest.fixture(scope="function")
-def test_asset(api_available, api_key):
+@pytest.fixture
+def test_asset(api_service_available, api_key):
     """Create a test asset for ML model linking with improved reliability"""
     import random
     import threading
@@ -222,7 +211,7 @@ def test_asset(api_available, api_key):
         test_asset._lock = threading.Lock()
 
     # Add small random delay to prevent thundering herd on database connection pool
-    time.sleep(random.uniform(0.05, 0.15))  # noqa: sleep-needed — test timing requirement
+    time.sleep(random.uniform(0.05, 0.15))  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -247,7 +236,7 @@ def test_asset(api_available, api_key):
                 # Add progressive delay on retries to allow DB connection pool to recover
                 if attempt > 0:
                     backoff = min(0.2 * (2 ** (attempt - 1)), 2.0)  # Exponential backoff, max 2s
-                    time.sleep(backoff + random.uniform(0.05, 0.15))  # noqa: sleep-needed — retry loop
+                    time.sleep(backoff + random.uniform(0.05, 0.15))  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
                 response = requests.post(
                     os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/assets/",
@@ -279,18 +268,18 @@ def test_asset(api_available, api_key):
                             error_data.get("error", {}).get("details", {}).get("retry_after", 2)
                         )
                         if attempt < max_retries - 1:
-                            time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                            time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             continue
                     except (ValueError, KeyError):
                         if attempt < max_retries - 1:
-                            time.sleep(3)  # noqa: sleep-needed — retry loop
+                            time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             continue
 
                 # Handle 409 conflict - asset key already exists, try with new key
                 if response.status_code == 409:
                     if attempt < max_retries - 1:
                         # Generate new unique key and retry
-                        time.sleep(0.5)  # noqa: sleep-needed — retry loop
+                        time.sleep(0.5)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                     else:
                         last_error = f"Client error 409: Asset key already exists after {max_retries} attempts with unique keys"
@@ -302,7 +291,7 @@ def test_asset(api_available, api_key):
                     if attempt < max_retries - 1:
                         # Exponential backoff: 2^attempt seconds (2, 4, 8, 16)
                         backoff_time = min(2**attempt, 10)  # Cap at 10 seconds
-                        time.sleep(backoff_time)  # noqa: sleep-needed — retry loop
+                        time.sleep(backoff_time)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                     break
 
@@ -318,12 +307,12 @@ def test_asset(api_available, api_key):
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 last_error = f"Connection/Timeout error: {type(e).__name__}: {e!s}"
                 if attempt < max_retries - 1:
-                    time.sleep(2)  # noqa: sleep-needed — retry loop
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
             except Exception as e:
                 last_error = f"Unexpected error: {type(e).__name__}: {e!s}"
                 if attempt < max_retries - 1:
-                    time.sleep(2)  # noqa: sleep-needed — retry loop
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
 
     # If we get here, all retries failed
@@ -334,8 +323,8 @@ def test_asset(api_available, api_key):
     )
 
 
-@pytest.fixture(scope="function")
-def test_model(api_available, api_key, test_asset):
+@pytest.fixture
+def test_model(api_service_available, api_key, test_asset):
     """Create a test ML model with improved reliability"""
     import random
     import threading
@@ -346,7 +335,7 @@ def test_model(api_available, api_key, test_asset):
         test_model._lock = threading.Lock()
 
     # Add small random delay to prevent thundering herd on database connection pool
-    time.sleep(random.uniform(0.05, 0.15))  # noqa: sleep-needed — test timing requirement
+    time.sleep(random.uniform(0.05, 0.15))  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -370,7 +359,7 @@ def test_model(api_available, api_key, test_asset):
                 # Add progressive delay on retries to allow DB connection pool to recover
                 if attempt > 0:
                     backoff = min(0.2 * (2 ** (attempt - 1)), 2.0)  # Exponential backoff, max 2s
-                    time.sleep(backoff + random.uniform(0.05, 0.15))  # noqa: sleep-needed — retry loop
+                    time.sleep(backoff + random.uniform(0.05, 0.15))  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
                 response = requests.post(
                     os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
@@ -403,18 +392,18 @@ def test_model(api_available, api_key, test_asset):
                             error_data.get("error", {}).get("details", {}).get("retry_after", 2)
                         )
                         if attempt < max_retries - 1:
-                            time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                            time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             continue
                     except (ValueError, KeyError):
                         if attempt < max_retries - 1:
-                            time.sleep(3)  # noqa: sleep-needed — retry loop
+                            time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             continue
 
                 # Handle 409 conflict - model already exists, try with new ID
                 if response.status_code == 409:
                     if attempt < max_retries - 1:
                         # Generate new unique ID and retry
-                        time.sleep(0.5)  # noqa: sleep-needed — retry loop
+                        time.sleep(0.5)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                     else:
                         last_error = f"Client error 409: Model already exists after {max_retries} attempts with unique IDs"
@@ -426,7 +415,7 @@ def test_model(api_available, api_key, test_asset):
                     if attempt < max_retries - 1:
                         # Exponential backoff: 2^attempt seconds (2, 4, 8, 16)
                         backoff_time = min(2**attempt, 10)  # Cap at 10 seconds
-                        time.sleep(backoff_time)  # noqa: sleep-needed — retry loop
+                        time.sleep(backoff_time)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                     break
 
@@ -442,12 +431,12 @@ def test_model(api_available, api_key, test_asset):
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 last_error = f"Connection/Timeout error: {type(e).__name__}: {e!s}"
                 if attempt < max_retries - 1:
-                    time.sleep(2)  # noqa: sleep-needed — retry loop
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
             except Exception as e:
                 last_error = f"Unexpected error: {type(e).__name__}: {e!s}"
                 if attempt < max_retries - 1:
-                    time.sleep(2)  # noqa: sleep-needed — retry loop
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
 
     # If we get here, all retries failed
@@ -459,7 +448,7 @@ def test_model(api_available, api_key, test_asset):
 
 
 @pytest.fixture
-def test_dataset(api_available, api_key, test_asset):
+def test_dataset(api_service_available, api_key, test_asset):
     """Create a test dataset for training"""
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -494,11 +483,11 @@ def test_dataset(api_available, api_key, test_asset):
                     )
                     last_error = f"Rate limit exceeded, retrying after {retry_after} seconds"
                     if attempt < max_retries - 1:
-                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                 except (ValueError, KeyError):
                     if attempt < max_retries - 1:
-                        time.sleep(3)  # noqa: sleep-needed — retry loop
+                        time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
             # If not 201 and not 429, retry unless it's a client error (4xx) that's not rate limit
             if (
@@ -510,7 +499,7 @@ def test_dataset(api_available, api_key, test_asset):
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_error = str(e)
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.skip(
@@ -562,31 +551,31 @@ def test_dataset(api_available, api_key, test_asset):
                         error_data.get("error", {}).get("details", {}).get("retry_after", 2)
                     )
                     if attempt < max_retries - 1:
-                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                 except (ValueError, KeyError):
                     if attempt < max_retries - 1:
-                        time.sleep(3)  # noqa: sleep-needed — retry loop
+                        time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
             # If not successful and not 429, check error
             if file_complete_response.status_code >= 400:
                 last_error = f"HTTP {file_complete_response.status_code}: {file_complete_response.text[:200]}"
                 if attempt < max_retries - 1:
-                    time.sleep(2)  # noqa: sleep-needed — retry loop
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
                 else:
                     break
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_error = f"Connection/Timeout: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 break
         except Exception as e:
             last_error = f"Unexpected error: {type(e).__name__}: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 break
@@ -626,11 +615,11 @@ def test_dataset(api_available, api_key, test_asset):
                     )
                     last_error = f"Rate limit exceeded, retrying after {retry_after} seconds"
                     if attempt < max_retries - 1:
-                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                 except (ValueError, KeyError):
                     if attempt < max_retries - 1:
-                        time.sleep(3)  # noqa: sleep-needed — retry loop
+                        time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
             # If not 201 and not 429, check if it's a client error
             if 400 <= dataset_response.status_code < 500 and dataset_response.status_code != 429:
@@ -641,7 +630,7 @@ def test_dataset(api_available, api_key, test_asset):
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_error = f"Connection/Timeout error: {type(e).__name__}: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.skip(
@@ -650,7 +639,7 @@ def test_dataset(api_available, api_key, test_asset):
         except Exception as e:
             last_error = f"Unexpected error: {type(e).__name__}: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.skip(
@@ -688,7 +677,7 @@ def test_dataset(api_available, api_key, test_asset):
 class TestODHCLIModelRegistryCommands:
     """Comprehensive tests for ODH CLI model registry commands"""
 
-    def test_models_list_command(self, runner, api_available, api_key):
+    def test_models_list_command(self, runner, api_service_available, api_key):
         """Test ML models list command"""
         result = runner.invoke(cli, ["ml", "models", "list", "--format", "json"])
 
@@ -701,7 +690,7 @@ class TestODHCLIModelRegistryCommands:
             except json.JSONDecodeError:
                 pass  # May have non-JSON output for errors
 
-    def test_models_list_with_filters(self, runner, api_available, api_key, test_asset):
+    def test_models_list_with_filters(self, runner, api_service_available, api_key, test_asset):
         """Test ML models list with filters"""
         result = runner.invoke(
             cli,
@@ -724,13 +713,13 @@ class TestODHCLIModelRegistryCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_models_list_table_format(self, runner, api_available, api_key):
+    def test_models_list_table_format(self, runner, api_service_available, api_key):
         """Test ML models list with table format"""
         result = runner.invoke(cli, ["ml", "models", "list", "--format", "table"])
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_models_get_command(self, runner, api_available, api_key, test_model):
+    def test_models_get_command(self, runner, api_service_available, api_key, test_model):
         """Test ML models get command"""
         result = runner.invoke(cli, ["ml", "models", "get", test_model, "--format", "json"])
 
@@ -742,7 +731,7 @@ class TestODHCLIModelRegistryCommands:
             except json.JSONDecodeError:
                 pass
 
-    def test_models_get_table_format(self, runner, api_available, api_key, test_model):
+    def test_models_get_table_format(self, runner, api_service_available, api_key, test_model):
         """Test ML models get with table format"""
         result = runner.invoke(cli, ["ml", "models", "get", test_model, "--format", "table"])
 
@@ -750,7 +739,7 @@ class TestODHCLIModelRegistryCommands:
         if result.exit_code == 0:
             assert "ID:" in result.output or "ODH Model ID:" in result.output
 
-    def test_models_create_command(self, runner, api_available, api_key, test_asset):
+    def test_models_create_command(self, runner, api_service_available, api_key, test_asset):
         """Test ML models create command"""
         odh_model_id = f"test-model-{uuid.uuid4().hex[:8]}"
         result = runner.invoke(
@@ -782,7 +771,7 @@ class TestODHCLIModelRegistryCommands:
             except json.JSONDecodeError:
                 pass
 
-    def test_models_update_command(self, runner, api_available, api_key, test_model):
+    def test_models_update_command(self, runner, api_service_available, api_key, test_model):
         """Test ML models update command"""
         result = runner.invoke(
             cli, ["ml", "models", "update", test_model, "--status", "TRAINED", "--format", "json"]
@@ -790,7 +779,7 @@ class TestODHCLIModelRegistryCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_models_delete_command(self, runner, api_available, api_key, test_asset):
+    def test_models_delete_command(self, runner, api_service_available, api_key, test_asset):
         """Test ML models delete command"""
         # Create a model first, then delete it
         odh_model_id = f"test-model-{uuid.uuid4().hex[:8]}"
@@ -827,20 +816,20 @@ class TestODHCLIModelRegistryCommands:
         except Exception as e:
             pytest.skip(f"Failed to create model for deletion test: {e}")
 
-    def test_models_versions_command(self, runner, api_available, api_key, test_model):
+    def test_models_versions_command(self, runner, api_service_available, api_key, test_model):
         """Test ML models versions command"""
         result = runner.invoke(cli, ["ml", "models", "versions", test_model, "--format", "json"])
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_models_list_error_handling_invalid_uuid(self, runner, api_available, api_key):
+    def test_models_list_error_handling_invalid_uuid(self, runner, api_service_available, api_key):
         """Test ML models list error handling with invalid UUID"""
         result = runner.invoke(cli, ["ml", "models", "list", "--asset-id", "invalid-uuid"])
 
         assert result.exit_code != 0, "Should fail with invalid UUID"
         assert "Invalid" in result.output or "UUID" in result.output
 
-    def test_models_get_error_handling_not_found(self, runner, api_available, api_key):
+    def test_models_get_error_handling_not_found(self, runner, api_service_available, api_key):
         """Test ML models get error handling for not found"""
         fake_uuid = str(uuid.uuid4())
         result = runner.invoke(cli, ["ml", "models", "get", fake_uuid, "--format", "json"])
@@ -848,14 +837,16 @@ class TestODHCLIModelRegistryCommands:
         # May fail with 404 or other API error
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_models_create_error_handling_missing_required(self, runner, api_available, api_key):
+    def test_models_create_error_handling_missing_required(
+        self, runner, api_service_available, api_key
+    ):
         """Test ML models create error handling with missing required fields"""
         result = runner.invoke(cli, ["ml", "models", "create", "--odh-model-id", "test-id"])
 
         assert result.exit_code != 0, "Should fail without required fields"
 
     def test_models_update_error_handling_no_fields(
-        self, runner, api_available, api_key, test_model
+        self, runner, api_service_available, api_key, test_model
     ):
         """Test ML models update error handling with no fields to update"""
         result = runner.invoke(cli, ["ml", "models", "update", test_model])
@@ -868,7 +859,7 @@ class TestODHCLITrainingCommands:
     """Comprehensive tests for ODH CLI training commands"""
 
     def test_training_submit_command(
-        self, runner, api_available, api_key, test_model, test_dataset
+        self, runner, api_service_available, api_key, test_model, test_dataset
     ):
         """Test ML training submit command"""
         config_json = json.dumps({"epochs": 10, "batch_size": 32, "learning_rate": 0.001})
@@ -899,7 +890,7 @@ class TestODHCLITrainingCommands:
                 pass
 
     def test_training_submit_with_file_config(
-        self, runner, api_available, api_key, test_model, test_dataset
+        self, runner, api_service_available, api_key, test_model, test_dataset
     ):
         """Test ML training submit with config file"""
         config_data = {"epochs": 10, "batch_size": 32, "learning_rate": 0.001}
@@ -930,13 +921,13 @@ class TestODHCLITrainingCommands:
         finally:
             os.unlink(config_file)
 
-    def test_training_list_command(self, runner, api_available, api_key):
+    def test_training_list_command(self, runner, api_service_available, api_key):
         """Test ML training list command"""
         result = runner.invoke(cli, ["ml", "training", "list", "--format", "json"])
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_list_with_filters(self, runner, api_available, api_key, test_model):
+    def test_training_list_with_filters(self, runner, api_service_available, api_key, test_model):
         """Test ML training list with filters"""
         result = runner.invoke(
             cli,
@@ -959,13 +950,13 @@ class TestODHCLITrainingCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_list_table_format(self, runner, api_available, api_key):
+    def test_training_list_table_format(self, runner, api_service_available, api_key):
         """Test ML training list with table format"""
         result = runner.invoke(cli, ["ml", "training", "list", "--format", "table"])
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_get_command(self, runner, api_available, api_key):
+    def test_training_get_command(self, runner, api_service_available, api_key):
         """Test ML training get command"""
         # First, try to submit a job to get a job_id
         # If that fails, test with a fake job_id to verify error handling
@@ -975,7 +966,7 @@ class TestODHCLITrainingCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_get_table_format(self, runner, api_available, api_key):
+    def test_training_get_table_format(self, runner, api_service_available, api_key):
         """Test ML training get with table format"""
         fake_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -983,7 +974,7 @@ class TestODHCLITrainingCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_cancel_command(self, runner, api_available, api_key):
+    def test_training_cancel_command(self, runner, api_service_available, api_key):
         """Test ML training cancel command"""
         fake_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -991,7 +982,7 @@ class TestODHCLITrainingCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_logs_command(self, runner, api_available, api_key):
+    def test_training_logs_command(self, runner, api_service_available, api_key):
         """Test ML training logs command"""
         fake_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -1001,7 +992,9 @@ class TestODHCLITrainingCommands:
 
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
-    def test_training_submit_error_handling_invalid_uuid(self, runner, api_available, api_key):
+    def test_training_submit_error_handling_invalid_uuid(
+        self, runner, api_service_available, api_key
+    ):
         """Test ML training submit error handling with invalid UUID"""
         result = runner.invoke(
             cli,
@@ -1022,7 +1015,7 @@ class TestODHCLITrainingCommands:
         assert "Invalid" in result.output or "UUID" in result.output
 
     def test_training_submit_error_handling_invalid_json(
-        self, runner, api_available, api_key, test_model, test_dataset
+        self, runner, api_service_available, api_key, test_model, test_dataset
     ):
         """Test ML training submit error handling with invalid JSON"""
         result = runner.invoke(
@@ -1047,7 +1040,7 @@ class TestODHCLITrainingCommands:
 class TestODHCLIInferenceCommands:
     """Comprehensive tests for ODH CLI inference commands"""
 
-    def test_inference_deploy_command(self, runner, api_available, api_key, test_model):
+    def test_inference_deploy_command(self, runner, api_service_available, api_key, test_model):
         """Test ML inference deploy command"""
         config_json = json.dumps({"replicas": 2})
 
@@ -1069,7 +1062,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_deploy_with_file_config(
-        self, runner, api_available, api_key, test_model, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, test_model, odh_inference_scheduler_available
     ):
         """Test ML inference deploy with config file"""
         config_data = {"replicas": 2, "resources": {"cpu": "1", "memory": "2Gi"}}
@@ -1099,7 +1092,7 @@ class TestODHCLIInferenceCommands:
             os.unlink(config_file)
 
     def test_inference_predict_command(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference predict command"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1123,7 +1116,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_predict_with_file_input(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference predict with input file"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1154,7 +1147,7 @@ class TestODHCLIInferenceCommands:
             os.unlink(input_file)
 
     def test_inference_list_command(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference list command"""
         result = runner.invoke(cli, ["ml", "inference", "list", "--format", "json"])
@@ -1162,7 +1155,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_list_with_filters(
-        self, runner, api_available, api_key, test_model, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, test_model, odh_inference_scheduler_available
     ):
         """Test ML inference list with filters"""
         result = runner.invoke(
@@ -1187,7 +1180,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_list_table_format(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference list with table format"""
         result = runner.invoke(cli, ["ml", "inference", "list", "--format", "table"])
@@ -1195,7 +1188,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_get_command(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference get command"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1205,7 +1198,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_get_table_format(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference get with table format"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1215,7 +1208,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_undeploy_command(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference undeploy command"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1227,7 +1220,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_metrics_command(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference metrics command"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1239,7 +1232,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_metrics_with_time_range(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference metrics with time range"""
         deployment_id = f"test-deployment-{uuid.uuid4().hex[:8]}"
@@ -1263,7 +1256,7 @@ class TestODHCLIInferenceCommands:
         assert result.exit_code in (0, 1), f"Unexpected exit code: {result.output}"
 
     def test_inference_deploy_error_handling_invalid_uuid(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference deploy error handling with invalid UUID"""
         result = runner.invoke(
@@ -1283,7 +1276,7 @@ class TestODHCLIInferenceCommands:
         assert "Invalid" in result.output or "UUID" in result.output
 
     def test_inference_predict_error_handling_invalid_json(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test ML inference predict error handling with invalid JSON"""
         result = runner.invoke(
@@ -1306,7 +1299,7 @@ class TestODHCLIInferenceCommands:
 class TestODHCLIProgressTracking:
     """Test CLI progress tracking and output format consistency"""
 
-    def test_models_list_output_format_consistency(self, runner, api_available, api_key):
+    def test_models_list_output_format_consistency(self, runner, api_service_available, api_key):
         """Test models list output format consistency"""
         # Test JSON format
         result_json = runner.invoke(cli, ["ml", "models", "list", "--format", "json"])
@@ -1319,7 +1312,7 @@ class TestODHCLIProgressTracking:
             result_json.exit_code in (0, 1) and result_table.exit_code in (0, 1)
         )
 
-    def test_training_list_output_format_consistency(self, runner, api_available, api_key):
+    def test_training_list_output_format_consistency(self, runner, api_service_available, api_key):
         """Test training list output format consistency"""
         result_json = runner.invoke(cli, ["ml", "training", "list", "--format", "json"])
 
@@ -1330,7 +1323,7 @@ class TestODHCLIProgressTracking:
         )
 
     def test_inference_list_output_format_consistency(
-        self, runner, api_available, api_key, odh_inference_scheduler_available
+        self, runner, api_service_available, api_key, odh_inference_scheduler_available
     ):
         """Test inference list output format consistency"""
         result_json = runner.invoke(cli, ["ml", "inference", "list", "--format", "json"])

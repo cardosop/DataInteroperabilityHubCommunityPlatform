@@ -38,8 +38,6 @@ import sys
 import types
 from unittest.mock import MagicMock, patch
 
-import pandas as _pd_preload  # noqa: F401
-import pyarrow as _pa_preload  # noqa: F401
 import pytest
 
 # -------------------------------------------------------------------
@@ -166,13 +164,13 @@ def _reload_task_module(extra_env: dict | None = None):
 # -------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def task_module():
     mod, _, _ = _reload_task_module()
     return mod
 
 
-@pytest.fixture()
+@pytest.fixture
 def csv_payload():
     """Minimal CSV payload with one email column."""
     import io
@@ -269,16 +267,18 @@ class TestGetRedisClient:
     def test_falls_back_to_rq_redis_url(self, task_module):
         env = {k: v for k, v in os.environ.items() if k != "REDIS_QUEUE_URL"}
         env["RQ_REDIS_URL"] = "redis://localhost:6379/2"
-        with patch.dict(os.environ, env, clear=True):
-            with patch("redis.from_url") as mock_from_url:
-                mock_from_url.return_value = MagicMock()
-                task_module._get_redis_client()
-                # Verify URL AND connection params match
-                mock_from_url.assert_called_once_with(
-                    "redis://localhost:6379/2",
-                    decode_responses=False,
-                    socket_connect_timeout=5,
-                )
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("redis.from_url") as mock_from_url,
+        ):
+            mock_from_url.return_value = MagicMock()
+            task_module._get_redis_client()
+            # Verify URL AND connection params match
+            mock_from_url.assert_called_once_with(
+                "redis://localhost:6379/2",
+                decode_responses=False,
+                socket_connect_timeout=5,
+            )
 
     def test_falls_back_to_django_rq(self, task_module):
         """When no URL env var is set, falls back to

@@ -28,13 +28,13 @@ class Command(BaseCommand):
             help="Tenant subdomain (slug) to enable UX v2 for",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         subdomain = options["subdomain"].strip()
 
         try:
             tenant = Tenant.objects.using("admin").get(slug=subdomain)
         except Tenant.DoesNotExist:
-            raise CommandError(f'Tenant with subdomain "{subdomain}" not found.')
+            raise CommandError(f'Tenant with subdomain "{subdomain}" not found.') from None
 
         if tenant.ux_v2_enabled:
             self.stdout.write(

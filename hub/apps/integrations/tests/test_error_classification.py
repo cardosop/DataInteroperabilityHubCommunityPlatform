@@ -62,6 +62,83 @@ def _make_httpx_status_error(status_code: int) -> httpx.HTTPStatusError:
 # ── 1. classify_connector_error unit tests ──────────────────────
 
 
+# Minimal connector for wiring tests — module-level so subclassing
+# in test methods resolves without a self attribute lookup.
+class _SimpleTestConnector(DataMarketplaceConnector):
+    """Minimal connector for wiring tests."""
+
+    @property
+    def marketplace_type(self) -> MarketplaceType:
+        return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+    @property
+    def supported_sync_directions(self):
+        return [SyncDirection.PUSH, SyncDirection.PULL]
+
+    def authenticate(self, credentials):
+        return True
+
+    def test_connection(self):
+        return True
+
+    def list_listings(self, filters=None, limit=None, offset=None):
+        return []
+
+    def get_listing(self, listing_id):
+        return MarketplaceListing(
+            marketplace_id=listing_id,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            title="Test",
+        )
+
+    def list_resources(self, listing_id):
+        return []
+
+    def create_listing(self, listing):
+        return listing
+
+    def update_listing(self, listing_id, listing):
+        return listing
+
+    def publish_resource(self, listing_id, resource):
+        return resource
+
+    def download_resource(self, resource_id, destination_path):
+        return destination_path
+
+    def map_to_hub_asset(self, listing, sync_job_id=None):
+        from hub.apps.assets.models import AssetSourceType
+        from hub.apps.integrations.base import MarketplaceAssetMapping
+
+        return MarketplaceAssetMapping(
+            asset_data={"name": listing.title},
+            source_type=AssetSourceType.FEDERATED,
+            source_metadata={},
+        )
+
+    def map_from_hub_asset(self, asset_data, **kwargs):
+        return MarketplaceListing(
+            marketplace_id=asset_data.get("id", "test"),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            title=asset_data.get("name", "Unknown"),
+        )
+
+    def sync_push(self, asset_ids, options=None):
+        return SyncResult(
+            status=SyncStatus.COMPLETED,
+            total_items=len(asset_ids),
+            successful_items=len(asset_ids),
+        )
+
+    def sync_pull(self, listing_ids=None, filters=None, options=None):
+        return SyncResult(
+            status=SyncStatus.COMPLETED,
+            total_items=0,
+            successful_items=0,
+        )
+
+
+@staticmethod
 class ClassifyConnectorErrorTest(TestCase):
     """Unit tests for classify_connector_error()."""
 
@@ -414,81 +491,7 @@ class TaskErrorClassificationWiringTest(TestCase):
 
     # ── helpers ────────────────────────────────────────────────────
 
-    class _SimpleTestConnector(DataMarketplaceConnector):
-        """Minimal connector for wiring tests."""
-
-        @property
-        def marketplace_type(self) -> MarketplaceType:
-            return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-
-        @property
-        def supported_sync_directions(self):
-            return [SyncDirection.PUSH, SyncDirection.PULL]
-
-        def authenticate(self, credentials):
-            return True
-
-        def test_connection(self):
-            return True
-
-        def list_listings(self, filters=None, limit=None, offset=None):
-            return []
-
-        def get_listing(self, listing_id):
-            return MarketplaceListing(
-                marketplace_id=listing_id,
-                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-                title="Test",
-            )
-
-        def list_resources(self, listing_id):
-            return []
-
-        def create_listing(self, listing):
-            return listing
-
-        def update_listing(self, listing_id, listing):
-            return listing
-
-        def publish_resource(self, listing_id, resource):
-            return resource
-
-        def download_resource(self, resource_id, destination_path):
-            return destination_path
-
-        def map_to_hub_asset(self, listing, sync_job_id=None):
-            from hub.apps.assets.models import AssetSourceType
-            from hub.apps.integrations.base import MarketplaceAssetMapping
-
-            return MarketplaceAssetMapping(
-                asset_data={"name": listing.title},
-                source_type=AssetSourceType.FEDERATED,
-                source_metadata={},
-            )
-
-        def map_from_hub_asset(self, asset_data, **kwargs):
-            return MarketplaceListing(
-                marketplace_id=asset_data.get("id", "test"),
-                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-                title=asset_data.get("name", "Unknown"),
-            )
-
-        def sync_push(self, asset_ids, options=None):
-            return SyncResult(
-                status=SyncStatus.COMPLETED,
-                total_items=len(asset_ids),
-                successful_items=len(asset_ids),
-            )
-
-        def sync_pull(self, listing_ids=None, filters=None, options=None):
-            return SyncResult(
-                status=SyncStatus.COMPLETED,
-                total_items=0,
-                successful_items=0,
-            )
-
-    @staticmethod
-    def _register_test_connector(connector_cls):
+    def _register_test_connector(self, connector_cls):
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
             connector_cls,
@@ -509,7 +512,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         classify it and potentially retry."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        class _TransientConnector(self._SimpleTestConnector):
+        class _TransientConnector(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 raise ConnectionError("Connection timeout")
 
@@ -533,7 +536,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         marked FAILED."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        class _NoResultConnector(self._SimpleTestConnector):
+        class _NoResultConnector(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 return None
 
@@ -560,7 +563,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         can retry — they are not wrapped in ServiceError."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        class _TransientConnector(self._SimpleTestConnector):
+        class _TransientConnector(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 raise ConnectionError("Connection timeout")
 
@@ -586,10 +589,11 @@ class TaskErrorClassificationWiringTest(TestCase):
         """classify_connector_error PERMANENT path (tasks.py lines 866-887):
         connector raises httpx.HTTPStatusError(401), classified as PERMANENT,
         job marked FAILED with error_type='permanent', ServiceError raised."""
-        import hub.apps.integrations.tasks as tasks_mod
         import httpx
 
-        class _AuthFailureConnector(self._SimpleTestConnector):
+        import hub.apps.integrations.tasks as tasks_mod
+
+        class _AuthFailureConnector(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 request = httpx.Request("GET", "https://example.com/api")
                 response = httpx.Response(status_code=401, request=request)
@@ -614,10 +618,7 @@ class TaskErrorClassificationWiringTest(TestCase):
 
             sync_job.refresh_from_db()
             self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
-            self.assertTrue(any(
-                e.get("error_type") == "permanent"
-                for e in sync_job.errors
-            ))
+            self.assertTrue(any(e.get("error_type") == "permanent" for e in sync_job.errors))
         finally:
             self._unregister_test_connector()
 
@@ -626,7 +627,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         (first retry attempt — may be retried by the caller)."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        class _RuntimeErrorConnector(self._SimpleTestConnector):
+        class _RuntimeErrorConnector(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 raise RuntimeError("Unexpected connector crash")
 
@@ -644,10 +645,7 @@ class TaskErrorClassificationWiringTest(TestCase):
 
             sync_job.refresh_from_db()
             self.assertGreater(len(sync_job.errors), 0)
-            self.assertTrue(any(
-                e.get("error_type") == "unknown"
-                for e in sync_job.errors
-            ))
+            self.assertTrue(any(e.get("error_type") == "unknown" for e in sync_job.errors))
         finally:
             self._unregister_test_connector()
 
@@ -656,7 +654,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         and marks the job as FAILED (retry budget exhausted)."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        class _RuntimeErrorConnector2(self._SimpleTestConnector):
+        class _RuntimeErrorConnector2(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 raise RuntimeError("Unexpected connector crash")
 
@@ -674,10 +672,7 @@ class TaskErrorClassificationWiringTest(TestCase):
 
             sync_job.refresh_from_db()
             self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
-            self.assertTrue(any(
-                e.get("error_type") == "unknown"
-                for e in sync_job.errors
-            ))
+            self.assertTrue(any(e.get("error_type") == "unknown" for e in sync_job.errors))
         finally:
             self._unregister_test_connector()
 
@@ -686,7 +681,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         PUSH and PULL and marks the job COMPLETED."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        class _BidiConnector(self._SimpleTestConnector):
+        class _BidiConnector(_SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
                 return SyncResult(
                     status=SyncStatus.COMPLETED,

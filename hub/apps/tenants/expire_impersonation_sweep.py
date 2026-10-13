@@ -64,46 +64,50 @@ def _expire_one_session(*, session_id, sweep_run_id: str | None) -> dict[str, An
     already ENDED.
     """
     now = timezone.now()
-    try:
-        with transaction.atomic(using="admin"):
-            try:
-                sess = (
-                    ImpersonationSession.objects.using("admin")
-                    .select_for_update(skip_locked=True)
-                    .select_related("impersonated_tenant", "impersonator_tenant")
-                    .get(pk=session_id)
-                )
-            except ImpersonationSession.DoesNotExist:
-                return None
-
-            if sess.status != ImpersonationSessionStatus.ACTIVE or sess.expires_at > now:
-                return None
-
-            sess.end(reason="expired")
-            create_audit_event(
-                resource_type="IMPERSONATION_SESSION",
-                action=_audit_et.IMPERSONATION_ENDED,
-                actor_user=None,  # system-driven sweep
-                tenant=sess.impersonated_tenant,
-                resource_id=str(sess.id),
-                result="SUCCESS",
-                details={
-                    "impersonation_session_id": str(sess.id),
-                    "impersonator_user_id": str(sess.impersonator_id),
-                    "impersonated_user_id": str(sess.impersonated_user_id),
-                    "impersonator_tenant_id": (
-                        str(sess.impersonator_tenant_id) if sess.impersonator_tenant_id else None
-                    ),
-                    "impersonated_tenant_id": str(sess.impersonated_tenant_id),
-                    "end_reason": sess.end_reason,
-                    "started_at": sess.started_at.isoformat(),
-                    "ended_at": sess.ended_at.isoformat() if sess.ended_at else None,
-                    "sweep_run_id": sweep_run_id,
-                },
-                infer_tenant_from_actor=False,
+    with transaction.atomic(using="admin"):
+        try:
+            # Postgres refuses ``FOR UPDATE`` when the query joins the
+            # nullable side of an outer join — and BOTH tenant FKs are
+            # nullable (impersonator_tenant SET_NULL). Combining
+            # select_for_update with select_related() here raised
+            # FeatureNotSupported, which the runner caught per-session
+            # and silently skipped — the sweep expired NOTHING.
+            # Lock the row ALONE, then lazily load the related rows
+            # for the audit emission AFTER the lock is held.
+            sess = (
+                ImpersonationSession.objects.using("admin")
+                .select_for_update(skip_locked=True)
+                .get(pk=session_id)
             )
-    except Exception:
-        raise
+        except ImpersonationSession.DoesNotExist:
+            return None
+
+        if sess.status != ImpersonationSessionStatus.ACTIVE or sess.expires_at > now:
+            return None
+
+        sess.end(reason="expired")
+        create_audit_event(
+            resource_type="IMPERSONATION_SESSION",
+            action=_audit_et.IMPERSONATION_ENDED,
+            actor_user=None,  # system-driven sweep
+            tenant=sess.impersonated_tenant,
+            resource_id=str(sess.id),
+            result="SUCCESS",
+            details={
+                "impersonation_session_id": str(sess.id),
+                "impersonator_user_id": str(sess.impersonator_id),
+                "impersonated_user_id": str(sess.impersonated_user_id),
+                "impersonator_tenant_id": (
+                    str(sess.impersonator_tenant_id) if sess.impersonator_tenant_id else None
+                ),
+                "impersonated_tenant_id": str(sess.impersonated_tenant_id),
+                "end_reason": sess.end_reason,
+                "started_at": sess.started_at.isoformat(),
+                "ended_at": sess.ended_at.isoformat() if sess.ended_at else None,
+                "sweep_run_id": sweep_run_id,
+            },
+            infer_tenant_from_actor=False,
+        )
 
     return {
         "session_id": str(sess.id),

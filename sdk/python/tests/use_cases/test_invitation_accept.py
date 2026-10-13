@@ -79,7 +79,10 @@ def _get_e2e_invitation_token(
             validate_resp = _requests.get(
                 f"{base}/auth/me/",
                 headers={"Authorization": f"Bearer {current.api_key}"},
-                timeout=5,
+                # 15s (not 5s): under concurrent batch load the API can
+                # stall past a 5s read window, and a false "stale token"
+                # here cascades into needless re-provisioning.
+                timeout=15,
             )
             if validate_resp.status_code != 200:
                 # Token is stale — purge cache, re-provision, and fall
@@ -122,7 +125,28 @@ def _get_e2e_invitation_token(
             # Rare: 200 but token field missing/null — retry
             continue
 
+        if resp.status_code == 404 and attempt == 0:
+            # A 404 can also mean the token belongs to a DELETED
+            # incarnation of the persona (GDPR-scrubbed email fails the
+            # endpoint's E2E_EMAILS allowlist).  Purge the cache and
+            # re-provision once before concluding the endpoint is
+            # genuinely absent.
+            import glob as _glob
+            import pathlib as _pl
+
+            from tests._persona_provisioning import _CACHE_DIR as _cdir
+
+            for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
+                _pl.Path(_f).unlink(missing_ok=True)
+            fresh = _safe_provision(role)
+            if fresh is not None:
+                current = fresh
+                continue
+
         if resp.status_code == 404:
+            import warnings as _warnings
+
+            _warnings.warn(f"ensure-e2e-invitation-token returned 404: {resp.text[:200]}")
             return None  # endpoint genuinely not deployed
 
         # 401 / TOKEN_INVALIDATED — purge cache + re-provision on
@@ -144,36 +168,49 @@ def _get_e2e_invitation_token(
         # Any other non-success — retry with fresh creds
         continue
 
-    # If we exhausted all retries, try one last-resort fresh login
-    # with a longer backoff (rate-limiting may have cooled down).
+    # If we exhausted all retries, ride out the load with fresh logins
+    # and escalating backoff — under concurrent batch load the API can
+    # stall past single-attempt timeouts, and one retry is not enough.
+    # Each failed attempt is surfaced as a warning so a future skip can
+    # be diagnosed from the run output instead of guessing.
+    import glob as _glob
+    import pathlib as _pl
     import time as _time
 
-    _time.sleep(3)
-    try:
-        import glob as _glob
-        import pathlib as _pl
+    from tests._persona_provisioning import _CACHE_DIR as _cdir
+    from tests._persona_provisioning import _provision_via_login
 
-        from tests._persona_provisioning import _CACHE_DIR as _cdir
-        from tests._persona_provisioning import _provision_via_login
+    for _attempt in range(3):
+        _time.sleep(5 * (_attempt + 1))
+        try:
+            for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
+                _pl.Path(_f).unlink(missing_ok=True)
+            last_creds = _provision_via_login(role, None)
+            resp = _requests.post(
+                f"{base}/test/ensure-e2e-invitation-token/",
+                headers={
+                    "Authorization": f"Bearer {last_creds.api_key}",
+                    "X-E2E-Token": _e2e_token(),
+                },
+                json={},
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                token = resp.json().get("token")
+                if token:
+                    return token
+            import warnings as _warnings
 
-        for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
-            _pl.Path(_f).unlink(missing_ok=True)
-        last_creds = _provision_via_login(role, None)
-        resp = _requests.post(
-            f"{base}/test/ensure-e2e-invitation-token/",
-            headers={
-                "Authorization": f"Bearer {last_creds.api_key}",
-                "X-E2E-Token": _e2e_token(),
-            },
-            json={},
-            timeout=15,
-        )
-        if resp.status_code in (200, 201):
-            token = resp.json().get("token")
-            if token:
-                return token
-    except Exception:
-        pass
+            _warnings.warn(
+                f"ensure-e2e-invitation-token last-resort attempt "
+                f"{_attempt + 1}/3: {resp.status_code} {resp.text[:200]}"
+            )
+        except (_requests.RequestException, ValueError, AttributeError) as _exc:
+            import warnings as _warnings
+
+            _warnings.warn(
+                f"ensure-e2e-invitation-token last-resort attempt {_attempt + 1}/3 raised: {_exc!r}"
+            )
 
     return None
 
@@ -256,7 +293,7 @@ def test_invited_user_accepts():
     an invited user and returns the plaintext token, bypassing email
     delivery.
     """
-    admin_creds = _provision_with_retry("tenant_admin")
+    admin_creds = _provision_with_retry("tenant_admin")  # noqa: PHASE216-STATIC-ID
 
     # Step 1: Get invitation token via E2E helper
     token = _get_e2e_invitation_token(admin_creds)
@@ -289,7 +326,7 @@ def test_invitation_already_accepted_returns_conflict():
     """Re-accepting an already-used invitation token should return
     400 (invalid or expired token).
     """
-    admin_creds = _provision_with_retry("tenant_admin")
+    admin_creds = _provision_with_retry("tenant_admin")  # noqa: PHASE216-STATIC-ID
 
     token = _get_e2e_invitation_token(admin_creds)
     if token is None:

@@ -70,47 +70,6 @@ function parseBlocker(blocker: string, assetId: string): ParsedBlockerWithScroll
   return { message: blocker };
 }
 
-/**
- * Extracts blocker list from an activation error.
- * Handles the normalized ApiError shape from the client interceptor:
- *   { error: { code: 'ASSET_ACTIVATION_BLOCKED', details: string[] | Record<string, unknown> } }
- * Also handles the raw axios error shape for resilience.
- */
-export function extractBlockersFromError(err: unknown): string[] | null {
-  if (!err || typeof err !== 'object') return null;
-
-  // Normalized ApiError shape: { error: { code, details } }
-  const apiErr = err as {
-    error?: { code?: string; details?: unknown };
-    response?: { data?: { code?: string; details?: unknown } };
-  };
-
-  // Check normalized shape first
-  if (apiErr.error?.code === 'ASSET_ACTIVATION_BLOCKED') {
-    const details = apiErr.error.details;
-    if (Array.isArray(details)) return details as string[];
-    if (details && typeof details === 'object') {
-      return Object.values(details).flat().map(String);
-    }
-    return [apiErr.error.code];
-  }
-
-  // Fallback: raw axios response shape
-  const raw = apiErr.response?.data;
-  if (raw && typeof raw === 'object') {
-    const data = raw as { code?: string; details?: unknown };
-    if (data.code === 'ASSET_ACTIVATION_BLOCKED') {
-      const details = data.details;
-      if (Array.isArray(details)) return details as string[];
-      if (details && typeof details === 'object') {
-        return Object.values(details).flat().map(String);
-      }
-      return [data.code];
-    }
-  }
-
-  return null;
-}
 
 export function ActivationBlockerDialog({
   blockers,

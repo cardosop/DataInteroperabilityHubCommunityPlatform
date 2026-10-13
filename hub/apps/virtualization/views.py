@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasAnyRole, HasScope
+from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import (
     ConflictError,
@@ -36,7 +37,6 @@ from hub.apps.core.services.base import (
     ValidationError,
 )
 from hub.apps.governance.abac import ABACEngine
-from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
 from .business_rules import VirtualizationBusinessRules, VirtualizationRuleExecutionContext
@@ -187,10 +187,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if isinstance(result, Response):
             raise PermissionDenied(detail=result.data)
 
-    filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ["name", "query_type", "status", "version", "created_at", "updated_at"]
-    ordering = ["-created_at"]  # Default ordering
-    search_fields = ["name", "description", "query"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    ordering_fields = ("name", "query_type", "status", "version", "created_at", "updated_at")
+    ordering = "-created_at"  # Default ordering
+    search_fields = ("name", "description", "query")
     pagination_class = StandardPageNumberPagination
 
     def get_permissions(self):
@@ -294,7 +294,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         Raises:
             PermissionDenied: If ABAC policy denies access
         """
-        try:
+
+        def _evaluate() -> None:
             result = ABACEngine.evaluate_access(
                 user_id=user_id,
                 tenant_id=tenant_id,
@@ -325,6 +326,9 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 )
                 # Allow access when no policy matches (fail open)
                 return
+
+        try:
+            _evaluate()
         except PermissionDenied:
             raise
         except Exception as e:
@@ -344,7 +348,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             # In production, you might want to fail closed instead
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new virtual dataset.
 
@@ -552,7 +556,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
 
         return response
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *_args, **kwargs):
         """
         Retrieve virtual dataset by ID.
 
@@ -593,7 +597,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         try:
             virtual_dataset = self.get_object()
         except NotFound:
-            raise NotFound("Virtual dataset not found")
+            raise NotFound("Virtual dataset not found") from None
 
         # Check ABAC policy for READ access using shared helper
         check_abac_for_dataset(virtual_dataset, request, access_type="READ")
@@ -605,7 +609,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         return Response(VirtualDatasetSerializer(virtual_dataset).data, headers=headers)
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **kwargs):
         """
         Update virtual dataset (full update).
 
@@ -646,7 +650,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         try:
             virtual_dataset = self.get_object()
         except NotFound:
-            raise NotFound("Virtual dataset not found")
+            raise NotFound("Virtual dataset not found") from None
 
         serializer = VirtualDatasetUpdateSerializer(virtual_dataset, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -738,9 +742,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
-        except NotFoundError as e:
-            return handle_service_exception(e)
-        except ConflictError as e:
+        except (NotFoundError, ConflictError) as e:
             return handle_service_exception(e)
         except Exception as e:
             logger.error(
@@ -767,7 +769,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         return self.update(request, *args, **kwargs)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **kwargs):
         """
         Delete virtual dataset.
 
@@ -808,7 +810,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         try:
             virtual_dataset = self.get_object()
         except NotFound:
-            raise NotFound("Virtual dataset not found")
+            raise NotFound("Virtual dataset not found") from None
 
         # Store details for audit log
         dataset_id = str(virtual_dataset.id)
@@ -879,9 +881,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
-        except NotFoundError as e:
-            return handle_service_exception(e)
-        except ConflictError as e:
+        except (NotFoundError, ConflictError) as e:
             return handle_service_exception(e)
         except Exception as e:
             logger.error(
@@ -928,7 +928,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         try:
             virtual_dataset = self.get_object()
         except NotFound:
-            raise NotFound("Virtual dataset not found")
+            raise NotFound("Virtual dataset not found") from None
 
         # Initialize business rules
         business_rules = VirtualizationBusinessRules(
@@ -1016,7 +1016,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         try:
             virtual_dataset = self.get_object()
         except NotFound:
-            raise NotFound("Virtual dataset not found")
+            raise NotFound("Virtual dataset not found") from None
 
         # Get all versions of this dataset (same name, same tenant)
         versions = VirtualDataset.objects.filter(
@@ -1074,10 +1074,17 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 dataset_id, request
             )
             if other_tenant_dataset and not permission_error:
-                # 117B.7: Also require entitlement
-                from hub.apps.marketplace.entitlement_check import (
-                    require_entitlement,
+                # 117B.7: Also require entitlement. The entitlement
+                # machinery is paid-layer; without it (core-only
+                # deployments) cross-tenant access cannot be verified —
+                # fail closed with NotFound.
+                from hub.apps.core.commercial_hooks import (
+                    check_entitlement,
+                    get_entitlement_provider,
                 )
+
+                if get_entitlement_provider() is None:
+                    raise NotFound("Virtual dataset not found") from None
                 from hub.apps.tenants.request_tenant import (
                     get_request_tenant_id,
                 )
@@ -1090,7 +1097,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                         None,
                     )
                     if asset_id:
-                        require_entitlement(
+                        check_entitlement(
                             consumer_tenant_id=consumer_tid,
                             asset_id=str(asset_id),
                             provider_tenant_id=str(other_tenant_dataset.tenant_id),
@@ -1099,9 +1106,9 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             elif permission_error:
                 raise PermissionDenied(
                     "Cannot execute query on virtual dataset from different tenant"
-                )
+                ) from None
             else:
-                raise NotFound("Virtual dataset not found")
+                raise NotFound("Virtual dataset not found") from None
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
@@ -1117,7 +1124,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 "rate_limit_exceeded",
                 extra={
                     "user_id": str(request.user.id),
-                    "tenant_id": str(tenant.id) if tenant else None,
+                    "tenant_id": str(virtual_dataset.tenant_id),
                     "virtual_dataset_id": dataset_id,
                 },
             )
@@ -1140,27 +1147,28 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             raise exception
 
         # ABAC check for write access to virtual dataset
-        if virtual_dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    self._check_abac_policy(
-                        user_id=str(request.user.id),
-                        tenant_id=str(virtual_dataset.tenant_id),
-                        resource_type="VIRTUAL_DATASET",
-                        resource_id=str(virtual_dataset.id),
-                        access_type="WRITE",
-                    )
-                except PermissionDenied:
-                    logger.warning(
-                        "abac_denied_query_execution_create",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(virtual_dataset.tenant_id),
-                            "virtual_dataset_id": str(virtual_dataset.id),
-                        },
-                    )
-                    raise
+        # Skip ABAC for platform admins
+        if virtual_dataset.tenant and not (
+            hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin
+        ):
+            try:
+                self._check_abac_policy(
+                    user_id=str(request.user.id),
+                    tenant_id=str(virtual_dataset.tenant_id),
+                    resource_type="VIRTUAL_DATASET",
+                    resource_id=str(virtual_dataset.id),
+                    access_type="WRITE",
+                )
+            except PermissionDenied:
+                logger.warning(
+                    "abac_denied_query_execution_create",
+                    extra={
+                        "user_id": str(request.user.id),
+                        "tenant_id": str(virtual_dataset.tenant_id),
+                        "virtual_dataset_id": str(virtual_dataset.id),
+                    },
+                )
+                raise
 
         # Validate request data
         serializer = QueryExecutionCreateSerializer(data=request.data)
@@ -1209,8 +1217,6 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             for header, value in headers.items():
                 response[header] = value
 
-            return response
-
         except ValidationError as e:
             # Domain rejection (inactive dataset, invalid params) —
             # not a system fault; log at WARNING.
@@ -1226,9 +1232,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 exc_info=True,
             )
             return handle_service_exception(e)
-        except NotFoundError as e:
-            return handle_service_exception(e)
-        except ConflictError as e:
+        except (NotFoundError, ConflictError) as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
@@ -1258,6 +1262,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 {"error": "An unexpected error occurred"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        else:
+            return response
 
 
 @extend_schema_view(
@@ -1316,7 +1322,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         Raises:
             PermissionDenied: If ABAC policy denies access
         """
-        try:
+
+        def _evaluate() -> None:
             result = ABACEngine.evaluate_access(
                 user_id=user_id,
                 tenant_id=tenant_id,
@@ -1346,6 +1353,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 )
                 # Allow access when no policy matches (fail open for reads)
                 return
+
+        try:
+            _evaluate()
         except PermissionDenied:
             raise
         except Exception as e:
@@ -1414,7 +1424,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         _tenant_id, tenant = get_request_tenant(self.request)
         return tenant
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *_args, **kwargs):
         """
         Retrieve query execution by ID.
 
@@ -1464,7 +1474,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_object()
         except NotFound:
-            raise NotFound("Query execution not found")
+            raise NotFound("Query execution not found") from None
 
         # ABAC check for read access using shared helper
         check_abac_for_execution(execution, request, access_type="READ")
@@ -1573,7 +1583,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_object()
         except NotFound:
-            raise NotFound("Query execution not found")
+            raise NotFound("Query execution not found") from None
 
         # ABAC check for write access using shared helper
         try:
@@ -1694,8 +1704,6 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             for header, value in headers.items():
                 response[header] = value
 
-            return response
-
         except ValidationError as e:
             logger.warning(
                 "Query execution cancellation failed",
@@ -1708,9 +1716,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 },
             )
             return handle_service_exception(e)
-        except NotFoundError as e:
-            return handle_service_exception(e)
-        except ConflictError as e:
+        except (NotFoundError, ConflictError) as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
@@ -1740,6 +1746,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "An unexpected error occurred"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        else:
+            return response
 
     @extend_schema(
         summary="Get query execution result",
@@ -1810,7 +1818,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_object()
         except NotFound:
-            raise NotFound("Query execution not found")
+            raise NotFound("Query execution not found") from None
 
         # ABAC check for read access using shared helper
         try:
@@ -1925,8 +1933,6 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             for header, value in headers.items():
                 response[header] = value
 
-            return response
-
         except ValidationError as e:
             logger.warning(
                 "Query result retrieval failed",
@@ -1946,9 +1952,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "status": execution.status,
             }
             return Response(error_response, status=status.HTTP_400_BAD_REQUEST)
-        except NotFoundError as e:
-            return handle_service_exception(e)
-        except ConflictError as e:
+        except (NotFoundError, ConflictError) as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
@@ -1978,6 +1982,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "An unexpected error occurred"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        else:
+            return response
 
     @extend_schema(
         summary="Get query execution progress",
@@ -2045,7 +2051,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_object()
         except NotFound:
-            raise NotFound("Query execution not found")
+            raise NotFound("Query execution not found") from None
 
         # ABAC check for read access using shared helper
         try:
@@ -2206,7 +2212,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_object()
         except NotFound:
-            raise NotFound("Query execution not found")
+            raise NotFound("Query execution not found") from None
 
         # ABAC check for read access using shared helper
         try:
@@ -2318,7 +2324,6 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             )
             response["Cache-Control"] = "no-cache"
             response["X-Accel-Buffering"] = "no"  # Disable buffering in nginx
-            return response
 
         except ValidationError as e:
             logger.warning(
@@ -2332,9 +2337,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 },
             )
             return handle_service_exception(e)
-        except NotFoundError as e:
-            return handle_service_exception(e)
-        except ConflictError as e:
+        except (NotFoundError, ConflictError) as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
@@ -2364,6 +2367,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "An unexpected error occurred"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        else:
+            return response
 
 
 @extend_schema_view(
@@ -2490,7 +2495,7 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                 include_health_metrics=include_health_metrics,
             )
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Log audit event
         try:
@@ -2589,20 +2594,21 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                     else:
                         raise PermissionDenied(
                             "Cannot access virtual dataset topology from different tenant"
-                        )
+                        ) from None
             except VirtualDataset.DoesNotExist:
-                raise NotFound("Virtual dataset not found")
+                raise NotFound("Virtual dataset not found") from None
 
         if not dataset:
             raise NotFound("Virtual dataset not found")
 
         # Check tenant isolation
         tenant = self.get_tenant_from_request()
-        if tenant and str(dataset.tenant_id) != str(tenant.id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied(
-                    "Cannot access virtual dataset topology from different tenant"
-                )
+        if (
+            tenant
+            and str(dataset.tenant_id) != str(tenant.id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot access virtual dataset topology from different tenant")
 
         # ABAC check for read access using shared helper
         check_abac_for_dataset(dataset, request, access_type="READ")

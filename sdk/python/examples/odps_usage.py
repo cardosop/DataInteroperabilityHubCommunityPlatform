@@ -265,8 +265,6 @@ async def example_export_odps(client: DataHubClient, odps_contract_id: str):
         else:
             print("✓ Exported ODPS YAML")
 
-        return odps_json
-
     except ODPSExportError as e:
         print(f"✗ ODPS export error: {e.message}")
         if e.context:
@@ -278,6 +276,8 @@ async def example_export_odps(client: DataHubClient, odps_contract_id: str):
     except Exception as e:
         print(f"✗ Unexpected error: {e}")
         raise
+    else:
+        return odps_json
 
 
 async def example_download_odps(client: DataHubClient, odps_contract_id: str):
@@ -302,8 +302,6 @@ async def example_download_odps(client: DataHubClient, odps_contract_id: str):
 
         print(f"✓ Saved to {output_path}")
 
-        return odps_file
-
     except ODPSExportError as e:
         print(f"✗ ODPS download error: {e.message}")
         raise
@@ -313,6 +311,8 @@ async def example_download_odps(client: DataHubClient, odps_contract_id: str):
     except Exception as e:
         print(f"✗ Unexpected error: {e}")
         raise
+    else:
+        return odps_file
 
 
 async def example_odps_helper_methods(client: DataHubClient, odps_contract_id: str):

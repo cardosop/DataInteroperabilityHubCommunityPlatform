@@ -13,6 +13,7 @@ from django.test import TestCase
 
 from hub.apps.core.events.bus import EventBus
 from hub.apps.core.events.deduplication import (
+    CONSUMER_DEDUP_NAMESPACE,
     DEFAULT_DEDUPLICATION_TTL,
     check_event_duplicate,
     generate_deduplication_key,
@@ -23,6 +24,13 @@ from hub.apps.tenants.models import Tenant
 uid = uuid.uuid4().hex[:8]
 
 logger = structlog.get_logger(__name__)
+
+
+def _consumer_key(event_type, event_data, subscriber):
+    """The W4.1 consumer-side key — ``event:cons:{subscriber}:*`` namespace."""
+    return generate_deduplication_key(
+        event_type, event_data, namespace=CONSUMER_DEDUP_NAMESPACE, subscriber=subscriber
+    )
 
 
 def get_real_redis_client_or_none():
@@ -36,9 +44,21 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis.RedisError):
         return None
+    else:
+        return client
+
+
+def _clear_all_namespaces(redis_client):
+    """Drop publisher/consumer/legacy dedup keys (W4.1 namespace split)."""
+    for prefix in ("event:dedup:*", "event:sent:*", "event:cons:*"):
+        try:
+            keys = redis_client.keys(prefix)
+            if keys:
+                redis_client.delete(*keys)
+        except redis.RedisError:
+            pass
 
 
 class EventConsumerDeduplicationTest(TestCase):
@@ -57,21 +77,11 @@ class EventConsumerDeduplicationTest(TestCase):
         self.event_bus = EventBus(redis_client=self.redis_client)
 
         # Clear deduplication keys before each test
-        try:
-            keys = self.redis_client.keys("event:dedup:*")
-            if keys:
-                self.redis_client.delete(*keys)
-        except Exception:
-            pass
+        _clear_all_namespaces(self.redis_client)
 
     def tearDown(self):
         """Clean up test fixtures."""
-        try:
-            keys = self.redis_client.keys("event:dedup:*")
-            if keys:
-                self.redis_client.delete(*keys)
-        except Exception:
-            pass
+        _clear_all_namespaces(self.redis_client)
 
     def test_consumer_skips_duplicate_event(self):
         """Test that consumer skips processing duplicate events."""
@@ -90,7 +100,7 @@ class EventConsumerDeduplicationTest(TestCase):
         }
 
         # Store event ID in Redis (simulating already processed event)
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _consumer_key(event_type, event_data, "test_subscriber")
         store_event_id(deduplication_key, event_id, redis_client=self.redis_client)
 
         # Track handler calls
@@ -139,7 +149,7 @@ class EventConsumerDeduplicationTest(TestCase):
         self.assertEqual(handler_called[0]["event_id"], event_id)
 
         # Verify event ID is stored after processing
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _consumer_key(event_type, event_data, "test_subscriber")
         is_dup, stored_id = check_event_duplicate(deduplication_key, redis_client=self.redis_client)
         self.assertTrue(is_dup)
         self.assertEqual(stored_id, event_id)
@@ -166,7 +176,7 @@ class EventConsumerDeduplicationTest(TestCase):
         )
 
         # Verify event ID is stored
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _consumer_key(event_type, event_data, "test_subscriber")
         is_dup, stored_id = check_event_duplicate(deduplication_key, redis_client=self.redis_client)
         self.assertTrue(is_dup)
         self.assertEqual(stored_id, event_id)
@@ -376,7 +386,7 @@ class EventConsumerDeduplicationTest(TestCase):
             handler_called.append(event_dict)
 
         # Step 1: Check if duplicate (should not be)
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _consumer_key(event_type, event_data, "test_subscriber")
         is_dup, existing_id = check_event_duplicate(
             deduplication_key, redis_client=self.redis_client
         )
@@ -427,13 +437,18 @@ class EventConsumerDeduplicationTest(TestCase):
         )
 
         # Verify TTL is set
-        deduplication_key = generate_deduplication_key(event_type, event_data)
+        deduplication_key = _consumer_key(event_type, event_data, "test_subscriber")
         ttl = self.redis_client.ttl(deduplication_key)
         self.assertGreater(ttl, 0)
         self.assertLessEqual(ttl, DEFAULT_DEDUPLICATION_TTL)
 
     def test_consumer_deduplication_with_multiple_subscribers(self):
-        """Test that deduplication works across multiple subscribers."""
+        """Test that deduplication is scoped PER subscriber (W4.1 R2-B3).
+
+        Pre-fix the shared namespace made subscriber 1's consumption
+        suppress delivery to subscriber 2.  The consumer key now carries
+        the subscriber name, so each subscriber has its own consumption
+        state."""
         event_type = "contract.created"
         event_data = {"contract_id": str(uuid.uuid4())}
         event_id = str(uuid.uuid4())
@@ -461,10 +476,18 @@ class EventConsumerDeduplicationTest(TestCase):
 
         self.assertEqual(len(handler1_called), 1)
 
-        # Second subscriber tries to process same event - should skip (duplicate)
+        # Second subscriber processes the SAME event — its own consumption
+        # state must not be suppressed by subscriber 1's.
         self.event_bus._handle_event(
             subscriber_name="subscriber2", event=event, handler=handler2, retry_count=0
         )
 
-        # Handler2 should not be called (duplicate detected)
-        self.assertEqual(len(handler2_called), 0)
+        # Handler2 must be called (per-subscriber deduplication)
+        self.assertEqual(len(handler2_called), 1)
+
+        # Subscriber 1 again — its own dedup still skips.
+        handler1_called.clear()
+        self.event_bus._handle_event(
+            subscriber_name="subscriber1", event=event, handler=handler1, retry_count=0
+        )
+        self.assertEqual(len(handler1_called), 0)

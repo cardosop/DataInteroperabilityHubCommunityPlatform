@@ -54,7 +54,7 @@ from hub.apps.observability.otel_metrics import (
     job_worker_throughput,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 from services.worker.health import healthz, ready
 
 User = get_user_model()
@@ -410,7 +410,7 @@ class JobPerformanceMonitoringTest(TestCase):
         self.assertEqual(jobs.count(), len(expected))
 
         actual_durs = sorted((j.completed_at - j.started_at).total_seconds() for j in jobs)
-        for actual, exp in zip(actual_durs, sorted(expected)):
+        for actual, exp in zip(actual_durs, sorted(expected), strict=False):
             self.assertAlmostEqual(
                 actual,
                 exp,

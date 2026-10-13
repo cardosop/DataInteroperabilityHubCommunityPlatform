@@ -11,9 +11,9 @@ describe('BulkActionBar', () => {
     const { container } = render(
       <BulkActionBar
         selectedCount={0}
-        onDeselectAll={() => {}}
+        onClear={() => {}}
         actions={[{ label: 'Approve', onClick: () => {} }]}
-      />,
+      />
     );
     expect(container.firstChild).toBeNull();
   });
@@ -22,14 +22,14 @@ describe('BulkActionBar', () => {
     render(
       <BulkActionBar
         selectedCount={3}
-        onDeselectAll={() => {}}
+        onClear={() => {}}
         actions={[
           { label: 'Approve', onClick: () => {} },
           { label: 'Reject', onClick: () => {}, variant: 'danger' },
         ]}
-      />,
+      />
     );
-    expect(screen.getByTestId('bulk-action-bar')).toHaveTextContent(/3 selected/);
+    expect(screen.getByTestId('bulk-action-bar')).toHaveTextContent(/3 items selected/);
     expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument();
   });
@@ -41,12 +41,12 @@ describe('BulkActionBar', () => {
     render(
       <BulkActionBar
         selectedCount={1}
-        onDeselectAll={() => {}}
+        onClear={() => {}}
         actions={[
           { label: 'Approve', onClick: onApprove },
           { label: 'Reject', onClick: onReject, variant: 'danger' },
         ]}
-      />,
+      />
     );
     await user.click(screen.getByRole('button', { name: /approve/i }));
     expect(onApprove).toHaveBeenCalledTimes(1);
@@ -59,9 +59,9 @@ describe('BulkActionBar', () => {
     render(
       <BulkActionBar
         selectedCount={2}
-        onDeselectAll={onDeselect}
+        onClear={onDeselect}
         actions={[{ label: 'Approve', onClick: () => {} }]}
-      />,
+      />
     );
     await user.click(screen.getByRole('button', { name: /clear selection/i }));
     expect(onDeselect).toHaveBeenCalledTimes(1);
@@ -71,9 +71,9 @@ describe('BulkActionBar', () => {
     render(
       <BulkActionBar
         selectedCount={1}
-        onDeselectAll={() => {}}
+        onClear={() => {}}
         actions={[{ label: 'Delete', onClick: () => {}, disabled: true }]}
-      />,
+      />
     );
     expect(screen.getByRole('button', { name: /delete/i })).toBeDisabled();
   });

@@ -88,7 +88,7 @@ class OpenAPISchemaView(SpectacularAPIView):
         "OpenApiJsonRenderer2",
         drf_spectacular.renderers.OpenApiJsonRenderer,
     )
-    renderer_classes = [_json_renderer]
+    renderer_classes = (_json_renderer,)
     urlconf = "hub.urls"
 
     def perform_content_negotiation(self, request, force=False):
@@ -99,8 +99,35 @@ class OpenAPISchemaView(SpectacularAPIView):
             return (renderer, renderer.media_type)
         return super().perform_content_negotiation(request, force=force)
 
-    def get(self, request, *args, **kwargs):
+    # Process-wide memo: the schema is generated with ``public=True`` and is
+    # therefore static per deployed code version (no tenant/auth-dependent
+    # content). Regenerating + revalidating on EVERY request made
+    # /openapi.json a 10-30s blocker on loaded hosts — the SPA's capability
+    # load depends on it, so the cost cascaded into page-load timeouts
+    # (DPO asset-creation E2E: CapabilityRoute "Loading..." past 10s waits).
+    _schema_cache: dict | None = None
+
+    def get(self, request, *_args, **_kwargs):
         """Return JSON format schema with validation and enhancement"""
+        if self.__class__._schema_cache is not None:
+            schema = self.__class__._schema_cache
+        else:
+            schema = self._build_schema()
+            self.__class__._schema_cache = schema
+
+        # Check if YAML format requested
+        format_type = request.query_params.get("format", "json")
+        if format_type.lower() == "yaml":
+            from .openapi_validation import OpenAPISpecValidator
+
+            yaml_content = OpenAPISpecValidator.export_spec(schema, format="yaml")
+            return Response(yaml_content, content_type="application/x-yaml")
+
+        # Return JSON schema
+        return Response(schema, content_type="application/json")
+
+    def _build_schema(self) -> dict:
+        """Generate, validate and enhance the OpenAPI schema (memoized)."""
         import structlog
         from drf_spectacular.generators import SchemaGenerator
 
@@ -112,7 +139,7 @@ class OpenAPISchemaView(SpectacularAPIView):
         # Generate schema using the generator
         try:
             generator = SchemaGenerator(urlconf=self.urlconf)
-            schema = generator.get_schema(request=request, public=True)
+            schema = generator.get_schema(request=None, public=True)
         except Exception as e:
             logger.warning("openapi_schema_generation_failed", error=str(e), exc_info=True)
             # Return minimal schema so capabilities/register/password-reset can load
@@ -145,7 +172,7 @@ class OpenAPISchemaView(SpectacularAPIView):
         schema = OpenAPISpecValidator.enhance_spec(schema)
         try:
             schema = OpenAPISpecEnhancer.enhance_spec(schema)
-        except Exception as enh_err:
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError) as enh_err:
             logger.warning(
                 "openapi_enhancement_failed",
                 error=str(enh_err),
@@ -153,14 +180,7 @@ class OpenAPISchemaView(SpectacularAPIView):
             )
             # Return schema without enhancement so capabilities can load
 
-        # Check if YAML format requested
-        format_type = request.query_params.get("format", "json")
-        if format_type.lower() == "yaml":
-            yaml_content = OpenAPISpecValidator.export_spec(schema, format="yaml")
-            return Response(yaml_content, content_type="application/x-yaml")
-
-        # Return JSON schema
-        return Response(schema, content_type="application/json")
+        return schema
 
 
 class OpenAPIYAMLView(SpectacularAPIView):
@@ -173,7 +193,7 @@ class OpenAPIYAMLView(SpectacularAPIView):
     renderer_classes = [drf_spectacular.renderers.OpenApiYamlRenderer]
     urlconf = "hub.urls"
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, *_args, **_kwargs):
         """Return YAML format schema with validation and enhancement"""
         import structlog
         from drf_spectacular.generators import SchemaGenerator
@@ -218,7 +238,7 @@ class OpenAPIYAMLView(SpectacularAPIView):
         schema = OpenAPISpecValidator.enhance_spec(schema)
         try:
             schema = OpenAPISpecEnhancer.enhance_spec(schema)
-        except Exception as enh_err:
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError) as enh_err:
             logger.warning(
                 "openapi_enhancement_failed",
                 error=str(enh_err),
@@ -243,7 +263,7 @@ class SwaggerUIView(SpectacularSwaggerView):
     the URL is not registered at all (221.4.1).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     urlconf = "hub.urls"
 
     def get(self, request, *args, **kwargs):
@@ -269,7 +289,7 @@ class ReDocView(SpectacularRedocView):
     Phase 221.4.2 — Requires authentication (same rationale as SwaggerUIView).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     urlconf = "hub.urls"
 
     def get(self, request, *args, **kwargs):
@@ -435,7 +455,7 @@ api_info.view_class.throttle_classes = [VersionDiscoveryRateThrottle]
 @extend_schema(exclude=True, tags=["API"])  # Exclude from OpenAPI schema
 @api_view(["GET", "POST", "PUT", "PATCH", "DELETE"])
 @permission_classes([AllowAny])
-def api_not_found(request):
+def api_not_found(_request):
     """
     Catch-all handler for non-existent API endpoints.
 
@@ -457,7 +477,13 @@ E2E_EMAILS = (
     "e2e_cpo@example.com",
     "e2e_developer@example.com",
     "e2e_dmo@example.com",
-) + _PROFILE_E2E_EMAILS
+    # Secondary-tenant seeds used by the SDK's _TENANT_SLUG_TO_SEEDED_EMAIL
+    # map — ensure-e2e-subscription must accept them so cross-tenant
+    # personas can prime their tenants (writes 403 otherwise).
+    "e2e_iso@example.com",
+    "e2e_tenant_b@example.com",
+    *_PROFILE_E2E_EMAILS,
+)
 
 
 @extend_schema(exclude=True, tags=["API"])
@@ -486,7 +512,14 @@ def ensure_e2e_invitation_token(request):
     # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
     if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
-    if request.user.email not in E2E_EMAILS:
+    # Dynamic per-test isolated tenants (seedFailClosedTenant in
+    # frontend/e2e/fixtures/asset-creation-fixtures.ts) create DPO users as
+    # ``dpo-fail-closed-<slug>@example.com`` — allow that exact pattern so
+    # the fixture can prime subscription + KYC for its fresh tenant. Still
+    # gated by the ENVIRONMENT/DEBUG check and the shared-secret header.
+    if request.user.email not in E2E_EMAILS and not request.user.email.startswith(
+        "dpo-fail-closed-"
+    ):
         raise NotFound("Resource not found")
     tenant = getattr(request.user, "tenant", None)
     if not tenant:
@@ -541,13 +574,47 @@ def ensure_e2e_subscription(request):
     # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
     if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
-    if request.user.email not in E2E_EMAILS:
+    # Dynamic per-test isolated tenants (seedFailClosedTenant in
+    # frontend/e2e/fixtures/asset-creation-fixtures.ts) create DPO users as
+    # ``dpo-fail-closed-<slug>@example.com`` — allow that exact pattern so
+    # the fixture can prime subscription + KYC for its fresh tenant. Still
+    # gated by the ENVIRONMENT/DEBUG check and the shared-secret header.
+    if request.user.email not in E2E_EMAILS and not request.user.email.startswith(
+        "dpo-fail-closed-"
+    ):
         raise NotFound("Resource not found")
     if not request.user.tenant_id:
         return Response({"ok": False, "error": "no tenant"}, status=400)
-    from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+    try:
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
+    except (RuntimeError, ModuleNotFoundError):
+        # Billing is the paid layer — absent in core-only/public runs;
+        # the seeding hook is a no-op there (W7.1 guard).
+        ensure_e2e_tenant_ready = None
 
-    ensure_e2e_tenant_ready(request.user.tenant)
+    if ensure_e2e_tenant_ready is not None:
+        ensure_e2e_tenant_ready(request.user.tenant)
+
+    # Phase 250.1.B test hook: seedFailClosedTenant (frontend E2E fixture)
+    # passes the per-tenant fail-closed flags here — NO production API
+    # writes these Tenant fields (admin/ORM-only since the platform
+    # viewset became read-only), and the fixture needs them for the
+    # fail-closed vs legacy-fallback matrix. Still behind the E2E-EMAILS
+    # allow-list + ENVIRONMENT gate + shared-secret header.
+    update_fields = []
+    if "compliance_fail_closed_enabled" in request.data:
+        request.user.tenant.compliance_fail_closed_enabled = bool(
+            request.data["compliance_fail_closed_enabled"]
+        )
+        update_fields.append("compliance_fail_closed_enabled")
+    if "allow_intake_on_compliance_degraded" in request.data:
+        request.user.tenant.allow_intake_on_compliance_degraded = bool(
+            request.data["allow_intake_on_compliance_degraded"]
+        )
+        update_fields.append("allow_intake_on_compliance_degraded")
+    if update_fields:
+        request.user.tenant.save(update_fields=update_fields)
+
     return Response({"ok": True})
 
 
@@ -581,7 +648,14 @@ def ensure_e2e_tenant_switch_setup(request):
     # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
     if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
-    if request.user.email not in E2E_EMAILS:
+    # Dynamic per-test isolated tenants (seedFailClosedTenant in
+    # frontend/e2e/fixtures/asset-creation-fixtures.ts) create DPO users as
+    # ``dpo-fail-closed-<slug>@example.com`` — allow that exact pattern so
+    # the fixture can prime subscription + KYC for its fresh tenant. Still
+    # gated by the ENVIRONMENT/DEBUG check and the shared-secret header.
+    if request.user.email not in E2E_EMAILS and not request.user.email.startswith(
+        "dpo-fail-closed-"
+    ):
         raise NotFound("Resource not found")
     if not request.user.tenant_id:
         return Response({"error": "no tenant"}, status=400)
@@ -684,7 +758,14 @@ def ensure_e2e_free_plan_tenant(request):
     # ── Safety gates ─────────────────────────────────────────────────
     if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
-    if request.user.email not in E2E_EMAILS:
+    # Dynamic per-test isolated tenants (seedFailClosedTenant in
+    # frontend/e2e/fixtures/asset-creation-fixtures.ts) create DPO users as
+    # ``dpo-fail-closed-<slug>@example.com`` — allow that exact pattern so
+    # the fixture can prime subscription + KYC for its fresh tenant. Still
+    # gated by the ENVIRONMENT/DEBUG check and the shared-secret header.
+    if request.user.email not in E2E_EMAILS and not request.user.email.startswith(
+        "dpo-fail-closed-"
+    ):
         raise NotFound("Resource not found")
 
     # ── Clean up old free-plan tenants (> 24 h) ─────────────────────
@@ -804,10 +885,34 @@ def ensure_e2e_users(request):
                 slug=slug,
                 defaults={"name": name, "status": TenantStatus.ACTIVE},
             )
-            # Ensure ml_enabled is True on the default tenant (idempotent update for pre-existing tenants).
-            if slug == "default" and not t.ml_enabled:
-                t.ml_enabled = True
-                t.save(update_fields=["ml_enabled"])
+            # The default tenant carries the paid-surface flags the E2E
+            # suites exercise (the management command sets the same set).
+            # get_or_create only applies defaults on CREATE, and a wiped
+            # tenant recreated here would otherwise come back with every
+            # flag OFF — mid-batch self-heals then 403 downstream suites
+            # (MARKETPLACE_INTEGRATIONS_DISABLED etc., measured
+            # 2026-09-20).  Enable idempotently for both cases.
+            if slug == "default":
+                flag_updates = []
+                for flag in (
+                    "ml_enabled",
+                    "marketplace_integrations_enabled",
+                    "baas_enabled",
+                    "databricks_control_plane_enabled",
+                    "compliance_ropa_enabled",
+                    "compliance_dpia_enabled",
+                ):
+                    if not getattr(t, flag, False):
+                        setattr(t, flag, True)
+                        flag_updates.append(flag)
+                # W5.1 (R2-F1) — the impersonation journey: the default
+                # tenant opts in so the E2E can impersonate its non-PA
+                # target user (e2e_test@example.com, DATA_PROVIDER).
+                if not t.impersonation_allowed:
+                    t.impersonation_allowed = True
+                    flag_updates.append("impersonation_allowed")
+                if flag_updates:
+                    t.save(update_fields=flag_updates)
             tenant_cache[slug] = t
 
         for spec in users_to_ensure:
@@ -906,7 +1011,7 @@ def ensure_e2e_users(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @require_e2e_token
-def reset_e2e_auth_rate_limits(request):
+def reset_e2e_auth_rate_limits(_request):
     """
     E2E-only: clear the auth-category Redis rate-limit keys.
 
@@ -949,12 +1054,12 @@ def reset_e2e_auth_rate_limits(request):
     try:
         import redis
 
-        from hub.apps.core.redis_pools import get_redis_cache_pool
         from hub.apps.core.rate_limiting.utils import EndpointCategory
+        from hub.apps.core.redis_pools import get_redis_cache_pool
 
         pool = get_redis_cache_pool()
         client = redis.Redis(connection_pool=pool, decode_responses=True)
-    except Exception as exc:
+    except (ImportError, ValueError, TypeError) as exc:
         # Redis unavailable is a real platform incident, not a test bug.
         # Surface explicitly so the runner can decide whether to abort the
         # suite or continue with degraded conditions.
@@ -973,6 +1078,16 @@ def reset_e2e_auth_rate_limits(request):
     # that have logged in within the limiter's window, so the iteration is
     # O(active-tenants), not O(all-redis-keys).
     keys = list(client.scan_iter(match=pattern))
+    # Phase P.5 closeout — also clear the DRF SimpleRateThrottle buckets for
+    # the asset-creation endpoints.  The concurrent_operations use_cases
+    # tests issue rapid create sequences against the persona user; the
+    # suite's cumulative activity exhausts the 60/min user bucket and the
+    # stress tests 429 with "Request was throttled" (measured 2026-08-28).
+    # DRF keys these buckets ``throttle_<scope>_<ident>`` in the same cache.
+    for throttle_scope in ("asset_data_first_user", "asset_data_first_tenant"):
+        # The cache backend prefixes keys (``hub:1:`` on the test stack),
+        # so match with a leading wildcard.
+        keys.extend(client.scan_iter(match=f"*throttle_{throttle_scope}_*"))
     if keys:
         client.delete(*keys)
     return Response(
@@ -983,7 +1098,7 @@ def reset_e2e_auth_rate_limits(request):
 
 @permission_classes([AllowAny])
 @require_e2e_token
-def raise_500(request):
+def raise_500(_request):
     """
     E2E-only: deliberately raise an unhandled exception to produce a 500.
 

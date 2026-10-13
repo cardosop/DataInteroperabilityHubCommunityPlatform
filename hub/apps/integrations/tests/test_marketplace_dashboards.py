@@ -61,12 +61,7 @@ class MarketplaceDashboardsTest(TestCase):
             with self.subTest(dashboard=dashboard_name):
                 try:
                     content = dashboard_path.read_text(encoding="utf-8")
-                    dashboard = json.loads(content)
-                    self.assertIn(
-                        "dashboard",
-                        dashboard,
-                        f"Dashboard {dashboard_name} should have 'dashboard' key",
-                    )
+                    json.loads(content)
                 except json.JSONDecodeError as e:
                     self.fail(f"Dashboard {dashboard_name} is not valid JSON: {e}")
 
@@ -85,9 +80,9 @@ class MarketplaceDashboardsTest(TestCase):
                 content = dashboard_path.read_text(encoding="utf-8")
                 dashboard = json.loads(content)
 
-                # Check required top-level keys
-                self.assertIn("dashboard", dashboard)
-                dashboard_obj = dashboard["dashboard"]
+                # Dashboards are stored in Grafana provisioning file format:
+                # the dashboard model IS the top-level object (no {"dashboard": ...} wrapper).
+                dashboard_obj = dashboard
 
                 # Check required dashboard properties
                 self.assertIn(
@@ -153,7 +148,7 @@ class MarketplaceDashboardsTest(TestCase):
             with self.subTest(dashboard=dashboard_name):
                 content = dashboard_path.read_text(encoding="utf-8")
                 dashboard = json.loads(content)
-                panels = dashboard["dashboard"].get("panels", [])
+                panels = dashboard.get("panels", [])
 
                 self.assertGreater(
                     len(panels), 0, f"Dashboard {dashboard_name} should have at least one panel"
@@ -175,8 +170,8 @@ class MarketplaceDashboardsTest(TestCase):
                 dashboard = json.loads(content)
 
                 # Check if templating exists (optional but recommended)
-                if "templating" in dashboard["dashboard"]:
-                    templating = dashboard["dashboard"]["templating"]
+                if "templating" in dashboard:
+                    templating = dashboard["templating"]
                     if "list" in templating:
                         # Should have at least marketplace_type variable
                         variables = [v.get("name") for v in templating["list"]]
@@ -197,7 +192,7 @@ class MarketplaceDashboardsTest(TestCase):
         try:
             import yaml
         except ImportError:
-            raise unittest.SkipTest("PyYAML not available for YAML validation")
+            raise unittest.SkipTest("PyYAML not available for YAML validation") from None
 
         alerts_file = self.alerts_dir / "marketplace-alerts.yml"
         try:
@@ -239,7 +234,7 @@ class MarketplaceDashboardsTest(TestCase):
         try:
             import yaml
         except ImportError:
-            raise unittest.SkipTest("PyYAML not available for YAML validation")
+            raise unittest.SkipTest("PyYAML not available for YAML validation") from None
 
         alerts_file = self.alerts_dir / "marketplace-alerts.yml"
         content = alerts_file.read_text(encoding="utf-8")
@@ -279,7 +274,7 @@ class MarketplaceDashboardsTest(TestCase):
             with self.subTest(dashboard=dashboard_name):
                 content = dashboard_path.read_text(encoding="utf-8")
                 dashboard = json.loads(content)
-                dashboard_obj = dashboard["dashboard"]
+                dashboard_obj = dashboard
 
                 # Validate Grafana dashboard structure
                 # Check for required fields

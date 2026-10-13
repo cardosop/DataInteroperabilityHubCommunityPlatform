@@ -36,13 +36,17 @@ test's ``measurement_ms``, and opens a GitHub issue if today's run is
 from __future__ import annotations
 
 import json
+import math
 import os
 import statistics
 import subprocess
-from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # The schema field set is locked by ``test_perf_record.py``. Any change
 # to this list must update the test in lockstep so the schema lock is
@@ -146,7 +150,7 @@ def build_perf_record(
     """
     if not measurements_ms:
         raise ValueError("measurements_ms must be non-empty")
-    if any(m < 0 or m != m for m in measurements_ms):  # NaN check via self-compare
+    if any(m < 0 or math.isnan(m) for m in measurements_ms):  # NaN check
         raise ValueError(f"measurements_ms contains invalid value(s): {measurements_ms!r}")
     if budget_ms <= 0:
         raise ValueError(f"budget_ms must be > 0, got {budget_ms!r}")

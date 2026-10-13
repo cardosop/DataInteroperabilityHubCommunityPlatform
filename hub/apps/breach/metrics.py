@@ -37,7 +37,7 @@ try:
         ["tenant_id"],
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     breach_reported_total = _MetricStub()
     breach_notified_total = _MetricStub()
     breach_sla_breach_total = _MetricStub()

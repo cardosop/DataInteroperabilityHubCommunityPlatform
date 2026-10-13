@@ -10,7 +10,11 @@
  */
 import { apiClient } from '../../../shared/api/client';
 
-const REQUESTS_BASE = 'governance/dsar-requests';
+// The DSAR handler API lives at /api/v1/dsar/requests/ (hub/apps/dsar/
+// urls.py) — NOT under /governance/. close-test-coverage-gaps 4.4: the
+// old 'governance/dsar-requests' base 404'd every queue/detail call once
+// the compliance_dsar capability route started rendering for real.
+const REQUESTS_BASE = 'dsar/requests';
 
 // ---------------------------------------------------------------------------
 // Response shapes

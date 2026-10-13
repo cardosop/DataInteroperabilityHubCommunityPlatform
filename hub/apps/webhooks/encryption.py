@@ -40,11 +40,7 @@ def encrypt_secret(plaintext: str) -> str:
     Tries AWS KMS first, falls back to Fernet.
     Idempotent: already-encrypted values returned unchanged.
     """
-    if (
-        plaintext.startswith(_PREFIX)
-        or plaintext.startswith(_VAULT_PREFIX)
-        or plaintext.startswith(_AWS_KMS_PREFIX)
-    ):
+    if plaintext.startswith((_PREFIX, _VAULT_PREFIX, _AWS_KMS_PREFIX)):
         return plaintext
 
     # Try AWS KMS
@@ -58,12 +54,13 @@ def encrypt_secret(plaintext: str) -> str:
             ciphertext = _kms_encrypt(
                 plaintext.encode("utf-8"),
             )
-            return ciphertext  # "aws-kms:..."
         except Exception as e:
             logger.warning(
                 "webhook_kms_encrypt_fallback: %s",
                 e,
             )
+        else:
+            return ciphertext  # "aws-kms:..."
 
     # Fernet fallback
     ciphertext = (
@@ -96,7 +93,7 @@ def decrypt_secret(value: str) -> str:
         except (ValueError, ConnectionError, OSError, RuntimeError) as exc:
             raise ValueError(
                 "Failed to decrypt webhook secret via AWS KMS "
-                "– check IAM permissions and key availability",
+                "- check IAM permissions and key availability",
             ) from exc
 
     # Legacy Vault Transit — no longer decryptable
@@ -119,7 +116,7 @@ def decrypt_secret(value: str) -> str:
             )
         except InvalidToken as exc:
             raise ValueError(
-                "Failed to decrypt webhook secret – ENCRYPTION_KEY mismatch?",
+                "Failed to decrypt webhook secret - ENCRYPTION_KEY mismatch?",
             ) from exc
 
     # Legacy plaintext

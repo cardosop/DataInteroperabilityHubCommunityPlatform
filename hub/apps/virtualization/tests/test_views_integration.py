@@ -28,7 +28,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,
@@ -890,9 +890,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
         for i in range(5):
             data = self.valid_dataset_data.copy()
             data["name"] = f"Sequential Dataset {i}"
-            response = self.client.post(
-                "/api/v1/virtualization/datasets/", data, format="json"
-            )
+            response = self.client.post("/api/v1/virtualization/datasets/", data, format="json")
             self.assertEqual(
                 response.status_code,
                 status.HTTP_201_CREATED,
@@ -934,7 +932,6 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
     def test_create_dataset_exceeds_plan_limit(self):
         """Test that creating dataset beyond plan limit returns 403"""
-        from hub.apps.users.models import Role, UserRole
 
         # Set a low limit on the tenant's plan
         plan = self.tenant.plan
@@ -990,9 +987,9 @@ class VirtualizationViewsIntegrationTest(TestCase):
         # produce multiple events under --reuse-db)
         self.assertGreater(AuditEvent.objects.count(), initial_count)
         # Verify a VIRTUAL_DATASET event exists among recent events
-        recent_events = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET"
-        ).order_by("-timestamp")
+        recent_events = AuditEvent.objects.filter(resource_type="VIRTUAL_DATASET").order_by(
+            "-timestamp"
+        )
         self.assertTrue(recent_events.exists(), "No VIRTUAL_DATASET audit event found")
 
     def test_delete_dataset_creates_audit_log(self):
@@ -1018,9 +1015,9 @@ class VirtualizationViewsIntegrationTest(TestCase):
         # produce multiple events under --reuse-db)
         self.assertGreater(AuditEvent.objects.count(), initial_count)
         # Verify a VIRTUAL_DATASET event exists among recent events
-        recent_events = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET"
-        ).order_by("-timestamp")
+        recent_events = AuditEvent.objects.filter(resource_type="VIRTUAL_DATASET").order_by(
+            "-timestamp"
+        )
         self.assertTrue(recent_events.exists(), "No VIRTUAL_DATASET audit event found")
 
     # ==================== FILTERING AND SEARCH TESTS ====================

@@ -65,8 +65,8 @@ class JobQueueDashboardsTest(TestCase):
         content = self.odps_dashboard_path.read_text()
         dashboard = json.loads(content)
 
-        self.assertIn("dashboard", dashboard, "Dashboard must have 'dashboard' key")
-        dashboard_obj = dashboard["dashboard"]
+        # Provisioning format: no {"dashboard": ...} wrapper.
+        dashboard_obj = dashboard.get("dashboard", dashboard)
 
         required_keys = ["title", "tags", "schemaVersion", "version", "panels"]
         for key in required_keys:
@@ -84,8 +84,8 @@ class JobQueueDashboardsTest(TestCase):
         content = self.worker_health_dashboard_path.read_text()
         dashboard = json.loads(content)
 
-        self.assertIn("dashboard", dashboard, "Dashboard must have 'dashboard' key")
-        dashboard_obj = dashboard["dashboard"]
+        # Provisioning format: no {"dashboard": ...} wrapper.
+        dashboard_obj = dashboard.get("dashboard", dashboard)
 
         required_keys = ["title", "tags", "schemaVersion", "version", "panels"]
         for key in required_keys:
@@ -102,7 +102,7 @@ class JobQueueDashboardsTest(TestCase):
         """Test that ODPS dashboard has all required panels"""
         content = self.odps_dashboard_path.read_text()
         dashboard = json.loads(content)
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard.get("dashboard", dashboard)["panels"]
 
         required_panels = [
             "ODPS Job Queue Length by Job Type",
@@ -127,7 +127,7 @@ class JobQueueDashboardsTest(TestCase):
         """Test that worker health dashboard has all required panels"""
         content = self.worker_health_dashboard_path.read_text()
         dashboard = json.loads(content)
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard.get("dashboard", dashboard)["panels"]
 
         required_panels = [
             "Active Worker Count",
@@ -150,7 +150,7 @@ class JobQueueDashboardsTest(TestCase):
         """Test that ODPS dashboard queries use correct Prometheus metrics"""
         content = self.odps_dashboard_path.read_text()
         dashboard = json.loads(content)
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard.get("dashboard", dashboard)["panels"]
 
         expected_metrics = [
             "job_queue_length",
@@ -177,7 +177,7 @@ class JobQueueDashboardsTest(TestCase):
         """Test that ODPS dashboard filters for ODPS job types"""
         content = self.odps_dashboard_path.read_text()
         dashboard = json.loads(content)
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard.get("dashboard", dashboard)["panels"]
 
         # Check that at least one query filters for ODPS jobs
         has_odps_filter = False
@@ -196,7 +196,7 @@ class JobQueueDashboardsTest(TestCase):
         """Test that worker health dashboard queries use correct Prometheus metrics"""
         content = self.worker_health_dashboard_path.read_text()
         dashboard = json.loads(content)
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard.get("dashboard", dashboard)["panels"]
 
         expected_metrics = [
             "job_worker_active",
@@ -227,7 +227,7 @@ class JobQueueDashboardsTest(TestCase):
         for dashboard_path in dashboards:
             content = dashboard_path.read_text()
             dashboard = json.loads(content)
-            panels = dashboard["dashboard"]["panels"]
+            panels = dashboard.get("dashboard", dashboard)["panels"]
 
             for panel in panels:
                 if "targets" in panel:
@@ -256,7 +256,7 @@ class JobQueueDashboardsTest(TestCase):
         for dashboard_path in dashboards:
             content = dashboard_path.read_text()
             dashboard = json.loads(content)
-            panels = dashboard["dashboard"]["panels"]
+            panels = dashboard.get("dashboard", dashboard)["panels"]
 
             for panel in panels:
                 if "gridPos" in panel:

@@ -8,6 +8,7 @@ Tests for Mesh Domain Management API methods.
 Tests domain CRUD operations with comprehensive error handling.
 """
 import asyncio
+import contextlib
 import uuid
 from unittest.mock import AsyncMock
 
@@ -16,13 +17,13 @@ import pytest
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
 from datahub_interoperability.errors import (
     ConflictError,
+    DataHubError,
     NotFoundError,
     ValidationError,
 )
 from tests._sdk_test_helpers import (
     create_real_api_config,
 )
-import contextlib
 
 # File-specific tenant parameters
 _DOMAINS_TENANT_SLUG = "mesh-domains-sdk-test-tenant"
@@ -305,11 +306,9 @@ async def test_create_domain_integration(real_client):
     assert domain["status"] == "ACTIVE"
     assert "id" in domain
 
-    # Cleanup
-    try:
+    # Cleanup — ignore cleanup errors
+    with contextlib.suppress(DataHubError, ValueError):
         await real_client.mesh.delete_domain(domain["id"])
-    except Exception:
-        pass  # Ignore cleanup errors
 
 
 @pytest.mark.asyncio
@@ -398,7 +397,7 @@ async def test_list_domains_with_filters_integration(real_client):
         try:
             await real_client.mesh.delete_domain(domain1["id"])
             await real_client.mesh.delete_domain(domain2["id"])
-        except Exception:
+        except (DataHubError, ValueError):
             pass
 
 

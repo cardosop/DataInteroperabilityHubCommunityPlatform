@@ -58,10 +58,14 @@ class BareAssertCalledVisitor(ast.NodeVisitor):
         self.violations: list[int] = []
 
     def visit_Call(self, node: ast.Call) -> None:
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "assert_called":
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "assert_called"
+            and not node.args
+            and not node.keywords
+        ):
             # ``.assert_called()`` with zero args is the bare form.
-            if not node.args and not node.keywords:
-                self.violations.append(node.lineno)
+            self.violations.append(node.lineno)
         self.generic_visit(node)
 
 

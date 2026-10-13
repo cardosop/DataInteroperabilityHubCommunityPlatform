@@ -162,7 +162,9 @@ urlpatterns = [
         name="dq-quality-deprecated-scorecards",
     ),
     path(
-        "root_cause_analysis/",
+        # kebab-case per the URL standards gate (the canonical path is
+        # /api/v1/dq/quality/root_cause_analysis/; this alias is sunset).
+        "root-cause-analysis/",
         DeprecatedDQQualityViewSet.as_view({"get": "root_cause_analysis"}),
         name="dq-quality-deprecated-root-cause",
     ),

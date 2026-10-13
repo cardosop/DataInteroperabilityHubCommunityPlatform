@@ -6,6 +6,7 @@ Comprehensive tests without mocks/stubs, following engineering best practices.
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -1136,7 +1137,15 @@ class ComplianceBusinessRulesIntegrationTest(TestCase):
 
 
 class ComplianceRunExecutionValidationTest(TestCase):
-    """Test compliance run execution validation"""
+    """Test compliance run execution validation.
+
+    Execution/quota validation performs a live health check against the
+    compliance service (docker-compose service name), so the class is
+    marked requires_services; outside the compose test network the check
+    fails and validations return invalid results.
+    """
+
+    pytestmark = pytest.mark.requires_services
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1193,8 +1202,15 @@ class ComplianceRunExecutionValidationTest(TestCase):
             created_by=self.user,
         )
 
+    @pytest.mark.requires_services
     def test_validate_compliance_run_execution_all_validations(self):
-        """Test comprehensive compliance run execution validation"""
+        """Test comprehensive compliance run execution validation.
+
+        The "all" validation path performs a live health check against
+        the compliance service (docker-compose service name); outside the
+        compose test network the check fails and the validation result is
+        invalid. Marked requires_services accordingly.
+        """
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,

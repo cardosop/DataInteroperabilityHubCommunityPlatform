@@ -12,10 +12,10 @@ Detects patterns via comment heuristics:
 
 Safe to re-run — idempotent.
 """
+
 import os
 import re
 import sys
-
 
 # Regex for broad status code assertions
 _ASSERT_RE = re.compile(
@@ -36,11 +36,13 @@ def _has_noqa(source: str, match_start: int) -> bool:
     current_line = source[line_start:line_end]
     # Also check previous line
     prev_line_start = source.rfind("\n", 0, line_start - 1) + 1
-    prev_line = source[prev_line_start:line_start - 1] if prev_line_start > 0 else ""
+    prev_line = source[prev_line_start : line_start - 1] if prev_line_start > 0 else ""
     return _NOQA in current_line or _NOQA in prev_line
 
 
-def _get_surrounding_comment(source: str, match_start: int, match_end: int, context_lines: int = 3) -> str:
+def _get_surrounding_comment(
+    source: str, match_start: int, _match_end: int, context_lines: int = 3
+) -> str:
     """Get comment text surrounding the match."""
     lines = source.split("\n")
     match_lineno = source[:match_start].count("\n")
@@ -62,37 +64,80 @@ def _is_legitimate_pattern(source: str, match_start: int, match_end: int) -> boo
     comment = _get_surrounding_comment(source, match_start, match_end)
 
     # URL resolution / routing tests
-    if any(p in comment for p in (
-        "url should", "endpoint should resolve", "url routing",
-        "url name", "url pattern", "reverse lookup",
-        "should return 200 or 405", "resolved to view",
-    )):
+    if any(
+        p in comment
+        for p in (
+            "url should",
+            "endpoint should resolve",
+            "url routing",
+            "url name",
+            "url pattern",
+            "reverse lookup",
+            "should return 200 or 405",
+            "resolved to view",
+        )
+    ):
         return True
 
     # Service availability tests
-    if any(p in comment for p in (
-        "may return 503", "service unavailable", "if prefect", "if s3",
-        "if fuseki", "if semantic", "if dq service", "if compliance",
-        "503 if", "service not available", "503 —",
-    )):
+    if any(
+        p in comment
+        for p in (
+            "may return 503",
+            "service unavailable",
+            "if prefect",
+            "if s3",
+            "if fuseki",
+            "if semantic",
+            "if dq service",
+            "if compliance",
+            "503 if",
+            "service not available",
+            "503 —",
+        )
+    ):
         return True
 
     # Graceful degradation / integration tests
-    if any(p in comment for p in (
-        "connector not available", "external service", "downstream",
-        "may fail", "graceful", "not crash", "safe handling",
-        "should not result in 500", "should not crash", "should be handled",
-        "should not throw", "fail open", "should not cause",
-        "any non-500", "don't crash", "safe to", "not explode",
-    )):
+    if any(
+        p in comment
+        for p in (
+            "connector not available",
+            "external service",
+            "downstream",
+            "may fail",
+            "graceful",
+            "not crash",
+            "safe handling",
+            "should not result in 500",
+            "should not crash",
+            "should be handled",
+            "should not throw",
+            "fail open",
+            "should not cause",
+            "any non-500",
+            "don't crash",
+            "safe to",
+            "not explode",
+        )
+    ):
         return True
 
     # Auth-agnostic tests
-    if any(p in comment for p in (
-        "unauthorized", "unauthenticated", "drf re-raises",
-        "permission", "forbidden", "auth", "not authenticated",
-        "without tenant", "without authentication",
-    )):
+    if any(
+        p in comment
+        for p in (
+            "unauthorized",
+            "unauthenticated",
+            "drf re-raises",
+            "permission",
+            "forbidden",
+            "auth",
+            "not authenticated",
+            "without tenant",
+            "without authentication",
+        )
+    ):
         return True
 
     # Explicit error code documentation (comment lists each code meaning)
@@ -100,13 +145,18 @@ def _is_legitimate_pattern(source: str, match_start: int, match_end: int) -> boo
         return True
 
     # Async/fallback pattern
-    if any(p in comment for p in (
-        "sync fallback", "auto-switched to async", "job created successfully",
-        "may return 202", "accepted",
-    )):
-        return True
-
-    return False
+    return bool(
+        any(
+            p in comment
+            for p in (
+                "sync fallback",
+                "auto-switched to async",
+                "job created successfully",
+                "may return 202",
+                "accepted",
+            )
+        )
+    )
 
 
 def fix_file(filepath: str) -> int:
@@ -114,7 +164,7 @@ def fix_file(filepath: str) -> int:
     try:
         with open(filepath, encoding="utf-8") as fh:
             source = fh.read()
-    except Exception:
+    except (OSError, ValueError):
         return 0
 
     fixes = 0
@@ -148,7 +198,11 @@ def fix_file(filepath: str) -> int:
         line = lines[assert_line_idx]
         stripped = line.rstrip()
         if _NOQA not in stripped:
-            lines[assert_line_idx] = stripped + "  " + _NOQA + "\n" if not stripped.endswith("\n") else stripped[:-1] + "  " + _NOQA + "\n"
+            lines[assert_line_idx] = (
+                stripped + "  " + _NOQA + "\n"
+                if not stripped.endswith("\n")
+                else stripped[:-1] + "  " + _NOQA + "\n"
+            )
             fixes += 1
 
         source = "\n".join(lines)
@@ -169,7 +223,8 @@ def main() -> int:
             continue
         for dirpath, dirnames, filenames in os.walk(p):
             dirnames[:] = [
-                d for d in dirnames
+                d
+                for d in dirnames
                 if d not in ("__pycache__", ".git", "migrations", ".venv", "venv", "node_modules")
             ]
             for fn in filenames:

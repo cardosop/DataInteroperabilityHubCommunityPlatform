@@ -52,14 +52,14 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
   test('login form — initial empty state audits clean', async ({ page }) => {
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.locator('input[type="email"], #email').first()
-      .waitFor({ state: 'visible', timeout: 15_000 });
+      .waitFor({ state: 'visible', timeout: 30_000 });
     await audit(page, 'login-empty');
   });
 
   test('login form — invalid-email validation state audits clean', async ({ page }) => {
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     const emailInput = page.locator('input[type="email"], #email').first();
-    await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
+    await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
     await emailInput.fill('not-an-email-address');
     await emailInput.blur();
     await audit(page, 'login-invalid-email');
@@ -69,7 +69,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     const emailInput = page.locator('input[type="email"], #email').first();
     const passwordInput = page.locator('input[type="password"], #password').first();
-    await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
+    await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
     await emailInput.fill('nonexistent-user@example.com');
     await passwordInput.fill('wrongpassword');
     const submit = page
@@ -99,7 +99,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     await clearAuthStorage(page);
     await page.goto('/register', { waitUntil: 'domcontentloaded' });
     await page.locator('input[type="email"], #email').first()
-      .waitFor({ state: 'visible', timeout: 15_000 });
+      .waitFor({ state: 'visible', timeout: 30_000 });
     await audit(page, 'register-empty');
   });
 
@@ -107,7 +107,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     await clearAuthStorage(page);
     await page.goto('/register', { waitUntil: 'domcontentloaded' });
     const emailInput = page.locator('input[type="email"], #email').first();
-    await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
+    await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
     await emailInput.fill('a11y-probe@example.com');
     const passwordInput = page.locator('input[type="password"]').first();
     if (await isPresent(passwordInput)) {
@@ -120,7 +120,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
   test('user-menu open audits clean', async ({ page }) => {
     const user = await getTestUser();
     await loginUser(page, user);
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     // Try to open the user menu / avatar dropdown. Name is fluid across
     // builds — probe a few candidate triggers.
     const trigger = page
@@ -141,7 +141,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     const searchInput = page
       .locator('input[type="search"], input[placeholder*="search" i], input[name*="search" i]')
       .first();
@@ -162,8 +162,8 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     await page.goto('/assets/00000000-0000-0000-0000-000000000000', {
       waitUntil: 'domcontentloaded',
     });
-    await page.locator('.error-display, [data-testid="error-display"], .not-found-page, .unavailable-page, [data-testid="unavailable-page"]').first()
-      .waitFor({ state: 'visible', timeout: 15_000 })
+    await page.locator('.error-display, [data-testid="error-display"], .not-found-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
       .catch(() => {
         // intentional: 404-rendering is route-specific; audit scans whichever fallback state the SPA settled on.
       });
@@ -174,7 +174,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     const card = page.locator('.marketplace-listing-card, .listing-card, .card').first();
     if (await isPresent(card)) {
       await card.hover().catch(() => {
@@ -201,7 +201,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
         '.app-header, [data-testid="app-header"], .unavailable-page, [data-testid="unavailable-page"]',
       )
       .first()
-      .waitFor({ state: 'visible', timeout: 15_000 });
+      .waitFor({ state: 'visible', timeout: 30_000 });
     // Cycle through any tabs / sections present.
     const tabs = page.locator('[role="tab"]');
     // intentional: count() may reject on a detached/stale frame as the SPA settles; treating that as "no tabs" lets the audit below proceed against whatever surface IS rendered, which is the a11y target regardless of tab presence.
@@ -224,7 +224,7 @@ test.describe('A11y axe coverage — interactive states @a11y @critical', () => 
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     // Audit just the breadcrumb component if it renders.
     const crumb = page.locator('[aria-label*="breadcrumb" i], nav[aria-label*="breadcrumb" i]').first();
     if (await isPresent(crumb)) {

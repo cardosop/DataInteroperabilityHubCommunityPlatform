@@ -5,7 +5,7 @@ Re-exports MarketplaceIntegrationService from its decomposed modules.
 All existing ``from hub.apps.integrations.services import X`` paths are preserved.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import structlog
 

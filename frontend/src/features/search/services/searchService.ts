@@ -13,9 +13,14 @@ import type { SearchResponse, SearchFilters } from '../../../shared/types/search
 
 const SEARCH_BASE_PATH = 'search';
 
-/** Map the frontend Scope enum to canonical ``types`` values. */
+/** Map the frontend Scope enum to canonical ``types`` values.
+ *
+ * Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — the ALL scope
+ * includes ``uc`` so mirrored Databricks Unity Catalog objects surface
+ * in global search alongside assets and contracts.
+ */
 const SCOPE_TO_TYPES: Record<string, string> = {
-  ALL: 'assets,contracts',
+  ALL: 'assets,contracts,uc',
   ASSET: 'assets',
   CONTRACT: 'contracts',
   DATASET: 'assets,contracts',

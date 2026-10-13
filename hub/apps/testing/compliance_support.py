@@ -92,7 +92,9 @@ def seed_succeeded_compliance_run(
 _AUTOSEED_SKIP_ATTR = "_skip_test_compliance_autoseed"
 
 
-def _asset_post_save_autoseed(sender, instance, created, raw, **_kwargs):
+def _asset_post_save_autoseed(
+    sender, instance, created, raw, **_kwargs
+):  # Django keyword-dispatches signal receivers
     # Fire on both create AND update so a test that builds the asset
     # via ``client.post`` (default ``compliance_status=UNKNOWN``) and
     # later flips it to ``PASS`` via ``asset.save()`` triggers the
@@ -129,17 +131,17 @@ def _asset_post_save_autoseed(sender, instance, created, raw, **_kwargs):
 
     if ComplianceRun.objects.filter(asset_id=instance.pk).exists():
         return
-    try:
+    # Auto-seed is a test convenience — a failure (e.g. missing
+    # Job FK metadata) must not block the asset save itself.  The
+    # explicit ``seed_succeeded_compliance_run`` helper still
+    # surfaces real errors when called directly.
+    with contextlib.suppress(Exception):
         seed_succeeded_compliance_run(asset=instance)
-    except Exception:
-        # Auto-seed is a test convenience — a failure (e.g. missing
-        # Job FK metadata) must not block the asset save itself.  The
-        # explicit ``seed_succeeded_compliance_run`` helper still
-        # surfaces real errors when called directly.
-        pass
 
 
-def _contract_post_save_autoseed(sender, instance, created, raw, **_kwargs):
+def _contract_post_save_autoseed(
+    sender, instance, created, raw, **_kwargs
+):  # Django keyword-dispatches signal receivers
     """Auto-seed a ComplianceRun for the asset of a freshly-created
     ACTIVE+VALID+NORMALIZED_OK Contract.  The combination signals a
     happy-path "ready-to-activate" fixture even when the asset still

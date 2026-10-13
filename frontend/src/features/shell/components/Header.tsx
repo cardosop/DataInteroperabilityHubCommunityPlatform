@@ -13,6 +13,7 @@ import { APP_NAME } from '../../../shared/constants/brand';
 import { NotificationBell } from '../../notifications/components/NotificationBell';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { isMvpModeEnabledFromEnv } from '../utils/mvpNav';
+import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 import { useMobileSidebar } from './useMobileSidebar';
 import './Header.css';
 
@@ -24,6 +25,10 @@ export function Header() {
   const navigate = useNavigate();
   const { user, active_tenant_id, setActiveTenant, refreshUser, logout } = useAuthStore();
   const { resolvedTheme, toggleTheme } = useTheme();
+  // 313.H.4 — the Subscription user-menu link is the paid billing app;
+  // hide it once capabilities resolve and billing is absent (core-only).
+  const { isCapabilityAvailable, isLoading: capabilitiesLoading } = useCapabilities();
+  const billingMenuVisible = capabilitiesLoading || isCapabilityAvailable('billing');
   const { isOpen: sidebarOpen, toggle: toggleSidebar } = useMobileSidebar();
   const [showTenantSwitcher, setShowTenantSwitcher] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
@@ -181,7 +186,10 @@ export function Header() {
                   <span className="dropdown-arrow">▼</span>
                 </button>
                 {showTenantSwitcher && (
-                  <div className="tenant-dropdown" role="menu">
+                  <div className="tenant-dropdown">
+                    {/* Prose/labels stay OUTSIDE the menu role — a menu may
+                        only contain menuitem* children (axe
+                        aria-required-children is CRITICAL otherwise). */}
                     <div className="tenant-current">
                       <strong>Current: {displayName}</strong>
                     </div>
@@ -190,26 +198,34 @@ export function Header() {
                         {tenantError}
                       </div>
                     )}
-                    {tenantLoading ? (
-                      <div className="tenant-option disabled">Loading tenants...</div>
-                    ) : tenantSwitching ? (
-                      <div className="tenant-option disabled">Switching...</div>
-                    ) : tenants.length === 0 ? (
-                      <div className="tenant-option disabled">No tenants</div>
-                    ) : (
-                      tenants.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          className={`tenant-option ${t.id === effectiveTenantId ? 'active' : ''}`}
-                          onClick={() => handleSwitchTenant(t.id)}
-                          disabled={tenantSwitching}
-                          role="menuitem"
-                        >
-                          {t.name}
-                        </button>
-                      ))
-                    )}
+                    <div role="menu" aria-label="Tenant switcher">
+                      {tenantLoading ? (
+                        <div className="tenant-option disabled" role="menuitem" aria-disabled="true">
+                          Loading tenants...
+                        </div>
+                      ) : tenantSwitching ? (
+                        <div className="tenant-option disabled" role="menuitem" aria-disabled="true">
+                          Switching...
+                        </div>
+                      ) : tenants.length === 0 ? (
+                        <div className="tenant-option disabled" role="menuitem" aria-disabled="true">
+                          No tenants
+                        </div>
+                      ) : (
+                        tenants.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className={`tenant-option ${t.id === effectiveTenantId ? 'active' : ''}`}
+                            onClick={() => handleSwitchTenant(t.id)}
+                            disabled={tenantSwitching}
+                            role="menuitem"
+                          >
+                            {t.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -302,14 +318,16 @@ export function Header() {
                         >
                           Tenant settings
                         </Link>
-                        <Link
-                          to="/settings/subscription"
-                          className="user-menu-item"
-                          onClick={() => setShowUserMenu(false)}
-                          role="menuitem"
-                        >
-                          Subscription
-                        </Link>
+                        {billingMenuVisible && (
+                          <Link
+                            to="/settings/subscription"
+                            className="user-menu-item"
+                            onClick={() => setShowUserMenu(false)}
+                            role="menuitem"
+                          >
+                            Subscription
+                          </Link>
+                        )}
                         <Link
                           to="/settings/cost"
                           className="user-menu-item"

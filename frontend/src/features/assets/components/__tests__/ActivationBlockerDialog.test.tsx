@@ -5,7 +5,7 @@
  * 422 COMPLIANCE_SCAN_FAILED → "Run Compliance Scan" CTA.
  * 422 COMPLIANCE_NOT_ALLOWED_TO_STORE → remediation text.
  */
-import { render, screen, act } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 interface DialogProps {

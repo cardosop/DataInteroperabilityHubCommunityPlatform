@@ -132,10 +132,7 @@ def test_contract_mapping(contract_data: dict[str, Any], contract_uuid: str) -> 
                 print(f"  Triples count: {result['triples_count']}")
 
                 # Verify contract URI is resolvable
-                if test_contract_uri_resolution(result["contract_uri"]):
-                    return True
-                else:
-                    return False
+                return bool(test_contract_uri_resolution(result["contract_uri"]))
             else:
                 print("✗ Invalid mapping response format")
                 return False
@@ -154,7 +151,7 @@ def test_contract_uri_resolution(contract_uri: str) -> bool:
         # Extract resource path from URI
         # URI format: https://hub.example.com/id/contract/{uuid}
         if "/id/contract/" in contract_uri:
-            resource_path = contract_uri.split("/id/contract/")[-1]
+            resource_path = contract_uri.rsplit("/id/contract/", maxsplit=1)[-1]
             response = requests.get(
                 f"{SEMANTIC_SERVICE_URL}/id/contract/{resource_path}", timeout=5
             )
@@ -185,7 +182,7 @@ def test_sparql_query() -> bool:
         query = """
         PREFIX hub: <https://hub.example.com/ontology#>
         PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        
+
         SELECT ?contract ?specType WHERE {
             ?contract a hub:DataContract .
             ?contract hub:contractSpecType ?specType .

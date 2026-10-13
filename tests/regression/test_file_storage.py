@@ -22,7 +22,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.billing.tests.plan_fixtures import get_pro_plan
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
 from hub.apps.users.models import UserStatus
@@ -151,6 +151,10 @@ class FileDownloadTest(FileStorageRegressionTest):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            # Downloads are blocked (403 FILE_SCAN_PENDING) until the
+            # malware scan completes — mark scanned-clean for the contract
+            # under test.
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{file_id}/download-test.csv",
         )
 
@@ -193,11 +197,14 @@ class FileDeletionTest(FileStorageRegressionTest):
         self.assertIn(response.status_code, [status.HTTP_204_NO_CONTENT, status.HTTP_403_FORBIDDEN])
 
         if response.status_code == status.HTTP_204_NO_CONTENT:
-            # Verify file is soft-deleted (status=DELETED)
-            # File deletion uses soft delete - sets status to DELETED
+            # Verify file is soft-deleted. Deletion is asynchronous: the
+            # API flips the status to DELETING and a background job moves
+            # it to DELETED — assert the observable soft-delete transition.
             file.refresh_from_db()
-            self.assertEqual(
-                file.status, FileStatus.DELETED, "File should be soft-deleted (status=DELETED)"
+            self.assertIn(
+                file.status,
+                (FileStatus.DELETING, FileStatus.DELETED),
+                "File should enter the soft-delete transition (DELETING → DELETED)",
             )
 
 

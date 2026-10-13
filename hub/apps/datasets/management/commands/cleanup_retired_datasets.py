@@ -56,7 +56,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args: Any, **options: Any) -> None:
+    def handle(self, *_args: Any, **options: Any) -> None:
         dry_run: bool = bool(options.get("dry_run"))
         limit: int = int(options.get("limit") or 10_000)
         now = timezone.now()

@@ -42,6 +42,18 @@ def _create_tenant():
 # ---------------------------------------------------------------------------
 
 
+# bcrypt is a declared dependency (requirements.txt) but some local
+# venvs run without it — key-hashing tests skip in that environment.
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None  # type: ignore[assignment]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(bcrypt is None, reason="bcrypt not installed"),
+]
+
+
 class TestGenerateIngestKeyPlaintext(TransactionTestCase):
     def test_format_and_length(self):
         """Generated key must start with ``msh_ol_`` and have sufficient entropy."""
@@ -57,15 +69,14 @@ class TestGenerateIngestKeyPlaintext(TransactionTestCase):
 
     def test_url_safe_characters(self):
         """Key must contain only URL-safe (base64url) characters after the prefix."""
-        import base64
 
         key = generate_ingest_key_plaintext()
         body = key.removeprefix("msh_ol_")
         # All characters should be in the base64url alphabet + padding
         for ch in body:
-            assert ch in (
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-            ), f"non-url-safe character {ch!r} in key body"
+            assert ch in ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"), (
+                f"non-url-safe character {ch!r} in key body"
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -33,29 +35,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        # Try both localhost and container hostname
-        for url in [
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/",
-            "http://api-service:8000/api/v1/",
-        ]:
-            try:
-                response = requests.get(url, timeout=2)
-                if response.status_code < 600:  # Any HTTP response means API is up
-                    return True
-            except Exception:
-                continue
-        return False
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module", autouse=True)
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    available = _check_api_available()
+    available = api_available()
     if not available:
         pytest.skip("API service not available")
     return available
@@ -225,7 +208,7 @@ for verify_attempt in range(max_verify_attempts):
     verify_key = APIKey.objects.filter(key_hash=api_key_hash).first()
     if verify_key:
         break
-    time.sleep(0.2 * (verify_attempt + 1))  # noqa: sleep-needed — test timing requirement
+    time.sleep(0.2 * (verify_attempt + 1))  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
 if not verify_key:
     connection.close()
@@ -235,7 +218,7 @@ if not verify_key:
         print("ERROR: API key not found after creation", file=__import__('sys').stderr)
         exit(1)
 
-time.sleep(0.3)  # noqa: sleep-needed — test timing requirement
+time.sleep(0.3)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
 # Output the key with clear markers
 print("===API_KEY_START===")
@@ -258,20 +241,7 @@ print("===API_KEY_END===", file=sys.stderr)
 
     if django_path:
         # We're inside the container, run Django shell via subprocess
-        try:
-            # Use python manage.py shell -c to avoid test database issues
-            manage_py_dir = os.path.dirname(django_path)
-            result = subprocess.run(
-                ["python", "manage.py", "shell", "-c", django_shell_script_updated],
-                cwd=manage_py_dir,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=True,
-            )
-
-            # Extract API key from output
-            output = result.stdout + result.stderr
+        def _extract_api_key(output: str) -> str:
             import re
 
             marker_pattern = r"===API_KEY_START===\s*([A-Za-z0-9_-]{20,})\s*===API_KEY_END==="
@@ -289,6 +259,21 @@ print("===API_KEY_END===", file=sys.stderr)
                     return match
 
             raise ValueError("Could not extract API key from Django shell output")
+
+        try:
+            # Use python manage.py shell -c to avoid test database issues
+            manage_py_dir = os.path.dirname(django_path)
+            result = subprocess.run(
+                ["python", "manage.py", "shell", "-c", django_shell_script_updated],
+                cwd=manage_py_dir,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+
+            # Extract API key from output
+            return _extract_api_key(result.stdout + result.stderr)
         except Exception as e:
             pytest.skip(f"Could not create API key via Django shell: {e}")
 
@@ -321,7 +306,7 @@ print("===API_KEY_END===", file=sys.stderr)
     pytest.skip("Could not create API key")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def runner(shared_api_key):
     """Fixture providing CliRunner with configured API key"""
     runner = CliRunner()
@@ -331,7 +316,7 @@ def runner(shared_api_key):
     return runner
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def test_dataset(shared_api_key):
     """
     Create a test virtual dataset for topology tests.

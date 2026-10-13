@@ -205,7 +205,8 @@ def get_cached_asset_list(
                 total_count=cached_data.get("total_count", 0),
             )
             return cached_data.get("results"), cached_data.get("total_count")
-        return None
+        else:
+            return None
     except _CACHE_INFRA_EXCEPTIONS as e:
         logger.warning(
             "asset_list_cache_get_error",
@@ -279,7 +280,6 @@ def get_cached_asset_detail(asset_id: str) -> dict[str, Any] | None:
         cached_data = cache.get(cache_key)
         if cached_data:
             logger.debug("asset_detail_cache_hit", asset_id=asset_id)
-        return cached_data
     except _CACHE_INFRA_EXCEPTIONS as e:
         logger.warning(
             "asset_detail_cache_get_error",
@@ -296,6 +296,8 @@ def get_cached_asset_detail(asset_id: str) -> dict[str, Any] | None:
             exc_info=True,
         )
         return None  # cache miss — caller falls back to DB query
+    else:
+        return cached_data
 
 
 def invalidate_asset_list_cache(tenant_id: str | None = None) -> None:
@@ -354,7 +356,7 @@ def invalidate_asset_list_cache(tenant_id: str | None = None) -> None:
                 message="Invalidating all asset list caches - this may be expensive",
             )
     except _CACHE_INFRA_EXCEPTIONS as e:
-        logger.error(
+        logger.exception(
             "asset_list_cache_invalidation_error",
             error=str(e),
             tenant_id=tenant_id,
@@ -382,7 +384,7 @@ def invalidate_asset_detail_cache(asset_id: str) -> None:
 
         logger.debug("asset_detail_cache_invalidated", asset_id=asset_id)
     except _CACHE_INFRA_EXCEPTIONS as e:
-        logger.error(
+        logger.exception(
             "asset_detail_cache_invalidation_error",
             error=str(e),
             asset_id=asset_id,

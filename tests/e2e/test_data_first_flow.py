@@ -23,7 +23,7 @@ from hub.apps.files.models import File
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, UserRole
 
-from .conftest import get_response_data
+from .conftest import get_response_data, mark_file_scan_unavailable_if_pending
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -114,7 +114,7 @@ class DataFirstE2ETest(TestCase):
                 setattr(self.tenant, _flag, True)
                 _changed = True
         if _changed:
-            self.tenant.save(update_fields=list(_E2E_FEATURE_FLAGS) + ["updated_at"])
+            self.tenant.save(update_fields=[*list(_E2E_FEATURE_FLAGS), "updated_at"])
 
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -135,6 +135,9 @@ class DataFirstE2ETest(TestCase):
         """Test complete data-first onboarding journey using REAL services"""
 
         # Step 1: Create asset
+        # NB: `visibility` is a derived property since Phase 250.3.B — the
+        # request value is ignored (with a DeprecationWarning), so it is
+        # intentionally omitted here.
         asset_response = self.client.post(
             "/api/v1/assets/",
             {
@@ -142,7 +145,6 @@ class DataFirstE2ETest(TestCase):
                 "name": "Customer Orders",
                 "description": "Customer order data",
                 "domain": "sales",
-                "visibility": "INTERNAL",
             },
             format="json",
         )
@@ -206,6 +208,10 @@ class DataFirstE2ETest(TestCase):
             status.HTTP_200_OK,
             f"File complete failed: {get_response_data(file_complete_response)}",
         )
+
+        # Phase 260.2.D — under TestCase the on_commit-deferred ClamAV scan
+        # never runs; mark the scan terminal so the dataset gate allows it.
+        mark_file_scan_unavailable_if_pending(File.objects.get(id=file_id))
 
         # Step 4: Create dataset (triggers schema inference, uses real S3)
         dataset_response = self.client.post(
@@ -376,11 +382,7 @@ class DataFirstE2ETest(TestCase):
         # Ensure compliance run allows storage (required by asset activation gate 5.4.3).
         # The inline process_job call may not set allowed_to_store when the compliance
         # service responds asynchronously or when the job handler fails to connect.
-        latest_cr = (
-            ComplianceRun.objects.filter(asset=asset)
-            .order_by("-created_at")
-            .first()
-        )
+        latest_cr = ComplianceRun.objects.filter(asset=asset).order_by("-created_at").first()
         if latest_cr is not None:
             _cr_changed = False
             if latest_cr.allowed_to_store is not True:

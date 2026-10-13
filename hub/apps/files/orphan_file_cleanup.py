@@ -11,14 +11,16 @@ Used by ``cleanup_orphan_files`` management command (query-building only).
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
 from hub.apps.files.models import File, FileStatus
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 def _tenant_pk(tenant_id: Any) -> UUID:

@@ -41,7 +41,7 @@ test.describe('Feature: Search', () => {
         contentSelector: '.search-page, .empty-state, [data-testid="empty-state"], h1',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect');
+        test.skip(page.url().includes('/login'), 'Auth redirect');
         return;
       }
       // Fill search with special characters that could cause injection issues
@@ -49,7 +49,7 @@ test.describe('Feature: Search', () => {
         'input[type="search"], input[placeholder*="search" i], .search-input'
       ).first();
       if ((await searchInput.count()) === 0) {
-        test.skip(true, 'Search input not found');
+        test.skip((await searchInput.count()) === 0, 'Search input not found');
         return;
       }
       await searchInput.fill('!@#$%^&*() <script>alert("xss")</script>');
@@ -88,7 +88,7 @@ test.describe('Feature: Search', () => {
         contentSelector: '.search-page, .empty-state, [data-testid="empty-state"], h1',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect');
+        test.skip(page.url().includes('/login'), 'Auth redirect');
         return;
       }
       // Empty query should show either empty state or all results — not an error
@@ -109,14 +109,14 @@ test.describe('Feature: Search', () => {
         contentSelector: '.search-page, .empty-state, [data-testid="empty-state"], h1',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect');
+        test.skip(page.url().includes('/login'), 'Auth redirect');
         return;
       }
       const searchInput = page.locator(
         'input[type="search"], input[placeholder*="search" i], .search-input'
       ).first();
       if ((await searchInput.count()) === 0) {
-        test.skip(true, 'Search input not found');
+        test.skip((await searchInput.count()) === 0, 'Search input not found');
         return;
       }
       // Fill with very long string (500 chars)

@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { contractService } from '../services/contractService';
 import type {
   Contract,
@@ -22,18 +23,12 @@ import type {
   ODPSExportParams,
 } from '../../../shared/types/odps';
 
-export function useContracts(
-  filters: ContractListFilters = {},
-  options?: { enabled?: boolean }
-) {
+export function useContracts(filters: ContractListFilters = {}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['contracts', 'list', filters],
     queryFn: async () => {
       const data = await contractService.list(filters);
-      if (data === undefined) {
-        return emptyPaginatedResponse<Contract>();
-      }
-      return data;
+      return normalizePaginated(data ?? emptyPaginatedResponse<Contract>());
     },
     enabled: options?.enabled !== false,
   });
@@ -191,7 +186,7 @@ export function useContractWorkflowStatus(
   return useQuery<ODPSWorkflowStatus>({
     queryKey: ['contracts', 'workflow', workflowInstanceId],
     queryFn: () => contractService.getWorkflowStatus(workflowInstanceId!),
-    enabled: !!workflowInstanceId && (options.enabled !== false),
+    enabled: !!workflowInstanceId && options.enabled !== false,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data?.status === 'COMPLETED' || data?.status === 'FAILED') {
@@ -234,7 +229,9 @@ export function useLinkODPS() {
     errorMessage: 'Failed to link ODPS',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
-      queryClient.invalidateQueries({ queryKey: ['contracts', 'detail', variables.odcsContractId] });
+      queryClient.invalidateQueries({
+        queryKey: ['contracts', 'detail', variables.odcsContractId],
+      });
       queryClient.invalidateQueries({ queryKey: ['contracts', 'links', variables.odcsContractId] });
     },
   });
@@ -313,6 +310,14 @@ export function useContractLineageVisualization(
     queryKey: ['contracts', 'lineage', contractId, params],
     queryFn: () => contractService.getLineageVisualization(contractId!, params),
     enabled: !!contractId,
+    // Point-in-time view: must NEVER serve a cached snapshot as "live".
+    // With the app default staleTime (5 min), Reset — which returns the
+    // query key to its initial (no-as_of) shape — re-subscribes to a
+    // query whose data is seconds old, so React Query skips the refetch
+    // and the graph silently keeps the anchor-time snapshot (b7
+    // lineage-time-travel: the reset waiter never saw the no-as_of
+    // request). staleTime 0 makes every (re)subscribe refetch.
+    staleTime: 0,
   });
 }
 
@@ -328,10 +333,7 @@ export function useContractLineageAsOf(
   contractId: string | null,
   asOf: string | null,
   version: number | null,
-  extraParams: Omit<
-    ContractLineageVisualizationParams,
-    'as_of' | 'version'
-  > = {},
+  extraParams: Omit<ContractLineageVisualizationParams, 'as_of' | 'version'> = {}
 ) {
   const params: ContractLineageVisualizationParams = {
     ...extraParams,
@@ -342,6 +344,8 @@ export function useContractLineageAsOf(
     queryKey: ['contracts', 'lineage', 'as_of', contractId, asOf, version, extraParams],
     queryFn: () => contractService.getLineageVisualization(contractId!, params),
     enabled: !!contractId && (!!asOf || version != null),
+    // Same point-in-time contract as the visualization query.
+    staleTime: 0,
   });
 }
 
@@ -352,7 +356,7 @@ export function useContractLineageAsOf(
  */
 export function useContractLineageDiff(
   contractId: string | null,
-  params: import('../../../shared/types/lineage').ContractLineageDiffParams = {},
+  params: import('../../../shared/types/lineage').ContractLineageDiffParams = {}
 ) {
   const hasAnchor =
     !!params.from || !!params.to || params.from_version != null || params.to_version != null;
@@ -360,5 +364,8 @@ export function useContractLineageDiff(
     queryKey: ['contracts', 'lineage', 'diff', contractId, params],
     queryFn: () => contractService.getLineageDiff(contractId!, params),
     enabled: !!contractId && hasAnchor,
+    // Same point-in-time contract as the visualization query: a diff
+    // against "live" must not come from the 5-min stale cache.
+    staleTime: 0,
   });
 }

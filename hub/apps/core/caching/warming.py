@@ -13,7 +13,6 @@ logger = structlog.get_logger(__name__)
 # Import caching modules
 try:
     from hub.apps.assets.caching import (
-        CACHE_TTL_ASSET_LIST,
         cache_asset_list,
         hash_filters,
     )
@@ -25,9 +24,7 @@ except ImportError:
 
 try:
     from hub.apps.contracts.caching import (
-        CACHE_TTL_QUERY_RESULT,
         cache_query_result,
-        get_query_result_cache_key,
     )
     from hub.apps.contracts.models import Contract
 
@@ -38,7 +35,6 @@ except ImportError:
 
 try:
     from hub.apps.marketplace.caching import (
-        CACHE_TTL_MARKETPLACE_LIST,
         cache_marketplace_list,
     )
     from hub.apps.marketplace.caching import (
@@ -47,7 +43,11 @@ try:
     from hub.apps.marketplace.models import Listing
 
     MARKETPLACE_AVAILABLE = True
-except ImportError:
+except (ImportError, RuntimeError):
+    # Core-only mode: the marketplace app is not installed. ImportError
+    # covers an absent module; RuntimeError covers a models module whose
+    # app is missing from INSTALLED_APPS (Django raises at model-class
+    # definition). Both mean "marketplace caching unavailable" here.
     MARKETPLACE_AVAILABLE = False
     logger.warning("Marketplace caching module not available")
 
@@ -133,7 +133,7 @@ def warm_asset_list_cache(
                 )
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "asset_list_cache_warming_failed",
             tenant_id=tenant_id,
             error=str(e),
@@ -221,7 +221,7 @@ def warm_contract_list_cache(
                 )
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "contract_list_cache_warming_failed",
             tenant_id=tenant_id,
             error=str(e),
@@ -276,6 +276,15 @@ def warm_marketplace_listings_cache(common_filters: list[dict[str, Any]] | None 
                 if "pricing_model" in filters:
                     queryset = queryset.filter(pricing_model=filters["pricing_model"])
 
+                # Match the view's payload shape: tenant/asset for the
+                # trust-signal fields + the same subquery annotations so
+                # the warmed cache is byte-consistent with a cold fill.
+                from hub.apps.marketplace.views import (
+                    _annotate_trust_signal_fields,
+                )
+
+                queryset = _annotate_trust_signal_fields(queryset.select_related("tenant", "asset"))
+
                 # Get results (limit to first page for warming)
                 listings = queryset[:50]  # Warm first page
 
@@ -309,7 +318,7 @@ def warm_marketplace_listings_cache(common_filters: list[dict[str, Any]] | None 
                 )
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "marketplace_listings_cache_warming_failed",
             error=str(e),
             message="Failed to warm marketplace listings cache",
@@ -342,7 +351,7 @@ def warm_tenant_cache(tenant_id: str) -> dict[str, int]:
     try:
         results["assets"] = warm_asset_list_cache(tenant_id)
     except Exception as e:
-        logger.error(
+        logger.exception(
             "cache_warming_asset_error",
             tenant_id=tenant_id,
             error=str(e),
@@ -353,7 +362,7 @@ def warm_tenant_cache(tenant_id: str) -> dict[str, int]:
     try:
         results["contracts"] = warm_contract_list_cache(tenant_id)
     except Exception as e:
-        logger.error(
+        logger.exception(
             "cache_warming_contract_error",
             tenant_id=tenant_id,
             error=str(e),
@@ -364,7 +373,7 @@ def warm_tenant_cache(tenant_id: str) -> dict[str, int]:
     try:
         results["marketplace"] = warm_marketplace_listings_cache()
     except Exception as e:
-        logger.error(
+        logger.exception(
             "cache_warming_marketplace_error",
             tenant_id=tenant_id,
             error=str(e),
@@ -421,7 +430,7 @@ def warm_all_tenants_cache(*, max_tenants: int | None = None) -> dict[str, Any]:
             results_by_tenant[tenant_id] = results
             successful += 1
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "cache_warming_tenant_failed",
                 tenant_id=tenant_id,
                 error=str(e),

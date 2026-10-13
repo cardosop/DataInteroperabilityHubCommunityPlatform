@@ -248,12 +248,14 @@ class WorkerServiceE2ETest(TestCase):
         if high_priority_job.status == JobStatus.RUNNING:
             # High priority job started - this is expected
             pass
-        elif high_priority_job.status == JobStatus.COMPLETED:
+        elif (
+            high_priority_job.status == JobStatus.COMPLETED
+            and normal_priority_job.status == JobStatus.PENDING
+        ):
             # High priority job completed - verify normal priority hasn't started yet
             # (or started after high priority)
-            if normal_priority_job.status == JobStatus.PENDING:
-                # Normal priority still pending - high priority processed first
-                pass
+            # Normal priority still pending - high priority processed first
+            pass
 
     @pytest.mark.timeout(
         300

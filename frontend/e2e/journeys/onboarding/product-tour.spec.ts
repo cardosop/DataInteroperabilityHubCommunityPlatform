@@ -28,12 +28,29 @@ const TOUR_STORAGE_KEY = 'meshant.tour.completed';
 
 /**
  * Clear the product tour localStorage flag so ProductTour treats this
- * session as a first login. Must run BEFORE page.goto() because
- * ProductTour reads localStorage synchronously on mount.
+ * session as a first login.
+ *
+ * localStorage is ORIGIN-scoped and DENIED on the initial about:blank
+ * document (SecurityError) — land on the app origin first, then clear.
+ * The subsequent loginUser() re-navigates on its own, so the
+ * "clear before the tour mounts" ordering is preserved.
  */
 async function clearTourStorage(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.evaluate((key) => {
     localStorage.removeItem(key);
+  }, TOUR_STORAGE_KEY);
+}
+
+/**
+ * Set the tour completion flag for subsequent-login tests. Same
+ * origin-scoped constraint as clearTourStorage — land on the app origin
+ * first, then write.
+ */
+async function setTourStorage(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.evaluate((key) => {
+    localStorage.setItem(key, 'true');
   }, TOUR_STORAGE_KEY);
 }
 
@@ -97,7 +114,6 @@ test.describe('Product Tour @critical @quarantine', () => {
 
       // Navigate through all 5 steps via Next button
       const nextBtn = page.locator('[data-testid="tour-next"]');
-      const skipBtn = tour.locator('.product-tour-btn--skip');
 
       for (let step = 1; step < 5; step++) {
         const currentTitle = await title.textContent();
@@ -106,12 +122,6 @@ test.describe('Product Tour @critical @quarantine', () => {
         // Each step should have non-empty content
         expect(currentTitle?.trim().length).toBeGreaterThan(0);
         expect(currentDesc?.trim().length).toBeGreaterThan(0);
-
-        // Progress dot for current step should be active
-        const activeDot = dots.nth(step - 1);
-        const activeDotClass = await activeDot.getAttribute('class');
-        const previousDotClass =
-          step > 1 ? await dots.nth(step - 2).getAttribute('class') : '';
 
         if (step < 5) {
           await expect(nextBtn).toBeVisible();
@@ -175,9 +185,7 @@ test.describe('Product Tour @critical @quarantine', () => {
       const user = await getTestUser();
 
       // Pre-set the tour completion flag
-      await page.evaluate((key) => {
-        localStorage.setItem(key, 'true');
-      }, TOUR_STORAGE_KEY);
+      await setTourStorage(page);
 
       await loginUser(page, user);
       await page.goto('/');
@@ -260,9 +268,7 @@ test.describe('Product Tour @critical @quarantine', () => {
       const user = await getTestUser();
 
       // Set tour as already completed
-      await page.evaluate((key) => {
-        localStorage.setItem(key, 'true');
-      }, TOUR_STORAGE_KEY);
+      await setTourStorage(page);
 
       await loginUser(page, user);
       await page.goto('/');

@@ -25,6 +25,8 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from hub.apps.contracts.odcs_errors import ODCSValidationError
+from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.observability.otel_metrics import (
     contract_export_total,
     odcs_export_duration_seconds,
@@ -131,43 +133,9 @@ class ContractExportMixin:
         original_format_kwarg = getattr(self, "format_kwarg", None)
         self.format_kwarg = None
 
-        try:
-            # get_object() may raise Http404 - let it propagate to be handled by DRF's exception handler
-            import logging
-
-            from django.http import Http404
-
-            logger = logging.getLogger(__name__)
-
-            # ROOT CAUSE FIX: Ensure tenant_id is set on request before calling get_object()
-            # This is critical for custom URL handlers where middleware might not have run
-            # The get_object() override also does this, but doing it here ensures it's set before get_queryset() is called
-            if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
-                if (
-                    hasattr(self.request, "user")
-                    and self.request.user
-                    and not self.request.user.is_anonymous
-                ):
-                    from django.contrib.auth import get_user_model
-
-                    User = get_user_model()
-                    try:
-                        db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
-                        if db_user.tenant_id:
-                            self.request.tenant_id = db_user.tenant_id  # UUID from database
-                    except User.DoesNotExist:
-                        pass
-
-            # Ensure tenant_id is UUID (not string) for proper filtering in get_queryset()
-            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-                import uuid
-
-                if isinstance(self.request.tenant_id, str):
-                    with contextlib.suppress(ValueError, TypeError):
-                        self.request.tenant_id = uuid.UUID(self.request.tenant_id)
-
-            # ROOT CAUSE FIX: Try get_object() first (proper tenant filtering)
-            # If it fails, use manual retrieval as fallback for robustness
+        # ROOT CAUSE FIX: Try get_object() first (proper tenant filtering)
+        # If it fails, use manual retrieval as fallback for robustness
+        def _get_contract():
             contract = None
             contract_id = self.kwargs.get("id") or self.kwargs.get("pk")
 
@@ -175,7 +143,8 @@ class ContractExportMixin:
                 contract = self.get_object()
             except Http404:
                 # ROOT CAUSE FIX: If get_object() fails, try manual retrieval as fallback
-                # This provides robustness for custom URL handlers where viewset initialization might differ
+                # This provides robustness for custom URL handlers where viewset
+                # initialization might differ
                 if contract_id:
                     # Get tenant_id from request or user
                     tenant_id = None
@@ -207,18 +176,62 @@ class ContractExportMixin:
                                 with contextlib.suppress(ValueError, TypeError):
                                     contract_id = uuid.UUID(contract_id)
 
-                            contract = Contract.objects.get(id=contract_id, tenant_id=tenant_id)
+                            # RLS contract: tenant-scoped reads must run inside
+                            # tenant_context — otherwise row visibility depends on
+                            # leftover connection state (flaky Http404 when the
+                            # shared test connection carries no SET LOCAL tenant).
+                            from hub.apps.tenants.request_tenant import tenant_context
+
+                            with tenant_context(tenant_id):
+                                contract = Contract.objects.get(id=contract_id, tenant_id=tenant_id)
                         except (Contract.DoesNotExist, ValueError, TypeError):
                             # Re-raise Http404 if contract not found
-                            raise Http404("Contract not found")
+                            raise Http404("Contract not found") from None
                     else:
-                        raise Http404("Contract not found: No tenant_id available")
+                        raise Http404("Contract not found: No tenant_id available") from None
                 else:
-                    raise Http404("Contract ID is required")
+                    raise Http404("Contract ID is required") from None
 
             # Ensure contract was retrieved
             if contract is None:
                 raise Http404("Contract not found")
+            return contract
+
+        try:
+            # get_object() may raise Http404 - let it propagate to be handled by DRF's exception handler
+            import logging
+
+            from django.http import Http404
+
+            logger = logging.getLogger(__name__)
+
+            # ROOT CAUSE FIX: Ensure tenant_id is set on request before calling get_object()
+            # This is critical for custom URL handlers where middleware might not have run
+            # The get_object() override also does this, but doing it here ensures it's set before get_queryset() is called
+            if (not hasattr(self.request, "tenant_id") or not self.request.tenant_id) and (
+                hasattr(self.request, "user")
+                and self.request.user
+                and not self.request.user.is_anonymous
+            ):
+                from django.contrib.auth import get_user_model
+
+                User = get_user_model()
+                try:
+                    db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
+                    if db_user.tenant_id:
+                        self.request.tenant_id = db_user.tenant_id  # UUID from database
+                except User.DoesNotExist:
+                    pass
+
+            # Ensure tenant_id is UUID (not string) for proper filtering in get_queryset()
+            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+                import uuid
+
+                if isinstance(self.request.tenant_id, str):
+                    with contextlib.suppress(ValueError, TypeError):
+                        self.request.tenant_id = uuid.UUID(self.request.tenant_id)
+
+            contract = _get_contract()
 
             # Get format parameter (default: hubcontract)
             # CRITICAL: Check query parameter FIRST before any format suffix handling
@@ -305,7 +318,7 @@ class ContractExportMixin:
                         output = format_odps_as_yaml(contract_data)
                         # Use Django's HttpResponse directly to avoid DRF's JSON serialization
                         return HttpResponse(output, content_type="application/x-yaml")
-                    except Exception as e:
+                    except ODPSExportError as e:
                         return Response(
                             {"error": f"Failed to format as YAML: {e!s}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -327,7 +340,7 @@ class ContractExportMixin:
                         from hub.apps.contracts.odcs_validation import validate_odcs_version
 
                         validate_odcs_version(odcs_version)
-                    except Exception as e:
+                    except ODCSValidationError as e:
                         # Record failure metric
                         try:
                             odcs_export_total.labels(
@@ -398,7 +411,7 @@ class ContractExportMixin:
                             else:
                                 # Version mismatch - need to generate
                                 final_version = odcs_version
-                        except Exception as e:
+                        except (ValueError, TypeError, AttributeError) as e:
                             # If parsing fails, fall through to generation
                             logger.warning(
                                 f"Failed to parse original ODCS contract: {e!s}, will generate instead"
@@ -667,8 +680,6 @@ class ContractExportMixin:
                             tenant_id=tenant_id,
                         ).inc()
 
-                    return resp
-
                 except Exception as e:
                     # Record failure metric
                     try:
@@ -691,6 +702,8 @@ class ContractExportMixin:
                         {"error": f"ODCS export failed: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
+                else:
+                    return resp
 
             elif format_type == "odps":
                 # Export as ODPS format
@@ -727,7 +740,7 @@ class ContractExportMixin:
                             original_odcs_contract = parse_contract(
                                 contract.original_raw, contract.original_format
                             )
-                        except Exception as parse_err:
+                        except (ValueError, TypeError, AttributeError) as parse_err:
                             logger.debug(
                                 "odcs_export_parse_original_failed",
                                 extra={
@@ -983,14 +996,13 @@ class ContractExportMixin:
             # Generate filename based on contract and format
             # Try to get name from hub_contract_json, otherwise use contract ID
             contract_name = f"contract-{contract.id}"
-            if contract.hub_contract_json:
+            if contract.hub_contract_json and isinstance(contract.hub_contract_json, dict):
                 # Try to get name from hub_contract_json
-                if isinstance(contract.hub_contract_json, dict):
-                    info = contract.hub_contract_json.get("info", {})
-                    if isinstance(info, dict):
-                        name = info.get("name")
-                        if name:
-                            contract_name = name
+                info = contract.hub_contract_json.get("info", {})
+                if isinstance(info, dict):
+                    name = info.get("name")
+                    if name:
+                        contract_name = name
             # Sanitize filename (remove invalid characters)
             import re
 
@@ -1034,12 +1046,13 @@ class ContractExportMixin:
                         output = format_odps_as_yaml(contract_data)
                         response = HttpResponse(output, content_type=content_type)
                         response["Content-Disposition"] = f'attachment; filename="{filename}"'
-                        return response
-                    except Exception as e:
+                    except ODPSExportError as e:
                         return Response(
                             {"error": f"Failed to format as YAML: {e!s}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
+                    else:
+                        return response
                 else:  # json
                     # Return as JSON
                     import json
@@ -1062,7 +1075,7 @@ class ContractExportMixin:
                         from hub.apps.contracts.odcs_validation import validate_odcs_version
 
                         validate_odcs_version(odcs_version)
-                    except Exception as e:
+                    except ODCSValidationError as e:
                         return Response(
                             {"error": f"Invalid ODCS version: {e!s}"},
                             status=status.HTTP_400_BAD_REQUEST,
@@ -1116,7 +1129,7 @@ class ContractExportMixin:
                             else:
                                 # Version mismatch - need to generate
                                 final_version = odcs_version
-                        except Exception as e:
+                        except (ValueError, TypeError, AttributeError) as e:
                             # If parsing fails, fall through to generation
                             import logging
 
@@ -1251,7 +1264,6 @@ class ContractExportMixin:
                     # Return response with Content-Disposition header
                     response = HttpResponse(output, content_type=content_type)
                     response["Content-Disposition"] = f'attachment; filename="{filename}"'
-                    return response
 
                 except Exception as e:
                     import logging
@@ -1262,6 +1274,8 @@ class ContractExportMixin:
                         {"error": f"ODCS download failed: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
+                else:
+                    return response
 
             elif format_type == "odps":
                 # Download as ODPS format
@@ -1286,7 +1300,7 @@ class ContractExportMixin:
                         original_odcs_contract = parse_contract(
                             contract.original_raw, contract.original_format
                         )
-                    except Exception as parse_err:
+                    except (ValueError, TypeError, AttributeError) as parse_err:
                         logger.debug(
                             "odcs_export_parse_original_failed",
                             extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
@@ -1318,7 +1332,7 @@ class ContractExportMixin:
                         response = HttpResponse(output, content_type=content_type)
                         response["Content-Disposition"] = f'attachment; filename="{filename}"'
                         return response
-                except Exception as e:
+                except ODPSExportError as e:
                     return Response(
                         {"error": f"Failed to generate ODPS format: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1493,7 +1507,7 @@ class ContractExportMixin:
                     original_odcs_contract = parse_contract(
                         contract.original_raw, contract.original_format
                     )
-                except Exception as e:
+                except (ValueError, TypeError, AttributeError) as e:
                     # If parsing fails, log warning but continue without original ODCS
                     import logging
 

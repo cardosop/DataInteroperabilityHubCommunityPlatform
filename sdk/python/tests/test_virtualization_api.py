@@ -23,6 +23,7 @@ import asyncio
 import inspect
 import os
 import uuid
+from contextlib import suppress
 
 import pytest
 
@@ -370,10 +371,9 @@ async def test_create_dataset_success(real_virtualization_api):
     assert result["version"] == "1.0.0"  # Default version
 
     # Cleanup
-    try:
+    # cleanup best-effort — ignore expected errors
+    with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
         await real_virtualization_api.delete_dataset(result["id"])
-    except (NotFoundError, ConnectionError, TimeoutError, OSError):
-        pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -408,10 +408,9 @@ async def test_create_dataset_with_all_fields(real_virtualization_api):
     assert result["status"] == "ACTIVE"
 
     # Cleanup
-    try:
+    # cleanup best-effort — ignore expected errors
+    with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
         await real_virtualization_api.delete_dataset(result["id"])
-    except (NotFoundError, ConnectionError, TimeoutError, OSError):
-        pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -449,10 +448,9 @@ async def test_create_dataset_conflict_error(real_virtualization_api):
             )
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(result1["id"])
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -480,10 +478,9 @@ async def test_list_datasets_success(real_virtualization_api):
         assert created["id"] in dataset_ids
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(created["id"])
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -579,10 +576,9 @@ async def test_get_dataset_success(real_virtualization_api):
         assert result["description"] == "Test Description"
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(created["id"])
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -630,10 +626,9 @@ async def test_update_dataset_success(real_virtualization_api):
         assert updated["query"] == "SELECT * FROM test_table"  # Unchanged
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(created["id"])
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -668,10 +663,9 @@ async def test_update_dataset_partial_update(real_virtualization_api):
         assert updated["description"] == "Original Description"  # Unchanged
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await retry_on_rate_limit(lambda: real_virtualization_api.delete_dataset(created["id"]))
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -711,10 +705,9 @@ async def test_update_dataset_validation_error(real_virtualization_api):
             )
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await retry_on_rate_limit(lambda: real_virtualization_api.delete_dataset(created["id"]))
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1420,10 +1413,9 @@ async def test_execute_query_success_integration(real_virtualization_api):
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1460,10 +1452,9 @@ async def test_execute_query_with_parameters_integration(real_virtualization_api
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1514,10 +1505,9 @@ async def test_list_query_executions_success_integration(real_virtualization_api
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1538,12 +1528,11 @@ async def test_list_query_executions_with_status_filter_integration(real_virtual
 
         # Execute a query
         # Note: Query may fail due to database connection
-        try:
+        # Execution may have been created even if query failed
+        with suppress(ValidationError):
             await real_virtualization_api.execute_query(
                 dataset_id=dataset_id, execution_mode="SYNC"
             )
-        except ValidationError:
-            pass  # Execution may have been created even if query failed
 
         # List executions with status filter
         result = await real_virtualization_api.list_query_executions(
@@ -1562,10 +1551,9 @@ async def test_list_query_executions_with_status_filter_integration(real_virtual
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1610,10 +1598,9 @@ async def test_get_query_execution_success_integration(real_virtualization_api):
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1682,10 +1669,9 @@ async def test_cancel_query_execution_success_integration(real_virtualization_ap
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1755,10 +1741,9 @@ async def test_get_query_result_json_format_integration(real_virtualization_api)
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1828,10 +1813,9 @@ async def test_get_query_result_csv_format_integration(real_virtualization_api):
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1902,10 +1886,9 @@ async def test_get_query_result_with_pagination_integration(real_virtualization_
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1975,10 +1958,9 @@ async def test_get_query_result_execution_not_completed_integration(real_virtual
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 # Topology Methods - Integration Tests with Real API
@@ -2052,10 +2034,9 @@ async def test_get_topology_with_datasets_integration(real_virtualization_api):
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -2095,10 +2076,9 @@ async def test_get_dataset_topology_success_integration(real_virtualization_api)
 
     finally:
         # Cleanup
-        try:
+        # cleanup best-effort — ignore expected errors
+        with suppress(NotFoundError, ConnectionError, TimeoutError, OSError):
             await real_virtualization_api.delete_dataset(dataset_id)
-        except (NotFoundError, ConnectionError, TimeoutError, OSError):
-            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio

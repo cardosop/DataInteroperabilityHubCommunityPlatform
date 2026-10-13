@@ -137,7 +137,8 @@ class SummarizeCommandTests(TestCase):
             assert "pure_odps_with_outputports" in output
             assert "odcs_no_schema_block" in output
             # The 2-vs-1 ratio between odcs and odps must be visible.
-            assert "2" in output and "1" in output
+            assert "2" in output
+            assert "1" in output
         finally:
             self._cleanup(tmp_path)
 

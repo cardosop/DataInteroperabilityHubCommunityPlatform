@@ -80,7 +80,7 @@ class Command(BaseCommand):
             help="List retryable side effects without executing.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         max_attempts: int = options["max_attempts"]
         retry_after_minutes: int = options["retry_after_minutes"]
         dry_run: bool = options["dry_run"]

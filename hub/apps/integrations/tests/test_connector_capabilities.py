@@ -141,7 +141,7 @@ class UnsupportedPushOperationsTest(TestCase):
             "sync_push": [
                 lambda: method(mappings=[]),
                 lambda: method([]),
-                lambda: method(),
+                method,
             ],
             "create_listing": [
                 lambda: method(listing={}),
@@ -163,14 +163,15 @@ class UnsupportedPushOperationsTest(TestCase):
                 lambda: method({}),
             ],
         }
-        for attempt in attempts.get(method_name, [lambda: method()]):
+        for attempt in attempts.get(method_name, [method]):
             try:
                 attempt()
-                return  # succeeded (shouldn't happen for push)
             except TypeError:
                 continue  # wrong signature, try next
             except NotImplementedError:
                 raise  # expected — re-raise for assertRaises
+            else:
+                return  # succeeded (shouldn't happen for push)
         # All attempts got TypeError — re-raise last one
         raise TypeError(f"Could not find valid signature for {method_name}")
 
@@ -286,7 +287,8 @@ class UnsupportedPushOperationsTest(TestCase):
                 )
 
         self.assertGreater(
-            not_implemented_count, 0,
+            not_implemented_count,
+            0,
             f"No connector raised NotImplementedError for sync_push "
-            f"(tested {tested_count} PULL-only connectors)."
+            f"(tested {tested_count} PULL-only connectors).",
         )

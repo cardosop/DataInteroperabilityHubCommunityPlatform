@@ -215,7 +215,7 @@ class MetricsCollectionTest(TestCase):
         metric1.inc()
 
         # Tenant 1's counter should increase, tenant 2's should not
-        self.assertEqual(metric1._value.get(), before1 + 1,
-                         "Tenant 1 metric did not increment")
-        self.assertEqual(metric2._value.get(), before2,
-                         "Tenant 2 metric was affected by tenant 1's increment")
+        self.assertEqual(metric1._value.get(), before1 + 1, "Tenant 1 metric did not increment")
+        self.assertEqual(
+            metric2._value.get(), before2, "Tenant 2 metric was affected by tenant 1's increment"
+        )

@@ -44,8 +44,15 @@ class ConsentPurpose(models.Model):
     class Meta:
         db_table = "consent_purpose"
         constraints = [
+            # W4.3 (R2-I3/E5) — partial unique index over ACTIVE rows
+            # only: re-creating a deactivated purpose's key is
+            # legitimate; two ACTIVE rows with the same key are still
+            # refused (serializer-validated at the API boundary, index
+            # enforced at the DB).
             models.UniqueConstraint(
-                fields=["tenant", "key"], name="consent_purpose_tenant_key_uniq"
+                fields=["tenant", "key"],
+                condition=models.Q(is_active=True),
+                name="consent_purpose_tenant_key_uniq",
             ),
         ]
         indexes = [
@@ -113,7 +120,7 @@ class ConsentRecord(models.Model):
                 name="consent_record_tenant_user_purpose_uniq",
             ),
         ]
-        indexes = [
+        indexes = (
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "user"]),
-        ]
+        )

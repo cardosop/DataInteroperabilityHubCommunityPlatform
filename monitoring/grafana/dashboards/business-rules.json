@@ -1,0 +1,117 @@
+{
+  "title": "Business Rules & Side-Effect Observability",
+  "tags": [
+    "hub",
+    "business-rules",
+    "observability",
+    "phase78"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Business Rule Validation Failure Rate by Module",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(business_rule_validation_failures_total[5m])) by (module)",
+          "legendFormat": "{{ module }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "title": "Business Rule Failures by Rule Name (Top 10)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(business_rule_validation_failures_total[5m])) by (rule_name))",
+          "legendFormat": "{{ rule_name }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "title": "Side-Effect Failure Rate by Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(side_effect_failures_total[5m])) by (effect_type)",
+          "legendFormat": "{{ effect_type }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 4,
+      "title": "Workflow Compensation Failures (1h increase)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(increase(workflow_compensation_failures_total[1h]))",
+          "legendFormat": "Compensation Failures"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "title": "Poll Timeouts (1h increase)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(increase(poll_timeout_total[1h])) by (service)",
+          "legendFormat": "{{ service }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      }
+    },
+    {
+      "id": 6,
+      "title": "Business Rule Failures by Tenant (Top 5)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "topk(5, sum(rate(business_rule_validation_failures_total[5m])) by (tenant_id))",
+          "legendFormat": "tenant={{ tenant_id }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      }
+    }
+  ]
+}

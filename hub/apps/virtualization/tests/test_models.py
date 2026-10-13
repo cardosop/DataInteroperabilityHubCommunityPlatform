@@ -551,8 +551,9 @@ class VirtualDatasetModelTest(TestCase):
         for col, substring in expected_substrings.items():
             matching = [idx for idx in indexes if substring in idx]
             self.assertGreater(
-                len(matching), 0,
-                f"No index found covering column '{col}' on {db_table}; indexes: {indexes}"
+                len(matching),
+                0,
+                f"No index found covering column '{col}' on {db_table}; indexes: {indexes}",
             )
 
     def test_virtual_dataset_all_query_types(self):
@@ -1101,8 +1102,9 @@ class QueryExecutionModelTest(TestCase):
         for col, substring in expected_substrings.items():
             matching = [idx for idx in indexes if substring in idx]
             self.assertGreater(
-                len(matching), 0,
-                f"No index found covering column '{col}' on {db_table}; indexes: {indexes}"
+                len(matching),
+                0,
+                f"No index found covering column '{col}' on {db_table}; indexes: {indexes}",
             )
 
     def test_query_execution_ordering(self):

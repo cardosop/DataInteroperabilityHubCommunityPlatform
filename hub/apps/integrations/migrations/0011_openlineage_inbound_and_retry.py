@@ -83,7 +83,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="openlineageinboundevent",
             constraint=models.UniqueConstraint(
-                fields=("tenant", "event_id"),
+                fields=["tenant", "event_id"],
                 name="ol_inbound_tenant_eventid_uq",
             ),
         ),

@@ -15,6 +15,7 @@ from hub.apps.api.standards.response_formats import format_error_response
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+@pytest.mark.journey("JOURNEY-ERROR-BOUNDARY")
 class TestErrorResponseContract(TestCase):
     """Phase 277.4.7 — canonical error envelope shape."""
 
@@ -64,3 +65,51 @@ class TestErrorResponseContract(TestCase):
         r1 = format_error_response("CODE1", "msg", 400)
         r2 = format_error_response("CODE2", "msg", 400)
         assert r1.data["error"]["request_id"] != r2.data["error"]["request_id"]
+
+
+class TestExceptionHandlerNoLeak(TestCase):
+    """W1.16 — 5xx envelopes never surface ``str(exc)``; typed 4xx
+    business messages are preserved; the canonical error-code precedence
+    (nested domain code > exc.code > status map) is honored."""
+
+    def _handler(self, exc):
+        from rest_framework.test import APIRequestFactory
+
+        from hub.apps.api.exceptions import custom_exception_handler
+
+        request = APIRequestFactory().get("/api/v1/anything/")
+        return custom_exception_handler(exc, {"request": request})
+
+    def test_unhandled_exception_message_is_generic(self):
+        resp = self._handler(
+            Exception("SELECT * FROM top_secret_table WHERE api_key='live'")
+        )
+        assert resp.status_code == 500
+        assert resp.data["error"]["message"] == "Internal server error"
+        assert "top_secret_table" not in str(resp.data)
+
+    def test_sql_error_like_exception_no_leak(self):
+        resp = self._handler(
+            RuntimeError(
+                "FATAL: password authentication failed for user 'postgres'"
+            )
+        )
+        assert resp.status_code == 500
+        assert "password" not in str(resp.data)
+
+    def test_typed_4xx_message_preserved(self):
+        from rest_framework.exceptions import PermissionDenied
+
+        resp = self._handler(PermissionDenied("Tenant plan lacks marketplace access"))
+        assert resp.status_code == 403
+        assert (
+            resp.data["error"]["message"] == "Tenant plan lacks marketplace access"
+        )
+
+    def test_dict_form_domain_code_precedence(self):
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        resp = self._handler(
+            DRFValidationError({"host": ["DATABRICKS_HOST_NOT_ALLOWED"]})
+        )
+        assert resp.data["error"]["code"] == "DATABRICKS_HOST_NOT_ALLOWED"

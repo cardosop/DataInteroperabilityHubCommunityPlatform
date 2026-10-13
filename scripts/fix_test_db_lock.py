@@ -125,11 +125,12 @@ def fix_test_database_lock():
                 cursor.close()
                 conn.close()
                 print("\n✓ Test database lock fixed!")
-                return
 
-            except Exception as alt_e:
+            except psycopg2.Error as alt_e:
                 print(f"  Failed with {alt_db}: {alt_e}")
                 continue
+            else:
+                return
 
         # Try Docker exec as fallback
         print("\nTrying Docker exec method...")
@@ -180,7 +181,7 @@ def fix_test_database_lock():
 
         except FileNotFoundError:
             print("  Docker not found, skipping Docker method")
-        except Exception as docker_e:
+        except (OSError, subprocess.SubprocessError) as docker_e:
             print(f"  Docker exec failed: {docker_e}")
 
         print("\n✗ Could not fix database lock. Manual steps:")

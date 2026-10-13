@@ -28,29 +28,26 @@ class TestPhase0_3PytestIni:
         path = REPO_ROOT / "pytest.ini"
         assert path.is_file(), f"pytest.ini not found at {path}"
 
-    def test_pytest_ini_sets_django_settings_module(self):
-        """pytest.ini must set DJANGO_SETTINGS_MODULE to hub.settings."""
-        path = REPO_ROOT / "pytest.ini"
-        content = path.read_text()
-        assert "DJANGO_SETTINGS_MODULE" in content, "pytest.ini must set DJANGO_SETTINGS_MODULE"
-        assert "hub.settings" in content, (
-            "pytest.ini must set DJANGO_SETTINGS_MODULE=hub.settings (or equivalent)"
-        )
-
     def test_pytest_ini_parseable(self):
-        """pytest.ini [pytest] section should be parseable and contain expected key."""
+        """pytest.ini [pytest] section should be parseable."""
         path = REPO_ROOT / "pytest.ini"
         parser = configparser.ConfigParser()
         parser.read(path)
         assert "pytest" in parser.sections(), "pytest.ini should have [pytest] section"
-        # Django uses this; may be under [pytest] as key
-        found = False
-        if parser.has_option("pytest", "DJANGO_SETTINGS_MODULE"):
-            found = parser.get("pytest", "DJANGO_SETTINGS_MODULE").strip() == "hub.settings"
-        if not found:
-            raw = path.read_text()
-            found = "hub.settings" in raw and "DJANGO_SETTINGS_MODULE" in raw
-        assert found, "pytest.ini must set DJANGO_SETTINGS_MODULE = hub.settings"
+
+    def test_django_settings_module_set_in_conftest(self):
+        """DJANGO_SETTINGS_MODULE is set by hub/conftest.py, not pytest.ini.
+
+        hub/conftest.py sets it via ``os.environ.setdefault`` so it is only
+        active when hub tests are collected — keeping pytest.ini free of
+        pytest-django-only config keys (avoids PytestConfigWarning when
+        running non-Django tests with ``-p no:django``).
+        """
+        path = REPO_ROOT / "hub" / "conftest.py"
+        content = path.read_text()
+        assert 'os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")' in content, (
+            "hub/conftest.py must set DJANGO_SETTINGS_MODULE=hub.settings at import time"
+        )
 
 
 class TestPhase0_3Conftest:
@@ -88,7 +85,7 @@ class TestPhase0_3RuntimeEnv:
             except (OSError, RuntimeError):
                 continue
         pythonpath = os.environ.get("PYTHONPATH", "")
-        assert False, (
+        raise AssertionError(
             f"Repo root {REPO_ROOT} must be on sys.path (set PYTHONPATH from repo root or run pytest from repo root). "
             f"PYTHONPATH={pythonpath or '(not set)'}"
         )

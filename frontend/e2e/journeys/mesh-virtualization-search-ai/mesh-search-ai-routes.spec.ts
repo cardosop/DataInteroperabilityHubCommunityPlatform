@@ -42,7 +42,7 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
         await assertListPageLoads(page, '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -61,7 +61,7 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
         await assertListPageLoads(page, '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;

@@ -15,7 +15,9 @@
   border-radius: 50%;
   border: 1.5px solid var(--color-neutral-400);
   background: transparent;
-  color: var(--color-neutral-500);
+  /* neutral-700 keeps ≥4.5:1 on light surfaces (neutral-500 measured ~2.8:1);
+     the token remaps to a light shade in dark mode, so contrast holds there too. */
+  color: var(--color-neutral-700);
   font-size: 0.65rem;
   font-weight: 700;
   cursor: help;
@@ -76,4 +78,16 @@
 
 .helptip__link:hover {
   text-decoration: underline;
+}
+
+/* Dark theme — surface-inverse stays a dark slate while text-inverse remaps
+   to dark (it flips for button consumers whose backgrounds lighten), so the
+   pair collides here (~1.8:1). Use the elevated surface with light text. */
+[data-theme='dark'] .helptip__popover {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] .helptip__link {
+  color: var(--color-secondary-300);
 }

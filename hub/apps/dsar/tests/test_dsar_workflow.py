@@ -44,6 +44,7 @@ from hub.apps.users.models import UserStatus
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     DSAR_PUBLIC_IDEMPOTENCY_WINDOW_HOURS=24,
 )
+@pytest.mark.journey("JOURNEY-AUTH-PRIVACY")
 class DsarPublicFlowTests(TestCase):
     def setUp(self):
         mail.outbox.clear()

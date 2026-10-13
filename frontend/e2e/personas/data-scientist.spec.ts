@@ -10,6 +10,7 @@ import '../journeys/ds/JOURNEY-DS-002.spec';
 import '../journeys/ds/JOURNEY-DS-003.spec';
 import '../journeys/ds/JOURNEY-DS-004.spec';
 import '../journeys/ds/JOURNEY-DS-005.spec';
+import '../journeys/ds/JOURNEY-DB-019.spec';
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getTestUser } from '../fixtures/auth';
@@ -39,7 +40,7 @@ test.describe('Persona RBAC: Data Scientist', () => {
     await page.waitForLoadState('domcontentloaded');
     const resolved = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
     if (resolved.includes('/login')) {
-      test.skip(true, 'Auth session expired — not an RBAC result');
+      test.skip(resolved.includes('/login'), 'Auth session expired — not an RBAC result');
       return;
     }
     expect(resolved.includes('/403') || !resolved.includes('/admin')).toBe(true);

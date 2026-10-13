@@ -26,6 +26,7 @@ def _resolve_recipient(api_key: APIKey) -> str | None:
 def run_api_key_rotation_reminder_scan(
     *,
     now=None,
+    tenant_id=None,
 ) -> dict[str, int]:
     """
     Scan active API keys and send rotation/expiry reminders.
@@ -33,6 +34,11 @@ def run_api_key_rotation_reminder_scan(
     Reminder thresholds are read from ``API_KEY_ROTATION_REMINDER_DAYS``
     (default: [30, 14, 7, 1]).  One reminder is sent per threshold crossing;
     idempotency is enforced via ``APIKey.last_rotation_reminder_at``.
+
+    ``tenant_id`` scopes the sweep to ONE tenant (ops: re-run a single
+    tenant's reminder sweep; tests: isolate from other tenants' keys so the
+    sweep is deterministic regardless of database state — the 2.3
+    isolation fix).
 
     Returns a dict of counters keyed by outcome.
     """
@@ -58,6 +64,8 @@ def run_api_key_rotation_reminder_scan(
     qs = APIKey.objects.filter(revoked_at__isnull=True, expires_at__isnull=False).select_related(
         "user", "tenant"
     )
+    if tenant_id is not None:
+        qs = qs.filter(tenant_id=tenant_id)
 
     for api_key in qs.iterator(chunk_size=200):
         counters["scanned"] += 1
@@ -126,12 +134,13 @@ def _send_expiring_email(
     api_key: APIKey,
     recipient: str,
     days_remaining: int,
-    now,
+    _now,
 ) -> None:
     """Enqueue an API_KEY_EXPIRING notification."""
     from hub.apps.notifications.tasks import send_email_async
 
-    try:
+    # Best-effort: a single email failure must not abort the entire sweep
+    with contextlib.suppress(Exception):
         send_email_async(
             email_type=EmailType.API_KEY_EXPIRING,
             to_email=recipient,
@@ -147,12 +156,9 @@ def _send_expiring_email(
             tenant_id=str(api_key.tenant_id) if api_key.tenant_id else None,
             user_id=str(api_key.user_id) if api_key.user_id else None,
         )
-    except Exception:
-        # Best-effort: a single email failure must not abort the entire sweep
-        pass
 
 
-def _send_expiry_email(api_key: APIKey, recipient: str, now) -> None:
+def _send_expiry_email(api_key: APIKey, recipient: str, _now) -> None:
     """Enqueue an API_KEY_EXPIRED notification."""
     from hub.apps.notifications.tasks import send_email_async
 
@@ -183,7 +189,7 @@ class Command(BaseCommand):
             help="Do not persist a Job row (useful for local smoke tests)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         skip_job = options["skip_job_row"]
         job_id = uuid.uuid4()
         job_row = None

@@ -4,7 +4,7 @@ Search operations for DataHub SDK.
 Provides methods for full-text search, search suggestions, and search analytics.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -28,18 +28,18 @@ class SearchAPI:
     async def search(
         self,
         query: str,
-        type: Optional[str] = None,
-        classification: Optional[str] = None,
-        owner: Optional[str] = None,
-        tags: Optional[str] = None,
-        domain: Optional[str] = None,
-        quality_status: Optional[str] = None,
-        compliance_status: Optional[str] = None,
+        type: str | None = None,
+        classification: str | None = None,
+        owner: str | None = None,
+        tags: str | None = None,
+        domain: str | None = None,
+        quality_status: str | None = None,
+        compliance_status: str | None = None,
         limit: int = 50,
         offset: int = 0,
         sort_by: str = "relevance",
         sort_order: str = "desc",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Full-text search across contracts and assets.
 
@@ -60,7 +60,7 @@ class SearchAPI:
         Returns:
             Search results
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "q": query,
             "limit": limit,
             "offset": offset,
@@ -88,7 +88,7 @@ class SearchAPI:
         self,
         query: str,
         limit: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get search suggestions/autocomplete.
 
@@ -111,9 +111,9 @@ class SearchAPI:
 
     async def get_analytics(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get search analytics.
 
@@ -124,7 +124,7 @@ class SearchAPI:
         Returns:
             Search analytics data
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if start_date:
             params["start_date"] = start_date
         if end_date:

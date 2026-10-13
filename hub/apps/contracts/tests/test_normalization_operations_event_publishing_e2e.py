@@ -5,6 +5,8 @@ Tests that normalization events are published when contracts are created/updated
 All tests use real services and models (no mocks/stubs).
 """
 
+import contextlib
+
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -194,11 +196,9 @@ class NormalizationOperationsEventPublishingE2ETest(ContractsAPITestBase):
         completed_count_before = Event.objects.filter(event_type="normalization.completed").count()
 
         # Execute normalization job
-        try:
-            _execute_odps_normalization_job(job)
-        except Exception:
+        with contextlib.suppress(Exception):
             # Job may fail, but events should still be published
-            pass
+            _execute_odps_normalization_job(job)
 
         # Verify events were published
         started_count_after = Event.objects.filter(event_type="normalization.started").count()

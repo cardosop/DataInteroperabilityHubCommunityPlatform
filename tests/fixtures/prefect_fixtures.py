@@ -99,16 +99,16 @@ def prefect_api_client(prefect_server_healthy: str):
     Provides a configured Prefect API client for interacting with Prefect Server.
     """
     try:
-        from prefect import get_client
         from prefect.client.orchestration import PrefectClient
 
         # Create Prefect client with server URL
         client = PrefectClient(api_url=f"{prefect_server_healthy}/api")
-        return client
     except ImportError:
         pytest.skip("Prefect client not available - install prefect package")
     except Exception as e:
         pytest.skip(f"Failed to create Prefect client: {e}")
+    else:
+        return client
 
 
 @pytest.fixture(scope="session")
@@ -153,10 +153,10 @@ def prefect_worker_pool(prefect_api_client, prefect_server_healthy: str) -> dict
             "type": "process",
             "base_job_template": {"job_configuration": {"command": "python -m prefect.engine"}},
         }
-
-        return pool_config
     except Exception as e:
         pytest.skip(f"Failed to create Prefect worker pool: {e}")
+    else:
+        return pool_config
 
 
 @pytest.fixture
@@ -175,10 +175,10 @@ def prefect_deployment(prefect_api_client, prefect_server_healthy: str) -> dict[
             "work_pool_name": "default",
             "enabled": True,
         }
-
-        return deployment_config
     except Exception as e:
         pytest.skip(f"Failed to create Prefect deployment: {e}")
+    else:
+        return deployment_config
 
 
 @pytest.fixture
@@ -196,10 +196,10 @@ def prefect_flow_run(prefect_api_client, prefect_deployment: dict[str, Any]) -> 
             "deployment_id": prefect_deployment.get("id"),
             "state": "PENDING",
         }
-
-        return flow_run_config
     except Exception as e:
         pytest.skip(f"Failed to create Prefect flow run: {e}")
+    else:
+        return flow_run_config
 
 
 @contextmanager

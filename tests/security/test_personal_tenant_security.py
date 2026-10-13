@@ -33,7 +33,7 @@ class PersonalTenantSecurityTest(TestCase):
     def test_personal_tenant_user_cannot_access_other_tenant(self):
         """User with personal tenant cannot access another tenant's resources."""
         email = f"sec-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass123!"
         name = "Security User"
 
         reg = self.client.post(
@@ -77,7 +77,7 @@ class PersonalTenantSecurityTest(TestCase):
     def test_personal_tenant_user_cannot_escalate_to_tenant_admin(self):
         """Non-admin user cannot assign TENANT_ADMIN to self."""
         email = f"escalate-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass123!"
         name = "Escalate User"
 
         reg = self.client.post(
@@ -126,7 +126,7 @@ class PersonalTenantSecurityTest(TestCase):
         from hub.apps.tenants.models import TenantConfig
 
         email = f"ratelimit-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass123!"
         name = "Rate Limit User"
 
         reg = self.client.post(
@@ -181,7 +181,7 @@ class PersonalTenantSecurityTest(TestCase):
         )
 
         service = PersonalTenantService()
-        with self.assertRaises(ServiceValidationError):
+        with self.assertRaises(ServiceValidationError) as cm:
             service.create_personal_tenant_for_user(email=email, display_name="Leak User")
 
         exc = cm.exception
@@ -218,7 +218,7 @@ class PersonalTenantSecurityTest(TestCase):
 
         resp = self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "HTTP Leak User"},
+            {"email": email, "password": "SecurePass123!", "name": "HTTP Leak User"},
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)

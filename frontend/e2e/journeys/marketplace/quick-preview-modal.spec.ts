@@ -27,9 +27,14 @@ import { waitForMarketplaceListings } from '../../fixtures/helpers';
 test.describe('Quick Preview Modal @critical @quarantine', () => {
   test.setTimeout(120000);
 
-  test.beforeAll(async () => {
-    await seedMarketplaceListings(3);
-  });
+  // Same hook budget as comparison-side-by-side: the seed's connection-
+  // failure settle waits need room under mid-batch API recreations.
+  test.beforeAll(
+    async () => {
+      await seedMarketplaceListings(3);
+    },
+    { timeout: 240_000 },
+  );
 
   test.describe('Success — Modal open, content, and close', () => {
     test('opens preview from listing card and displays all sections', async ({ page }) => {
@@ -63,7 +68,6 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
       await page.waitForTimeout(2000);
 
       // Modal should appear
-      const overlay = page.locator('[data-testid="quick-preview-overlay"]');
       const modal = page.locator('[data-testid="quick-preview-modal"]');
 
       test.skip(
@@ -98,8 +102,9 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
         'Expected preview modal to show loading, error, sample data, or schema',
       ).toBe(true);
 
-      // If content loaded, verify all sections
-      if (hasSampleTable || hasSchemaList) {
+      // If the fetch errored, the error state alone is acceptable —
+      // content-section checks only apply to a resolved preview.
+      if (!hasError) {
         // Quality metrics section (optional — depends on data)
         const metricsSection = modal.locator('.qp-metrics');
         const hasMetrics = (await metricsSection.count()) > 0;
@@ -108,24 +113,28 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
         const trustSection = modal.locator('.qp-trust-signals');
         const hasTrust = (await trustSection.count()) > 0;
 
-        // Preview expiry should be visible
-        const expiry = modal.locator('.qp-expires');
-        if ((await expiry.count()) > 0) {
-          const expiryText = await expiry.textContent();
-          expect(expiryText).toMatch(/expires|Expires/i);
-        }
-
-        // Verify at minimum sample data or schema is present
-        expect(hasSampleTable || hasSchemaList).toBe(true);
+        // Sample table or schema list is the primary content; metrics
+        // and trust signals also count as rendered sections when the
+        // payload carries them.
+        expect(
+          hasSampleTable || hasSchemaList || hasMetrics || hasTrust,
+          'Expected preview modal to render at least one content section (sample, schema, metrics, trust)',
+        ).toBe(true);
       }
 
-      // Close via ✕ button
+      // Preview expiry footer — always rendered once the modal mounts
+      // (it shows "—" until the preview fetch resolves).
+      const expiry = modal.locator('.qp-expires');
+      await expect(expiry).toBeVisible();
+      const expiryText = await expiry.textContent();
+      expect(expiryText).toMatch(/expires|Expires/i);
+
+      // Close via ✕ button — always rendered on a mounted modal
       const closeBtn = modal.locator('.quick-preview-close');
-      if ((await closeBtn.count()) > 0) {
-        await closeBtn.click();
-        await page.waitForTimeout(500);
-        await expect(modal).not.toBeVisible();
-      }
+      await expect(closeBtn).toBeVisible();
+      await closeBtn.click();
+      await page.waitForTimeout(500);
+      await expect(modal).not.toBeVisible();
     });
 
     test('closes modal via overlay click and Escape key', async ({ page }) => {
@@ -166,20 +175,20 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
       await page.waitForTimeout(500);
       await expect(modal).not.toBeVisible();
 
-      // Re-open for overlay click test
+      // Re-open for overlay click test — the preview buttons are always
+      // rendered on the cards once we're past the skip gate above.
       const previewBtn2 = page.locator('.listing-card-preview-btn').first();
-      if ((await previewBtn2.count()) > 0) {
-        await previewBtn2.click();
-        await page.waitForTimeout(2000);
+      await previewBtn2.click();
+      await page.waitForTimeout(2000);
+      await expect(modal).toBeVisible();
 
-        const overlay = page.locator('[data-testid="quick-preview-overlay"]');
-        if ((await overlay.count()) > 0) {
-          // Click the overlay (outside the modal) to dismiss
-          await overlay.click({ position: { x: 10, y: 10 } });
-          await page.waitForTimeout(500);
-          await expect(modal).not.toBeVisible();
-        }
-      }
+      const overlay = page.locator('[data-testid="quick-preview-overlay"]');
+      // intentional: position (10, 10) is the viewport corner — always
+      // on the backdrop, never on the centered modal, so the click must
+      // exercise the overlay-dismiss path.
+      await overlay.click({ position: { x: 10, y: 10 } });
+      await page.waitForTimeout(500);
+      await expect(modal).not.toBeVisible();
     });
   });
 
@@ -232,14 +241,16 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
       const hasError =
         (await modal.locator('.quick-preview-error').count()) > 0;
 
+      // A still-running loading state is also acceptable — the test's
+      // title covers "handles slow response".
       expect(
-        hasContent || hasError,
-        'Expected preview to show content or error after loading',
+        hasContent || hasError || loadingWasVisible,
+        'Expected preview to show content, error, or a still-running loading state after the wait',
       ).toBe(true);
 
-      // Cleanup: close modal
-      const closeBtn = modal.locator('.quick-preview-close');
-      if ((await closeBtn.count()) > 0) await closeBtn.click();
+      // Cleanup: close modal — the close button is always rendered on a
+      // mounted modal.
+      await modal.locator('.quick-preview-close').click();
     });
 
     test('modal handles large sample data without breaking layout', async ({ page }) => {
@@ -274,8 +285,11 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
         'QuickPreviewModal did not render',
       );
 
-      // If sample data table exists, verify it has scrollable wrapper
+      // If sample data table exists, verify it has scrollable wrapper.
       const sampleWrapper = modal.locator('.qp-sample-table-wrapper');
+      // intentional: the sample table renders only when the preview
+      // payload carries rows — listings without sample data (or an
+      // errored preview) legitimately have no wrapper.
       if ((await sampleWrapper.count()) > 0) {
         // Table should be visible
         const table = sampleWrapper.locator('table');
@@ -293,9 +307,8 @@ test.describe('Quick Preview Modal @critical @quarantine', () => {
         expect(box.height).toBeGreaterThan(0);
       }
 
-      // Cleanup
-      const closeBtn = modal.locator('.quick-preview-close');
-      if ((await closeBtn.count()) > 0) await closeBtn.click();
+      // Cleanup — the close button is always rendered on a mounted modal
+      await modal.locator('.quick-preview-close').click();
     });
   });
 });

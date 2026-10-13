@@ -34,7 +34,9 @@ describe('UserEditPage breadcrumbs', () => {
     vi.clearAllMocks();
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     vi.mocked(apiClient.getClient().get).mockImplementation((url: string) => {
-      if (url.includes('/users/user-abc')) {
+      // adminService builds slashless base paths: 'users/user-abc/' —
+      // the leading-slash check silently fell through to `{}` (2.4g fix).
+      if (url.includes('users/user-abc')) {
         return Promise.resolve({
           data: {
             id: 'user-abc',
@@ -63,6 +65,10 @@ describe('UserEditPage breadcrumbs', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Breadcrumb')).toBeInTheDocument();
     });
+    // The user label renders once the useUser query resolves — await it
+    // before asserting (the immediate assertion raced the fetch). The email
+    // appears BOTH in the breadcrumb and the form field, so expect several.
+    await screen.findAllByText(/target@example\.com|Target User/);
     const nav = screen.getByLabelText('Breadcrumb');
     expect(nav).toHaveTextContent(/Home/);
     expect(nav).toHaveTextContent(/Admin/);

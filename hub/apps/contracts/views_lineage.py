@@ -6,7 +6,9 @@ Lineage-related actions for contract viewsets.
 SAVING CHECKPOINT: This module contains all lineage-related actions.
 """
 
-import contextlib
+from datetime import (
+    datetime as _dt,
+)
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -44,8 +46,10 @@ def _record_time_travel_metric(*, query_type: str) -> None:
         lineage_time_travel_queries_total.labels(type=query_type).inc()
     except Exception:
         import logging
+
         logging.getLogger(__name__).warning(
-            "Failed to record time-travel metric type=%s", query_type,
+            "Failed to record time-travel metric type=%s",
+            query_type,
             exc_info=True,
         )
 
@@ -94,9 +98,12 @@ def _emit_snapshot_audit(
         )
     except Exception:
         import logging
+
         logging.getLogger(__name__).warning(
             "Failed to emit LINEAGE_SNAPSHOT_QUERIED audit contract_id=%s source=%s",
-            contract_id, source, exc_info=True,
+            contract_id,
+            source,
+            exc_info=True,
         )
 
 
@@ -657,7 +664,6 @@ class ContractLineageMixin:
         #      ignored to keep the API backward-compatible.
         #   4. Emit metric `lineage_time_travel_queries_total{type}`.
         #   5. Emit audit event `LINEAGE_SNAPSHOT_QUERIED`.
-        from datetime import datetime as _dt
 
         from django.utils.dateparse import parse_datetime
 

@@ -11,8 +11,10 @@ Tests cover:
 - Error handling
 - TDD compliance
 
-All tests use real implementations (no mocks/stubs).
-External dependencies (Redis, circuit breakers) gracefully handle unavailability.
+Success paths use real implementations (no mocks/stubs); the breaker
+500-path test forces the status source to fail so the error contract
+is pinned deterministically.  External dependencies (Redis, circuit
+breakers) gracefully handle unavailability.
 
 Phase 221.3 update: circuit_breaker_status is now a DRF @api_view
 requiring authentication.  Tests use APIRequestFactory +
@@ -79,7 +81,9 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        self.assertEqual(response.status_code, 200)
+        # degraded (optional-service outage) still renders JSON; the
+        # status code follows the three-state contract.
+        self.assertIn(response.status_code, (200, 503))
         self.assertEqual(response["Content-Type"], "application/json")
 
     def test_health_check_structure(self):
@@ -123,7 +127,7 @@ class TestHealthCheck(TestCase):
         self.assertEqual(data["database"], "connected")
         # With DB connected, status should be healthy (unless Redis is down)
         # At minimum, the status field must be a valid value
-        self.assertIn(data["status"], ["healthy", "unhealthy"])
+        self.assertIn(data["status"], ["healthy", "degraded", "unhealthy"])
 
     # ========== EDGE CASES TESTS ==========
 
@@ -133,10 +137,11 @@ class TestHealthCheck(TestCase):
         response = health_check(request)
 
         data = _json_data(response)
-        if data["status"] == "healthy":
-            self.assertEqual(response.status_code, 200)
-        else:
+        if data["status"] == "unhealthy":
             self.assertEqual(response.status_code, 503)
+        else:
+            # Liveness contract: healthy AND degraded return 200.
+            self.assertEqual(response.status_code, 200)
 
     def test_health_check_multiple_calls(self):
         """Test that health check can be called multiple times"""
@@ -219,7 +224,7 @@ class TestHealthCheck(TestCase):
         response = health_check(request)
 
         data = _json_data(response)
-        self.assertIn(data["status"], ["healthy", "unhealthy"])
+        self.assertIn(data["status"], ["healthy", "degraded", "unhealthy"])
 
     def test_health_check_response_structure_consistency(self):
         """Test that response structure is consistent across calls"""
@@ -309,11 +314,15 @@ class TestCircuitBreakerStatus(TestCase):
         """Assert 200; skip on 500 (service unavailable); fail on anything else."""
         if response.status_code == 500:
             data = _json_data(response)
-            self.assertEqual(data.get("error"), "Circuit breaker status unavailable",
-                             "500 must carry expected error message")
+            self.assertEqual(
+                data.get("error"),
+                "Circuit breaker status unavailable",
+                "500 must carry expected error message",
+            )
             self.skipTest(f"Circuit breaker service unavailable ({label})")
-        self.assertEqual(response.status_code, 200,
-                         f"Expected 200 for {label}, got {response.status_code}")
+        self.assertEqual(
+            response.status_code, 200, f"Expected 200 for {label}, got {response.status_code}"
+        )
 
     def test_circuit_breaker_status_all_breakers(self):
         """Test getting aggregate status of all circuit breakers"""
@@ -365,24 +374,29 @@ class TestCircuitBreakerStatus(TestCase):
 
     def test_circuit_breaker_status_error_response_structure(self):
         """Test that error response has correct structure and generic message.
-        When CB service is available (200) the error path is not reachable
-        in this test environment — the test verifies the 500 path if present."""
-        response = self._authed_get()
-        self.assertIn(response.status_code, [200, 500])
-        if response.status_code == 500:
-            data = _json_data(response)
-            self.assertIn("status", data)
-            self.assertIn("error", data)
-            self.assertEqual(data["status"], "error")
-            self.assertEqual(
-                data["error"],
-                "Circuit breaker status unavailable",
-            )
-        else:
-            self.skipTest(
-                "Circuit breaker service returned 200 — "
-                "error response structure not verifiable"
-            )
+
+        The 500 path is forced by making the breaker status source fail —
+        the view's except branch must return the generic structure
+        (status/error) without leaking internal details."""
+        from unittest.mock import patch
+
+        from hub.apps.health.services import HealthService
+
+        with patch.object(
+            HealthService,
+            "get_circuit_breaker_status",
+            side_effect=RuntimeError("breaker store unreachable"),
+        ):
+            response = self._authed_get()
+        self.assertEqual(response.status_code, 500)
+        data = _json_data(response)
+        self.assertIn("status", data)
+        self.assertIn("error", data)
+        self.assertEqual(data["status"], "error")
+        self.assertEqual(
+            data["error"],
+            "Circuit breaker status unavailable",
+        )
 
     def test_circuit_breaker_status_multiple_calls(self):
         """Test that circuit breaker status can be called multiple times"""

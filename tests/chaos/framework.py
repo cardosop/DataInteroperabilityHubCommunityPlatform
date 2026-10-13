@@ -123,8 +123,6 @@ class ChaosEngine:
 
             # Test should handle the failure gracefully
             logger.info(f"Chaos scenario {scenario.name} completed successfully")
-            return True, None
-
         except Exception as e:
             # Check if exception is expected (part of the chaos scenario)
             if scenario.failure_type in [FailureType.NETWORK_TIMEOUT, FailureType.NETWORK_ERROR]:
@@ -133,8 +131,10 @@ class ChaosEngine:
                 return True, None
             else:
                 # Unexpected failure
-                logger.error(f"Chaos scenario {scenario.name} failed unexpectedly: {e}")
+                logger.exception(f"Chaos scenario {scenario.name} failed unexpectedly")
                 return False, str(e)
+        else:
+            return True, None
 
 
 class ResilienceTest:

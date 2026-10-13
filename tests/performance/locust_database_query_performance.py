@@ -12,7 +12,7 @@ import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, events, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -184,8 +184,6 @@ if LOCUST_AVAILABLE:
                         response_length=0,
                         exception=None,
                     )
-
-                return response
             except Exception as e:
                 query_time = (time.time() - start_time) * 1000
                 events.request.fire(
@@ -196,3 +194,5 @@ if LOCUST_AVAILABLE:
                     exception=e,
                 )
                 raise
+            else:
+                return response

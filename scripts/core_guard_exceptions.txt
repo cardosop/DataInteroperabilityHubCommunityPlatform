@@ -1,0 +1,10 @@
+# GUARD-313.H baseline — allowlisted paid-import sites whose guard is not
+# yet statically verifiable (313.H.1). The ratchet only shrinks (NET
+# accounting).
+#
+# 313.H.3 closeout (2026-08-19/20): EMPTY — all 49 baselined sites were
+# converted to commercial hooks (lookups), is_core_only() branches
+# (paid-by-design), or try-both fallbacks (defensive), each with a
+# written proof in the allowlist reason or the guard contract.
+# The baseline must stay empty: new sites go through the same
+# treatment, never a baseline entry.

@@ -275,7 +275,9 @@ class TraceIdFilterTests(TestCase):
         resp = self.client.get(f"/api/v1/audit/audit-events/?trace_id={self.tid}")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 1, f"Expected exactly 1 event with trace_id filter, got {data['count']}"
+        assert data["count"] == 1, (
+            f"Expected exactly 1 event with trace_id filter, got {data['count']}"
+        )
         for result in data["results"]:
             assert result["trace_id"] == str(self.tid)
             assert result["action"] == "FILTER_A"
@@ -301,8 +303,8 @@ class TraceIdMigrationSafetyTests(TestCase):
     def test_migration_exists(self):
         """Migration 0014 adds trace_id with null=True, blank=True, default=None."""
         from django.db import connections
-        from django.db.migrations.loader import MigrationLoader
         from django.db.migrations import AddField
+        from django.db.migrations.loader import MigrationLoader
 
         loader = MigrationLoader(connections["default"])
         migration = loader.disk_migrations.get(("audit", "0014_auditevent_trace_id"))
@@ -310,8 +312,7 @@ class TraceIdMigrationSafetyTests(TestCase):
 
         # Verify the AddField operation for trace_id
         trace_id_ops = [
-            op for op in migration.operations
-            if isinstance(op, AddField) and op.name == "trace_id"
+            op for op in migration.operations if isinstance(op, AddField) and op.name == "trace_id"
         ]
         assert len(trace_id_ops) == 1, (
             f"Expected exactly 1 AddField for trace_id, got {len(trace_id_ops)}"

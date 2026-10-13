@@ -91,7 +91,7 @@ class TestDatabricksConnectorIntegration(TestCase):
             ):
                 raise unittest.SkipTest(
                     f"Databricks authentication failed (token may be expired or invalid): {e}"
-                )
+                ) from None
             pytest.fail(f"Authentication failed: {e}")
         except Exception as e:
             pytest.fail(f"Authentication failed: {e}")
@@ -111,7 +111,7 @@ class TestDatabricksConnectorIntegration(TestCase):
             ):
                 raise unittest.SkipTest(
                     f"Databricks connection test failed (token may be expired or invalid): {e}"
-                )
+                ) from None
             pytest.fail(f"Connection test failed: {e}")
         except Exception as e:
             pytest.fail(f"Connection test failed: {e}")
@@ -130,7 +130,7 @@ class TestDatabricksConnectorIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if "authentication failed" in error_str or "unauthorized" in error_str:
-                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}") from None
             pytest.fail(f"Authentication failed: {e}")
 
     def test_authenticate_with_cluster_id(self):
@@ -146,7 +146,7 @@ class TestDatabricksConnectorIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if "authentication failed" in error_str or "unauthorized" in error_str:
-                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}") from None
             pytest.fail(f"Authentication failed: {e}")
 
     def test_http_client_configuration(self):

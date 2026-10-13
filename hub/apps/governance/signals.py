@@ -12,7 +12,7 @@ from .models import AccessPolicy, FieldAccessPolicy
 
 
 @receiver(post_save, sender=AccessPolicy)
-def invalidate_policy_cache_on_save(sender, instance, **kwargs):
+def invalidate_policy_cache_on_save(sender, instance, **_kwargs):
     """Invalidate policy cache when policy is saved"""
     if instance.tenant_id:
         # Invalidate all caches for this tenant
@@ -30,7 +30,7 @@ def invalidate_policy_cache_on_save(sender, instance, **kwargs):
 
 
 @receiver(post_delete, sender=AccessPolicy)
-def invalidate_policy_cache_on_delete(sender, instance, **kwargs):
+def invalidate_policy_cache_on_delete(sender, instance, **_kwargs):
     """Invalidate policy cache when policy is deleted"""
     if instance.tenant_id:
         ABACEngine.invalidate_policy_cache(str(instance.tenant_id))
@@ -47,7 +47,7 @@ def invalidate_policy_cache_on_delete(sender, instance, **kwargs):
 
 @receiver(post_save, sender=FieldAccessPolicy)
 @receiver(post_delete, sender=FieldAccessPolicy)
-def invalidate_field_policy_cache(sender, instance, **kwargs):
+def invalidate_field_policy_cache(sender, instance, **_kwargs):
     """Invalidate policy cache when field policy changes"""
     if instance.tenant_id and instance.dataset_id:
         ABACEngine.invalidate_policy_cache(

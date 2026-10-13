@@ -97,13 +97,13 @@ try:
     from vocabulary_mappings import get_dpv_category, get_dpv_jurisdiction, get_dpv_legal_basis
 except ImportError:
 
-    def get_dpv_category(category):
+    def get_dpv_category(_category):
         return None
 
-    def get_dpv_jurisdiction(jurisdiction):
+    def get_dpv_jurisdiction(_jurisdiction):
         return None
 
-    def get_dpv_legal_basis(basis):
+    def get_dpv_legal_basis(_basis):
         return None
 
 

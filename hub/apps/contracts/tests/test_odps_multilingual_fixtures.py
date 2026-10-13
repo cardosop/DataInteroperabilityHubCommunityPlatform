@@ -21,8 +21,7 @@ from pathlib import Path
 from django.test import TestCase
 
 try:
-    import jsonschema
-    from jsonschema import Draft202012Validator, ValidationError, validate
+    from jsonschema import ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
@@ -188,7 +187,7 @@ class ODPSMultilingualFixturesTest(TestCase):
                 details = odps_doc["product"]["details"]
 
                 # Verify all keys are 2-letter lowercase codes
-                for lang_code in details.keys():
+                for lang_code in details:
                     self.assertEqual(
                         len(lang_code), 2, f"Language code '{lang_code}' should be 2 characters"
                     )
@@ -255,7 +254,7 @@ class ODPSMultilingualFixturesTest(TestCase):
         details = odps_doc["product"]["details"]
 
         # Get productID from first language
-        first_lang = list(details.keys())[0]
+        first_lang = next(iter(details.keys()))
         expected_product_id = details[first_lang]["productID"]
 
         # Verify all languages have the same productID

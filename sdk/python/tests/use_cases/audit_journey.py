@@ -68,7 +68,7 @@ def test_audit_event_has_required_fields():
 
     event = events[0]
     # At minimum we expect some form of action, timestamp, and actor
-    keys_lower = {k.lower() for k in event.keys()}
+    keys_lower = {k.lower() for k in event}
     has_action = any(k in keys_lower for k in ("action", "event_type", "event", "type"))
     has_timestamp = any(k in keys_lower for k in ("timestamp", "created_at", "occurred_at", "time"))
     has_actor = any(

@@ -8,6 +8,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { dqService } from '../services/dqService';
 import type {
   DQAlertingRuleCreateRequest,
@@ -22,7 +23,7 @@ import type {
 export function useDQRuns(filters: DQRunListFilters = {}) {
   return useQuery({
     queryKey: ['dq', 'runs', 'list', filters],
-    queryFn: () => dqService.list(filters),
+    queryFn: async () => normalizePaginated(await dqService.list(filters)),
     refetchInterval: (query) => {
       // Auto-refetch if there are running DQ runs
       const data = query.state.data;
@@ -99,9 +100,7 @@ export function useDQTrends(filters: DQTrendsFilters = {}) {
   });
 }
 
-export function useDQScorecards(
-  filters: { asset_id?: string; time_range?: number } = {},
-) {
+export function useDQScorecards(filters: { asset_id?: string; time_range?: number } = {}) {
   return useQuery({
     queryKey: ['dq', 'quality', 'scorecards', filters],
     queryFn: () => dqService.getScorecards(filters),
@@ -122,9 +121,7 @@ export function useDQRootCauseAnalysis(filters: DQRootCauseFilters) {
 
 // ─── Phase 240.4.A.7 — DQAlertingRule CRUD ───────────────────────────
 
-export function useDQAlertingRules(
-  filters: { asset_id?: string; enabled?: boolean } = {},
-) {
+export function useDQAlertingRules(filters: { asset_id?: string; enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['dq', 'alerting-rules', 'list', filters],
     queryFn: () => dqService.listAlertingRules(filters),
@@ -134,8 +131,7 @@ export function useDQAlertingRules(
 export function useCreateDQAlertingRule() {
   const queryClient = useQueryClient();
   return useMutationWithNotification({
-    mutationFn: (data: DQAlertingRuleCreateRequest) =>
-      dqService.createAlertingRule(data),
+    mutationFn: (data: DQAlertingRuleCreateRequest) => dqService.createAlertingRule(data),
     successMessage: 'Alerting rule created',
     errorMessage: 'Failed to create alerting rule',
     onSuccess: () => {

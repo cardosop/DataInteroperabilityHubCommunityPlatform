@@ -4,6 +4,7 @@
 
 import pytest
 
+from hub.apps.dq.sql_safety import SQLSafetyError
 from hub.apps.dq.warehouse_sql_compiler import (
     CompiledCheck,
     ContractQualityRulesExtractor,
@@ -261,3 +262,129 @@ class TestContractQualityRulesExtractor:
     def test_extract_handles_missing_sections(self):
         checks = ContractQualityRulesExtractor.get_warehouse_check_definitions({})
         assert checks == []
+
+
+# ── W1.11 (R2-S3) — SQL-injection safety ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestSqlInjectionSafety:
+    """Client-influenced identifiers/literals must compile to safe SQL
+    or be rejected (W1.11)."""
+
+    @pytest.mark.unit
+    def test_malicious_column_rejected(self):
+        checks = [{"type": "not_null", "column": "email; DROP TABLE customers;--"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.SCHEMA.CUSTOMERS")
+
+    @pytest.mark.unit
+    def test_quote_breakout_column_rejected(self):
+        checks = [{"type": "not_null", "column": "email' OR '1'='1"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.SCHEMA.CUSTOMERS")
+
+    @pytest.mark.unit
+    def test_malicious_table_fqn_rejected(self):
+        checks = [{"type": "not_null", "column": "email"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T; DROP TABLE x;--")
+
+    @pytest.mark.unit
+    def test_empty_fqn_segment_rejected(self):
+        checks = [{"type": "not_null", "column": "email"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB..TABLE")
+
+    @pytest.mark.unit
+    def test_empty_column_rejected(self):
+        checks = [{"type": "unique", "column": ""}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_accepted_values_literal_escaped(self):
+        checks = [
+            {
+                "type": "accepted_values",
+                "column": "status",
+                "values": ["ok", "x'); DROP TABLE t;--"],
+            }
+        ]
+        result = DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+        sql = result[0].sql
+        assert "x''); DROP TABLE t;--" in sql
+        assert "x'); DROP" not in sql
+
+    @pytest.mark.unit
+    def test_regex_pattern_escaped(self):
+        checks = [{"type": "regex", "column": "email", "pattern": "a' OR '1'='1"}]
+        result = DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+        assert "a'' OR ''1''=''1" in result[0].sql
+        assert "'a' OR '1'='1'" not in result[0].sql
+
+    @pytest.mark.unit
+    def test_range_string_min_rejected(self):
+        checks = [{"type": "range", "column": "age", "min": "0 OR 1=1"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_range_bool_min_rejected(self):
+        checks = [{"type": "range", "column": "age", "min": True}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_freshness_string_hours_rejected(self):
+        checks = [
+            {
+                "type": "freshness",
+                "column": "updated_at",
+                "max_age_hours": "24; DROP TABLE x;--",
+            }
+        ]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_row_count_string_min_rejected(self):
+        checks = [{"type": "row_count", "min": "0 OR 1=1"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_valid_identifiers_still_compile(self):
+        checks = [{"type": "not_null", "column": "col_1$"}]
+        result = DQWarehouseSQLCompiler.compile(checks, "bigquery", "proj.ds.tbl")
+        assert result[0].check_type == "not_null"
+        assert "col_1$" in result[0].sql
+
+    @pytest.mark.unit
+    def test_missing_column_rejected(self):
+        """Column-bearing checks with no column reject typed, not KeyError."""
+        checks = [{"type": "not_null"}]
+        with pytest.raises(SQLSafetyError):
+            DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+
+    @pytest.mark.unit
+    def test_freshness_default_column_still_compiles(self):
+        """Freshness keeps its updated_at default when column is absent."""
+        checks = [{"type": "freshness", "max_age_hours": 24}]
+        result = DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+        assert "updated_at" in result[0].sql
+
+    @pytest.mark.unit
+    def test_bigquery_pattern_quote_escaped(self):
+        """BigQuery raw strings escape quotes with backslash, not doubling."""
+        checks = [{"type": "regex", "column": "email", "pattern": "a'b"}]
+        result = DQWarehouseSQLCompiler.compile(checks, "bigquery", "p.d.t")
+        assert r"r'a\'b'" in result[0].sql
+        assert "a''b" not in result[0].sql
+
+    @pytest.mark.unit
+    def test_bigquery_pattern_backslash_escaped(self):
+        """Backslashes survive the BigQuery raw-string round trip."""
+        checks = [{"type": "regex", "column": "phone", "pattern": r"^\d{10}$"}]
+        result = DQWarehouseSQLCompiler.compile(checks, "bigquery", "p.d.t")
+        assert r"\\d" in result[0].sql

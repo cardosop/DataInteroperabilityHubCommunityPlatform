@@ -15,6 +15,7 @@ import { KeyboardShortcuts } from '../../../shared/components/KeyboardShortcuts'
 import { FEATURE_SIDEBAR_ADVANCED } from '../../../shared/config/featureFlags';
 import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 import { SkipLink } from '../../../shared/components/SkipLink';
+import { SessionCountdownBanner } from '../../auth/components/SessionCountdownBanner';
 import { useAuthStore } from '../../auth/store/authStore';
 import { isMvpModeEnabledFromEnv, isPathHiddenInMvpMode } from '../utils/mvpNav';
 import { SIDEBAR_NAV_ITEMS } from '../utils/navItems';
@@ -58,7 +59,8 @@ function ShellBody() {
     const hasRole = (requiredRoles?: string[]): boolean => {
       if (!requiredRoles || requiredRoles.length === 0) return true;
       if (!user) return false;
-      return requiredRoles.some((role) => user.roles.includes(role));
+      // Missing roles (E2E API-injected users) = no roles, not a crash.
+      return requiredRoles.some((role) => (user.roles ?? []).includes(role));
     };
     const filtered = filterVisibleNavItems(SIDEBAR_NAV_ITEMS, {
       mvpModeEnabled,
@@ -111,6 +113,7 @@ function ShellBody() {
     >
       <SkipLink />
       <Header />
+      <SessionCountdownBanner />
       {/* Phase 226.F1.b — testid for stable e2e selector. */}
       <div className="app-body" data-testid="app-body">
         <Sidebar />

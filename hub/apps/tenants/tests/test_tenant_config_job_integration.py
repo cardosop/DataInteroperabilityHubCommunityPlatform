@@ -11,12 +11,13 @@ import contextlib
 import logging
 import uuid
 
+import psycopg2
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from redis.exceptions import ConnectionError as RedisConnectionError
 from django.db.transaction import TransactionManagementError
 from django.test import TestCase
+from redis.exceptions import ConnectionError as RedisConnectionError
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -38,8 +39,44 @@ User = get_user_model()
 _LOGGER = logging.getLogger(__name__)
 
 
+def _import_paid_module(module_path: str):
+    """GATE-29 — core-tree tests must not statically import paid modules.
+
+    The dynamic import runs inside the test method that needs it: the paid
+    apps ARE installed in the full-mode suite where these tests run, and
+    core-only runs skip in setUp before ever reaching the call.
+    """
+    import importlib
+
+    return importlib.import_module(module_path)
+
+
 class TenantConfigJobIntegrationTest(TestCase):
     """Test Job Orchestration integration with tenant configuration"""
+
+    @classmethod
+    def setUpClass(cls):
+        # Recover from a stale connection left by a preceding
+        # TransactionTestCase on the shared test DB.
+        from django.db import connection as db_conn
+
+        healthy = False
+        try:
+            raw = db_conn.connection
+            if raw is not None:
+                with raw.cursor() as c:
+                    c.execute("SELECT 1")
+                healthy = True
+        except psycopg2.DatabaseError:
+            healthy = False
+        if not healthy:
+            db_conn.connection = None
+            db_conn.closed_in_transaction = False
+            db_conn.in_atomic_block = False
+            db_conn.needs_rollback = False
+            db_conn.savepoint_ids = []
+            db_conn.atomic_blocks = []
+        super().setUpClass()
 
     @classmethod
     def tearDownClass(cls):
@@ -90,20 +127,28 @@ class TenantConfigJobIntegrationTest(TestCase):
         )
         UserRole.objects.create(user=self.user, role=provider_role, tenant=self.tenant)
 
-        # Create subscription so middleware doesn't block write ops
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        # Create subscription so middleware doesn't block write ops.
+        # The subscription helpers are paid-layer (billing): core-only test
+        # runs have no billing app — catch BOTH absence forms (313.H.3) and
+        # degrade to "no subscription to create" instead of erroring.
+        try:
+            _billing = _import_paid_module("hub.apps.billing.models")
+            Subscription, SubscriptionStatus = _billing.Subscription, _billing.SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            Subscription = SubscriptionStatus = None
         from hub.apps.tenants.models import TenantPlan
 
-        free_plan = TenantPlan.objects.filter(slug="free").first()
-        if free_plan:
-            Subscription.objects.get_or_create(
-                tenant=self.tenant,
-                defaults={
-                    "plan": free_plan,
-                    "status": SubscriptionStatus.ACTIVE,
-                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                },
-            )
+        if Subscription is not None:
+            free_plan = TenantPlan.objects.filter(slug="free").first()
+            if free_plan:
+                Subscription.objects.get_or_create(
+                    tenant=self.tenant,
+                    defaults={
+                        "plan": free_plan,
+                        "status": SubscriptionStatus.ACTIVE,
+                        "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                    },
+                )
 
         self.platform_defaults = get_platform_defaults()
 

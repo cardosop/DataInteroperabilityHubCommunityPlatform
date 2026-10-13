@@ -31,7 +31,8 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   // Check role requirements if specified
   if (requiredRole && user) {
-    const hasRole = requiredRole.some(role => user.roles.includes(role));
+    // Missing roles (E2E API-injected users) = no roles, not a crash.
+    const hasRole = requiredRole.some(role => (user.roles ?? []).includes(role));
     if (!hasRole) {
       return <Navigate to="/403" replace />;
     }

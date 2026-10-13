@@ -39,11 +39,26 @@ async function seedContractForTimeTravel(page, accessToken: string): Promise<str
     '      - name: id',
     '        type: string',
   ].join('\n');
-  const resp = await page.request.post(`${API_BASE}/contracts/normalize/`, {
-    data: { raw: body, original_format: 'YAML', original_spec_type: 'ODCS' },
+  // The legacy POST /contracts/normalize/ no longer exists (b7 re-run
+  // #12: the seed 404'd) — dry-run normalization now lives on
+  // /contracts/validate-draft/ (no persistence). Seed through the
+  // standard create path instead: the create serializer parses
+  // original_raw and returns the persisted contract id.
+  const resp = await page.request.post(`${API_BASE}/contracts/`, {
+    data: {
+      name: id,
+      original_spec_type: 'ODCS',
+      version: '1.0.0',
+      original_raw: body,
+      original_format: 'YAML',
+    },
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  expect(resp.ok()).toBeTruthy();
+  expect(
+    resp.ok(),
+    `seedContractForTimeTravel create failed ${resp.status()}: ` +
+      `${(await resp.body()).toString('utf8').slice(0, 300)}`,
+  ).toBeTruthy();
   const json = await resp.json();
   return json.id ?? json.contract_id ?? json.contract?.id;
 }
@@ -51,10 +66,33 @@ async function seedContractForTimeTravel(page, accessToken: string): Promise<str
 test.describe('UC-LIN-TIME-TRAVEL-001 — point-in-time lineage', () => {
   test('time-travel controls drive ?as_of= and reset returns to live', async ({ page }) => {
     const user = await getTestUser();
-    const { accessToken } = await loginUser(page, user);
+    await loginUser(page, user);
+    // Phase 11.1 — loginUser returns void; the access_token lives in
+    // apiClient module memory. Read it through the sanctioned probe the
+    // verifyViaApi fixtures use so the seed POST below runs with the same
+    // session the page uses.
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
+    if (!accessToken) {
+      throw new Error(
+        'lineage-time-travel: access token unavailable after loginUser — session not established'
+      );
+    }
     const contractId = await seedContractForTimeTravel(page, accessToken);
 
-    await loginAndNavigateToRoute(page, `/contracts/${contractId}?tab=lineage`, user);
+    await loginAndNavigateToRoute(page, user, `/contracts/${contractId}?tab=lineage`);
+
+    // ContractDetailPage does NOT consume the ?tab= query param — the
+    // page always opens on the Details tab, so the lineage visualization
+    // (and its time-travel controls) only mount after an explicit tab
+    // click (b7 re-run: the controls testid never appeared and both
+    // tests timed out waiting for a component that couldn't mount).
+    const lineageTab = page.getByRole('tab', { name: /Lineage/i });
+    await lineageTab.waitFor({ state: 'visible', timeout: 10000 });
+    await lineageTab.click();
 
     // Controls render.
     const controls = page.getByTestId('lineage-time-travel-controls');
@@ -79,21 +117,51 @@ test.describe('UC-LIN-TIME-TRAVEL-001 — point-in-time lineage', () => {
     const req = await reqWaiter;
     expect(req.url()).toContain('as_of=');
 
-    // Reset clears the anchor and re-fetches without as_of.
-    const resetReqWaiter = page.waitForRequest(
-      (req) =>
-        req.url().includes(`/contracts/${contractId}/lineage/visualization/`) &&
-        !req.url().includes('as_of='),
-    );
+    // Reset clears the anchor and returns to the live view. Do NOT wait
+    // for a fresh no-as_of network request: when the initial live fetch
+    // is still in flight, React Query coalesces the reset into that same
+    // in-flight fetch (identical query key) and no second request fires —
+    // which is correct behaviour, the mount fetch IS the live query. The
+    // assertion must target the UI contract instead (b7 lineage-time-travel:
+    // the reset waitForRequest flaked ~70% on this latency race).
     await page.getByTestId('lineage-timetravel-reset').click();
-    await resetReqWaiter;
+    // Anchor cleared — the diff-mode toggle row unmounts.
+    await expect(page.getByTestId('lineage-diff-mode-toggle')).toHaveCount(0);
+    // Live view returns — the historical (0-node) structureless empty state
+    // is replaced by the live self-structure graph summary.
+    await expect(
+      page.getByTestId('contract-lineage-empty-structureless'),
+    ).toHaveCount(0, { timeout: 15000 });
+    // Non-zero node count: the live self-structure graph (the historical
+    // anchor view of a freshly seeded contract has 0 nodes).
+    await expect(page.getByText(/[1-9]\d* nodes · \d+ links/)).toBeVisible({
+      timeout: 15000,
+    });
   });
 
   test('a11y: time-travel controls + diff view have no WCAG A / AA violations', async ({ page }) => {
     const user = await getTestUser();
-    const { accessToken } = await loginUser(page, user);
+    // Phase 11.1 — loginUser returns void; the access_token lives in
+    // localStorage / __getAccessToken (same contract as the sibling test).
+    await loginUser(page, user);
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return typeof g === 'function' ? g() : localStorage.getItem('access_token');
+    });
+    if (!accessToken) {
+      throw new Error(
+        'lineage-time-travel: access token unavailable after loginUser — session not established'
+      );
+    }
     const contractId = await seedContractForTimeTravel(page, accessToken);
-    await loginAndNavigateToRoute(page, `/contracts/${contractId}?tab=lineage`, user);
+    await loginAndNavigateToRoute(page, user, `/contracts/${contractId}?tab=lineage`);
+
+    // Same tab-activation requirement as the sibling test — the page
+    // ignores ?tab= and opens on Details; click Lineage explicitly.
+    const lineageTab = page.getByRole('tab', { name: /Lineage/i });
+    await lineageTab.waitFor({ state: 'visible', timeout: 10000 });
+    await lineageTab.click();
 
     await page.getByTestId('lineage-time-travel-controls').waitFor();
 

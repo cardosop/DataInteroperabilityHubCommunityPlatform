@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -34,21 +36,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 @pytest.fixture(scope="module")
@@ -147,7 +138,7 @@ for verify_attempt in range(max_verify_attempts):
     verify_key = APIKey.objects.filter(key_hash=api_key_hash).first()
     if verify_key:
         break
-    time.sleep(0.2 * (verify_attempt + 1))  # noqa: sleep-needed  # Increasing delays: 0.2s, 0.4s, 0.6s, 0.8s, 1.0s
+    time.sleep(0.2 * (verify_attempt + 1))  # noqa: sleep-needed  # Increasing delays: 0.2s, 0.4s, 0.6s, 0.8s, 1.0s  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
 if not verify_key:
     # Last attempt with fresh connection
@@ -159,7 +150,7 @@ if not verify_key:
         exit(1)
 
 # Additional delay to ensure commit is fully propagated
-time.sleep(0.3)  # noqa: sleep-needed — test timing requirement
+time.sleep(0.3)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
 # Output the key with clear markers
 print("===API_KEY_START===")
@@ -224,7 +215,7 @@ print("===API_KEY_END===", file=sys.stderr)
                         wait_time = validation_delay * (validation_attempt + 1)
                         wait_time = min(wait_time, 2.0)
                         if validation_attempt > 0:
-                            time.sleep(wait_time)  # noqa: sleep-needed — retry loop
+                            time.sleep(wait_time)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
                         response = requests.get(
                             f"{api_base_url}/virtualization/datasets/",
@@ -250,7 +241,7 @@ print("===API_KEY_END===", file=sys.stderr)
                             except ValueError:
                                 wait_time = 2.5
                             if validation_attempt < max_validation_attempts - 1:
-                                time.sleep(wait_time)  # noqa: sleep-needed — retry loop
+                                time.sleep(wait_time)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                                 continue
                     except requests.exceptions.RequestException:
                         # Network error, retry
@@ -268,11 +259,11 @@ print("===API_KEY_END===", file=sys.stderr)
 
         except subprocess.TimeoutExpired:
             if attempt < max_retries - 1:
-                time.sleep(1.0)  # noqa: sleep-needed — retry loop
+                time.sleep(1.0)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
         except Exception as e:
             if attempt < max_retries - 1:
-                time.sleep(1.0)  # noqa: sleep-needed — retry loop
+                time.sleep(1.0)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             print(f"Error creating API key: {e}", file=__import__("sys").stderr)
 
@@ -349,10 +340,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         config._save()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_list_command(self, setup_config, api_available):
+    def test_datasets_list_command(self, setup_config, api_service_available):
         """Test datasets list command"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -369,10 +360,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         assert "results" in output_data or isinstance(output_data, list)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_list_with_filters(self, setup_config, api_available):
+    def test_datasets_list_with_filters(self, setup_config, api_service_available):
         """Test datasets list command with filters"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -387,10 +378,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         assert result.exit_code == 0, f"List with filter failed: {result.output}"
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_create_and_get_command(self, setup_config, api_available):
+    def test_datasets_create_and_get_command(self, setup_config, api_service_available):
         """Test complete flow: create dataset, then get it"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -453,10 +444,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
             os.unlink(temp_file)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_update_command(self, setup_config, api_available):
+    def test_datasets_update_command(self, setup_config, api_service_available):
         """Test update dataset command"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -533,10 +524,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
             os.unlink(create_file)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_list_table_format(self, setup_config, api_available):
+    def test_datasets_list_table_format(self, setup_config, api_service_available):
         """Test datasets list command with table format"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -552,10 +543,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         assert "ID" in result.output or "No virtual datasets found" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_create_invalid_file(self, setup_config, api_available):
+    def test_datasets_create_invalid_file(self, setup_config, api_service_available):
         """Test create command with invalid file"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -575,10 +566,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_create_invalid_json(self, setup_config, api_available):
+    def test_datasets_create_invalid_json(self, setup_config, api_service_available):
         """Test create command with invalid JSON"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -601,10 +592,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
             os.unlink(temp_file)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_create_missing_required_fields(self, setup_config, api_available):
+    def test_datasets_create_missing_required_fields(self, setup_config, api_service_available):
         """Test create command with missing required fields"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -629,10 +620,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
             os.unlink(temp_file)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_get_nonexistent(self, setup_config, api_available):
+    def test_datasets_get_nonexistent(self, setup_config, api_service_available):
         """Test get command with nonexistent dataset ID"""
         if not self.api_key:
             pytest.skip("API key not available")
@@ -646,10 +637,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         assert "not found" in result.output.lower() or "404" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_datasets_list_pagination(self, setup_config, api_available):
+    def test_datasets_list_pagination(self, setup_config, api_service_available):
         """Test datasets list command with pagination"""
         if not self.api_key:
             pytest.skip("API key not available")

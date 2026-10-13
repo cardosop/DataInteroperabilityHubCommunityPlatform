@@ -474,15 +474,25 @@ class FileStoragePerformanceTest(PerformanceTest):
         def init_s3_client():
             try:
                 client = S3StorageClient()
-                return client
             except Exception:
                 # Ignore connection errors in tests
                 return None
+            else:
+                return client
 
-        _, elapsed = self.measure_time(init_s3_client)
+        # Measure the minimum of 5 inits: boto3's first-import and credential
+        # chain resolution add one-off ~20-100ms jitter, so a single-shot
+        # 200ms threshold flakes on busy hosts. A genuinely slow init (e.g.
+        # network calls to S3) fails the min too, so the threshold keeps its
+        # meaning without the warmup noise.
+        elapsed_times = []
+        for _ in range(5):
+            _, elapsed = self.measure_time(init_s3_client)
+            elapsed_times.append(elapsed)
+        best = min(elapsed_times)
 
         # S3 client initialization should be fast (< 200ms)
-        self.assertLess(elapsed, 0.2, f"S3 client initialization too slow: {elapsed:.3f}s")
+        self.assertLess(best, 0.2, f"S3 client initialization too slow: {best:.3f}s (min of 5)")
 
     def test_file_bulk_creation_performance(self):
         """Test bulk file creation performance"""

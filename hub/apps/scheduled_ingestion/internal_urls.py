@@ -22,6 +22,11 @@ urlpatterns = [
         name="internal-runs-update",
     ),
     path(
+        "runs/<uuid:pk>/cancel/",
+        InternalRunViewSet.as_view({"post": "cancel"}),
+        name="internal-runs-cancel",
+    ),
+    path(
         "config/<uuid:scheduled_ingestion_id>/",
         InternalConfigView.as_view(),
         name="internal-config",

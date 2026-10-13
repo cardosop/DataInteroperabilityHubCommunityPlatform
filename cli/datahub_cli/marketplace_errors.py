@@ -321,7 +321,7 @@ def validate_connection_config(config: Any) -> None:
                 error_code="INVALID_JSON_CONFIG",
                 context={"config": config},
                 suggestion="Ensure configuration is valid JSON",
-            )
+            ) from e
 
     # Validate config is a dictionary
     if not isinstance(config, dict):
@@ -448,12 +448,12 @@ def _get_validation_suggestion(error_code: str, context: dict[str, Any]) -> str:
     return "Review your request parameters and ensure they are valid"
 
 
-def _get_authentication_suggestion(error_code: str, context: dict[str, Any]) -> str:
+def _get_authentication_suggestion(_error_code: str, _context: dict[str, Any]) -> str:
     """Get suggestion for authentication errors"""
     return "Check your marketplace connection credentials. Verify API keys, tokens, or authentication settings are correct"
 
 
-def _get_connection_suggestion(error_code: str, context: dict[str, Any]) -> str:
+def _get_connection_suggestion(error_code: str, _context: dict[str, Any]) -> str:
     """Get suggestion for connection errors"""
     error_code_upper = error_code.upper()
 
@@ -466,31 +466,27 @@ def _get_connection_suggestion(error_code: str, context: dict[str, Any]) -> str:
     return "Unable to connect to marketplace. Verify connection settings and network connectivity"
 
 
-def _get_sync_suggestion(error_code: str, context: dict[str, Any]) -> str:
+def _get_sync_suggestion(_error_code: str, _context: dict[str, Any]) -> str:
     """Get suggestion for sync errors"""
     return "Synchronization failed. Check connection status, marketplace service availability, and sync job details"
 
 
+_HTTP_ERROR_SUGGESTIONS: dict[int, str] = {
+    400: "Check your request parameters and ensure they are valid",
+    401: "Authentication failed. Run 'datahub login' to authenticate",
+    403: ("You don't have permission to perform this operation. Check your role and permissions"),
+    409: "Conflict: The resource may already exist or be in an invalid state (e.g., connection has active sync jobs)",
+    422: "Validation failed. Check your input data",
+    429: "Rate limit exceeded. Wait before retrying",
+}
+
+
 def _get_http_error_suggestion(status_code: int, endpoint: str | None = None) -> str:
     """Get suggestion for HTTP errors"""
-    if status_code == 400:
-        return "Check your request parameters and ensure they are valid"
-    elif status_code == 401:
-        return "Authentication failed. Run 'datahub login' to authenticate"
-    elif status_code == 403:
-        return (
-            "You don't have permission to perform this operation. Check your role and permissions"
-        )
-    elif status_code == 404:
+    if status_code == 404:
         if endpoint and "connection" in endpoint.lower():
             return "Connection not found. Check that the connection ID is correct"
         return "Resource not found. Check that the ID is correct"
-    elif status_code == 409:
-        return "Conflict: The resource may already exist or be in an invalid state (e.g., connection has active sync jobs)"
-    elif status_code == 422:
-        return "Validation failed. Check your input data"
-    elif status_code == 429:
-        return "Rate limit exceeded. Wait before retrying"
-    elif status_code >= 500:
+    if status_code >= 500:
         return "Server error. Please try again later or contact support"
-    return "Check your request and try again"
+    return _HTTP_ERROR_SUGGESTIONS.get(status_code, "Check your request and try again")

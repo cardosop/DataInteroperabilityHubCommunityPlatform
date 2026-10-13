@@ -251,7 +251,10 @@ class DQAlertingService:
 
     @staticmethod
     def get_alert_history(
-        tenant_id: str, asset_id: str | None = None, rule_id: str | None = None, days: int = 30
+        tenant_id: str,
+        asset_id: str | None = None,
+        rule_id: str | None = None,
+        days: int = 30,
     ) -> list[dict[str, Any]]:
         """
         Get alert history (stored alerts would be in a separate table in production).

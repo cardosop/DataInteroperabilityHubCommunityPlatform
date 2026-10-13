@@ -11,6 +11,7 @@ from django.test import RequestFactory, TestCase
 
 from hub.apps.api.middleware import RequestIDMiddleware
 
+
 class RequestIDMiddlewareTest(TestCase):
     """Test RequestIDMiddleware"""
 
@@ -128,8 +129,9 @@ class RequestIDMiddlewareTest(TestCase):
             # Should bind request_id, route, and method
             mock_bind.assert_called_once()
             call_kwargs = mock_bind.call_args[1] if mock_bind.call_args[1] else {}
-            self.assertIn("request_id", call_kwargs,
-                "request_id was not bound to structlog context")
+            self.assertIn(
+                "request_id", call_kwargs, "request_id was not bound to structlog context"
+            )
             self.assertEqual(call_kwargs["route"], "/api/v1/assets/")
             self.assertEqual(call_kwargs["method"], "GET")
             # Request ID should be generated

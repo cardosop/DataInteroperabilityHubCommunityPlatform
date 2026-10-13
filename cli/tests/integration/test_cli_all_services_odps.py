@@ -24,18 +24,7 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 def _create_test_api_key():
@@ -83,8 +72,8 @@ print(api_key_value)
         )
         if result.returncode == 0:
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 if (
                     line
                     and len(line) > 30
@@ -257,7 +246,7 @@ def test_asset():
 class TestCLIAllServicesODPS:
     """Comprehensive tests for all CLI services with ODPS integration"""
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_contracts_service_with_odps(self, comprehensive_odps_contract, setup_config):
         """Test all contracts service commands with ODPS"""
         runner = CliRunner()
@@ -312,7 +301,7 @@ class TestCLIAllServicesODPS:
         result_lint = runner.invoke(cli, ["contracts", "lint", odps_id, "--format", "json"])
         assert result_lint.exit_code == 0  # May have linting issues
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_assets_service_with_odps(self, comprehensive_odps_contract, test_asset, setup_config):
         """Test all assets service commands with ODPS"""
         runner = CliRunner()
@@ -346,7 +335,7 @@ class TestCLIAllServicesODPS:
         )
         assert result_update.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_marketplace_service_with_odps(self, comprehensive_odps_contract, setup_config):
         """Test all marketplace service commands with ODPS"""
         runner = CliRunner()
@@ -373,7 +362,7 @@ class TestCLIAllServicesODPS:
         result_sync = runner.invoke(cli, ["marketplace", "sync", "list", "--format", "json"])
         assert result_sync.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_files_service_with_odps(self, setup_config):
         """Test files service commands (ODPS contracts can reference files)"""
         runner = CliRunner()
@@ -385,7 +374,7 @@ class TestCLIAllServicesODPS:
         # Files service may not directly integrate with ODPS,
         # but ODPS contracts can reference files
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_jobs_service_with_odps(self, setup_config):
         """Test jobs service commands (ODPS workflows may create jobs)"""
         runner = CliRunner()
@@ -396,7 +385,7 @@ class TestCLIAllServicesODPS:
 
         # Jobs may be created during ODPS contract creation workflows
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_cross_service_workflows_with_odps(self, test_asset, setup_config):
         """Test CLI cross-service workflows with ODPS"""
         runner = CliRunner()
@@ -468,7 +457,7 @@ class TestCLIAllServicesODPS:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_cli_output_format_consistency_with_odps(
         self, comprehensive_odps_contract, setup_config
     ):

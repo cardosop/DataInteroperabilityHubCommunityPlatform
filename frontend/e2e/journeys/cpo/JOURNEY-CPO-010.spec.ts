@@ -26,7 +26,7 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       const cpoUser = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, cpoUser, '/compliance', { timeout: 60000 });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/compliance');
@@ -40,7 +40,7 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
       if (on403 || onLogin) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(on403 || onLogin, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onAudit).toBe(true);
@@ -61,7 +61,7 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       const cpoUser = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, cpoUser, '/audit', { timeout: 60000 });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Auth/role gated — skipping success assertion');
         return;
       }
       await waitForLoadingComplete(page);

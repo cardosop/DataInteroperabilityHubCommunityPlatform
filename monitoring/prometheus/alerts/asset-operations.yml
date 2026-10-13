@@ -1,0 +1,61 @@
+# Phase 277.B.051 — Prometheus alert rules for asset operations
+#
+# Two alert rules covering abuse detection and error-rate monitoring:
+#
+#   1. AssetOperationAbuseRate — per-tenant create rate exceeds 20/min
+#      over a 5m window. Signals potential abuse (scripted creation,
+#      stolen API key bulk ingest).
+#   2. AssetOperationErrorRateHigh — >15% error rate on asset writes
+#      over 10min. Signals tenant-specific degradation or systemic
+#      issue (validation/permission/conflict spike).
+#
+# Each alert has:
+#   * ``severity`` label per Phase 240 convention (page/warning/info)
+#   * ``runbook_url`` annotation
+#   * ``team: asset-platform-eng`` label for routing
+#
+# References:
+#   * spec: specs/observability-completeness/spec.md
+#   * counter: hub/apps/observability/metrics.py → asset_operations_total
+#   * dashboards: monitoring/grafana/dashboards/assets-overview.json
+
+groups:
+  - name: asset_operations
+    interval: 30s
+    rules:
+      - alert: AssetOperationAbuseRate
+        expr: |
+          sum(rate(asset_operations_total{operation="create",status="success"}[5m])) by (tenant_id) > 20
+        for: 5m
+        labels:
+          severity: warning
+          team: asset-platform-eng
+        annotations:
+          summary: "High asset creation rate for tenant {{ $labels.tenant_id }}"
+          description: >
+            Tenant {{ $labels.tenant_id }} is creating assets at
+            {{ $value | humanize }}/s (averaged over 5 min).
+            This exceeds the abuse threshold of 20 creates/min.
+            Investigate for bulk/scripted creation or compromised API key.
+          runbook_url: "https://meshant.com/docs/runbooks/asset-abuse-detection"
+
+      - alert: AssetOperationErrorRateHigh
+        expr: |
+          (
+            sum(rate(asset_operations_total{status!="success"}[10m])) by (tenant_id)
+            /
+            sum(rate(asset_operations_total[10m])) by (tenant_id)
+          ) > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          team: asset-platform-eng
+        annotations:
+          summary: "Elevated asset operation error rate for tenant {{ $labels.tenant_id }}"
+          description: >
+            Tenant {{ $labels.tenant_id }} has an asset operation error rate
+            of {{ $value | humanizePercentage }} (errors include
+            validation_error, permission_denied, conflict).
+            This may indicate tenant-specific degradation, client
+            misconfiguration, or a systemic issue.
+          runbook_url: "https://meshant.com/docs/runbooks/asset-error-rate"

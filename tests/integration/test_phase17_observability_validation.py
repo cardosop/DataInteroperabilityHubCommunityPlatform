@@ -59,15 +59,19 @@ class TestPhase17TracingDocumentation:
         path = project_root / "docs" / "MONITORING.md"
         assert path.exists(), "docs/MONITORING.md should exist"
         content = path.read_text()
-        assert "W3C" in content and (
-            "trace context" in content.lower() or "traceparent" in content.lower()
-        ), "MONITORING.md should document W3C trace context (Phase 17.2.1)"
+        assert "W3C" in content, "MONITORING.md should document W3C trace context (Phase 17.2.1)"
+        assert "trace context" in content.lower() or "traceparent" in content.lower(), (
+            "MONITORING.md should document W3C trace context (Phase 17.2.1)"
+        )
 
     def test_monitoring_doc_lists_services_tracing(self):
         """MONITORING.md must list which services use trace context."""
         path = project_root / "docs" / "MONITORING.md"
         content = path.read_text()
-        assert "api-service" in content and "API Gateway" in content, (
+        assert "api-service" in content, (
+            "MONITORING.md should list api-service and API Gateway trace coverage"
+        )
+        assert "API Gateway" in content, (
             "MONITORING.md should list api-service and API Gateway trace coverage"
         )
 
@@ -77,7 +81,8 @@ class TestPhase17DependsOnAndDataResidency:
     """17.3 Optional: depends_on and data residency."""
 
     @pytest.fixture(scope="class")
-    def docker_compose_config(self):
+    @classmethod
+    def docker_compose_config(cls):
         """Load docker-compose.yml."""
         path = project_root / "docker-compose.yml"
         assert path.exists(), "docker-compose.yml should exist"

@@ -357,7 +357,10 @@ class FileViewSetTest(FilesAPITestBase):
         # Second call → 409 CONFLICT (already completed)
         resp2 = self.client.post(f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
         self.assertEqual(resp2.status_code, status.HTTP_409_CONFLICT)
-        self.assertIn("already completed", str(resp2.data.get("error", "")).lower())
+        # Standardized error envelope: {detail, code, details} — see
+        # hub.apps.core.responses.api_error_response.
+        self.assertIn("already completed", str(resp2.data.get("detail", "")).lower())
+        self.assertEqual(resp2.data.get("code"), "UPLOAD_ALREADY_COMPLETED")
 
     def test_complete_upload_graceful_degradation_when_storage_check_fails(self):
         """Upload still completes when the storage-existence check fails
@@ -662,6 +665,57 @@ class FileViewSetTest(FilesAPITestBase):
         file_ids = [f["id"] for f in response.data["results"]]
         self.assertIn(str(self.file.id), file_ids)
         self.assertNotIn(str(pending_file.id), file_ids)
+
+    def test_list_files_hides_soft_deleted_by_default(self):
+        """Default list excludes DELETING/DELETED rows (Phase 260.1.C).
+
+        The delete flow soft-deletes (status → DELETING + deleted_at) and
+        the hard purge runs later via ``purge_deleted_files``; the list
+        must not show tombstones during the grace window.
+        """
+        deleting_file = File.objects.create(
+            tenant=self.tenant,
+            name="deleting.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path=f"{self.tenant.id}/deleting.csv",
+            created_by=self.user,
+            status=FileStatus.DELETING,
+        )
+        deleted_file = File.objects.create(
+            tenant=self.tenant,
+            name="deleted.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path=f"{self.tenant.id}/deleted.csv",
+            created_by=self.user,
+            status=FileStatus.DELETED,
+        )
+
+        response = self.client.get("/api/v1/files/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        file_ids = [f["id"] for f in response.data["results"]]
+        self.assertIn(str(self.file.id), file_ids)
+        self.assertNotIn(str(deleting_file.id), file_ids)
+        self.assertNotIn(str(deleted_file.id), file_ids)
+
+    def test_list_files_status_filter_surfaces_soft_deleted(self):
+        """Explicit ``?status=DELETING`` still returns tombstone rows."""
+        deleting_file = File.objects.create(
+            tenant=self.tenant,
+            name="deleting.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path=f"{self.tenant.id}/deleting.csv",
+            created_by=self.user,
+            status=FileStatus.DELETING,
+        )
+
+        response = self.client.get("/api/v1/files/?status=DELETING")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        file_ids = [f["id"] for f in response.data["results"]]
+        self.assertIn(str(deleting_file.id), file_ids)
+        self.assertNotIn(str(self.file.id), file_ids)
 
     def test_list_files_unauthenticated(self):
         """Test listing files without authentication returns 401."""

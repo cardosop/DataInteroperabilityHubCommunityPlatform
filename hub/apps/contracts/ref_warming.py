@@ -45,14 +45,15 @@ def _get_redis_client() -> Any | None:
             redis_url, decode_responses=False, socket_connect_timeout=5, socket_timeout=5
         )
         client.ping()
-        return client
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         logger.warning(
             "ref_warming_redis_unavailable",
             error=str(e),
             message="Redis unavailable for cache warming",
         )
         return None
+    else:
+        return client
 
 
 def get_frequently_accessed_refs(
@@ -131,16 +132,15 @@ def get_frequently_accessed_refs(
             min_access_count=min_access_count,
             message=f"Found {len(ref_urls)} frequently accessed refs",
         )
-
-        return ref_urls
-
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         logger.warning(
             "ref_warming_get_refs_failed",
             error=str(e),
             message="Failed to get frequently accessed refs",
         )
         return []
+    else:
+        return ref_urls
 
 
 def warm_ref_cache(
@@ -252,6 +252,11 @@ def warm_ref_cache(
                     message="Ref resolution error during warming",
                 )
             except Exception as e:
+                # Deliberately broad: the clause IS the unexpected-error
+                # handler ("ref_warming_unexpected_error") — a warming
+                # pass must never raise, regardless of what the resolver
+                # transport throws (httpx.HTTPStatusError, etc.).
+                # noqa: BLE001 — best-effort by contract
                 result["failed"] += 1
                 logger.warning(
                     "ref_warming_unexpected_error",

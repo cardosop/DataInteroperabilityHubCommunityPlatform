@@ -28,11 +28,27 @@ from hub.apps.contracts.models import (
     NormalizationStatus,
     OriginalSpecType,
 )
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 
 from .conftest import E2ETestBase
 from .journey_tracker import get_journey_tracker
+
+
+def _raise_link_failure(status_code: int, error_msg: str) -> None:
+    """Raise AssertionError for a failed ODPS link (kept outside try bodies: TRY301)."""
+    raise AssertionError(f"Link ODPS failed with status {status_code}: {error_msg}")
+
+
+def _raise_export_parse_error(content) -> None:
+    """Raise ValueError for an unparseable export response (TRY301)."""
+    raise ValueError(f"Unable to parse export response: {type(content)}")
+
+
+def _raise_expected_dict(value) -> None:
+    """Raise TypeError when export content is not a dict (TRY301)."""
+    raise TypeError(f"Expected dict, got {type(value)}: {str(value)[:200]}")
+
 
 pytestmark = [
     pytest.mark.slow,
@@ -89,10 +105,11 @@ class ODPSJourneyTestBase(E2ETestBase):
         try:
             result = step_func(*args, **kwargs)
             step.complete(metadata={"result_type": type(result).__name__})
-            return result
         except Exception as e:
             step.fail(e, metadata={"args": str(args), "kwargs": str(kwargs)})
             raise
+        else:
+            return result
 
     def _get_odps_contract_id_from_response(self, response) -> str:
         """Extract odps_contract id from products API response; raise with clear error if missing."""
@@ -109,10 +126,10 @@ class ODPSJourneyTestBase(E2ETestBase):
 
     def create_valid_odps_document(
         self,
-        product_id: str = None,
+        product_id: str | None = None,
         include_marketplace: bool = True,
         include_contract: bool = True,
-        odcs_contract_data: dict = None,
+        odcs_contract_data: dict | None = None,
     ) -> str:
         """Create a valid ODPS document for testing."""
         if product_id is None:
@@ -198,12 +215,12 @@ class ODPSJourneyTestBase(E2ETestBase):
                     WorkflowStatus.ROLLED_BACK,
                 ]:
                     return instance
-                time.sleep(  # noqa: sleep-needed — polling loop
+                time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     check_interval
                 )  # INTENTIONAL: e2e/integration test polling real services
             except WorkflowInstance.DoesNotExist:
                 # Workflow instance might not exist yet or was cleaned up
-                time.sleep(  # noqa: sleep-needed — polling loop
+                time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     check_interval
                 )  # INTENTIONAL: e2e/integration test polling real services
                 continue
@@ -211,9 +228,10 @@ class ODPSJourneyTestBase(E2ETestBase):
         # Return the instance even if not completed (for test verification)
         try:
             instance = WorkflowInstance.objects.get(id=workflow_instance_id)
-            return instance
         except WorkflowInstance.DoesNotExist:
             return None
+        else:
+            return instance
 
     def _verify_bidirectional_linking(self, odps_contract_id: str, odcs_contract_id: str):
         """Verify bidirectional linking between ODPS and ODCS contracts"""
@@ -623,16 +641,18 @@ class JourneyODPS001ProductFirstFlowTest(ODPSJourneyTestBase):
                 contract.validation_status = ValidationStatus.VALID
 
             # Set normalization status if not set or if it's in a non-normalized state
-            if not contract.normalization_status or contract.normalization_status not in [
+            if (
+                not contract.normalization_status
+                or contract.normalization_status
+                not in [
+                    NormalizationStatus.NORMALIZED_OK,
+                    NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                ]
+            ) and contract.normalization_status not in [
                 NormalizationStatus.NORMALIZED_OK,
                 NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ]:
-                # Keep existing status if it's already normalized, otherwise set to OK
-                if contract.normalization_status not in [
-                    NormalizationStatus.NORMALIZED_OK,
-                    NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-                ]:
-                    contract.normalization_status = NormalizationStatus.NORMALIZED_OK
+                contract.normalization_status = NormalizationStatus.NORMALIZED_OK
 
             # Ensure hub_contract_json exists
             if not contract.hub_contract_json:
@@ -771,9 +791,7 @@ class JourneyODPS002ODPSLinkingTest(ODPSJourneyTestBase):
                     if isinstance(error_data, dict)
                     else str(error_data)
                 )
-                raise AssertionError(
-                    f"Link ODPS failed with status {response.status_code}: {error_msg}"
-                )
+                _raise_link_failure(response.status_code, error_msg)
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             odps_contract_id = response.data["id"]
@@ -1031,13 +1049,13 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
                     else:
                         raise ValueError(
                             f"Unable to parse export response: {json_export.content[:100]}"
-                        )
+                        ) from None
             elif hasattr(json_export, "data") and isinstance(json_export.data, dict):
                 json_content = json_export.data
             elif hasattr(json_export, "json"):
                 json_content = json_export.json()
             else:
-                raise ValueError(f"Unable to parse export response: {type(json_export.content)}")
+                _raise_export_parse_error(json_export.content)
 
             # Ensure json_content is a dict (not a string)
             if isinstance(json_content, str):
@@ -1045,9 +1063,7 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
                 json_content = json.loads(json_content)
 
             if not isinstance(json_content, dict):
-                raise TypeError(
-                    f"Expected dict, got {type(json_content)}: {str(json_content)[:200]}"
-                )
+                _raise_expected_dict(json_content)
 
             self.assertIn("product", json_content)
 
@@ -1153,13 +1169,13 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
                     else:
                         raise ValueError(
                             f"Unable to parse export response: {response.content[:100]}"
-                        )
+                        ) from None
             elif hasattr(response, "data") and isinstance(response.data, dict):
                 json_content = response.data
             elif hasattr(response, "json"):
                 json_content = response.json()
             else:
-                raise ValueError(f"Unable to parse export response: {type(response.content)}")
+                _raise_export_parse_error(response.content)
 
             # Ensure json_content is a dict (not a string)
             if isinstance(json_content, str):
@@ -1167,9 +1183,7 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
                 json_content = json.loads(json_content)
 
             if not isinstance(json_content, dict):
-                raise TypeError(
-                    f"Expected dict, got {type(json_content)}: {str(json_content)[:200]}"
-                )
+                _raise_expected_dict(json_content)
 
             self.assertEqual(json_content.get("version"), "4.1")
 

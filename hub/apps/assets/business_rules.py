@@ -91,7 +91,7 @@ class AssetsBusinessRules(BusinessRules):
         return "AssetsBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -446,7 +446,7 @@ class AssetsBusinessRules(BusinessRules):
         )
 
     def _validate_status_transition(
-        self, asset: Asset, old_status: str, new_status: str
+        self, _asset: Asset, old_status: str, new_status: str
     ) -> ValidationResult:
         """
         Validate status transition is allowed.
@@ -623,7 +623,7 @@ class AssetsBusinessRules(BusinessRules):
         )
 
     def _validate_visibility_change(
-        self, asset: Asset, old_visibility: str, new_visibility: str, current_status: str
+        self, _asset: Asset, old_visibility: str, new_visibility: str, current_status: str
     ) -> ValidationResult:
         """
         Validate visibility change requirements.
@@ -696,16 +696,23 @@ class AssetsBusinessRules(BusinessRules):
         warnings: list[str] = []
         details: dict[str, Any] = {"retirement_checks": {}}
 
-        # Check for active marketplace listings
-        from hub.apps.marketplace.models import Listing, ListingStatus
+        # Check for active marketplace listings.
+        # Phase 313 — marketplace is the paid layer; in core-only mode no
+        # listings exist, so the check passes trivially there.
+        try:
+            from hub.apps.marketplace.models import Listing, ListingStatus
 
-        active_listings = Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED)
+            active_listings = Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED)
+            has_active_listings = active_listings.exists()
+            if has_active_listings:
+                listing_count = active_listings.count()
+                listing_ids = [str(listing.id) for listing in active_listings[:5]]
+        except (RuntimeError, ModuleNotFoundError):
+            has_active_listings = False
+            listing_count = 0
+            listing_ids = []
 
-        if active_listings.exists():
-            listing_count = active_listings.count()
-            listing_ids = [
-                str(listing.id) for listing in active_listings[:5]
-            ]  # Limit to first 5 for details
+        if has_active_listings:
             errors.append(
                 f"Asset cannot be retired while it has {listing_count} active marketplace listing(s). "
                 f"Please unlist or delete the listings first."
@@ -1706,10 +1713,11 @@ class AssetsBusinessRules(BusinessRules):
 
         # Normalize target_status to string if it's an enum
         if target_status:
-            if isinstance(target_status, tuple):
-                target = target_status[0]  # Extract string from enum tuple
-            else:
-                target = str(target_status)
+            target = (
+                target_status[0]  # Extract string from enum tuple
+                if isinstance(target_status, tuple)
+                else str(target_status)
+            )
         else:
             target = asset.status
         details["threshold_checks"]["target_status"] = target
@@ -1735,7 +1743,7 @@ class AssetsBusinessRules(BusinessRules):
                         f"Health score threshold validation failed: {', '.join(errors)}",
                         code="HEALTH_SCORE_CALCULATION_FAILED",
                         details=details,
-                    )
+                    ) from None
                 return result
 
         health_score = asset.health_score or 0.0

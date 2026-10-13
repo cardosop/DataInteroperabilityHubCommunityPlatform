@@ -7,7 +7,7 @@ All create/update/delete paths call ComplianceBusinessRules before mutation.
 
 import contextlib
 import os
-from typing import Any
+from typing import Any, ClassVar
 
 from django.db import transaction
 from django.utils import timezone
@@ -103,11 +103,11 @@ class ComplianceService(BaseService):
         try:
             tenant = tenant or Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError("Tenant not found", details={"tenant_id": tenant_id})
+            raise NotFoundError("Tenant not found", details={"tenant_id": tenant_id}) from None
         try:
             user = user or User.objects.get(id=user_id)
         except User.DoesNotExist:
-            raise NotFoundError("User not found", details={"user_id": user_id})
+            raise NotFoundError("User not found", details={"user_id": user_id}) from None
 
         if asset is None and asset_id:
             try:
@@ -117,7 +117,7 @@ class ComplianceService(BaseService):
                     "Asset not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"asset_id": asset_id},
-                )
+                ) from None
         if dataset is None and dataset_id:
             try:
                 dataset = Dataset.objects.get(id=dataset_id, tenant_id=tenant_id)
@@ -126,7 +126,7 @@ class ComplianceService(BaseService):
                     "Dataset not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"dataset_id": dataset_id},
-                )
+                ) from None
             if asset and dataset.asset != asset:
                 raise ValidationError(
                     "Dataset does not belong to the specified asset",
@@ -143,7 +143,7 @@ class ComplianceService(BaseService):
                     "File not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"file_id": file_id},
-                )
+                ) from None
 
         # Validate via ComplianceBusinessRules before any mutation
         payload_run = ComplianceRun(
@@ -180,21 +180,17 @@ class ComplianceService(BaseService):
         _license_warnings = None
         if tenant.licensed_regulation_keys and applicable_regulations:
             _unlicensed = [
-                r for r in applicable_regulations
-                if r not in tenant.licensed_regulation_keys
+                r for r in applicable_regulations if r not in tenant.licensed_regulation_keys
             ]
             if _unlicensed:
                 if tenant.strict_license_check:
                     raise ValidationError(
-                        f"Tenant not licensed for regulations: "
-                        f"{', '.join(sorted(_unlicensed))}",
+                        f"Tenant not licensed for regulations: {', '.join(sorted(_unlicensed))}",
                         code="REGULATION_NOT_LICENSED",
                         http_status=422,
                         details={
                             "unlicensed_regulations": sorted(_unlicensed),
-                            "licensed_regulation_keys": sorted(
-                                tenant.licensed_regulation_keys
-                            ),
+                            "licensed_regulation_keys": sorted(tenant.licensed_regulation_keys),
                         },
                     )
                 # Lenient mode — collect warnings; applied to run metadata below.
@@ -204,8 +200,7 @@ class ComplianceService(BaseService):
                         "severity": "WARNING",
                         "regulations": sorted(_unlicensed),
                         "message": (
-                            f"Tenant is not licensed for: "
-                            f"{', '.join(sorted(_unlicensed))}"
+                            f"Tenant is not licensed for: {', '.join(sorted(_unlicensed))}"
                         ),
                     }
                 ]
@@ -660,7 +655,7 @@ class ComplianceService(BaseService):
     #: Anything unrecognised falls back to "csv" — the compliance
     #: microservice's default — so a misclassified upload still gets
     #: scanned rather than 5xx-ing the whole intake.
-    _FORMAT_BY_CONTENT_TYPE: dict[str, str] = {
+    _FORMAT_BY_CONTENT_TYPE: ClassVar[dict[str, str]] = {
         "text/csv": "csv",
         "application/csv": "csv",
         "application/json": "json",
@@ -669,7 +664,7 @@ class ComplianceService(BaseService):
         "application/parquet": "parquet",
         "application/x-parquet": "parquet",
     }
-    _FORMAT_BY_EXTENSION: dict[str, str] = {
+    _FORMAT_BY_EXTENSION: ClassVar[dict[str, str]] = {
         "csv": "csv",
         "json": "json",
         "ndjson": "json",
@@ -774,7 +769,7 @@ class ComplianceService(BaseService):
                     "file_id": str(file_id),
                     "tenant_id": str(tenant.id),
                 },
-            )
+            ) from None
 
         actor = user or file_obj.created_by
         effective_correlation_id = correlation_id or str(file_obj.id)
@@ -1144,6 +1139,28 @@ class ComplianceService(BaseService):
                 ]
             )
 
+            # W1.19 — convention 8: a compiler SQL-safety rejection emits
+            # its audit event (best-effort; the details carry the code,
+            # never the payload).
+            from hub.apps.dq.sql_safety import SQLSafetyError
+
+            if isinstance(exc, SQLSafetyError):
+                try:
+                    from hub.apps.audit.utils import create_audit_event
+
+                    create_audit_event(
+                        resource_type="COMPLIANCE_RUN",
+                        action="COMPLIANCE_WAREHOUSE_SQL_SAFETY_REJECTED",
+                        tenant=tenant,
+                        resource_id=str(run.id),
+                        result="REJECTED",
+                        details={"code": "SQL_SAFETY_REJECTED"},
+                    )
+                except Exception:
+                    _logger.warning(
+                        "compliance_sql_safety_audit_failed", exc_info=True
+                    )
+
         run.refresh_from_db()
         return run
 
@@ -1153,7 +1170,7 @@ class ComplianceService(BaseService):
     @transaction.atomic
     def run_warehouse_compliance(
         run_id: str,
-        tenant_id: str | None = None,
+        tenant_id: str | None = None,  # keyword-arg API; callers pass by keyword
         user_id: str | None = None,
     ) -> dict:
         """Validate and dispatch a warehouse-mode ComplianceRun.
@@ -1177,12 +1194,11 @@ class ComplianceService(BaseService):
             raise NotFoundError(
                 "ComplianceRun not found",
                 details={"run_id": run_id},
-            )
+            ) from None
 
         if run.scan_mode != "WAREHOUSE_SQL":
             raise ValidationError(
-                f"run_warehouse_compliance requires scan_mode=WAREHOUSE_SQL, "
-                f"got {run.scan_mode}",
+                f"run_warehouse_compliance requires scan_mode=WAREHOUSE_SQL, got {run.scan_mode}",
                 code="WAREHOUSE_SCAN_MODE_REQUIRED",
             )
 
@@ -1199,10 +1215,8 @@ class ComplianceService(BaseService):
         if user_id:
             from hub.apps.users.models import User
 
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 actor = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         job = create_job(
             tenant=run.tenant,

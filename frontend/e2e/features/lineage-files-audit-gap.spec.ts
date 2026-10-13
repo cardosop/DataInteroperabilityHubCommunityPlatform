@@ -23,7 +23,19 @@ import {
 } from '../fixtures/helpers';
 
 test.describe("Phase 7.5 gap — lineage + files + audit @deprecated", () => {
-  test.setTimeout(120000);
+  // Budget arithmetic (test H): pre-loop chain caps 60s nav + 15s list +
+  // 5s heading + 60s create-nav + 10s loading + 1s settle + 30s file
+  // input + 90s upload race + 45s API poll + 60s files nav + 20s loading
+  // = 396s worst / ~200s realistic under churn; retry loop 10 × (5s wait
+  // + reload + 15s list wait + 15s loading) = 400s worst / ~200s
+  // realistic; post-loop reload + pagination + assertions + delete
+  // ~140s. The all-caps sum (~940s) is not a sane budget; realistic ≈
+  // 540s, so 600s lets the retry loop finish and the graceful skip
+  // verdicts (lines 228/272) report instead of the opaque budget-wall
+  // browser-close — b7 #30: the 240s budget expired inside the loop at
+  // page.waitForTimeout while the upload never committed to the API.
+  // (Test I caps: 60s nav + filter/export waits ≈ 150s < 600s.)
+  test.setTimeout(600000);
   test.beforeEach(async ({ page }) => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
@@ -58,16 +70,23 @@ test.describe("Phase 7.5 gap — lineage + files + audit @deprecated", () => {
     await lineageTab.click();
     await page.waitForTimeout(2000);
 
-    const lineageSection = page.locator('.contract-lineage-visualization');
-    await expect(lineageSection).toBeVisible({ timeout: 15000 });
-
-    const lineageHeader = page.locator('.lineage-header h3').filter({ hasText: /Lineage/i });
+    // The visualization moved to CSS modules — the rendered classes are
+    // hashed, so .contract-lineage-visualization / .lineage-header /
+    // .lineage-canvas / .lineage-legend no longer exist in the DOM (b7
+    // re-run #11). The "loads from real API, no stub" contract is
+    // pinned through API-resolved terminal markers instead: the
+    // Lineage h3 heading + one of {graph, structureless tier,
+    // no-relationships tier} — every one renders only AFTER the
+    // lineage query resolves, never while a stub/loading state sits.
+    const lineageHeader = page.getByRole('heading', { name: /Lineage/i, level: 3 });
     await expect(lineageHeader).toBeVisible({ timeout: 5000 });
 
-    const hasCanvas = (await page.locator('.lineage-canvas').count()) > 0;
-    const hasLegend = (await page.locator('.lineage-legend').count()) > 0;
-    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
-    expect(hasCanvas || hasLegend || hasError).toBe(true) /* acceptable states */;
+    const lineageSection = page
+      .locator(
+        '.react-flow__renderer, .react-flow, [data-testid="contract-lineage-empty"], [data-testid="contract-lineage-empty-structureless"]'
+      )
+      .first();
+    await expect(lineageSection).toBeVisible({ timeout: 15000 });
   });
 
   test('Phase 7.5.H — Files: global list loads; upload from dataset create then assert file appears on /files; optional delete', async ({
@@ -149,7 +168,11 @@ test.describe("Phase 7.5 gap — lineage + files + audit @deprecated", () => {
       fileInApi = await page.evaluate(
         async ({ name }: { name: string }) => {
           try {
-            const token = localStorage.getItem('access_token') || '';
+            const g = (window as unknown as { __getAccessToken?: () => string | null })
+              .__getAccessToken;
+            const token =
+              (typeof g === 'function' ? g() : null) ??
+              (localStorage.getItem('access_token') || '');
             const r = await fetch(`/api/v1/files/?page_size=100`, {
               headers: { Authorization: `Bearer ${token}` },
             });

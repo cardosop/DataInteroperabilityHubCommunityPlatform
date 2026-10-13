@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CpoCostOverviewPage } from '../CpoCostOverviewPage';
-import * as apiModule from '../../../../shared/api/client';
 
 const mockGet = vi.fn();
 

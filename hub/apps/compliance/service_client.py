@@ -146,7 +146,7 @@ class ComplianceServiceClient:
         # Define fallback response (fail-closed: allowed_to_store must be
         # False when service unavailable).  v2 fields are null so callers
         # can distinguish "service returned null" from "field absent".
-        def fallback_response(*args, **kwargs) -> dict[str, Any]:
+        def fallback_response(*_args, **_kwargs) -> dict[str, Any]:
             """Fallback when circuit breaker is open or service fails."""
             return {
                 "overall_status": "UNKNOWN",
@@ -223,7 +223,11 @@ class ComplianceServiceClient:
             if legal_basis:
                 data["legal_basis"] = legal_basis
 
-            actor_id = getattr(settings, "SERVICE_ACTOR_ID", "hub")
+            # Phase 270.C.2 — the compliance service treats X-Actor-Id as
+            # the authoritative tenant and cross-checks it against the
+            # body tenant_id. Send the tenant itself (matching the body),
+            # not a service identity.
+            actor_id = tenant_id if tenant_id else "unknown"
             req_headers = {
                 "X-Correlation-Id": effective_correlation_id,
                 "X-Actor-Id": actor_id,
@@ -288,7 +292,7 @@ class ComplianceServiceClient:
         internal_key = getattr(settings, "INTERNAL_API_KEY", "")
         if internal_key:
             trace_hdrs["X-Internal-Api-Key"] = internal_key
-        actor_id = getattr(settings, "SERVICE_ACTOR_ID", "hub")
+        actor_id = tenant_id or "unknown"
         headers = {
             **trace_hdrs,
             "X-Correlation-Id": eff_cid,
@@ -341,7 +345,7 @@ class ComplianceServiceClient:
 
         return self._circuit_breaker.call(_execute_async, fallback=_fallback_async_circuit)
 
-    def get_scan_result(self, job_id: str) -> dict[str, Any]:
+    def get_scan_result(self, job_id: str, tenant_id: str | None = None) -> dict[str, Any]:
         """
         GET /scan-result/{job_id} — poll for an async job result.
 
@@ -363,7 +367,7 @@ class ComplianceServiceClient:
         internal_key = getattr(settings, "INTERNAL_API_KEY", "")
         if internal_key:
             trace_hdrs["X-Internal-Api-Key"] = internal_key
-        actor_id = getattr(settings, "SERVICE_ACTOR_ID", "hub")
+        actor_id = tenant_id or "unknown"
         headers = {
             **trace_hdrs,
             "X-Correlation-Id": cid,

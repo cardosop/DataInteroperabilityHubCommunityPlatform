@@ -51,6 +51,9 @@ class TestTransactionAtomicRollback:
         """Explicitly raised exception inside atomic rolls back all prior writes."""
         slug = f"deliberate-rollback-{uuid.uuid4().hex[:8]}"
 
+        def _raise_deliberate_failure():
+            raise ValueError("deliberate test failure")
+
         try:
             with transaction.atomic():
                 Tenant.objects.create(
@@ -58,7 +61,7 @@ class TestTransactionAtomicRollback:
                     slug=slug,
                     kyc_status=KYCStatus.PENDING_REVIEW,
                 )
-                raise ValueError("deliberate test failure")
+                _raise_deliberate_failure()
         except ValueError:
             pass  # Expected
 
@@ -208,6 +211,9 @@ class TestSelectForUpdate:
         import concurrent.futures
         import threading
 
+        from hub.conftest import _seed_tenant_plans_if_missing
+
+        _seed_tenant_plans_if_missing()
         slug = f"sfu-{uuid.uuid4().hex[:8]}"
 
         tenant = Tenant.objects.create(

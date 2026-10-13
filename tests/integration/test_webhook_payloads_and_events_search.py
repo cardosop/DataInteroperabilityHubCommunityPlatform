@@ -276,6 +276,4 @@ class TestWebhookPayloadsAndEventsSearch:
             or "WebhookDeliveryService" in ref.get("context", "")
         ]
         # Should find some service references
-        assert len(service_references) > 0, (
-            "No webhook service references found"
-        )
+        assert len(service_references) > 0, "No webhook service references found"

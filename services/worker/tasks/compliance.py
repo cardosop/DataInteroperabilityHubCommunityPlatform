@@ -126,7 +126,7 @@ def _get_redis_client() -> Any:
         raise RuntimeError(
             "No Redis URL found. Set REDIS_QUEUE_URL, RQ_REDIS_URL, or "
             "REDIS_URL, or configure RQ_QUEUES in Django settings."
-        )
+        ) from None
 
 
 def _write_result(
@@ -141,13 +141,9 @@ def _write_result(
             json.dumps(payload, default=str),
             ex=RESULT_TTL_SECONDS,
         )
-    except Exception as exc:
+    except Exception:
         # Never let a result-write failure mask the original job outcome.
-        logger.error(
-            "compliance_scan_job result_write_failed job_id=%s error=%s",
-            job_id,
-            exc,
-        )
+        logger.exception("compliance_scan_job result_write_failed job_id=%s error=", job_id)
 
 
 # ---------------------------------------------------------------------------
@@ -216,17 +212,19 @@ def compliance_scan_job(
             PolicyEngine,
             RiskCalculator,
         )
-    except ImportError as exc:
-        logger.error(
-            "compliance_scan_job import_failed job_id=%s error=%s — "
+    except ImportError:
+        logger.exception(
+            "compliance_scan_job import_failed job_id=%s error= —"
             "PYTHONPATH must include /app and /app/compliance_engine",
             job_id,
-            exc,
         )
         raise
 
     redis_client = _get_redis_client()
     start_time = time.time()
+
+    def _raise_unsupported_file_format(file_format: str) -> None:
+        raise ValueError(f"Unsupported file_format in compliance job payload: {file_format!r}")
 
     try:
         # ------------------------------------------------------------------
@@ -247,7 +245,7 @@ def compliance_scan_job(
         elif file_format == "parquet":
             df = pd.read_parquet(buf)
         else:
-            raise ValueError(f"Unsupported file_format in compliance job payload: {file_format!r}")
+            _raise_unsupported_file_format(file_format)
 
         # ------------------------------------------------------------------
         # 2. Extract optional scan parameters
@@ -348,7 +346,7 @@ def compliance_scan_job(
                 "error": error_msg,
             },
         )
-        logger.error(
+        logger.exception(
             "compliance_scan_job failed job_id=%s duration_ms=%d error=%s",
             job_id,
             int(scan_duration * 1000),

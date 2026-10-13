@@ -77,13 +77,11 @@ class TestDatabricksConnectorListListings(TestCase):
 
                 listings = self.connector.list_listings()
 
-                self.assertIsInstance(listings, list)
-                self.assertEqual(len(listings), 2)
-                self.assertIsInstance(listings[0], MarketplaceListing)
-                self.assertEqual(listings[0].marketplace_id, "test_share_1")
-                self.assertEqual(
-                    listings[0].marketplace_type, MarketplaceType.DATABRICKS_MARKETPLACE
-                )
+                assert isinstance(listings, list)
+                assert len(listings) == 2
+                assert isinstance(listings[0], MarketplaceListing)
+                assert listings[0].marketplace_id == "test_share_1"
+                assert listings[0].marketplace_type == MarketplaceType.DATABRICKS_MARKETPLACE
 
     def test_list_listings_with_limit(self):
         """Test list_listings with limit parameter"""
@@ -102,9 +100,9 @@ class TestDatabricksConnectorListListings(TestCase):
 
                 listings = self.connector.list_listings(limit=5)
 
-                self.assertEqual(len(listings), 5)
+                assert len(listings) == 5
                 # _get_share_details is called once per listing returned
-                self.assertTrue(mock_get_details.called)
+                assert mock_get_details.called
 
     def test_list_listings_with_offset(self):
         """Test list_listings with offset parameter"""
@@ -124,11 +122,9 @@ class TestDatabricksConnectorListListings(TestCase):
                 listings = self.connector.list_listings(offset=5)
 
                 # Should skip first 5 and return remaining (10 total - 5 offset = 5)
-                self.assertEqual(
-                    len(listings), 5, "offset=5 with 10 total shares should return 5 listings"
-                )
+                assert len(listings) == 5, "offset=5 with 10 total shares should return 5 listings"
                 # _get_share_details is called once per listing returned
-                self.assertTrue(mock_get_details.called)
+                assert mock_get_details.called
 
     def test_list_listings_empty_result(self):
         """Test list_listings when no shares exist"""
@@ -142,8 +138,8 @@ class TestDatabricksConnectorListListings(TestCase):
 
             listings = self.connector.list_listings()
 
-            self.assertIsInstance(listings, list)
-            self.assertEqual(len(listings), 0)
+            assert isinstance(listings, list)
+            assert len(listings) == 0
 
     def test_list_listings_connection_error(self):
         """Test list_listings raises ConnectionError on failure"""
@@ -181,11 +177,11 @@ class TestDatabricksConnectorGetListing(TestCase):
 
             listing = self.connector.get_listing("test_share")
 
-            self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(listing.marketplace_id, "test_share")
-            self.assertEqual(listing.title, "test_share")
-            self.assertEqual(listing.description, "Test Share Description")
-            self.assertEqual(listing.marketplace_type, MarketplaceType.DATABRICKS_MARKETPLACE)
+            assert isinstance(listing, MarketplaceListing)
+            assert listing.marketplace_id == "test_share"
+            assert listing.title == "test_share"
+            assert listing.description == "Test Share Description"
+            assert listing.marketplace_type == MarketplaceType.DATABRICKS_MARKETPLACE
             mock_get_details.assert_called_once_with("test_share")
 
     def test_get_listing_not_found(self):
@@ -261,18 +257,18 @@ class TestDatabricksConnectorListResources(TestCase):
 
                 resources = self.connector.list_resources("test_share")
 
-                self.assertIsInstance(resources, list)
-                self.assertEqual(len(resources), 2)
-                self.assertIsInstance(resources[0], MarketplaceResource)
-                self.assertEqual(resources[0].resource_type, "TABLE")
-                self.assertEqual(resources[0].resource_id, "test_catalog.schema1.table1")
+                assert isinstance(resources, list)
+                assert len(resources) == 2
+                assert isinstance(resources[0], MarketplaceResource)
+                assert resources[0].resource_type == "TABLE"
+                assert resources[0].resource_id == "test_catalog.schema1.table1"
 
                 # Verify tables.list() was called with correct parameters
                 mock_request.assert_called_once()
                 call_args = mock_request.call_args
-                self.assertEqual(call_args[0][1], "/api/2.0/unity-catalog/tables")
-                self.assertEqual(call_args[1]["params"]["catalog_name"], "test_catalog")
-                self.assertEqual(call_args[1]["params"]["schema_name"], "schema1")
+                assert call_args[0][1] == "/api/2.0/unity-catalog/tables"
+                assert call_args[1]["params"]["catalog_name"] == "test_catalog"
+                assert call_args[1]["params"]["schema_name"] == "schema1"
 
     def test_list_resources_empty(self):
         """Test list_resources when share has no schemas"""
@@ -287,8 +283,8 @@ class TestDatabricksConnectorListResources(TestCase):
 
             resources = self.connector.list_resources("test_share")
 
-            self.assertIsInstance(resources, list)
-            self.assertEqual(len(resources), 0)
+            assert isinstance(resources, list)
+            assert len(resources) == 0
 
     def test_list_resources_share_not_found(self):
         """Test list_resources raises NotFoundError when share doesn't exist"""

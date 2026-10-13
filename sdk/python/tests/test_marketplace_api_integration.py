@@ -22,10 +22,10 @@ To run these tests:
 3. Run: pytest tests/test_marketplace_api_integration.py -v -m integration
 """
 
+import contextlib
 import os
 import subprocess
 import uuid
-from typing import Optional
 
 import pytest
 
@@ -37,10 +37,9 @@ from datahub_interoperability.errors import (
     NotFoundError,
     ValidationError,
 )
-import contextlib
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -69,7 +68,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Fall back to env-var keys
@@ -80,7 +79,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_marketplace_tenant_and_key() -> Optional[str]:
+def _create_marketplace_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``marketplace_integrations_enabled=True``
     and return an API key.  Tries inside-Docker path first, then docker-compose.
     """
@@ -167,8 +166,8 @@ print(api_key_value)
                 cwd="/app/hub",
             )
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 if not line:
                     continue
                 if (
@@ -181,7 +180,7 @@ print(api_key_value)
                     continue
                 if len(line) >= 40 and all(c.isalnum() or c in "-_" for c in line):
                     return line
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
     # Method 3: Try docker compose exec (when running outside Docker)
@@ -277,8 +276,8 @@ print(api_key_value)
             cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
         )
         output_lines = result.stdout.strip().split("\n")
-        for line in reversed(output_lines):
-            line = line.strip()
+        for raw_line in reversed(output_lines):
+            line = raw_line.strip()
             if not line:
                 continue
             if "imported" in line.lower() or "objects" in line.lower() or "details" in line.lower():
@@ -287,7 +286,7 @@ print(api_key_value)
                 continue
             if len(line) >= 40 and all(c.isalnum() or c in "-_" for c in line):
                 return line
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     return None
@@ -365,7 +364,6 @@ async def create_test_connection(marketplace_api, connection_name=None):
                 "token": "test-token",
             },
         )
-        return connection
     except ConflictError:
         # If connection already exists, try to find and delete it first
         connections = await marketplace_api.list_connections()
@@ -383,6 +381,8 @@ async def create_test_connection(marketplace_api, connection_name=None):
                 "token": "test-token",
             },
         )
+        return connection
+    else:
         return connection
 
 

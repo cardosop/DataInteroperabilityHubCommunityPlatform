@@ -98,7 +98,7 @@ def validate_all(language: str | None = None) -> dict:
         rel = str(md_file.relative_to(PROJECT_ROOT))
         try:
             content = md_file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         snippets = extract_snippets(content, language)

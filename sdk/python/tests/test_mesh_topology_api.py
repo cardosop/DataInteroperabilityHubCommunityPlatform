@@ -8,6 +8,7 @@ Tests for Mesh Topology API methods.
 Tests topology operations with comprehensive error handling.
 """
 import asyncio
+import contextlib
 import uuid
 from unittest.mock import AsyncMock
 
@@ -15,12 +16,12 @@ import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
 from datahub_interoperability.errors import (
+    DataHubError,
     NotFoundError,
 )
 from tests._sdk_test_helpers import (
     create_real_api_config,
 )
-import contextlib
 
 # File-specific tenant parameters
 _TOPOLOGY_TENANT_SLUG = "mesh-topology-sdk-test-tenant"
@@ -297,7 +298,7 @@ async def test_get_topology_with_domains_integration(real_client):
         try:
             await real_client.mesh.delete_domain(domain1["id"])
             await real_client.mesh.delete_domain(domain2["id"])
-        except Exception:
+        except (DataHubError, ValueError):
             pass
 
 

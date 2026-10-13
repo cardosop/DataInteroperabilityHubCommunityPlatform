@@ -7,15 +7,15 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CommunityBadge } from '../CommunityBadge';
-import { apiClient } from '../../../../shared/api/client';
 
+// The component consumes the shared client pattern
+// (``apiClient.getClient().get``) — the mock must expose getClient.
+const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 vi.mock('../../../../shared/api/client', () => ({
   apiClient: {
-    get: vi.fn(),
+    getClient: () => ({ get: mockGet }),
   },
 }));
-
-const mockGet = apiClient.get as ReturnType<typeof vi.fn>;
 
 describe('CommunityBadge', () => {
   beforeEach(() => {
@@ -38,7 +38,7 @@ describe('CommunityBadge', () => {
     mockGet.mockResolvedValue({
       data: { discussion_count: 0, rating_avg: 0, rating_count: 0 },
     });
-    const { container } = render(<CommunityBadge assetId="asset-1" />);
+    render(<CommunityBadge assetId="asset-1" />);
     await waitFor(() => {
       expect(screen.queryByTestId('community-badge')).toBeNull();
     });

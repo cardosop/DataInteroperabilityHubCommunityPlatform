@@ -44,7 +44,7 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const onGov = url.includes('/governance');
       const on403 = url.includes('/403');
       if (on403) {
-        test.skip(true, 'Role gated — skipping success assertion');
+        test.skip(on403, 'Role gated — skipping success assertion');
         return;
       }
       expect(onGov).toBe(true);

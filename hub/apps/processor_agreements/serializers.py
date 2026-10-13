@@ -20,7 +20,7 @@ from hub.apps.processor_agreements.validators import (
 class ProcessorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Processor
-        fields = [
+        fields = (
             "id",
             "tenant",
             "name",
@@ -30,8 +30,8 @@ class ProcessorSerializer(serializers.ModelSerializer):
             "notes",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "tenant", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "tenant", "created_at", "updated_at")
 
     def create(self, validated_data):
         obj = Processor(**validated_data)
@@ -60,7 +60,7 @@ class ProcessorAgreementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProcessorAgreement
-        fields = [
+        fields = (
             "id",
             "tenant",
             "processor",
@@ -80,8 +80,8 @@ class ProcessorAgreementSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "status",
@@ -89,7 +89,7 @@ class ProcessorAgreementSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def validate_document_hash(self, value: str) -> str:
         return validate_document_hash_hex(value)
@@ -124,8 +124,8 @@ class ProcessorAgreementSerializer(serializers.ModelSerializer):
 class AssetProcessorLinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = AssetProcessorMembership
-        fields = ["id", "tenant", "asset", "processor", "created_at"]
-        read_only_fields = ["id", "tenant", "created_at"]
+        fields = ("id", "tenant", "asset", "processor", "created_at")
+        read_only_fields = ("id", "tenant", "created_at")
 
     def validate(self, data):
         request = self.context.get("request")

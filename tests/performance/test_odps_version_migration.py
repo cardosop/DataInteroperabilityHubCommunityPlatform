@@ -14,6 +14,7 @@ Targets:
 - Migration time < 5s per contract
 """
 
+import contextlib
 import json
 import time
 
@@ -25,7 +26,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
 
-def create_odps_3_x_document(product_id: str = None) -> dict:
+def create_odps_3_x_document(product_id: str | None = None) -> dict:
     """Create an ODPS 3.x document (simplified structure)"""
     if not product_id:
         product_id = f"migration-test-3x-{int(time.time() * 1000)}"
@@ -41,7 +42,7 @@ def create_odps_3_x_document(product_id: str = None) -> dict:
     }
 
 
-def create_odps_4_0_document(product_id: str = None) -> dict:
+def create_odps_4_0_document(product_id: str | None = None) -> dict:
     """Create an ODPS 4.0 document"""
     if not product_id:
         product_id = f"migration-test-40-{int(time.time() * 1000)}"
@@ -70,7 +71,7 @@ def create_odps_4_0_document(product_id: str = None) -> dict:
     }
 
 
-def create_odps_4_1_document(product_id: str = None) -> dict:
+def create_odps_4_1_document(product_id: str | None = None) -> dict:
     """Create an ODPS 4.1 document"""
     if not product_id:
         product_id = f"migration-test-41-{int(time.time() * 1000)}"
@@ -155,10 +156,8 @@ class ODPSVersionMigrationTestBase(TestCase):
     def tearDown(self):
         """Clean up test data"""
         if hasattr(self, "tenant"):
-            try:
+            with contextlib.suppress(Exception):  # teardown cleanup must not fail the test
                 Contract.objects.filter(tenant=self.tenant).delete()
-            except Exception:
-                pass  # Ignore cleanup errors
 
     @classmethod
     def _fixture_teardown(cls):

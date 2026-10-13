@@ -23,8 +23,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSONAS_DIR = REPO_ROOT / "frontend" / "e2e" / "personas"
 OUTPUT_FILE = REPO_ROOT / "docs" / "mvpdocs" / "_meta" / "persona-journey-mapping.yaml"
 
+# Matches both dynamic-import forms used by the persona aggregators:
+#   await import('../journeys/de/JOURNEY-DE-001.spec');
+#   await import('../journeys/de/JOURNEY-DE-001.spec')
+#   import { x } from '../journeys/.../JOURNEY-XXX.spec';
+# The old pattern required a BARE ``import`` with no ``await`` prefix — the
+# aggregators all use top-level ``await import(...)``, so the extractor
+# matched nothing from them and --check reported phantom drift for every
+# persona whose aggregator uses the await form.
 JOURNEY_IMPORT_RE = re.compile(
-    r"import\s+['\"]\.\.\/journeys\/\w+\/(JOURNEY-[A-Z]+-\d+)\.spec['\"]\s*;?"
+    r"(?:await\s+)?import(?:\(|\s+[^'\"]+\s+from\s+)?\s*"
+    r"['\"]\.\./journeys/\w+/(JOURNEY-[A-Z]+-\d+)\.spec['\"]\s*\)?\s*;?"
 )
 
 

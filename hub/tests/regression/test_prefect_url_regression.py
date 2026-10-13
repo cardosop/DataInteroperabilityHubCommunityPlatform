@@ -46,7 +46,6 @@ class TestPrefectIntegrationServiceUrl:
 
     # --- .env.production.template -------------------------------------------
 
-@pytest.mark.skip(reason="PREFECT_INTEGRATION_SERVICE_URL not in .env.production.template")
     def test_env_production_template_uses_port_8084(self):
         content = self._read(".env.production.template")
         for line in content.splitlines():
@@ -63,7 +62,6 @@ class TestPrefectIntegrationServiceUrl:
 
     # --- docker-compose.yml -------------------------------------------------
 
-@pytest.mark.skip(reason="PREFECT_INTEGRATION_SERVICE_URL not in docker-compose.yml")
     def test_docker_compose_uses_port_8084(self):
         content = self._read("docker-compose.yml")
         for line in content.splitlines():
@@ -73,7 +71,6 @@ class TestPrefectIntegrationServiceUrl:
 
     # --- docker-compose.test.yml --------------------------------------------
 
-@pytest.mark.skip(reason="PREFECT_INTEGRATION_SERVICE_URL not in docker-compose.test.yml")
     def test_docker_compose_test_uses_port_8084(self):
         content = self._read("docker-compose.test.yml")
         for line in content.splitlines():
@@ -88,7 +85,6 @@ class TestPrefectIntegrationServiceUrl:
 
     # --- k8s configmap ------------------------------------------------------
 
-@pytest.mark.skip(reason="PREFECT_INTEGRATION_SERVICE_URL not in k8s configmap")
     def test_k8s_configmap_uses_port_8084(self):
         content = self._read("k8s/api-service/base/configmap.yaml")
         for line in content.splitlines():

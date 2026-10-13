@@ -117,7 +117,7 @@ def _make_tenant(slug_prefix: str = "f3d") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> User:  # type: ignore[name-defined]  # test: edge-case type exercise
+def _make_user(tenant: Tenant) -> User:  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",
@@ -187,7 +187,7 @@ def _patch_redis(test_case) -> FakeRedis:
     if _ORIGINAL_GET_REDIS_CLIENT is None:
         _ORIGINAL_GET_REDIS_CLIENT = mod._get_redis_client
     fake = FakeRedis()
-    mod._get_redis_client = lambda: fake  # type: ignore[assignment]
+    mod._get_redis_client = lambda: fake
     return fake
 
 
@@ -287,6 +287,7 @@ class DispatcherDebounceTests(TestCase):
     def tearDown(self):
         _unpatch_redis()
         super().tearDown()
+
     def test_second_dispatch_within_window_is_debounced(self):
         from hub.apps.contracts.models import LineageSubscription
         from hub.apps.notifications.models import UserNotification
@@ -339,6 +340,7 @@ class DispatcherRateLimitTests(ContractsTransactionTestBase):
     def tearDown(self):
         _unpatch_redis()
         super().tearDown()
+
     """``TransactionTestCase`` (not ``TestCase``) because the
     rate-limit drop emits an audit row via ``create_audit_event(
     tenant=None, action='DISPATCH_RATE_LIMITED', ...)`` which routes
@@ -437,6 +439,7 @@ class DispatcherDownstreamWalkTests(TestCase):
     def tearDown(self):
         _unpatch_redis()
         super().tearDown()
+
     """Subscribers attached to contracts DOWNSTREAM of the changed
     contract receive notifications too — the dispatcher walks the
     LineageEdge graph BFS to enumerate affected contracts before
@@ -507,6 +510,7 @@ class DispatcherBodySummaryTests(TestCase):
     def tearDown(self):
         _unpatch_redis()
         super().tearDown()
+
     """The notification body MUST surface the added / removed edge
     counts per REQ-LIN-F3-006 'What changed summary'."""
 
@@ -563,6 +567,7 @@ class DispatcherCrossTenantContentTests(TestCase):
     def tearDown(self):
         _unpatch_redis()
         super().tearDown()
+
     def test_cross_tenant_subscriber_receives_summary_only(self):
         """The dispatcher computes the user-tenant vs source-tenant
         relationship at notification time; cross-tenant subscribers

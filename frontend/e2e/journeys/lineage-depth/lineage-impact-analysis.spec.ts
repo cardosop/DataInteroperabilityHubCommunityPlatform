@@ -89,7 +89,7 @@ test.describe('226.G5 — Lineage impact-analysis @critical @lineage', () => {
       { headers },
     );
     if (jsonRes.status() === 404) {
-      test.skip(true, 'Impact-analysis endpoint not enabled (404)');
+      test.skip(jsonRes.status() === 404, 'Impact-analysis endpoint not enabled (404)');
       return;
     }
     expect(jsonRes.ok()).toBe(true);

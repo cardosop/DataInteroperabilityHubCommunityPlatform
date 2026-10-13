@@ -48,14 +48,14 @@ def _git_modified_files(repo_root: Path, since_days: int | None) -> list[str]:
         text=True,
         capture_output=True,
     )
-    return [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    return [result.strip() for result in result.stdout.splitlines() if result.strip()]
 
 
 def scan_file(filepath: Path) -> list[dict]:
     findings = []
     try:
         content = filepath.read_text(encoding="utf-8", errors="ignore")
-    except Exception:
+    except OSError:
         return findings
     lines = content.splitlines()
     for i, line in enumerate(lines, 1):

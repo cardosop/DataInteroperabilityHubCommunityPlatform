@@ -32,7 +32,7 @@ class DomainSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DataMeshDomain
-        fields = [
+        fields = (
             "id",
             "name",
             "description",
@@ -47,15 +47,15 @@ class DomainSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "created_at",
             "updated_at",
             "tenant",
             "tenant_name",
             "owner_email",
-        ]
+        )
 
     def validate_name(self, value):
         """Validate domain name"""
@@ -238,7 +238,7 @@ class PolicyApplicationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PolicyApplication
-        fields = [
+        fields = (
             "id",
             "domain_id",
             "domain_name",
@@ -251,8 +251,8 @@ class PolicyApplicationSerializer(serializers.ModelSerializer):
             "applied_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "domain_id",
             "domain_name",
@@ -264,7 +264,7 @@ class PolicyApplicationSerializer(serializers.ModelSerializer):
             "applied_at",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class ApplyPolicySerializer(serializers.Serializer):
@@ -298,7 +298,7 @@ class ComplianceReportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ComplianceReport
-        fields = [
+        fields = (
             "id",
             "domain_id",
             "domain_name",
@@ -310,8 +310,8 @@ class ComplianceReportSerializer(serializers.ModelSerializer):
             "generated_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "domain_id",
             "domain_name",
@@ -323,7 +323,7 @@ class ComplianceReportSerializer(serializers.ModelSerializer):
             "generated_at",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def get_violation_count(self, obj):
         """Get violation count from violations dict"""
@@ -350,7 +350,9 @@ class CheckComplianceSerializer(serializers.Serializer):
 class HealthMetricsSerializer(serializers.Serializer):
     """Serializer for domain health metrics"""
 
-    health_score = serializers.IntegerField(min_value=0, max_value=100, help_text="Health score (0-100)")
+    health_score = serializers.IntegerField(
+        min_value=0, max_value=100, help_text="Health score (0-100)"
+    )
     policy_count = serializers.IntegerField(help_text="Number of applied policies")
     compliance_status = serializers.ChoiceField(
         choices=MeshComplianceStatus.choices, help_text="Compliance status"

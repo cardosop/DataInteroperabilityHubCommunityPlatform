@@ -25,7 +25,7 @@ class AuditEventRetentionPolicySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuditEventRetentionPolicy
-        fields = [
+        fields = (
             "id",
             "tenant",
             "event_type",
@@ -35,8 +35,8 @@ class AuditEventRetentionPolicySerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "tenant", "created_by", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "tenant", "created_by", "created_at", "updated_at")
 
 
 class AuditEventSerializer(serializers.ModelSerializer):
@@ -47,7 +47,7 @@ class AuditEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuditEvent
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -60,7 +60,7 @@ class AuditEventSerializer(serializers.ModelSerializer):
             "details_json",
             "timestamp",
             "trace_id",
-        ]
+        )
         read_only_fields = fields
 
 
@@ -159,7 +159,7 @@ class ResourceActivityEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuditEvent
-        fields = [
+        fields = (
             "id",
             "action",
             "result",
@@ -168,7 +168,7 @@ class ResourceActivityEventSerializer(serializers.ModelSerializer):
             "resource_id",
             "actor_display_name",
             "details",
-        ]
+        )
         read_only_fields = fields
 
     def get_actor_display_name(self, obj):

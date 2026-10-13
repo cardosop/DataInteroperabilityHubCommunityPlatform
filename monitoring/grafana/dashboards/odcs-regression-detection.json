@@ -1,0 +1,190 @@
+{
+  "title": "ODCS Regression Detection",
+  "tags": [
+    "odcs",
+    "regression",
+    "backward-compatibility",
+    "task-6.2.5"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "ODCS Normalization Regressions by Type",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odcs_normalization_regression_total[5m])) by (regression_type, version)",
+          "legendFormat": "{{regression_type}} ({{version}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Regressions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate of ODCS normalization regressions by type and version"
+    },
+    {
+      "id": 2,
+      "title": "ODCS Regression Rate by Version",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odcs_normalization_regression_total[5m])) by (version)",
+          "legendFormat": "{{version}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Regressions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Regression rate broken down by ODCS version"
+    },
+    {
+      "id": 3,
+      "title": "ODCS Regression Rate by Tenant",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odcs_normalization_regression_total[5m])) by (tenant_id, regression_type)",
+          "legendFormat": "{{tenant_id}} ({{regression_type}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Regressions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Regression rate broken down by tenant and regression type"
+    },
+    {
+      "id": 4,
+      "title": "ODCS Regression Trend",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(odcs_normalization_regression_total[1h])) by (regression_type)",
+          "legendFormat": "{{regression_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Regressions/hour"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Trend of ODCS regressions over time by type"
+    },
+    {
+      "id": 5,
+      "title": "ODCS Regression Heatmap",
+      "type": "heatmap",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odcs_normalization_regression_total[5m])) by (version, regression_type)",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Version"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Heatmap showing regression distribution by version and type"
+    },
+    {
+      "id": 6,
+      "title": "ODCS Regression vs Normalization Success Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odcs_normalization_regression_total[5m])) / sum(rate(odcs_normalization_total[5m]))",
+          "legendFormat": "Regression Rate",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(odcs_normalization_total{status=\"success\"}[5m])) / sum(rate(odcs_normalization_total[5m]))",
+          "legendFormat": "Success Rate",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "Rate",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Comparison of regression rate vs success rate for ODCS normalization"
+    }
+  ]
+}

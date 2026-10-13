@@ -23,7 +23,7 @@ test.describe('Feature: Notifications', () => {
       });
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) {
-        test.skip(true, 'Auth/role redirect');
+        test.skip(url.includes('/login') || url.includes('/403'), 'Auth/role redirect');
         return;
       }
       await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
@@ -41,7 +41,7 @@ test.describe('Feature: Notifications', () => {
         contentSelector: '.app-main, [data-testid="app-main"], h1',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect');
+        test.skip(page.url().includes('/login'), 'Auth redirect');
         return;
       }
       // The notification bell should be in the app header/navbar

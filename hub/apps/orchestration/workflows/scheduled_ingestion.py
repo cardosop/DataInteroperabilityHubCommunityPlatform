@@ -49,10 +49,10 @@ def _get_source_connector_factory():
             0, os.path.join(os.path.dirname(__file__), "../../../../services/prefect-integration")
         )
         from connectors.factory import SourceConnectorFactory
-
-        return SourceConnectorFactory
     except ImportError:
         return None
+    else:
+        return SourceConnectorFactory
 
 
 def _get_source_connector_or_fail(source_type: str):
@@ -294,7 +294,7 @@ class ScheduledIngestionWorkflow:
         try:
             scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
         except ScheduledIngestion.DoesNotExist:
-            raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found")
+            raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found") from None
 
         # Validate source configuration
         source_config = scheduled_ingestion.get_source_config()
@@ -312,7 +312,7 @@ class ScheduledIngestionWorkflow:
         try:
             re.compile(file_pattern)
         except re.error as e:
-            raise ValueError(f"Invalid file pattern regex: {e!s}")
+            raise ValueError(f"Invalid file pattern regex: {e!s}") from e
 
         # Validate ingestion configuration using ScheduledIngestionBusinessRules
         ingestion_rules = ScheduledIngestionBusinessRules(
@@ -384,7 +384,7 @@ class ScheduledIngestionWorkflow:
         source_type = input_data.get("source_type")
         source_config = input_data.get("source_config")
 
-        try:
+        def _connect() -> dict[str, Any]:
             connector = _get_source_connector_or_fail(source_type)
             # Test connection by attempting to list files (with limit)
             test_result = connector.test_connection(source_config)
@@ -423,6 +423,9 @@ class ScheduledIngestionWorkflow:
                 "connector_type": source_type,
                 "connection_details": connection_details,
             }
+
+        try:
+            result = _connect()
         except Exception as e:
             logger.warning(
                 "Failed to connect to source",
@@ -432,6 +435,8 @@ class ScheduledIngestionWorkflow:
                 exc_info=True,
             )
             raise WorkflowStepValueError(f"Failed to connect to source: {e!s}") from e
+        else:
+            return result
 
     @staticmethod
     def _discover_files_task(
@@ -515,7 +520,7 @@ class ScheduledIngestionWorkflow:
                 last_modified = metadata.get("last_modified")
                 if last_modified:
                     if isinstance(last_modified, str):
-                        from dateutil.parser import parse
+                        from dateutil.parser import parse  # type: ignore[import-untyped]
 
                         last_modified = parse(last_modified)
                     file_timestamp = last_modified
@@ -607,15 +612,17 @@ class ScheduledIngestionWorkflow:
         scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
         tenant = scheduled_ingestion.tenant
 
-        temp_file = None
         temp_path = None
-        try:
+
+        def _download() -> dict[str, Any]:
+            nonlocal temp_path
             connector = _get_source_connector_or_fail(source_type)
 
             # Create temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
-            temp_path = temp_file.name
-            temp_file.close()
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=Path(file_path).suffix
+            ) as temp_file:
+                temp_path = temp_file.name
 
             # Download file
             result = connector.download_file(source_config, file_path, temp_path)
@@ -669,6 +676,9 @@ class ScheduledIngestionWorkflow:
                 "file_hash": file_hash,
                 "file_info": file_info,
             }
+
+        try:
+            download_result = _download()
         except Exception as e:
             # Clean up temp file on error
             if temp_path and os.path.exists(temp_path):
@@ -712,6 +722,8 @@ class ScheduledIngestionWorkflow:
             # instead of ERROR.  The original exception is chained via
             # ``from e`` for debugging.
             raise WorkflowStepValueError(str(e)) from e
+        else:
+            return download_result
 
     @staticmethod
     def _validate_file_task(
@@ -818,7 +830,7 @@ class ScheduledIngestionWorkflow:
         scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
         contract = scheduled_ingestion.contract
 
-        try:
+        def _run_dq() -> dict[str, Any]:
             from hub.apps.dq.service_client import DQServiceClient
 
             # Read file content
@@ -903,6 +915,9 @@ class ScheduledIngestionWorkflow:
                 "overall_status": overall_status,
                 "quality_score": quality_score,
             }
+
+        try:
+            dq_result_data = _run_dq()
         except Exception as e:
             logger.error(
                 "DQ check failed",
@@ -915,6 +930,8 @@ class ScheduledIngestionWorkflow:
             if dq_strict_mode:
                 raise ValueError(f"DQ check failed: {e!s}") from e
             return {"dq_check_failed": True, "error": str(e)}
+        else:
+            return dq_result_data
 
     @staticmethod
     @transaction.atomic
@@ -946,6 +963,24 @@ class ScheduledIngestionWorkflow:
         # Read file content
         with open(temp_path, "rb") as f:
             file_content = f.read()
+
+        # R2-B2 (W2.7) — plan limits on the BACKGROUND path: the
+        # request path checked; this sibling didn't (the P1 pattern).
+        # Both checks run BEFORE any File row exists so a blocked run
+        # leaves zero side effects for the compensation steps to undo.
+        from hub.apps.tenants.services import PlanLimitService
+
+        plan_limit_service = PlanLimitService(tenant_id=str(tenant.id))
+        plan_limit_service.check_limit(
+            tenant_id=str(tenant.id),
+            limit_key="max_storage_gb",
+            delta=len(file_content),
+        )
+        plan_limit_service.check_limit(
+            tenant_id=str(tenant.id),
+            limit_key="max_datasets",
+            delta=1,
+        )
 
         # Create File record
         file_obj = File.objects.create(
@@ -1135,8 +1170,6 @@ class ScheduledIngestionWorkflow:
             logger.info(
                 "Dataset indexed", workflow_instance_id=str(instance.id), dataset_id=dataset_id
             )
-
-            return {"indexed": True, "dataset_id": dataset_id}
         except Exception as e:
             logger.error(
                 "Failed to index dataset",
@@ -1147,6 +1180,8 @@ class ScheduledIngestionWorkflow:
             )
             # Don't fail workflow if indexing fails
             return {"indexed": False, "error": str(e)}
+        else:
+            return {"indexed": True, "dataset_id": dataset_id}
 
     @staticmethod
     @transaction.atomic
@@ -1170,10 +1205,7 @@ class ScheduledIngestionWorkflow:
         # Get file_info from loop_item or input_data
         loop_item = input_data.get("loop_item")
         if loop_item:
-            if isinstance(loop_item, dict):
-                file_info = loop_item
-            else:
-                file_info = {"file_path": str(loop_item)}
+            file_info = loop_item if isinstance(loop_item, dict) else {"file_path": str(loop_item)}
         else:
             file_info = input_data.get("file_info", {})
 
@@ -1288,8 +1320,6 @@ class ScheduledIngestionWorkflow:
                 scheduled_ingestion_id=scheduled_ingestion_id,
                 items_synced=items_synced,
             )
-
-            return {"dlq_synced": True, "items_synced": items_synced}
         except Exception as e:
             logger.error(
                 "Failed to sync DLQ items",
@@ -1300,6 +1330,8 @@ class ScheduledIngestionWorkflow:
             )
             # Don't fail workflow if DLQ sync fails
             return {"dlq_synced": False, "error": str(e)}
+        else:
+            return {"dlq_synced": True, "items_synced": items_synced}
 
     @staticmethod
     def _send_completion_notification_task(
@@ -1372,8 +1404,6 @@ Workflow Instance: {instance.id}
                 scheduled_ingestion_id=scheduled_ingestion_id,
                 recipients=recipients,
             )
-
-            return {"notification_sent": True, "recipients": recipients}
         except Exception as e:
             logger.error(
                 "Failed to send completion notification",
@@ -1384,6 +1414,8 @@ Workflow Instance: {instance.id}
             )
             # Don't fail workflow if notification fails
             return {"notification_sent": False, "error": str(e)}
+        else:
+            return {"notification_sent": True, "recipients": recipients}
 
     @staticmethod
     @transaction.atomic
@@ -1576,7 +1608,7 @@ Workflow Instance: {instance.id}
         try:
             scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
         except ScheduledIngestion.DoesNotExist:
-            raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found")
+            raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found") from None
 
         # Prepare workflow input
         workflow_input = {

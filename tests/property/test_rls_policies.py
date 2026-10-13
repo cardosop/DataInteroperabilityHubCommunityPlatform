@@ -26,7 +26,7 @@ class TestTenantIsolationProperties:
         """Two different tenants should never share the same tenant_id.
         This is a basic sanity check — real RLS policy tests would mock
         the database but the property logic is identical."""
-        assert tenant_a != tenant_b or resource_id == resource_id
+        assert tenant_a != tenant_b
         # Invariant: no query from tenant_a should see tenant_b's data
         assert tenant_a != tenant_b
 

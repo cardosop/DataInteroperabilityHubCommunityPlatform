@@ -76,7 +76,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         window_hours = int(options.get("window_hours", 1))
         skip_job = bool(options.get("skip_job_row", False))
         tenant_arg = options.get("tenant_id")

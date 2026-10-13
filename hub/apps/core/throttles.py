@@ -58,7 +58,7 @@ class TenantScopedThrottle(SimpleRateThrottle):
 
         Default ``tenant_scoped=30/minute`` is tuned for production
         multi-tenant safety.  E2E suites share a single tenant across
-        2–4 parallel Playwright workers and routinely issue >30 asset/
+        2-4 parallel Playwright workers and routinely issue >30 asset/
         contract/dataset reads per minute — the production limit
         produces a cascade of HTTP 429 (RATE_LIMIT_EXCEEDED) that
         breaks the page render and skips/silent-fails tests.
@@ -77,12 +77,13 @@ class TenantScopedThrottle(SimpleRateThrottle):
         return super().get_rate()
 
     def allow_request(self, request, view):
-        # Store view reference for throttled() metric emission.
-        # DRF's SimpleRateThrottle does not expose the view in
-        # throttled(), so we capture it here.
+        # Store view reference for metric emission (DRF's
+        # SimpleRateThrottle does not expose the view on the failure
+        # hook, so we capture it here — Phase P.9 rewording: the
+        # throttled() override was removed in DRF 3.16).
         self._view = view
         try:
-            return super().allow_request(request, view)
+            allowed = super().allow_request(request, view)
         except Exception:
             logger.warning(
                 "throttle_cache_unavailable",
@@ -93,18 +94,25 @@ class TenantScopedThrottle(SimpleRateThrottle):
                 exc_info=True,
             )
             return True
+        else:
+            if allowed:
+                return True
+            self._on_throttled(request, int(self.wait()))
+            return False
 
     def get_cache_key(self, request, view):
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant
 
             _tid, _ = get_request_tenant(request)
-            return f"throttle_{self.scope}_{_tid}" if _tid else None
         except Exception:
             return None  # pass-through on resolution failure
+        else:
+            return f"throttle_{self.scope}_{_tid}" if _tid else None
 
-    def throttled(self, request, wait):
-        """285.14.11.V.7 — emit throttle_hit_total on 429."""
+    def _on_throttled(self, request, wait):
+        """DRF 3.16: the throttled() override hook was removed;
+        this runs from allow_request's failure branch instead."""
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant_id
 
@@ -113,7 +121,6 @@ class TenantScopedThrottle(SimpleRateThrottle):
             tenant_id = "unknown"
         app, view_name = _resolve_app_and_view(getattr(self, "_view", None))
         _emit_throttle_hit_metric(app, view_name, self.scope, str(tenant_id))
-        super().throttled(request, wait)
 
 
 class AnonTenantThrottle(SimpleRateThrottle):
@@ -132,7 +139,7 @@ class AnonTenantThrottle(SimpleRateThrottle):
     def allow_request(self, request, view):
         self._view = view
         try:
-            return super().allow_request(request, view)
+            allowed = super().allow_request(request, view)
         except Exception:
             logger.warning(
                 "throttle_cache_unavailable",
@@ -143,6 +150,11 @@ class AnonTenantThrottle(SimpleRateThrottle):
                 exc_info=True,
             )
             return True
+        else:
+            if allowed:
+                return True
+            self._on_throttled(request, int(self.wait()))
+            return False
 
     def get_cache_key(self, request, view):
         if request.user and request.user.is_authenticated:
@@ -155,8 +167,9 @@ class AnonTenantThrottle(SimpleRateThrottle):
         except Exception:
             return self.get_ident(request)
 
-    def throttled(self, request, wait):
-        """285.14.11.V.7 — emit throttle_hit_total on 429."""
+    def _on_throttled(self, request, wait):
+        """DRF 3.16: the throttled() override hook was removed;
+        this runs from allow_request's failure branch instead."""
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant_id
 
@@ -165,4 +178,3 @@ class AnonTenantThrottle(SimpleRateThrottle):
             tenant_id = "unknown"
         app, view_name = _resolve_app_and_view(getattr(self, "_view", None))
         _emit_throttle_hit_metric(app, view_name, self.scope, str(tenant_id))
-        super().throttled(request, wait)

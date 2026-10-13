@@ -22,7 +22,6 @@ from datetime import timedelta
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
-from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -32,6 +31,7 @@ from hub.apps.audit.event_types import (
     APPROVAL_DELEGATION_USED,
 )
 from hub.apps.audit.models import AuditEvent
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.governance.models import (
     AccessPolicy,
     AccessRequest,

@@ -7,7 +7,7 @@ humans in real seats: regulator, tenant admin, DPO, SRE on-call,
 observer. The exercise is non-trivial to schedule and easy to
 short-circuit if a contract has silently regressed since the last run.
 
-This package automates the **rehearsal**: every scenario S1–S7 has a
+This package automates the **rehearsal**: every scenario S1-S7 has a
 matching pytest module that exercises the SAME contract the humans
 will exercise during the live tabletop, but in-process against the
 Django test client. Each test:

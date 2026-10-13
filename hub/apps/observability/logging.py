@@ -41,7 +41,7 @@ def redact_pii(message: str) -> str:
     return redacted
 
 
-def redact_pii_processor(logger, method_name, event_dict):
+def redact_pii_processor(_logger, _method_name, event_dict):
     """
     Structlog processor to redact PII from log entries.
 
@@ -77,7 +77,7 @@ def redact_pii_processor(logger, method_name, event_dict):
     return event_dict
 
 
-def add_service_name(logger, method_name, event_dict):
+def add_service_name(_logger, _method_name, event_dict):
     """
     Add service name to log entries.
 
@@ -94,7 +94,7 @@ def add_service_name(logger, method_name, event_dict):
     return event_dict
 
 
-def add_request_context(logger, method_name, event_dict):
+def add_request_context(_logger, _method_name, event_dict):
     """
     Add request context (request_id, tenant_id, user_id) to log entries.
 
@@ -112,7 +112,7 @@ def add_request_context(logger, method_name, event_dict):
     return event_dict
 
 
-def add_trace_context(logger, method_name, event_dict):
+def add_trace_context(_logger, _method_name, event_dict):
     """
     Add trace context (trace_id, span_id) to log entries for correlation.
 
@@ -135,7 +135,7 @@ def add_trace_context(logger, method_name, event_dict):
             span_id = format(span_context.span_id, "016x")
             event_dict["trace_id"] = trace_id
             event_dict["span_id"] = span_id
-    except Exception:
+    except ImportError:
         # If OpenTelemetry is not available, skip trace context
         pass
 

@@ -78,7 +78,7 @@ marketplace:
         """E2E test: Full normalization flow for ODCS 3.0.2."""
         raw_contract = self._create_yaml_contract("3.0.2", include_advanced=True)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -114,7 +114,7 @@ marketplace:
         """E2E test: Full normalization flow for ODCS 3.0.1."""
         raw_contract = self._create_yaml_contract("3.0.1", include_advanced=True)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -141,7 +141,7 @@ marketplace:
         """E2E test: Full normalization flow for ODCS 3.0.0."""
         raw_contract = self._create_yaml_contract("3.0.0", include_advanced=False)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -171,7 +171,7 @@ marketplace:
         """E2E test: Full normalization flow for ODCS 3.0.0-preview."""
         raw_contract = self._create_yaml_contract("3.0.0-preview", include_advanced=False)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -195,7 +195,7 @@ marketplace:
         """E2E test: Full normalization flow for ODCS 2.2.2."""
         raw_contract = self._create_yaml_contract("2.2.2", include_advanced=False)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -278,7 +278,7 @@ marketplace:
     model: free
 """
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -313,7 +313,7 @@ marketplace:
 
             raw_contract = json.dumps(json_contract)
 
-            hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
                 raw_contract, "json"
             )
 
@@ -337,8 +337,8 @@ marketplace:
                 version, include_advanced=(version in ["3.0.2", "3.0.1"])
             )
 
-            hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-                raw_contract, "yaml"
+            hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
+                normalize_contract(raw_contract, "yaml")
             )
 
             # Verify complete normalization
@@ -370,7 +370,7 @@ marketplace:
         for version in versions:
             raw_contract = self._create_yaml_contract(version, include_advanced=False)
 
-            hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
                 raw_contract, "yaml"
             )
 
@@ -399,7 +399,7 @@ schema:
     - name: 字段名称
       type: string"""
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -420,7 +420,7 @@ schema:
     - name: field-name
       type: string"""
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -442,7 +442,7 @@ schema:
     - name: id
       type: string"""
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -465,7 +465,7 @@ schema:
         }
 
         raw_contract = json.dumps(contract_data)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract, "json"
         )
 
@@ -490,7 +490,7 @@ schema:
             level3:
               value: deep"""
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 

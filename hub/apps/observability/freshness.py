@@ -6,7 +6,8 @@ Tracks last update time, calculates freshness age, defines SLAs, and detects sta
 
 import hashlib
 import json
-from typing import Any
+from datetime import datetime
+from typing import Any, ClassVar
 
 import structlog
 from django.db import transaction
@@ -27,7 +28,7 @@ class FreshnessMonitor:
     """
 
     # SLA definitions in seconds
-    SLA_SECONDS = {
+    SLA_SECONDS: ClassVar[dict] = {
         FreshnessSLA.REAL_TIME: 60,  # 1 minute
         FreshnessSLA.NEAR_REAL_TIME: 300,  # 5 minutes
         FreshnessSLA.HOURLY: 3600,  # 1 hour
@@ -43,7 +44,7 @@ class FreshnessMonitor:
         return FreshnessMonitor.SLA_SECONDS.get(sla)
 
     @staticmethod
-    def calculate_freshness_age(last_update_time: timezone.datetime | None) -> int | None:
+    def calculate_freshness_age(last_update_time: datetime | None) -> int | None:
         """
         Calculate freshness age in seconds.
 
@@ -88,7 +89,7 @@ class FreshnessMonitor:
         tenant_id: str,
         dataset: Dataset | None = None,
         asset: Asset | None = None,
-        last_update_time: timezone.datetime | None = None,
+        last_update_time: datetime | None = None,
         freshness_sla: str | None = None,
         row_count: int | None = None,
         size_bytes: int | None = None,

@@ -54,14 +54,22 @@ def _extract_doc_journey_ids(doc_path: Path) -> set[str]:
 
 
 def _extract_spec_imports(personas_dir: Path) -> dict[str, list[str]]:
-    """Extract persona→journey from frontend persona spec imports."""
+    """Extract persona→journey from frontend persona spec imports.
+
+    Uses the CANONICAL import regex from extract_persona_journey_mapping.py
+    (single source of truth) — this script previously duplicated a bare-
+    ``import``-only pattern that matched NOTHING from the ``await
+    import(...)`` aggregators and reported phantom drift for 7 personas
+    (task 0.17 root-cause fix).
+    """
+    from extract_persona_journey_mapping import JOURNEY_IMPORT_RE
+
     result: dict[str, list[str]] = {}
     if not personas_dir.is_dir():
         return result
-    import_re = re.compile(r"import\s+['\"]\.\.\/journeys\/\w+\/(JOURNEY-[A-Z]+-\d+)\.spec['\"]")
     for spec_file in sorted(personas_dir.glob("*.spec.ts")):
         persona_key = spec_file.stem.replace(".spec", "").replace("-", "_")
-        journey_ids = import_re.findall(spec_file.read_text())
+        journey_ids = JOURNEY_IMPORT_RE.findall(spec_file.read_text())
         if journey_ids:
             result[persona_key] = journey_ids
     return result

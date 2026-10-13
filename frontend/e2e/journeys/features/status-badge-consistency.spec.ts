@@ -46,6 +46,7 @@ async function verifyStatusBadge(
 
     // Icon element with aria-hidden
     const icon = badge.locator('.status-badge__icon');
+    // intentional: count-guarded assertion — the element is genuinely optional (feature/data-state dependent); absence is a valid non-failure outcome
     if ((await icon.count()) > 0) {
       expect(await icon.getAttribute('aria-hidden')).toBe('true');
       const iconText = (await icon.textContent())?.trim();
@@ -54,6 +55,7 @@ async function verifyStatusBadge(
 
     // Label should be non-empty
     const label = badge.locator('.status-badge__label');
+    // intentional: count-guarded assertion — the element is genuinely optional (feature/data-state dependent); absence is a valid non-failure outcome
     if ((await label.count()) > 0) {
       expect((await label.textContent())?.trim().length).toBeGreaterThan(0);
     }
@@ -85,8 +87,6 @@ test.describe('StatusBadge Consistency @critical @quarantine', () => {
 
       // Jobs page may have status badges for: FAILED, COMPLETED, RUNNING, QUEUED, PENDING
       // If no jobs exist, badges won't render — that's fine, verify the page renders
-      const pageContent = page.locator('body');
-
       // FAILED → red
       await verifyStatusBadge(page, 'FAILED', 'red');
       // COMPLETED/SUCCESS → green

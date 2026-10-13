@@ -681,7 +681,7 @@ class ContractViewSetTest(ContractsAPITestBase):
         response = self.client.patch(
             f"/api/v1/contracts/{self.contract.id}/",
             None,
-            format="json",  # type: ignore[misc]  # test: edge-case type exercise
+            format="json",  # test: edge-case type exercise
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 

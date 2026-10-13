@@ -188,7 +188,7 @@ class DocumentationEndpointAuditor:
                     if spec and "paths" in spec:
                         for path, methods in spec["paths"].items():
                             if isinstance(methods, dict):
-                                for method in methods.keys():
+                                for method in methods:
                                     if method.upper() in [
                                         "GET",
                                         "POST",
@@ -223,7 +223,7 @@ class DocumentationEndpointAuditor:
                     if spec and "paths" in spec:
                         for path, methods in spec["paths"].items():
                             if isinstance(methods, dict):
-                                for method in methods.keys():
+                                for method in methods:
                                     if method.upper() in [
                                         "GET",
                                         "POST",
@@ -470,7 +470,7 @@ class DocumentationEndpointAuditor:
             else 0
         )
 
-        files_with_endpoints = len(set(ref.source_file for ref in self.endpoint_references))
+        files_with_endpoints = len({ref.source_file for ref in self.endpoint_references})
 
         return {
             "status": "success" if files_with_endpoints > 0 else "warning",
@@ -510,9 +510,7 @@ class DocumentationEndpointAuditor:
             "generated_at": datetime.now().isoformat(),
             "total_endpoints": len(self.endpoint_mappings),
             "total_references": len(self.endpoint_references),
-            "total_documentation_files": len(
-                set(ref.source_file for ref in self.endpoint_references)
-            ),
+            "total_documentation_files": len({ref.source_file for ref in self.endpoint_references}),
             "documentation_types": dict(doc_types),
             "verification": {
                 "documentation_found": self.verify_all_documentation_found(),
@@ -527,7 +525,7 @@ class DocumentationEndpointAuditor:
                 {
                     "endpoint_path": mapping.endpoint_path,
                     "normalized_path": mapping.normalized_path,
-                    "methods": sorted(list(mapping.methods)) if mapping.methods else None,
+                    "methods": sorted(mapping.methods) if mapping.methods else None,
                     "documentation_files": mapping.documentation_files,
                     "total_references": mapping.total_references,
                     "reference_details": [

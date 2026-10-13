@@ -33,10 +33,11 @@ def _single_request(token: str) -> tuple[int, float]:
             timeout=15,
         )
         elapsed_ms = (time.perf_counter() - start) * 1000
-        return resp.status_code, elapsed_ms
-    except Exception:
+    except requests.RequestException:
         elapsed_ms = (time.perf_counter() - start) * 1000
         return -1, elapsed_ms
+    else:
+        return resp.status_code, elapsed_ms
 
 
 def test_concurrent_requests_under_budget():

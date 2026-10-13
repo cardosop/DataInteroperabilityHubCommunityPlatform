@@ -26,7 +26,8 @@ class TestOpenAPISpecCompleteness:
     """Tests for OpenAPI specification completeness."""
 
     @pytest.fixture(scope="class")
-    def openapi_spec(self):
+    @classmethod
+    def openapi_spec(cls):
         """Load OpenAPI specification."""
         # Try to fetch from running API first
         api_url = os.getenv("API_SERVICE_URL", "http://localhost:8000")
@@ -34,7 +35,7 @@ class TestOpenAPISpecCompleteness:
             response = requests.get(f"{api_url}/api/v1/openapi.json", timeout=5)
             if response.status_code == 200:
                 return response.json()
-        except Exception:
+        except requests.RequestException:
             pass
 
         # Fallback to file if API not available

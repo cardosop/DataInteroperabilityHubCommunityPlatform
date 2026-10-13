@@ -21,7 +21,7 @@
 | 2 | ai | `hub/apps/ai/` | ✅ | Sunset: 2026-09-01. Read-only, deprecated |
 | 3 | assets | `hub/apps/assets/views.py` → `AssetViewSet` | ✅ | CRUD + versioning + activation |
 | 4 | audit | `hub/apps/audit/views.py` | ✅ | Audit event list/search/export |
-| 5 | auth | `hub/apps/auth/views.py` | ✅ | Login, MFA, SSO (sso_views.py), sessions |
+| 5 | auth | `hub/apps/auth/views.py` | ✅ | Login, SSO (sso_views.py), sessions |
 | 6 | baas | `hub/apps/baas/views.py` | ✅ | BaaS customer billing reports |
 | 7 | billing | `hub/apps/billing/views.py` | ✅ | Plans, subscriptions, invoices, Stripe |
 | 8 | breach | `hub/apps/breach/views.py` | ✅ | Breach notification CRUD + SLA clock |

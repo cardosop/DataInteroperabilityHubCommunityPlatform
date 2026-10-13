@@ -7,6 +7,16 @@ import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageS
 import { Button } from '../../../shared/components/Button';
 import { useTranslation } from '../../../shared/i18n/useTranslation';
 
+// Module-level capture (close-test-coverage-gaps 3.2): the previous
+// per-render ``apiClient.getClient()`` made the ``load`` callback's
+// identity depend on the client getter's referential stability — any
+// non-singleton getter re-created ``load`` every render, the load
+// effect re-fired on every keystroke, ``setLoading(true)`` swapped the
+// form for the skeleton mid-typing, and only the first character of
+// each input survived. The singleton is stable, but the page must not
+// couple render correctness to that detail.
+const client = apiClient.getClient();
+
 type Paged<T> = { results?: T[] };
 
 function unwrapResults<T>(data: Paged<T> | T[] | undefined): T[] {
@@ -48,7 +58,6 @@ async function sha256HexFromFile(file: File): Promise<string> {
 
 export function ProcessorAgreementsPage() {
   const { t } = useTranslation();
-  const client = apiClient.getClient();
 
   const [processors, setProcessors] = useState<ProcessorRow[]>([]);
   const [agreements, setAgreements] = useState<AgreementRow[]>([]);
@@ -75,8 +84,8 @@ export function ProcessorAgreementsPage() {
     setLoading(true);
     try {
       const [pr, ar] = await Promise.all([
-        client.get<Paged<ProcessorRow> | ProcessorRow[]>('governance/processors/'),
-        client.get<Paged<AgreementRow> | AgreementRow[]>('governance/processor-agreements/'),
+        client.get<Paged<ProcessorRow> | ProcessorRow[]>('processor-agreements/processors/'),
+        client.get<Paged<AgreementRow> | AgreementRow[]>('processor-agreements/processor-agreements/'),
       ]);
       const prows = unwrapResults(pr.data);
       const arows = unwrapResults(ar.data);
@@ -89,7 +98,10 @@ export function ProcessorAgreementsPage() {
     } finally {
       setLoading(false);
     }
-  }, [client]);
+    // `client` is the module-level singleton capture (see the note
+    // above) and the setters are stable — the callback is
+    // mount-stable by design.
+  }, []);
 
   useEffect(() => {
     void load();
@@ -99,7 +111,7 @@ export function ProcessorAgreementsPage() {
     if (!procName.trim()) return;
     setBusy(true);
     try {
-      await client.post('governance/processors/', {
+      await client.post('processor-agreements/processors/', {
         name: procName.trim(),
         legal_name: procLegalName.trim() || '',
       });
@@ -117,7 +129,7 @@ export function ProcessorAgreementsPage() {
     if (!window.confirm(t('governance.processors.confirm_delete', `Delete processor “${displayName}”?`))) return;
     setBusy(true);
     try {
-      await client.delete(`governance/processors/${id}/`);
+      await client.delete(`processor-agreements/processors/${id}/`);
       await load();
     } catch (e) {
       setError(e);
@@ -144,7 +156,7 @@ export function ProcessorAgreementsPage() {
     if (!agrProcessorId || !agrDocUri.trim() || !agrHash.trim()) return;
     setBusy(true);
     try {
-      await client.post('governance/processor-agreements/', {
+      await client.post('processor-agreements/processor-agreements/', {
         processor: agrProcessorId,
         agreement_type: agrType,
         document_uri: agrDocUri.trim(),
@@ -174,7 +186,7 @@ export function ProcessorAgreementsPage() {
     if (!editing) return;
     setBusy(true);
     try {
-      await client.patch(`governance/processor-agreements/${editing.id}/`, {
+      await client.patch(`processor-agreements/processor-agreements/${editing.id}/`, {
         expires_on: editing.expires_on || null,
         transfer_mechanism_summary: editing.transfer_mechanism_summary ?? '',
         registration_reference: editing.registration_reference ?? '',
@@ -193,7 +205,7 @@ export function ProcessorAgreementsPage() {
     if (!window.confirm(t('governance.processor_agreements.confirm_delete', 'Delete this agreement record?'))) return;
     setBusy(true);
     try {
-      await client.delete(`governance/processor-agreements/${id}/`);
+      await client.delete(`processor-agreements/processor-agreements/${id}/`);
       if (editing?.id === id) setEditing(null);
       await load();
     } catch (e) {

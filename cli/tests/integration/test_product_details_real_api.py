@@ -27,22 +27,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestProductDetailsRealAPI:
@@ -139,10 +130,10 @@ print(api_key.key)
         return None
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_success(self, setup_config, api_available):
+    def test_get_product_details_success(self, setup_config, api_service_available):
         """Test getting product details from ODPS contract with real API"""
         if not self.api_key:
             pytest.skip(
@@ -192,7 +183,7 @@ print(api_key.key)
             # Wait a bit for normalization to complete
             import time
 
-            time.sleep(2)  # noqa: sleep-needed — test timing requirement
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             runner = CliRunner()
             result = runner.invoke(cli, ["contracts", "get-product-details", contract_id])
@@ -209,10 +200,10 @@ print(api_key.key)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_multilingual(self, setup_config, api_available):
+    def test_get_product_details_multilingual(self, setup_config, api_service_available):
         """Test getting product details in different languages"""
         if not self.api_key:
             pytest.skip(
@@ -269,7 +260,7 @@ print(api_key.key)
             # Wait a bit for normalization to complete
             import time
 
-            time.sleep(2)  # noqa: sleep-needed — test timing requirement
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             runner = CliRunner()
 
@@ -301,10 +292,10 @@ print(api_key.key)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_json_format(self, setup_config, api_available):
+    def test_get_product_details_json_format(self, setup_config, api_service_available):
         """Test getting product details in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -351,7 +342,7 @@ print(api_key.key)
             # Wait a bit for normalization to complete
             import time
 
-            time.sleep(2)  # noqa: sleep-needed — test timing requirement
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             runner = CliRunner()
             result = runner.invoke(
@@ -368,10 +359,10 @@ print(api_key.key)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_missing_language(self, setup_config, api_available):
+    def test_get_product_details_missing_language(self, setup_config, api_service_available):
         """Test getting product details for a language that doesn't exist"""
         if not self.api_key:
             pytest.skip(
@@ -417,7 +408,7 @@ print(api_key.key)
             # Wait a bit for normalization to complete
             import time
 
-            time.sleep(2)  # noqa: sleep-needed — test timing requirement
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             runner = CliRunner()
             result = runner.invoke(
@@ -435,10 +426,10 @@ print(api_key.key)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_non_odps_contract(self, setup_config, api_available):
+    def test_get_product_details_non_odps_contract(self, setup_config, api_service_available):
         """Test getting product details from non-ODPS contract (should fail)"""
         if not self.api_key:
             pytest.skip(
@@ -491,10 +482,10 @@ print(api_key.key)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_details_invalid_language_code(self, setup_config, api_available):
+    def test_get_product_details_invalid_language_code(self, setup_config, api_service_available):
         """Test getting product details with invalid language code"""
         if not self.api_key:
             pytest.skip(

@@ -17,7 +17,7 @@ class APIEndpointCSRFExemptMiddleware(MiddlewareMixin):
     CSRF protection since they use stateless authentication.
     """
 
-    def process_view(self, request, view_func, view_args, view_kwargs):
+    def process_view(self, request, _view_func, _view_args, _view_kwargs):
         """
         Exempt API endpoints from CSRF protection.
 

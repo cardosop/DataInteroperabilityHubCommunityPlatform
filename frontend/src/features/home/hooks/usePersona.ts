@@ -15,7 +15,7 @@ export function usePersona(): Persona {
   if (!user) return 'default';
 
   const roles: string[] = user.roles ?? [];
-  const isPlatformAdmin = (user as any).is_platform_admin ?? false;
+  const isPlatformAdmin = (user as unknown as Record<string, unknown>).is_platform_admin ?? false;
 
   // CPO: PLATFORM_ADMIN → sees billing/cost oversight
   if (isPlatformAdmin && roles.includes('PLATFORM_ADMIN')) return 'CPO';

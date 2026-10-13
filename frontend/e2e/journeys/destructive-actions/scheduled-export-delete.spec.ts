@@ -66,7 +66,7 @@ test.describe('226.G1 — Scheduled export delete guarantee chain @critical @des
     const mvpProbe = await page.request.get(`${API_BASE}/scheduled-exports/`, { headers });
     if (mvpProbe.status() === 404) {
       test.skip(
-        true,
+        mvpProbe.status() === 404,
         '/scheduled-exports/ is MVP_MODE-gated (404) per hub/apps/api/mvp_mode.py:43. ' +
           'Re-enable by deploying with MVP_MODE=false. Skipping destroy guarantee — ' +
           'the gate is upstream, not in the destroy path.',
@@ -80,7 +80,7 @@ test.describe('226.G1 — Scheduled export delete guarantee chain @critical @des
       datasetId = await createDatasetViaApi(dpo, { forceNew: true, cleanup });
     } catch (err) {
       test.skip(
-        true,
+        !!err,
         `Could not provision dataset for export source (${(err as Error).message}). ` +
           `Likely a file-upload backend issue; unblock by ensuring S3/MinIO test bucket is reachable.`,
       );
@@ -101,7 +101,7 @@ test.describe('226.G1 — Scheduled export delete guarantee chain @critical @des
     });
     if (!expRes.ok()) {
       test.skip(
-        true,
+        !expRes.ok(),
         `Could not provision scheduled export (status=${expRes.status()} body=${(await expRes.text()).slice(0, 200)})`,
       );
       return;

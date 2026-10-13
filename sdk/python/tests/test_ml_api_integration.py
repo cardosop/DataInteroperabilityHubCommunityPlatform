@@ -12,7 +12,6 @@ import os
 import subprocess
 import sys
 import uuid
-from typing import Optional
 
 import pytest
 
@@ -26,7 +25,7 @@ from datahub_interoperability.errors import (
 from datahub_interoperability.ml import InferenceAPI, ODHIntegrationAPI, TrainingAPI
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -38,7 +37,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         key = _create_ml_tenant_and_key()
         if key:
             return key
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Method 2: Use canonical conftest helper
@@ -48,7 +47,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Fall back to env-var keys
@@ -59,12 +58,12 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_ml_tenant_and_key() -> Optional[str]:
+def _create_ml_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``ml_enabled=True`` and return an API key."""
     try:
         unique_id = uuid.uuid4().hex[:8]
         # Use .format() instead of f-string to avoid nested brace issues
-        django_shell_script = """
+        django_shell_script = f"""
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.auth.models import APIKey as AuthAPIKey
@@ -112,7 +111,10 @@ api_key_obj = AuthAPIKey.objects.create(
     user=user,
     tenant=tenant,
     name='ML SDK Test Key',
-    key_hash=api_key_hash
+    key_hash=api_key_hash,
+    # API keys are ALWAYS scope-checked by HasScope (no
+    # ENFORCE_JWT_SCOPES bypass) — the ML views require ml:read/ml:write.
+    scopes=['ml:read', 'ml:write'],
 )
 
 # Create subscriptions so billing middleware doesn't block writes
@@ -120,14 +122,14 @@ from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantPlan
 plan = TenantPlan.objects.first()
 if plan:
-    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
-    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={{'plan': plan, 'status': SubscriptionStatus.ACTIVE}})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={{'plan': plan, 'status': SubscriptionStatus.ACTIVE}})
 
 # Print the plaintext key (it's only available at creation time)
 print('API_KEY_START')
 print(api_key_value)
 print('API_KEY_END')
-""".format(unique_id=unique_id)
+"""
         # Check if docker compose is available
         try:
             subprocess.run(
@@ -164,8 +166,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -178,11 +180,11 @@ print('API_KEY_END')
 
             # Fallback: if markers didn't work, try old method
             if not api_key:
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if not line or len(line) < 20:
                         continue
-                    if line.startswith(">>>") or line.startswith("..."):
+                    if line.startswith((">>>", "...")):
                         continue
                     if "imported" in line.lower() or "objects" in line.lower() or "Error" in line:
                         continue
@@ -201,7 +203,7 @@ print('API_KEY_END')
                 print(f"Stderr: {result.stderr[:500]}", file=sys.stderr)
     except subprocess.TimeoutExpired:
         print("Subprocess timed out", file=sys.stderr)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         # Log error for debugging but don't fail tests
         print(f"Error creating API key: {type(e).__name__}: {e}", file=sys.stderr)
     return None

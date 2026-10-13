@@ -211,12 +211,14 @@ class DatasetCachingTest(DatasetsTestBase):
         # completes without raising.
         invalidate_dataset_list_cache(tenant_id)
 
-    @override_settings(CACHES={
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            "LOCATION": "test-invalidation-isolated",
-        },
-    })
+    @override_settings(
+        CACHES={
+            "default": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "test-invalidation-isolated",
+            },
+        }
+    )
     def test_invalidate_dataset_list_cache_isolated_backend_no_raise(self):
         """invalidate_dataset_list_cache() completes without raising on LocMemCache.
 

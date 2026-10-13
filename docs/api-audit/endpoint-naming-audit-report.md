@@ -137,8 +137,6 @@
   - Count: 2
 - **duplicate_name**: dataset-schema-evolution
   - Count: 2
-- **duplicate_name**: dataset-share
-  - Count: 2
 - **duplicate_name**: dataset-versions
   - Count: 2
 - **duplicate_name**: dlq-list
@@ -1948,10 +1946,6 @@
   - Name: `dataset-schema-evolution`
 - `get` /api/v1/datasets/^(?P<id>[^/.]+)/schema-evolution\.(?P<format>[a-z0-9]+)/?$
   - Name: `dataset-schema-evolution`
-- `get` /api/v1/datasets/^(?P<id>[^/.]+)/share/$
-  - Name: `dataset-share`
-- `get` /api/v1/datasets/^(?P<id>[^/.]+)/share\.(?P<format>[a-z0-9]+)/?$
-  - Name: `dataset-share`
 - `get, post` /api/v1/datasets/^(?P<id>[^/.]+)/versions/$
   - Name: `dataset-versions`
 - `get, post` /api/v1/datasets/^(?P<id>[^/.]+)/versions\.(?P<format>[a-z0-9]+)/?$
@@ -3687,8 +3681,6 @@
 - `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/warehouses/<drf_format_suffix:format>
   - Name: `api-root`
 - `get` /api/v1/warehouses/query/
-- `get` /api/v1/warehouses/share/<uuid:asset_id>/
-- `get` /api/v1/warehouses/share/<uuid:asset_id>/query/
 
 ### Webhooks
 

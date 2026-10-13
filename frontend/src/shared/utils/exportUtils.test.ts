@@ -111,7 +111,12 @@ describe('exportToCSV / exportToJSON download mechanics', () => {
       };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // The util revokes the object URL on the next tick (download-start
+    // grace). Flush that timer BEFORE restoring the originals —
+    // jsdom has no revokeObjectURL, so a late timer on the restored
+    // original throws an uncaught TypeError after the test ends.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
     vi.restoreAllMocks();

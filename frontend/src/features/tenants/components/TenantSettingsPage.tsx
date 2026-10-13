@@ -4,7 +4,7 @@
  * Route: /settings/tenant
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -55,6 +55,8 @@ export function TenantSettingsPage() {
   const [config, setConfig] = useState<TenantConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Same-frame-proof in-flight marker for handleConfigSubmit (see its comment).
+  const savingRef = useRef(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -167,8 +169,21 @@ export function TenantSettingsPage() {
 
   const handleConfigSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Re-entrancy guard: under load a slow React commit can race the click
+    // (or a retry can re-submit the form), producing duplicate PATCHes whose
+    // payloads snapshot DIFFERENT form states — the later stale-value write
+    // silently reverts the user's change (observed: tenant-config save wrote
+    // the PRE-change value as the final write, b5 TA-TENANT-SETTINGS).
+    // The `saving` state alone can't guard the same-frame double-fire (both
+    // invocations see `false`); the ref closes that hole. `savingRef` must be
+    // released on the validate() early-return too.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSuccessMessage(null);
-    if (!validate()) return;
+    if (!validate()) {
+      savingRef.current = false;
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -199,6 +214,7 @@ export function TenantSettingsPage() {
     } catch (err) {
       setError(normalizeError(err));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -256,9 +272,14 @@ export function TenantSettingsPage() {
         </p>
       </div>
 
-      <div className="tenant-settings-tabs">
+      {/* close-test-coverage-gaps 5.4 — the tabs are a WAI-ARIA tablist:
+          aria-selected is only valid on role="tab" (the 5.4 axe audit
+          flagged aria-allowed-attr on the plain buttons). Same pattern
+          as WebhookDeliveryHistory's filter pills. */}
+      <div className="tenant-settings-tabs" role="tablist" aria-label="Tenant settings sections">
         <button
           type="button"
+          role="tab"
           className={`tenant-settings-tab ${activeTab === 'usage' ? 'active' : ''}`}
           onClick={() => setActiveTab('usage')}
           aria-selected={activeTab === 'usage'}
@@ -267,6 +288,7 @@ export function TenantSettingsPage() {
         </button>
         <button
           type="button"
+          role="tab"
           className={`tenant-settings-tab ${activeTab === 'config' ? 'active' : ''}`}
           onClick={() => setActiveTab('config')}
           aria-selected={activeTab === 'config'}
@@ -275,6 +297,7 @@ export function TenantSettingsPage() {
         </button>
         <button
           type="button"
+          role="tab"
           className={`tenant-settings-tab ${activeTab === 'compliance' ? 'active' : ''}`}
           onClick={() => setActiveTab('compliance')}
           aria-selected={activeTab === 'compliance'}
@@ -283,6 +306,7 @@ export function TenantSettingsPage() {
         </button>
         <button
           type="button"
+          role="tab"
           className={`tenant-settings-tab ${activeTab === 'federation' ? 'active' : ''}`}
           onClick={() => setActiveTab('federation')}
           aria-selected={activeTab === 'federation'}
@@ -291,6 +315,7 @@ export function TenantSettingsPage() {
         </button>
         <button
           type="button"
+          role="tab"
           className={`tenant-settings-tab ${activeTab === 'audit' ? 'active' : ''}`}
           onClick={() => setActiveTab('audit')}
           aria-selected={activeTab === 'audit'}
@@ -300,6 +325,7 @@ export function TenantSettingsPage() {
         {/* Phase 270.D.6 — Tax & Billing Identity tab. */}
         <button
           type="button"
+          role="tab"
           className={`tenant-settings-tab ${activeTab === 'billing' ? 'active' : ''}`}
           onClick={() => setActiveTab('billing')}
           aria-selected={activeTab === 'billing'}
@@ -366,36 +392,41 @@ export function TenantSettingsPage() {
             )([
               {
                 label: 'Storage',
-                value: `${formatBytes(usage.storage_bytes)} (${usage.storage_gb.toFixed(2)} GB)`,
+                // Phase 277.B.106 — the usage serializer now returns
+                // `{limit_key}_usage` keys; the old storage_bytes /
+                // storage_gb fields are gone. Reading the old field
+                // crashed the whole page (undefined.toFixed) — the
+                // ErrorBoundary swallowed the settings surface.
+                value: `${formatBytes((usage.storage_gb_usage ?? usage.storage_gb ?? 0) * 1024 ** 3)} (${(usage.storage_gb_usage ?? usage.storage_gb ?? 0).toFixed(2)} GB)`,
                 max: usage.plan_limits.max_storage_gb,
                 pct: usage.usage_percentages?.max_storage_gb ?? null,
               },
               {
                 label: 'API calls (this month)',
-                value: `${usage.api_calls_this_month}`,
+                value: `${usage.api_calls_per_month_usage ?? usage.api_calls_this_month ?? 0}`,
                 max: usage.plan_limits.max_api_calls_per_month,
                 pct: usage.usage_percentages?.max_api_calls_per_month ?? null,
               },
               {
                 label: 'Assets',
-                value: `${usage.asset_count}`,
+                value: `${usage.assets_usage ?? usage.asset_count ?? 0}`,
                 max: usage.plan_limits.max_assets,
                 pct: usage.usage_percentages?.max_assets ?? null,
               },
               {
                 label: 'Datasets',
-                value: `${usage.dataset_count}`,
+                value: `${usage.datasets_usage ?? usage.dataset_count ?? 0}`,
                 max: usage.plan_limits.max_datasets,
                 pct: usage.usage_percentages?.max_datasets ?? null,
               },
             ])}
             <div className="tenant-metric">
               <span className="tenant-metric-label">Scheduled ingestions</span>
-              <span className="tenant-metric-value">{usage.scheduled_ingestion_count}</span>
+              <span className="tenant-metric-value">{usage.scheduled_ingestions_usage ?? usage.scheduled_ingestion_count ?? 0}</span>
             </div>
             <div className="tenant-metric">
               <span className="tenant-metric-label">Scheduled exports</span>
-              <span className="tenant-metric-value">{usage.scheduled_export_count}</span>
+              <span className="tenant-metric-value">{usage.scheduled_exports_usage ?? usage.scheduled_export_count ?? 0}</span>
             </div>
           </div>
         </section>

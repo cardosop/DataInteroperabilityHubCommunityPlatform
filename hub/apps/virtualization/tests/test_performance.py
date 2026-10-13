@@ -103,9 +103,11 @@ class VirtualizationPerformanceTest(TestCase):
         except Exception as e:
             err = str(e).lower()
             if any(kw in err for kw in ("connection", "refused", "source")):
-                execution1 = QueryExecution.objects.filter(
-                    virtual_dataset_id=dataset.id
-                ).order_by("-created_at").first()
+                execution1 = (
+                    QueryExecution.objects.filter(virtual_dataset_id=dataset.id)
+                    .order_by("-created_at")
+                    .first()
+                )
             else:
                 raise  # Unexpected errors indicate real bugs
 
@@ -126,9 +128,11 @@ class VirtualizationPerformanceTest(TestCase):
         except Exception as e:
             err = str(e).lower()
             if any(kw in err for kw in ("connection", "refused", "source")):
-                execution2 = QueryExecution.objects.filter(
-                    virtual_dataset_id=dataset.id
-                ).order_by("-created_at").first()
+                execution2 = (
+                    QueryExecution.objects.filter(virtual_dataset_id=dataset.id)
+                    .order_by("-created_at")
+                    .first()
+                )
             else:
                 raise  # Unexpected errors indicate real bugs
 
@@ -246,7 +250,6 @@ class ConcurrentQueryExecutionTest(TransactionTestCase):
                     completed_at=timezone.now(),
                     metrics={"duration_ms": 100 + idx},
                 )
-                return execution
             except Exception as e:
                 # Only collect database/connection errors — unexpected exceptions
                 # (AttributeError, TypeError, etc.) indicate real bugs and must propagate.
@@ -256,6 +259,8 @@ class ConcurrentQueryExecutionTest(TransactionTestCase):
                         errors.append((idx, str(e)))
                     return None
                 raise
+            else:
+                return execution
             finally:
                 for alias in connections:
                     connections[alias].close()

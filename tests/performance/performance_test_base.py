@@ -52,6 +52,24 @@ class APIPerformanceTestBase(TestCase):
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, role=role)
+        # Per-surface feature flags: the perf client exercises gated surfaces
+        # (marketplace connections, ML, mesh, virtualization, BaaS). Enable
+        # them so those endpoints return 200 instead of 403 — otherwise the
+        # "Endpoint returned no 200 responses" skip masks a fixture gap.
+        self.tenant.marketplace_integrations_enabled = True
+        self.tenant.ml_enabled = True
+        self.tenant.data_mesh_enabled = True
+        self.tenant.virtualization_enabled = True
+        self.tenant.baas_enabled = True
+        self.tenant.save(
+            update_fields=[
+                "marketplace_integrations_enabled",
+                "ml_enabled",
+                "data_mesh_enabled",
+                "virtualization_enabled",
+                "baas_enabled",
+            ]
+        )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 

@@ -162,7 +162,7 @@ class Command(BaseCommand):
             help="Output results as JSON.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         exit_code = run_n_plus_1_checks(
             views=options.get("views"),
             threshold_multiplier=options["threshold_multiplier"],

@@ -125,9 +125,11 @@ class JobProcessorsTest(TestCase):
         job.resource_id = dq_run.id
         job.details_json = {"dq_run_id": str(dq_run.id)}
         job.save(update_fields=["resource_id", "details_json"])
-        with override_settings(DQ_SERVICE_URL=_UNREACHABLE_DQ_URL):
-            with self.assertRaises(ConnectionError) as cm:
-                _execute_dq_run_job(job)
+        with (
+            override_settings(DQ_SERVICE_URL=_UNREACHABLE_DQ_URL),
+            self.assertRaises(ConnectionError) as cm,
+        ):
+            _execute_dq_run_job(job)
         self.assertIn("unavailable", str(cm.exception).lower())
 
     # COMPLIANCE_RUN Processor Tests

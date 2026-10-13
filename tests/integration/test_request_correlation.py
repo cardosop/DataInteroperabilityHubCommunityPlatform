@@ -39,9 +39,7 @@ class TestRequestIDGeneration:
         ]
         # At least one correlation header should be present
         # (Some middleware stacks may not set it on all endpoints)
-        assert len(request_id_headers) > 0, (
-            "Response SHOULD include at least one request ID header"
-        )
+        assert len(request_id_headers) > 0, "Response SHOULD include at least one request ID header"
 
     @pytest.mark.django_db
     def test_custom_correlation_id_preserved(self):
@@ -61,8 +59,7 @@ class TestRequestIDGeneration:
             or response.get("X-Correlation-Id")
             or response.get("x-correlation-id")
         )
-        assert returned is not None, (
-            "Response should echo back the custom X-Correlation-ID header")
+        assert returned is not None, "Response should echo back the custom X-Correlation-ID header"
         assert returned == custom_id, f"Expected correlation ID {custom_id}, got {returned}"
 
     @pytest.mark.django_db

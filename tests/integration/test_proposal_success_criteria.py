@@ -234,7 +234,7 @@ class ProposalSuccessCriteriaTest(TestCase):
             "docs/SERVICES_ARCHITECTURE.md",
             "docs/BUSINESS_LOGIC_INTEGRATION.md",
             "docs/SERVICE_INTEGRATION_PATTERNS.md",
-            "openspec/changes/odps1/design.md",
+            "openspec/changes/archive/odps1/design.md",
         ]
 
         for doc_ref in doc_references:

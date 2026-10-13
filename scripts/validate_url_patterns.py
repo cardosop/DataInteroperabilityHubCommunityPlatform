@@ -27,7 +27,6 @@ try:
     django.setup()
 
     from hub.apps.api.utils.url_pattern_validator import (
-        URLPatternValidationResult,
         URLPatternValidator,
     )
 except ImportError as e:

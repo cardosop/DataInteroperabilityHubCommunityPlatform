@@ -80,7 +80,14 @@ class TestSyncStatus:
 
     def test_enum_values(self):
         """Test that all sync statuses are defined"""
-        expected_statuses = ["PENDING", "RUNNING", "COMPLETED", "FAILED", "PARTIAL"]
+        expected_statuses = [
+            "PENDING",
+            "RUNNING",
+            "COMPLETED",
+            "FAILED",
+            "PARTIAL",
+            "CANCELLED",
+        ]
         actual_statuses = [ss.value for ss in SyncStatus]
         assert set(actual_statuses) == set(expected_statuses)
 
@@ -365,15 +372,21 @@ class TestDataMarketplaceConnector:
         # Check properties separately
         if hasattr(DataMarketplaceConnector, "marketplace_type"):
             prop = DataMarketplaceConnector.marketplace_type
-            if hasattr(prop, "fget") and hasattr(prop.fget, "__isabstractmethod__"):
-                if prop.fget.__isabstractmethod__:
-                    actual_methods.add("marketplace_type")
+            if (
+                hasattr(prop, "fget")
+                and hasattr(prop.fget, "__isabstractmethod__")
+                and prop.fget.__isabstractmethod__
+            ):
+                actual_methods.add("marketplace_type")
 
         if hasattr(DataMarketplaceConnector, "supported_sync_directions"):
             prop = DataMarketplaceConnector.supported_sync_directions
-            if hasattr(prop, "fget") and hasattr(prop.fget, "__isabstractmethod__"):
-                if prop.fget.__isabstractmethod__:
-                    actual_methods.add("supported_sync_directions")
+            if (
+                hasattr(prop, "fget")
+                and hasattr(prop.fget, "__isabstractmethod__")
+                and prop.fget.__isabstractmethod__
+            ):
+                actual_methods.add("supported_sync_directions")
 
         # Verify all expected abstract methods exist
         assert abstract_methods.issubset(actual_methods), (

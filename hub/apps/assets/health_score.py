@@ -6,17 +6,14 @@ Calculation of asset health score combining DQ, compliance, freshness, and usage
 
 from __future__ import annotations
 
-from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
-from django.db.models import Q
 from django.utils import timezone
 
-from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQRun, DQRunStatus
 
-from .models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from .models import Asset, ComplianceStatus, DQStatus
 
 # Import observability model if available
 try:
@@ -75,8 +72,7 @@ class AssetHealthScoreService:
         # Update asset (use update() to avoid triggering signals/validation that might hang)
         # This is a performance optimization and prevents potential deadlocks
         Asset.objects.filter(id=asset.id).update(
-            health_score=health_score,
-            updated_at=timezone.now()
+            health_score=health_score, updated_at=timezone.now()
         )
         # Refresh the instance to reflect the update
         asset.refresh_from_db()
@@ -148,7 +144,7 @@ class AssetHealthScoreService:
                 DataObservabilityMetric.objects.filter(
                     tenant=asset.tenant,
                     asset=asset,
-                    freshness_age_seconds__isnull=False  # Has freshness data
+                    freshness_age_seconds__isnull=False,  # Has freshness data
                 )
                 .order_by("-recorded_at")
                 .first()
@@ -230,7 +226,7 @@ class AssetHealthScoreService:
         return count
 
     @staticmethod
-    def get_health_score_breakdown(asset: Asset) -> Dict[str, Any]:
+    def get_health_score_breakdown(asset: Asset) -> dict[str, Any]:
         """
         Get detailed breakdown of health score components.
 

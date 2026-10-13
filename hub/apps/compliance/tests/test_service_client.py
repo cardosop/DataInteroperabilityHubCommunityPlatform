@@ -22,7 +22,14 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ComplianceServiceClientTest(TestCase):
-    """Comprehensive tests for compliance service client"""
+    """Comprehensive tests for compliance service client.
+
+    The client performs live requests against the compliance service
+    (docker-compose service name) — the class is marked requires_services;
+    outside the compose test network connections fail.
+    """
+
+    pytestmark = pytest.mark.requires_services
 
     def setUp(self):
         """Set up test fixtures"""

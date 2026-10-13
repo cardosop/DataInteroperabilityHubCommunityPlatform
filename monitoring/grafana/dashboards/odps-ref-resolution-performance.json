@@ -1,0 +1,297 @@
+{
+  "title": "ODPS $ref Resolution Performance",
+  "tags": [
+    "odps",
+    "ref-resolution",
+    "performance",
+    "task-6.2.5"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "$ref Resolution Duration by Type (P50, P95, P99)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(odps_ref_resolution_duration_seconds_bucket[5m])) by (ref_type, le))",
+          "legendFormat": "{{ref_type}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket[5m])) by (ref_type, le))",
+          "legendFormat": "{{ref_type}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(odps_ref_resolution_duration_seconds_bucket[5m])) by (ref_type, le))",
+          "legendFormat": "{{ref_type}} P99",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration (seconds)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Duration percentiles for $ref resolution by type (internal, local, external)"
+    },
+    {
+      "id": 2,
+      "title": "$ref Resolution Success/Failure Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_resolution_total{status=\"success\"}[5m])) by (ref_type)",
+          "legendFormat": "{{ref_type}} Success",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(odps_ref_resolution_total{status=\"failure\"}[5m])) by (ref_type)",
+          "legendFormat": "{{ref_type}} Failure",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Resolutions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Success and failure rates for $ref resolution by type"
+    },
+    {
+      "id": 3,
+      "title": "$ref Resolution Success Rate Percentage",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_resolution_total{status=\"success\"}[5m])) by (ref_type) / sum(rate(odps_ref_resolution_total[5m])) by (ref_type)",
+          "legendFormat": "{{ref_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "Success Rate",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Percentage of successful $ref resolutions by type"
+    },
+    {
+      "id": 4,
+      "title": "$ref Resolution Failure Rate by Error Type",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_resolution_failures_total[5m])) by (ref_type, error_type)",
+          "legendFormat": "{{ref_type}} - {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Failure rate broken down by $ref type and error type"
+    },
+    {
+      "id": 5,
+      "title": "$ref Resolution Duration Heatmap",
+      "type": "heatmap",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_resolution_duration_seconds_bucket[5m])) by (ref_type, tenant_id, le)",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Ref Type"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Heatmap showing $ref resolution duration distribution by type and tenant"
+    },
+    {
+      "id": 6,
+      "title": "External $ref Fetch Failures",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_external_fetch_failures_total[5m])) by (error_type, tenant_id)",
+          "legendFormat": "{{error_type}} ({{tenant_id}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate of external $ref fetch failures by error type and tenant"
+    },
+    {
+      "id": 7,
+      "title": "Cache Size Over Time",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "odps_ref_cache_size{ref_type=\"external\"}",
+          "legendFormat": "{{tenant_id}} - {{ref_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Cache Size (entries)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Current number of cached external $ref entries over time"
+    },
+    {
+      "id": 8,
+      "title": "Cache Size by Ref Type",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "odps_ref_cache_size",
+          "legendFormat": "{{tenant_id}} - {{ref_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Cache Size (entries)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Current cache size broken down by ref type and tenant"
+    },
+    {
+      "id": 9,
+      "title": "Cache Size vs Limit",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "odps_ref_cache_size{ref_type=\"external\"}",
+          "legendFormat": "Current Size - {{tenant_id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "odps_ref_cache_size_limit{ref_type=\"external\"}",
+          "legendFormat": "Limit - {{tenant_id}}",
+          "refId": "B"
+        },
+        {
+          "expr": "(odps_ref_cache_size{ref_type=\"external\"} / odps_ref_cache_size_limit{ref_type=\"external\"}) * 100",
+          "legendFormat": "Usage % - {{tenant_id}}",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Cache Size (entries)"
+        },
+        {
+          "format": "percent",
+          "label": "Usage %",
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "description": "Cache size compared to limit (1000 entries), with usage percentage"
+    }
+  ]
+}

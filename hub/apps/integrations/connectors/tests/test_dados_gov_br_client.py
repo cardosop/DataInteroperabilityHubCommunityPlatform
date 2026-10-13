@@ -260,7 +260,7 @@ class TestDadosGovBrAPIClient:
 
             client = DadosGovBrAPIClient(base_url="https://dados.gov.br", jwt_token="test-token")
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(ValueError, match="HTML error") as exc_info:
                 client._request("GET", "/dados/api/publico/conjuntos-dados")
             assert "HTML error" in str(exc_info.value)
 

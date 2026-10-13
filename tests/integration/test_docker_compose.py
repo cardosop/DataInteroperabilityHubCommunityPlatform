@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import requests
@@ -58,7 +59,7 @@ class TestDockerComposeIntegration:
         services = docker_compose_config.get("services", {})
         for service_name, service_config in services.items():
             networks = service_config.get("networks", [])
-            if isinstance(networks, list) or isinstance(networks, dict):
+            if isinstance(networks, (list, dict)):
                 assert "hub-net" in networks, (
                     f"Service {service_name} must be connected to hub-net network"
                 )
@@ -311,7 +312,7 @@ class TestDockerComposeIntegration:
                 continue
             if "memory" in limits:
                 mem = str(limits["memory"]).strip().upper()
-                assert mem.endswith("M") or mem.endswith("G") or mem.isdigit(), (
+                assert mem.endswith(("M", "G")) or mem.isdigit(), (
                     f"Service {service_name} memory limit should be like 512M/512m or 1G, got {limits['memory']}"
                 )
             if "cpus" in limits:
@@ -332,7 +333,7 @@ class TestDockerComposeRuntime:
 
     # Services expected to be running in the test stack — used for DNS-based
     # detection when running inside a container (where docker CLI is unavailable).
-    _EXPECTED_SERVICES = [
+    _EXPECTED_SERVICES: ClassVar[list] = [
         ("postgres-test", 5432),
         ("redis-cache-test", 6379),
     ]
@@ -349,12 +350,14 @@ class TestDockerComposeRuntime:
         # Container-side: check DNS resolution for known services
         if os.path.exists("/.dockerenv"):
             import socket
+
             for hostname, port in cls._EXPECTED_SERVICES:
                 try:
                     socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
-                    return True
                 except (socket.gaierror, OSError):
                     continue
+                else:
+                    return True
             return False
 
         # Host-side: use docker compose CLI
@@ -381,6 +384,7 @@ class TestDockerComposeRuntime:
         # When inside the container, verify via DNS resolution for all expected services
         if os.path.exists("/.dockerenv"):
             import socket
+
             for hostname, port in self._EXPECTED_SERVICES:
                 try:
                     socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
@@ -398,7 +402,7 @@ class TestDockerComposeRuntime:
             cwd=str(project_root),
         )
         assert result.returncode == 0, f"docker compose ps failed: {result.stderr}"
-        lines = [l for l in (result.stdout or "").strip().splitlines() if l]
+        lines = [line for line in (result.stdout or "").strip().splitlines() if line]
         assert len(lines) >= 1, "At least one service should be running"
 
     def test_monitoring_stack_health_endpoints(self, docker_compose_running):
@@ -418,12 +422,19 @@ class TestDockerComposeRuntime:
         in_docker = os.path.exists("/.dockerenv")
         health_endpoints = [
             # (service_name, host, port, path)
-            ("prometheus-test", "prometheus-test" if in_docker else "localhost",
-             9090 if in_docker else 9091, "/api/v1/status/config"),
-            ("alertmanager-test", "alertmanager-test" if in_docker else "localhost",
-             9093, "/api/v2/status"),
-            ("jaeger-test", "jaeger-test" if in_docker else "localhost",
-             16686, "/api/services"),
+            (
+                "prometheus-test",
+                "prometheus-test" if in_docker else "localhost",
+                9090 if in_docker else 9091,
+                "/api/v1/status/config",
+            ),
+            (
+                "alertmanager-test",
+                "alertmanager-test" if in_docker else "localhost",
+                9093,
+                "/api/v2/status",
+            ),
+            ("jaeger-test", "jaeger-test" if in_docker else "localhost", 16686, "/api/services"),
         ]
 
         reachable = 0
@@ -438,14 +449,10 @@ class TestDockerComposeRuntime:
             except requests.exceptions.ConnectionError:
                 unreachable.append(service_name)
             except requests.exceptions.RequestException as exc:
-                pytest.fail(
-                    f"Service {service_name} health check failed: {exc}"
-                )
+                pytest.fail(f"Service {service_name} health check failed: {exc}")
 
         assert reachable >= 1, (
             f"No monitoring services reachable. "
             f"Unreachable: {unreachable}. "
             f"Start the full stack with 'make test-stack-up'."
         )
-
-

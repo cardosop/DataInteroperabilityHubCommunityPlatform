@@ -25,7 +25,7 @@ class _SlowHandler(BaseHTTPRequestHandler):
     delay_seconds: float = 3.0
 
     def do_GET(self):
-        time.sleep(self.delay_seconds)
+        time.sleep(self.delay_seconds)  # INTENTIONAL: simulated backend latency
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -35,7 +35,7 @@ class _SlowHandler(BaseHTTPRequestHandler):
         pass
 
 
-@pytest.fixture()
+@pytest.fixture
 def slow_server():
     port = unique_port()
     _SlowHandler.delay_seconds = 3.0

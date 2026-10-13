@@ -5,8 +5,8 @@ Service layer for webhook management operations.
 All create/update paths handle validation, persistence, and audit event emission.
 """
 
-from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.services.base import BaseService, ValidationError
@@ -111,7 +111,6 @@ class WebhookService(BaseService):
             )
 
         # Validate URL format
-        from django.core.exceptions import ValidationError as DjangoValidationError
         from django.core.validators import URLValidator
 
         url_validator = URLValidator()
@@ -120,7 +119,7 @@ class WebhookService(BaseService):
         except DjangoValidationError:
             raise ValidationError(
                 f"Invalid URL format: {url}", code="VALIDATION_ERROR", details={"url": url}
-            )
+            ) from None
 
         # Use default retry intervals if not provided
         if retry_intervals is None:
@@ -208,7 +207,7 @@ class WebhookService(BaseService):
                     f"Invalid URL format: {update_data['url']}",
                     code="VALIDATION_ERROR",
                     details={"url": update_data["url"]},
-                )
+                ) from None
 
         # Update fields
         for field, value in update_data.items():
@@ -227,7 +226,7 @@ class WebhookService(BaseService):
         except DjangoValidationError as e:
             raise ValidationError(
                 str(e), code="VALIDATION_ERROR", details={"validation_errors": str(e)}
-            )
+            ) from e
 
         # Save webhook
         webhook.save()

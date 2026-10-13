@@ -23,6 +23,7 @@ export interface AuditEventListFilters {
   page?: number;
   page_size?: number;
   resource_type?: string;
+  resource_id?: string;
   action?: string;
   actor_user_id?: string;
   start_date?: string; // ISO 8601 format

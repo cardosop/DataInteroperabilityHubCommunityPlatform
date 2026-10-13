@@ -61,7 +61,7 @@ class FilePathTraversalTest(TestCase):
         Even if a caller bypasses validate_filename, the storage_path
         built via os.path.basename must never contain traversal components.
         """
-        name = "../../etc/passwd"
+        _name = "../../etc/passwd"
         safe_name = validate_filename("passwd")  # already-safe after validation
         storage_path = f"{uuid.uuid4()}/{uuid.uuid4()}/{safe_name}"
         self.assertNotIn("..", storage_path)

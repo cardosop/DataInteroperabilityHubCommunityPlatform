@@ -250,10 +250,7 @@ class VersionHistoryManager:
         # Check for primary key changes
         old_pk = old_schema.get("primary_key_candidates", [])
         new_pk = new_schema.get("primary_key_candidates", [])
-        if old_pk != new_pk:
-            return True
-
-        return False
+        return old_pk != new_pk
 
     @staticmethod
     def _has_metadata_only_changes(old_dataset: Dataset, new_dataset: Dataset) -> bool:

@@ -62,8 +62,10 @@ class TestTypedModels:
 
         assert errors == []
         assert model is not None
-        assert model.models and model.models[0].name == "default"
-        assert model.servicelevels and model.servicelevels[0].name == "availability"
+        assert model.models
+        assert model.models[0].name == "default"
+        assert model.servicelevels
+        assert model.servicelevels[0].name == "availability"
 
     def test_validate_hub_contract_with_all_sections(self):
         """Test validation with all optional sections."""

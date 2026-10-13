@@ -12,7 +12,6 @@ from typing import Any
 import yaml
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, SchemaError
     from jsonschema import ValidationError as JSONSchemaValidationError
 
@@ -23,12 +22,19 @@ except ImportError:
     JSONSchemaValidationError = Exception
     SchemaError = Exception
 
+from hub.apps.contracts.odps_errors import ODPSValidationError as _BaseODPSValidationError
 from hub.apps.contracts.odps_schema import load_odps_schema
 
 
-class ODPSValidationError(Exception):
+class ODPSValidationError(_BaseODPSValidationError):
     """
     Exception raised when ODPS parsing or validation fails.
+
+    Subclasses the canonical ``hub.apps.contracts.odps_errors``
+    exception so a single ``except ODPSValidationError`` (either import
+    path) catches parser failures — a previous duplicate bare-Exception
+    class here silently escaped the view's narrowed handler (500s on
+    malformed JSON).
 
     Attributes:
         message: Error message
@@ -59,14 +65,13 @@ class ODPSValidationError(Exception):
             validation_errors: Optional list of validation error details with paths
             error_code: Optional error code for user-friendly error handling
         """
-        self.message = message
         self.file_path = file_path
         self.line_number = line_number
         self.original_error = original_error
         self.validation_errors = validation_errors or []
-        self.error_code = error_code
 
-        # Build full error message with context
+        # Build full error message with context (kept as the Exception args
+        # for parity with the historical standalone class).
         error_parts = [message]
         if file_path:
             error_parts.append(f"File: {file_path}")
@@ -77,7 +82,15 @@ class ODPSValidationError(Exception):
         if original_error:
             error_parts.append(f"Original error: {original_error!s}")
 
-        super().__init__(" | ".join(error_parts))
+        super().__init__(" | ".join(error_parts), error_code=error_code, cause=original_error)
+        # The base class substitutes a default error_code and records the
+        # joined display string as its message. Restore the parser's
+        # historical semantics: plain message, and error_code stays None
+        # when the caller did not pass one (so str() omits the Code segment).
+        self.message = message
+        self.user_message = message
+        if error_code is None:
+            self.error_code = None
 
     def __str__(self) -> str:
         """Return formatted error message with context."""
@@ -93,6 +106,28 @@ class ODPSValidationError(Exception):
         if self.validation_errors:
             error_parts.append(f"Validation errors: {len(self.validation_errors)}")
         return " | ".join(error_parts)
+
+
+def _raise_odps_validation_error(
+    message: str,
+    file_path: str | None = None,
+    line_number: int | None = None,
+    original_error: Exception | None = None,
+    error_code: str | None = None,
+) -> None:
+    """
+    Raise an ODPSValidationError with the given details.
+
+    Helper indirection so call sites inside try blocks do not couple
+    the raise to the block's own handlers.
+    """
+    raise ODPSValidationError(
+        message=message,
+        file_path=file_path,
+        line_number=line_number,
+        original_error=original_error,
+        error_code=error_code,
+    )
 
 
 class ODPSParser:
@@ -138,7 +173,7 @@ class ODPSParser:
             elif format.lower() == "yaml":
                 return cls._parse_yaml(content, file_path)
             else:
-                raise ODPSValidationError(
+                _raise_odps_validation_error(
                     f"Unsupported format: {format}. Supported formats: json, yaml",
                     file_path=file_path,
                 )
@@ -151,7 +186,7 @@ class ODPSParser:
                 f"Unexpected error parsing ODPS content: {e!s}",
                 file_path=file_path,
                 original_error=e,
-            )
+            ) from e
 
     @classmethod
     def parse_file(cls, file_path: str, format: str | None = None) -> dict[str, Any]:
@@ -183,11 +218,11 @@ class ODPSParser:
         except UnicodeDecodeError as e:
             raise ODPSValidationError(
                 f"File encoding error: {e!s}", file_path=file_path, original_error=e
-            )
+            ) from e
         except OSError as e:
             raise ODPSValidationError(
                 f"Error reading file: {e!s}", file_path=file_path, original_error=e
-            )
+            ) from e
 
         return cls.parse(content, file_path=str(path), format=format)
 
@@ -222,7 +257,7 @@ class ODPSParser:
                 file_path=file_path,
                 line_number=line_number,
                 original_error=e,
-            )
+            ) from None
 
         # Validate that parsed data is a dictionary
         if not isinstance(data, dict):
@@ -267,7 +302,7 @@ class ODPSParser:
                 file_path=file_path,
                 line_number=line_number,
                 original_error=e,
-            )
+            ) from None
 
         # Handle case where YAML is None or not a dict
         if data is None:
@@ -305,14 +340,15 @@ class ODPSParser:
 
         # JSON typically starts with { or [
         # YAML can start with various characters
-        if stripped.startswith("{") or stripped.startswith("["):
+        if stripped.startswith(("{", "[")):
             # Try JSON first
             try:
                 json.loads(stripped)
-                return "json"
             except json.JSONDecodeError:
                 # Not valid JSON, try YAML
                 pass
+            else:
+                return "json"
 
         # Default to YAML (more flexible format)
         # YAML can also parse JSON, so this is safe
@@ -382,14 +418,14 @@ class ODPSParser:
                 file_path=file_path,
                 original_error=e,
                 error_code="SCHEMA_NOT_FOUND",
-            )
+            ) from e
         except (OSError, json.JSONDecodeError, ValueError) as e:
             raise ODPSValidationError(
                 f"Error loading ODPS schema for version '{version}': {e!s}",
                 file_path=file_path,
                 original_error=e,
                 error_code="SCHEMA_LOAD_ERROR",
-            )
+            ) from e
 
         # Validate schema itself
         try:
@@ -400,7 +436,7 @@ class ODPSParser:
                 file_path=file_path,
                 original_error=e,
                 error_code="SCHEMA_INVALID",
-            )
+            ) from e
 
         # Validate document against schema
         validator = Draft202012Validator(schema)
@@ -408,7 +444,6 @@ class ODPSParser:
 
         try:
             validator.validate(odps_document)
-            return True, []
         except JSONSchemaValidationError:
             # Collect all validation errors
             errors = validator.iter_errors(odps_document)
@@ -445,7 +480,9 @@ class ODPSParser:
                 file_path=file_path,
                 original_error=e,
                 error_code="VALIDATION_ERROR",
-            )
+            ) from e
+        else:
+            return True, []
 
     @classmethod
     def parse_and_validate(
@@ -496,15 +533,14 @@ class ODPSParser:
         """
         # Check schema field (most reliable)
         schema = odps_document.get("schema", "")
-        if isinstance(schema, str):
+        if isinstance(schema, str) and "opendataproducts.org/schema/v" in schema:
             # Extract version from schema URL
             # e.g., "https://opendataproducts.org/schema/v4.1" -> "4.1"
-            if "opendataproducts.org/schema/v" in schema:
-                version_part = schema.split("opendataproducts.org/schema/v")[-1]
-                # Remove any trailing path or query
-                version = version_part.split("/")[0].split("?")[0].split("#")[0]
-                if version:
-                    return version
+            version_part = schema.split("opendataproducts.org/schema/v")[-1]
+            # Remove any trailing path or query
+            version = version_part.split("/")[0].split("?")[0].split("#")[0]
+            if version:
+                return version
 
         # Check version field
         version = odps_document.get("version")
@@ -531,23 +567,21 @@ class ODPSParser:
         # Map common jsonschema error types to error codes
         error_type = error.validator if hasattr(error, "validator") else None
 
-        if error_type == "required":
-            return "REQUIRED_FIELD_MISSING"
-        elif error_type == "type":
-            return "INVALID_TYPE"
-        elif error_type == "enum":
-            return "INVALID_ENUM_VALUE"
-        elif error_type == "format":
-            return "INVALID_FORMAT"
-        elif error_type == "pattern":
-            return "PATTERN_MISMATCH"
-        elif error_type == "minLength" or error_type == "maxLength":
-            return "INVALID_LENGTH"
-        elif error_type == "minimum" or error_type == "maximum":
-            return "INVALID_RANGE"
-        elif error_type == "additionalProperties":
-            return "UNEXPECTED_PROPERTY"
-        elif error_type == "oneOf" or error_type == "anyOf" or error_type == "allOf":
-            return "SCHEMA_CONDITION_FAILED"
-        else:
-            return "VALIDATION_ERROR"
+        error_codes = {
+            "required": "REQUIRED_FIELD_MISSING",
+            "type": "INVALID_TYPE",
+            "enum": "INVALID_ENUM_VALUE",
+            "format": "INVALID_FORMAT",
+            "pattern": "PATTERN_MISMATCH",
+            "minLength": "INVALID_LENGTH",
+            "maxLength": "INVALID_LENGTH",
+            "minimum": "INVALID_RANGE",
+            "maximum": "INVALID_RANGE",
+            "oneOf": "SCHEMA_CONDITION_FAILED",
+            "anyOf": "SCHEMA_CONDITION_FAILED",
+            "allOf": "SCHEMA_CONDITION_FAILED",
+            "additionalProperties": "UNEXPECTED_PROPERTY",
+        }
+        if isinstance(error_type, str) and error_type in error_codes:
+            return error_codes[error_type]
+        return "VALIDATION_ERROR"

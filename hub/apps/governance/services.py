@@ -142,7 +142,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     f"Asset {asset_id} not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"asset_id": asset_id},
-                )
+                ) from None
         dataset = None
         if dataset_id:
             try:
@@ -152,7 +152,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     f"Dataset {dataset_id} not found or not in tenant",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"dataset_id": dataset_id},
-                )
+                ) from None
         file_obj = None
         if file_id:
             try:
@@ -162,7 +162,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     f"File {file_id} not found or not in tenant",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"file_id": file_id},
-                )
+                ) from None
 
         # Validate via GovernanceBusinessRules before any mutation
         tenant = Tenant.objects.get(id=tenant_id)
@@ -256,7 +256,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 f"Approver with id {approver_id} not found.",
                 code="USER_NOT_FOUND",
                 details={"approver_id": approver_id},
-            )
+            ) from None
         tenant_obj = Tenant.objects.get(id=tenant_id)
 
         # Phase 220.5: wrap the entire approve → entitlement → fulfill chain
@@ -274,7 +274,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                         "resource_type": "AccessRequest",
                         "resource_id": access_request_id,
                     },
-                )
+                ) from None
 
             # Validate approval via GovernanceBusinessRules before mutation
             rules = GovernanceBusinessRules(
@@ -292,6 +292,29 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     "; ".join(result.errors),
                     code="BUSINESS_RULES_VALIDATION",
                     details=result.details,
+                )
+
+            # W2.4 (R2-D5) — execute the registered approval-advance chain
+            # on the live path (Phase 274 primitive). Pre-W2.4 the chain
+            # was registered but never run — the P4 "designed-but-never-
+            # wired" class. The chain enforces tenant scoping, approver
+            # identity (is_active() METHOD), the allowed status transition,
+            # and the quorum/segregation rule.
+            from hub.apps.core.business_rules.chains import execute_chain
+
+            chain_result = execute_chain(
+                "governance.approval.advance",
+                tenant_id=tenant_id,
+                user_id=approver_id,
+                access_request=access_request,
+                tenant=tenant_obj,
+                approver=approver_user,
+            )
+            if chain_result.get("outcome") != "PASS":
+                raise ValidationError(
+                    "; ".join(chain_result.get("errors") or ["approval chain failed"]),
+                    code="BUSINESS_RULES_VALIDATION",
+                    details={"chain": "governance.approval.advance"},
                 )
 
             # Phase 272.2 — compliance gate on approval.
@@ -344,17 +367,17 @@ class GovernanceService(BaseService, AccessEventPublisher):
             access_request.save()
 
             # Cascade to marketplace only on final step.
-            if is_final_step and getattr(access_request, "order_id", None):
-                from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
-                from hub.apps.marketplace.models import Order, OrderStatus
+            # Phase 313 paid-ward FK — the link resolves through the hook.
+            from hub.apps.core.commercial_hooks import get_access_request_order
 
-                order = Order.objects.select_for_update().get(
-                    id=access_request.order_id,
-                )
-                if order.status == OrderStatus.REQUESTED:
-                    order.approve(approved_by_user=approver_user)
-                    create_entitlement_for_order(order)
-                    order.fulfill()
+            order = get_access_request_order(access_request)
+            if is_final_step and order is not None:
+                # Marketplace final-step cascade (REQUESTED-status check,
+                # approve, entitlement creation, fulfill) — paid-provider
+                # hook; a no-op in core-only mode.
+                from hub.apps.core.commercial_hooks import finalize_order_approval
+
+                finalize_order_approval(order=order, approved_by_user=approver_user)
 
         # Phase 223.1 — in-app inbox notification for the requester.
         # Runs after the atomic block so a notification write failure
@@ -482,9 +505,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             # A DENY→ALLOW change leaves a policy with priority 0 but
             # no chain — that policy should NOT control the workflow.
             policy = (
-                AccessPolicy.objects.filter(
-                    tenant=tenant, enabled=True, effect="ALLOW"
-                )
+                AccessPolicy.objects.filter(tenant=tenant, enabled=True, effect="ALLOW")
                 .filter(resource_q if resource_q else models.Q())
                 .exclude(
                     models.Q(required_approval_chain=[])
@@ -514,6 +535,21 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 # Single-step — no chain to snapshot.
                 access_request.approval_workflow = []
                 access_request.current_approval_step = 0
+                # W2.4 — the clearance ledger records EVERY approval
+                # (step 0 for single-step requests) so the audit trail is
+                # uniform and marketplace-linked ARs show the governance
+                # machinery actually ran.
+                records = list(
+                    getattr(access_request, "approval_step_records", None) or []
+                )
+                records.append(
+                    {
+                        "step": 0,
+                        "cleared_by": str(approver.id),
+                        "cleared_at": timezone.now().isoformat(),
+                    }
+                )
+                access_request.approval_step_records = records
                 return True  # final step
 
         current_step = access_request.current_approval_step
@@ -546,10 +582,26 @@ class GovernanceService(BaseService, AccessEventPublisher):
             },
         )
 
+        # W2.4 (R2-D5) — record WHO cleared this step in the per-step
+        # clearance ledger. The segregation-of-duties rule (same approver
+        # cannot clear two consecutive steps) and the audit trail both
+        # read from here.
+        records = list(getattr(access_request, "approval_step_records", None) or [])
+        records.append(
+            {
+                "step": from_step,
+                "cleared_by": str(approver.id),
+                "cleared_at": timezone.now().isoformat(),
+            }
+        )
+        access_request.approval_step_records = records
+
         return is_final
 
     @staticmethod
-    def _check_compliance_gate(*, access_request, tenant, approver, force_approve=False):
+    def _check_compliance_gate(
+        *, access_request, tenant, approver, force_approve=False
+    ):
         """Phase 272.2 — enforce compliance gate on approval.
 
         Queries the latest ComplianceRun for the access request's
@@ -569,7 +621,11 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.compliance.models import ComplianceRun
 
         # Resolve which resource to check.
-        resource_id = access_request.asset_id or access_request.dataset_id or access_request.file_id
+        resource_id = (
+            access_request.asset_id
+            or access_request.dataset_id
+            or access_request.file_id
+        )
         if not resource_id:
             # No resource linked — nothing to compliance-check.
             return
@@ -678,10 +734,11 @@ class GovernanceService(BaseService, AccessEventPublisher):
             NotFoundError: If access request not found
             ValidationError: If GovernanceBusinessRules reject (e.g. not pending)
         """
-        access_request = self.get_resource_or_raise(
-            AccessRequest, access_request_id, tenant_id=tenant_id
-        )
-
+        # W2.4 (A-6) — the reject path takes the SAME row lock as approve:
+        # the validate → mutate flow runs inside ONE atomic block with
+        # select_for_update, so concurrent rejects serialize and exactly one
+        # wins (the loser blocks on the lock, then sees the REJECTED status
+        # and fails validation).
         from hub.apps.governance.models import AccessRequestComment
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
@@ -693,50 +750,73 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 f"Rejector with id {approver_id} not found.",
                 code="USER_NOT_FOUND",
                 details={"approver_id": approver_id},
-            )
+            ) from None
         tenant = Tenant.objects.get(id=tenant_id)
 
-        # Validate approval path (same as approve: must be pending, rejector authorized)
-        rules = GovernanceBusinessRules(
-            tenant_id=tenant_id,
-            user_id=approver_id,
-        )
-        result = rules.validate(
-            access_request=access_request,
-            tenant=tenant,
-            approver=rejector_user,
-            validation_type="approval",
-        )
-        if not result.is_valid:
-            raise ValidationError(
-                "; ".join(result.errors),
-                code="BUSINESS_RULES_VALIDATION",
-                details=result.details,
-            )
+        with transaction.atomic():
+            try:
+                access_request = AccessRequest.objects.select_for_update().get(
+                    id=access_request_id, tenant_id=tenant_id
+                )
+            except AccessRequest.DoesNotExist:
+                raise NotFoundError(
+                    f"AccessRequest with id {access_request_id} not found",
+                    details={
+                        "resource_type": "AccessRequest",
+                        "resource_id": access_request_id,
+                    },
+                ) from None
 
-        # Phase 272.1 — persist comment when provided.
-        if comments and comments.strip():
-            AccessRequestComment.objects.create(
-                tenant=tenant,
+            # Validate approval path (same as approve: must be pending, rejector authorized)
+            rules = GovernanceBusinessRules(
+                tenant_id=tenant_id,
+                user_id=approver_id,
+            )
+            result = rules.validate(
                 access_request=access_request,
-                author=rejector_user,
-                body=comments.strip(),
+                tenant=tenant,
+                approver=rejector_user,
+                validation_type="approval",
             )
+            if not result.is_valid:
+                raise ValidationError(
+                    "; ".join(result.errors),
+                    code="BUSINESS_RULES_VALIDATION",
+                    details=result.details,
+                )
 
-        # Update access request
-        access_request.status = AccessRequestStatus.REJECTED
-        access_request.rejected_by = rejector_user
-        access_request.rejected_at = timezone.now()
-        access_request.rejection_reason = reason
-        access_request.save()
+            # Phase 272.1 — persist comment when provided.
+            if comments and comments.strip():
+                AccessRequestComment.objects.create(
+                    tenant=tenant,
+                    access_request=access_request,
+                    author=rejector_user,
+                    body=comments.strip(),
+                )
 
-        # Cascade to marketplace: reject the linked order
-        if getattr(access_request, "order", None):
-            from hub.apps.marketplace.models import OrderStatus
+            # Update access request
+            access_request.status = AccessRequestStatus.REJECTED
+            access_request.rejected_by = rejector_user
+            access_request.rejected_at = timezone.now()
+            access_request.rejection_reason = reason
+            access_request.save()
 
-            order = access_request.order
-            if order.status == OrderStatus.REQUESTED:
-                order.reject(rejected_by_user=rejector_user, reason=reason)
+            # Cascade to marketplace: reject the linked order.
+            # Phase 313 paid-ward FK — the link resolves through the commercial
+            # hook (marketplace registers the reverse lookup); None in core-only.
+            from hub.apps.core.commercial_hooks import get_access_request_order
+
+            order = get_access_request_order(access_request)
+            if order:
+                # Marketplace rejection cascade (REQUESTED-status check +
+                # order.reject) — paid-provider hook; no-op in core-only mode.
+                from hub.apps.core.commercial_hooks import finalize_order_rejection
+
+                finalize_order_rejection(
+                    order=order,
+                    rejected_by_user=rejector_user,
+                    reason=reason,
+                )
 
         # Phase 223.1 — inbox notification for the requester.
         try:
@@ -810,18 +890,25 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 f"Revoker with id {revoker_id} not found.",
                 code="USER_NOT_FOUND",
                 details={"revoker_id": revoker_id},
-            )
+            ) from None
 
         access_request.status = AccessRequestStatus.REVOKED
         access_request.revocation_reason = reason.strip()
         access_request.save(update_fields=["status", "revocation_reason", "updated_at"])
 
         # Cascade to marketplace entitlement.
-        if getattr(access_request, "order", None):
-            from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
+        # Phase 313 paid-ward FK — link resolves through the commercial hook.
+        from hub.apps.core.commercial_hooks import get_access_request_order
 
-            revoke_entitlement_for_order(
-                access_request.order,
+        order = get_access_request_order(access_request)
+        if order:
+            # Marketplace entitlement revocation — paid-provider hook
+            # (registered by marketplace's AppConfig.ready()); no-op in
+            # core-only mode.
+            from hub.apps.core.commercial_hooks import revoke_order_entitlement
+
+            revoke_order_entitlement(
+                order,
                 reason=f"Governance access revoked: {reason.strip()}",
             )
 
@@ -896,7 +983,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
 
         return list(queryset.order_by("-created_at"))
 
-    def check_user_permissions_for_domain_creation(self, user_id: str, tenant_id: str) -> None:
+    def check_user_permissions_for_domain_creation(
+        self, user_id: str, tenant_id: str
+    ) -> None:
         """
         Check user permissions for domain creation.
 
@@ -917,7 +1006,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         try:
             user = User.objects.prefetch_related("user_roles__role").get(id=user_id)
         except User.DoesNotExist:
-            raise PermissionError(f"User {user_id} not found")
+            raise PermissionError(f"User {user_id} not found") from None
 
         # Platform admins have all permissions (can operate on any tenant)
         if user.is_platform_admin:
@@ -925,7 +1014,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
 
         # For non-platform admins, verify tenant matches
         if str(user.tenant_id) != tenant_id:
-            raise PermissionError(f"User {user_id} does not belong to tenant {tenant_id}")
+            raise PermissionError(
+                f"User {user_id} does not belong to tenant {tenant_id}"
+            )
 
         # Check if user has required role (TENANT_ADMIN)
         has_required_role = user.has_role("TENANT_ADMIN")
@@ -977,7 +1068,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
         # Return validated quota (may be adjusted in future)
         return requested_quota.copy()
 
-    def check_tenant_resource_limits(self, tenant_id: str, requested_quota: dict[str, Any]) -> None:
+    def check_tenant_resource_limits(
+        self, tenant_id: str, requested_quota: dict[str, Any]
+    ) -> None:
         """
         Enforce tenant-level resource limits.
 
@@ -998,7 +1091,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
             return
 
         # Get all active domains for the tenant
-        active_domains = DataMeshDomain.objects.filter(tenant_id=tenant_id, status="ACTIVE")
+        active_domains = DataMeshDomain.objects.filter(
+            tenant_id=tenant_id, status="ACTIVE"
+        )
 
         # Calculate current tenant usage across all domains
         tenant_usage = {}
@@ -1006,7 +1101,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
             domain_quota = domain.resource_quota or {}
             for resource_type, quota_value in domain_quota.items():
                 if isinstance(quota_value, (int, float)):
-                    tenant_usage[resource_type] = tenant_usage.get(resource_type, 0) + quota_value
+                    tenant_usage[resource_type] = (
+                        tenant_usage.get(resource_type, 0) + quota_value
+                    )
 
         # Check if requested quota would exceed tenant limits
         # For now, we'll use reasonable defaults. In production, this would
@@ -1101,7 +1198,11 @@ class GovernanceService(BaseService, AccessEventPublisher):
             raise ValidationError(
                 "At least one of asset_id, dataset_id, or file_id must be provided",
                 code="VALIDATION_ERROR",
-                details={"asset_id": asset_id, "dataset_id": dataset_id, "file_id": file_id},
+                details={
+                    "asset_id": asset_id,
+                    "dataset_id": dataset_id,
+                    "file_id": file_id,
+                },
             )
 
         # Resolve resource references (must belong to tenant)
@@ -1114,7 +1215,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     f"Asset {asset_id} not found or not in tenant",
                     code="ASSET_NOT_FOUND",
                     details={"asset_id": asset_id},
-                )
+                ) from None
 
         dataset = None
         if dataset_id:
@@ -1125,7 +1226,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     f"Dataset {dataset_id} not found or not in tenant",
                     code="DATASET_NOT_FOUND",
                     details={"dataset_id": dataset_id},
-                )
+                ) from None
 
         file_obj = None
         if file_id:
@@ -1136,10 +1237,12 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     f"File {file_id} not found or not in tenant",
                     code="FILE_NOT_FOUND",
                     details={"file_id": file_id},
-                )
+                ) from None
 
         # Validate policy_type-specific requirements
-        rk_norm: list[str] = list(regulation_keys) if regulation_keys is not None else []
+        rk_norm: list[str] = (
+            list(regulation_keys) if regulation_keys is not None else []
+        )
         if policy_type != RetentionPolicyType.TIME_BASED.value:
             rk_norm = []
         resolved_retention_days = retention_period_days
@@ -1211,7 +1314,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         except Exception as e:
             raise ValidationError(
                 str(e), code="VALIDATION_ERROR", details={"validation_errors": str(e)}
-            )
+            ) from e
 
         # Create retention policy
         policy = RetentionPolicy.objects.create(
@@ -1279,7 +1382,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.users.models import User
 
         # Get policy
-        policy = self.get_resource_or_raise(RetentionPolicy, policy_id, tenant_id=tenant_id)
+        policy = self.get_resource_or_raise(
+            RetentionPolicy, policy_id, tenant_id=tenant_id
+        )
 
         tenant = Tenant.objects.get(id=tenant_id)
         user = User.objects.get(id=user_id)
@@ -1328,7 +1433,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         except Exception as e:
             raise ValidationError(
                 str(e), code="VALIDATION_ERROR", details={"validation_errors": str(e)}
-            )
+            ) from e
 
         # Save policy
         policy.save()
@@ -1368,7 +1473,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
-        policy = self.get_resource_or_raise(RetentionPolicy, policy_id, tenant_id=tenant_id)
+        policy = self.get_resource_or_raise(
+            RetentionPolicy, policy_id, tenant_id=tenant_id
+        )
         Tenant.objects.get(id=tenant_id)  # fail fast for tenant drift
         user = User.objects.get(id=user_id)
 

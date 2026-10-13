@@ -22,7 +22,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         acceptRedirectToLogin: false,
       });
       await page.waitForTimeout(1500);
@@ -39,7 +39,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
 
       // If capability is off, an unavailable or 403 state is valid
       if (onUnavailable || on403) {
-        const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
+        const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first();
         await expect(unavailablePage.first()).toBeVisible({ timeout: 5000 });
         return;
       }
@@ -69,7 +69,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
 
@@ -80,9 +80,9 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
       const capabilityEnabled =
         page.url().includes('/communities') &&
         (await page.locator('.communities-page, .communities-tab').count()) > 0 &&
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) === 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) === 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -90,7 +90,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
 
       if (capabilityDisabled) {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]').first()
         ).toBeVisible({ timeout: 10000 });
       } else {
         await expect(
@@ -105,7 +105,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         acceptRedirectToLogin: false,
       });
 
@@ -115,7 +115,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
 
       // Must render something meaningful — not a blank or crash
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0 ||
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0 ||
         page.url().includes('/403');
       expect(hasContent).toBe(true) /* acceptable states */;
     });

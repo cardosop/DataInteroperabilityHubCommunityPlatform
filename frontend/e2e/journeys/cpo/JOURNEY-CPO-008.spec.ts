@@ -53,13 +53,13 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking @critical', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {
-          test.skip(true, 'Login redirect or 403 — skipping success assertion');
+          test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Login redirect or 403 — skipping success assertion');
           return;
         }
         throw _err;
       }
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Login redirect or 403 — skipping success assertion');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Login redirect or 403 — skipping success assertion');
         return;
       }
       await waitForLoadingComplete(page);

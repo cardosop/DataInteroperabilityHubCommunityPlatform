@@ -8,7 +8,7 @@ import time
 
 import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.paginator import Paginator
+from django.core.paginator import InvalidPage, Paginator
 from django.db import transaction
 from drf_spectacular.utils import (
     OpenApiResponse,
@@ -24,8 +24,9 @@ from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasScope
-from hub.apps.governance.abac import ABACEngine
 from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
+from hub.apps.governance.abac import ABACEngine
+from hub.apps.integrations.encryption import EncryptionError
 
 from .business_rules import TransformationBusinessRules
 from .models import (
@@ -105,10 +106,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(detail=result.data)
         super().initial(request, *args, **kwargs)
 
-    filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ["name", "status", "version", "created_at", "updated_at"]
-    ordering = ["-created_at"]  # Default ordering
-    search_fields = ["name", "description"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    ordering_fields = ("name", "status", "version", "created_at", "updated_at")
+    ordering = "-created_at"  # Default ordering
+    search_fields = ("name", "description")
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
@@ -278,7 +279,8 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         Raises:
             PermissionDenied: If ABAC policy denies access
         """
-        try:
+
+        def _evaluate() -> None:
             result = ABACEngine.evaluate_access(
                 user_id=user_id,
                 tenant_id=tenant_id,
@@ -318,6 +320,9 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 access_type=access_type,
                 allowed=result.allowed,
             )
+
+        try:
+            _evaluate()
         except PermissionDenied:
             raise
         except Exception as e:
@@ -338,7 +343,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             # This can be configured via settings
 
     def _check_pipeline_ownership_or_access(
-        self, pipeline: TransformationPipeline, user, access_type: str = "WRITE"
+        self, pipeline: TransformationPipeline, user, _access_type: str = "WRITE"
     ) -> bool:
         """
         Check if user owns pipeline or has access via domain/mesh.
@@ -405,14 +410,15 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         )
 
         # Check ownership or access via domain/mesh
-        if not self._check_pipeline_ownership_or_access(pipeline, user, access_type):
+        if not self._check_pipeline_ownership_or_access(
+            pipeline, user, access_type
+        ) and access_type in ["WRITE", "DELETE"]:
             # For write/delete operations, require ownership or TENANT_ADMIN
-            if access_type in ["WRITE", "DELETE"]:
-                raise PermissionDenied(
-                    "You do not have permission to perform this action. "
-                    "Only the pipeline owner or tenant administrators can modify pipelines."
-                )
-            # For read operations, tenant isolation is sufficient (already checked in get_queryset)
+            raise PermissionDenied(
+                "You do not have permission to perform this action. "
+                "Only the pipeline owner or tenant administrators can modify pipelines."
+            )
+        # For read operations, tenant isolation is sufficient (already checked in get_queryset)
 
     @transaction.atomic
     def create(self, request):
@@ -484,7 +490,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             # Re-raise with more context
             raise PermissionDenied(
                 "You do not have permission to create pipelines. ABAC policy denied access."
-            )
+            ) from None
 
         # Create pipeline instance
         pipeline = TransformationPipeline(
@@ -502,7 +508,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             pipeline.full_clean()
             pipeline.save()
         except DjangoValidationError as e:
-            raise ValidationError(e.message_dict)
+            raise ValidationError(e.message_dict) from e
 
         # Create audit event
         create_audit_event(
@@ -572,7 +578,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
 
         try:
             page = paginator.page(page_number)
-        except Exception:
+        except InvalidPage:
             page = paginator.page(1)
 
         serializer = self.get_serializer(page.object_list, many=True)
@@ -585,7 +591,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             }
         )
 
-    def retrieve(self, request, id=None):
+    def retrieve(self, _request, id=None):
         """
         Get pipeline details.
 
@@ -594,7 +600,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         serializer = self.get_serializer(pipeline)
         return Response(serializer.data)
@@ -609,7 +615,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         # Check tenant isolation
         user = request.user
@@ -642,7 +648,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             pipeline.full_clean()
             pipeline.save()
         except DjangoValidationError as e:
-            raise ValidationError(e.message_dict)
+            raise ValidationError(e.message_dict) from e
 
         # Create audit event
         create_audit_event(
@@ -687,7 +693,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         # Check tenant isolation
         user = request.user
@@ -749,7 +755,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         # Check tenant isolation
         user = request.user
@@ -874,7 +880,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         # ── Legacy engine deprecation (Phase 285.9) ──────────────────
         try:
@@ -883,7 +889,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 if hasattr(pipeline, "get_pipeline_definition")
                 else pipeline.pipeline_definition
             )
-        except Exception:
+        except EncryptionError:
             pipeline_def = pipeline.pipeline_definition
         legacy_mode = pipeline_def.get("mode", "") if isinstance(pipeline_def, dict) else ""
         if legacy_mode in ("SQL", "VISUAL"):
@@ -911,6 +917,13 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             raise ValidationError({"asset_id": "This field is required."})
 
         execution_mode = request.data.get("execution_mode", "ASYNC")
+        # Reject unknown modes up-front: the model-level full_clean() on
+        # PipelineExecution would otherwise surface as a 500 (wrapped by the
+        # service's broad error handler) instead of a client-error 400.
+        if execution_mode not in ("SYNC", "ASYNC"):
+            raise ValidationError(
+                {"execution_mode": f"Value '{execution_mode}' is not a valid choice."}
+            )
 
         # Get tenant_id and user_id
         tenant_id = str(pipeline.tenant.id) if pipeline.tenant else None
@@ -973,7 +986,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         return response
 
     @action(detail=True, methods=["get"], url_path="contract-drift")
-    def contract_drift(self, request, id=None):
+    def contract_drift(self, _request, id=None):
         """
         Check contract drift for this pipeline (Phase 285.9.5).
 
@@ -982,7 +995,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         from .contract_drift_detector import ContractDriftDetector
 
@@ -1051,7 +1064,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["get"], url_path="impact-preview")
-    def impact_preview(self, request, id=None):
+    def impact_preview(self, _request, id=None):
         """
         Preview deploy impact for this pipeline (Phase 285.9.6).
 
@@ -1060,7 +1073,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         from .deploy_impact_analyzer import DeployImpactAnalyzer
 
@@ -1071,7 +1084,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
             )
         except ValueError as e:
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
 
         return Response(
             {
@@ -1162,7 +1175,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = self.get_queryset().get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         # Check tenant isolation
         user = request.user
@@ -1301,7 +1314,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 try:
                     tenant_id = uuid.UUID(tenant_id)
                 except (ValueError, TypeError):
-                    raise NotFound("Pipeline not found")
+                    raise NotFound("Pipeline not found") from None
             pipeline_queryset = TransformationPipeline.objects.filter(tenant_id=tenant_id)
         else:
             raise NotFound("Pipeline not found")
@@ -1309,7 +1322,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         try:
             pipeline = pipeline_queryset.get(id=id)
         except TransformationPipeline.DoesNotExist:
-            raise NotFound("Pipeline not found")
+            raise NotFound("Pipeline not found") from None
 
         # Check tenant isolation
         user = request.user
@@ -1353,7 +1366,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
 
         try:
             page = paginator.page(page_number)
-        except Exception:
+        except InvalidPage:
             page = paginator.page(1)
 
         serializer = PipelineExecutionSerializer(page.object_list, many=True)
@@ -1458,7 +1471,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset.order_by("-started_at", "-created_at")
 
-    def retrieve(self, request, id=None):
+    def retrieve(self, _request, id=None):
         """
         Get execution details.
 
@@ -1467,7 +1480,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_queryset().get(id=id)
         except PipelineExecution.DoesNotExist:
-            raise NotFound("Execution not found")
+            raise NotFound("Execution not found") from None
 
         serializer = self.get_serializer(execution)
         return Response(serializer.data)
@@ -1500,7 +1513,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_queryset().get(id=id)
         except PipelineExecution.DoesNotExist:
-            raise NotFound("Execution not found")
+            raise NotFound("Execution not found") from None
 
         # Check if execution can be cancelled
         if not execution.can_cancel():
@@ -1530,6 +1543,28 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             # If job was running, release tenant concurrency slot
             if previous_status == JobStatus.RUNNING and execution.pipeline.tenant:
                 decrement_tenant_job_counter(str(execution.pipeline.tenant.id), "running")
+
+        # W3.6 (R2-P4/F13) — reach the WORKFLOW: the engine's step loop
+        # holds a select_for_update lock on the WorkflowInstance row, so
+        # a same-row status write could never commit mid-run.  A RUNNING
+        # instance gets the out-of-band cancellation request (the
+        # engine's between-step checkpoints consume it and stop); a
+        # not-yet-started (DRAFT) instance is cancelled directly so no
+        # run can ever start it.
+        workflow_instance = execution.workflow_instance
+        if workflow_instance is not None:
+            from hub.apps.orchestration.models import (
+                WorkflowCancellationRequest,
+                WorkflowStatus,
+            )
+
+            if workflow_instance.status == WorkflowStatus.RUNNING:
+                WorkflowCancellationRequest.objects.get_or_create(
+                    workflow_instance=workflow_instance,
+                    defaults={"tenant": execution.pipeline.tenant},
+                )
+            elif workflow_instance.status == WorkflowStatus.DRAFT:
+                workflow_instance.mark_cancelled()
 
         # Create audit event
         from hub.apps.tenants.models import Tenant
@@ -1575,7 +1610,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         tags=["Transformation"],
     )
     @action(detail=True, methods=["get"], url_path="progress")
-    def get_progress(self, request, id=None):
+    def get_progress(self, _request, id=None):
         """
         Get execution progress.
 
@@ -1584,7 +1619,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_queryset().get(id=id)
         except PipelineExecution.DoesNotExist:
-            raise NotFound("Execution not found")
+            raise NotFound("Execution not found") from None
 
         # Calculate progress percentage
         progress_percentage = None
@@ -1674,7 +1709,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         tags=["Transformation"],
     )
     @action(detail=True, methods=["get"], url_path="result")
-    def get_result(self, request, id=None):
+    def get_result(self, _request, id=None):
         """
         Get execution result.
 
@@ -1683,7 +1718,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_queryset().get(id=id)
         except PipelineExecution.DoesNotExist:
-            raise NotFound("Execution not found")
+            raise NotFound("Execution not found") from None
 
         # Check if execution is in a terminal state (completed or failed)
         if execution.status not in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]:
@@ -1808,7 +1843,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset.order_by("-generated_at")
 
-    def retrieve(self, request, preview_id=None):
+    def retrieve(self, _request, preview_id=None):
         """
         Get preview result by preview_id.
 
@@ -1817,7 +1852,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             preview = self.get_queryset().get(preview_id=preview_id)
         except PreviewResult.DoesNotExist:
-            raise NotFound("Preview not found")
+            raise NotFound("Preview not found") from None
 
         # Check if preview has expired
         if preview.is_expired():
@@ -2037,7 +2072,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         try:
             session = self.get_queryset().get(id=id)
         except WranglingSession.DoesNotExist:
-            raise NotFound("Wrangling session not found")
+            raise NotFound("Wrangling session not found") from None
 
         # Check if undo is possible
         if not session.can_undo():
@@ -2118,7 +2153,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         try:
             session = self.get_queryset().get(id=id)
         except WranglingSession.DoesNotExist:
-            raise NotFound("Wrangling session not found")
+            raise NotFound("Wrangling session not found") from None
 
         # Check if redo is possible
         if not session.can_redo():

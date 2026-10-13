@@ -77,9 +77,7 @@ def generate_etag(data: Any) -> str:
         # Generate MD5 hash
         hash_value = hashlib.md5(data_str.encode("utf-8")).hexdigest()
 
-        # Return weak ETag (W/"hash") - allows for minor variations
-        return f'W/"{hash_value}"'
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         logger.warning(
             "etag_generation_error",
             error=str(e),
@@ -88,6 +86,9 @@ def generate_etag(data: Any) -> str:
         # Fallback: use timestamp-based ETag
         timestamp = int(timezone.now().timestamp())
         hash_value = hashlib.md5(str(timestamp).encode("utf-8")).hexdigest()
+        return f'W/"{hash_value}"'
+    else:
+        # Return weak ETag (W/"hash") - allows for minor variations
         return f'W/"{hash_value}"'
 
 
@@ -133,7 +134,7 @@ def generate_etag_from_model(instance) -> str:
             timestamp = int(timezone.now().timestamp())
             hash_value = hashlib.md5(str(timestamp).encode("utf-8")).hexdigest()
             return f'W/"{hash_value}"'
-    except Exception as e:
+    except (TypeError, ValueError, OverflowError) as e:
         logger.warning(
             "etag_generation_error",
             error=str(e),
@@ -271,10 +272,11 @@ def check_if_modified_since(request: HttpRequest, last_modified: datetime) -> bo
         # Convert to UTC for comparison
         if last_modified.tzinfo is None:
             last_modified = timezone.make_aware(last_modified)
-        # Resource is not modified if last_modified <= if_modified_since
-        return last_modified <= if_modified_since_dt
     except (ValueError, TypeError, AttributeError):
         return False
+    else:
+        # Resource is not modified if last_modified <= if_modified_since
+        return last_modified <= if_modified_since_dt
 
 
 class CacheHeadersMiddleware(MiddlewareMixin):
@@ -300,18 +302,13 @@ class CacheHeadersMiddleware(MiddlewareMixin):
             HTTP response with cache headers (or 304 Not Modified if applicable)
         """
         # Only process API GET requests
-        if not request.path.startswith("/api/"):
+        if not request.path.startswith("/api/") or request.method != "GET":
             return response
 
-        if request.method != "GET":
-            return response
-
-        # Skip if response is already 304 or error status
-        if response.status_code in (304, 204, 301, 302, 303, 307, 308):
-            return response
-
-        # Skip if response is an error
-        if response.status_code >= 400:
+        # Skip if response is already 304/204/redirect or an error status
+        if response.status_code in (304, 204, 301, 302, 303, 307, 308) or (
+            response.status_code >= 400
+        ):
             return response
 
         # Try to extract resource data from response
@@ -341,7 +338,7 @@ class CacheHeadersMiddleware(MiddlewareMixin):
                     else str(response.content)
                 )
                 etag = generate_etag(content_str)
-            except Exception as exc:
+            except (ValueError, TypeError) as exc:
                 logger.debug(
                     "cache_etag_content_encode_error",
                     error=str(exc),
@@ -356,27 +353,23 @@ class CacheHeadersMiddleware(MiddlewareMixin):
                 last_modified = timezone.make_aware(last_modified)
 
         # Check conditional requests
-        if etag:
-            # Check If-None-Match
-            if check_if_none_match(request, etag):
-                logger.debug(
-                    "cache_conditional_request_not_modified",
-                    path=request.path,
-                    etag=etag,
-                    reason="If-None-Match matched",
-                )
-                return HttpResponseNotModified()
+        if etag and check_if_none_match(request, etag):
+            logger.debug(
+                "cache_conditional_request_not_modified",
+                path=request.path,
+                etag=etag,
+                reason="If-None-Match matched",
+            )
+            return HttpResponseNotModified()
 
-        if last_modified:
-            # Check If-Modified-Since
-            if check_if_modified_since(request, last_modified):
-                logger.debug(
-                    "cache_conditional_request_not_modified",
-                    path=request.path,
-                    last_modified=last_modified.isoformat(),
-                    reason="If-Modified-Since matched",
-                )
-                return HttpResponseNotModified()
+        if last_modified and check_if_modified_since(request, last_modified):
+            logger.debug(
+                "cache_conditional_request_not_modified",
+                path=request.path,
+                last_modified=last_modified.isoformat(),
+                reason="If-Modified-Since matched",
+            )
+            return HttpResponseNotModified()
 
         # Determine if resource is public (for marketplace/public endpoints)
         is_public = (

@@ -43,7 +43,7 @@ class ServiceIntegrationImpactAnalyzer:
             try:
                 with open(inter_service_file) as f:
                     data["inter_service_communication"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(
                     f"Warning: Could not load inter-service communication report: {e}",
                     file=sys.stderr,
@@ -55,7 +55,7 @@ class ServiceIntegrationImpactAnalyzer:
             try:
                 with open(service_client_file) as f:
                     data["service_client_audit"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load service client audit report: {e}", file=sys.stderr)
 
         # Load gateway config review report
@@ -64,7 +64,7 @@ class ServiceIntegrationImpactAnalyzer:
             try:
                 with open(gateway_file) as f:
                     data["gateway_config"] = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load gateway config review report: {e}", file=sys.stderr)
 
         return data
@@ -318,7 +318,7 @@ class ServiceIntegrationImpactAnalyzer:
                 "service_clients": details["service_clients"],
                 "call_count": details["call_count"],
                 "endpoint_count": len(details["endpoints"]),
-                "endpoints": sorted(list(details["endpoints"])),
+                "endpoints": sorted(details["endpoints"]),
             }
 
         matrix = self.generate_integration_matrix()
@@ -338,7 +338,7 @@ class ServiceIntegrationImpactAnalyzer:
                 "total_services": total_services,
                 "total_integrations": total_integrations,
                 "total_service_calls": total_service_calls,
-                "services": sorted(list(self.service_integrations.keys())),
+                "services": sorted(self.service_integrations.keys()),
             },
             "service_integrations": report_data,
             "integration_matrix": matrix,

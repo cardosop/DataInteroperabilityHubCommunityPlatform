@@ -37,7 +37,7 @@ async def client(config):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "status_code,message",
+    ("status_code", "message"),
     [
         (502, "Bad Gateway"),
         (503, "Service Unavailable"),

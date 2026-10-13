@@ -20,7 +20,15 @@ Usage::
 
 import uuid
 
-from hub.apps.billing.models import Subscription, SubscriptionStatus
+# Phase 313.H.3 — the subscription helpers are paid-layer (billing).
+# Core-only test runs (pytest loads this module via conftest) have no
+# billing app; both absence forms are caught so the factory degrades to
+# "no subscription to create" instead of crashing collection.
+try:
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+except (RuntimeError, ModuleNotFoundError):
+    Subscription = SubscriptionStatus = None  # type: ignore[assignment]
+
 from hub.apps.tenants.models import (
     KYCStatus,
     Tenant,
@@ -83,7 +91,12 @@ class SubscriptionFactory:
     """
 
     @staticmethod
-    def create_subscription(*, tenant, plan=None, status=SubscriptionStatus.ACTIVE):
+    def create_subscription(*, tenant, plan=None, status=None):
+        if Subscription is None:
+            # Core-only test run: no billing app — no subscription to create.
+            return None
+        if status is None:
+            status = SubscriptionStatus.ACTIVE
         if plan is None:
             plan = TenantPlan.objects.filter(
                 slug="free",
@@ -102,4 +115,29 @@ class SubscriptionFactory:
             plan=plan,
             status=status,
             stripe_subscription_id=f"sub_{uuid.uuid4().hex[:16]}",
+        )
+
+
+def activate_billing(tenant) -> None:
+    """Ensure an active BASE subscription + TenantConfig for the billing
+    middleware (test helper).
+
+    The billing import lives HERE — the one allowlisted + guarded site
+    (313.H.3) — so core-side suites (databricks_admin, warehouses)
+    delegate to this helper instead of importing billing themselves:
+    their duplicated ``_activate_billing`` shims were each a GATE-29
+    boundary violation (1.3 review fix). Idempotent; degrades to a no-op
+    in core-only runs (no billing app → no middleware → nothing to
+    activate)."""
+    if Subscription is None:
+        # Core-only test run: no billing app → no middleware to satisfy.
+        return
+    TenantConfig.objects.get_or_create(tenant=tenant)
+    plan = TenantPlan.objects.filter(slug="free", is_active=True).first()
+    if plan and not Subscription.objects.filter(tenant=tenant, category="BASE").exists():
+        Subscription.objects.create(
+            tenant=tenant,
+            plan=plan,
+            category="BASE",
+            status=SubscriptionStatus.ACTIVE,
         )

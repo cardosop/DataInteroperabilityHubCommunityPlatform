@@ -209,9 +209,7 @@ class ProcessorAgreementsFeatureFlagTests(TestCase):
         self.tenant.refresh_from_db()
         assert self.tenant.compliance_processor_agreements_enabled is False
         resp = client.get("/api/v1/processor-agreements/processors/")
-        assert resp.status_code == 403, (
-            f"Expected 403 when flag disabled, got {resp.status_code}"
-        )
+        assert resp.status_code == 403, f"Expected 403 when flag disabled, got {resp.status_code}"
 
     def test_flag_enabled_returns_accessible(self):
         """When compliance_processor_agreements_enabled=True, endpoints return 200 with results."""

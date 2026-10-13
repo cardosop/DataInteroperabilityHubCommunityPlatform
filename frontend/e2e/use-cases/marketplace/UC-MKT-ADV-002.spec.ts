@@ -10,11 +10,16 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { getConsumerTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('UC-MKT-ADV-002: Preview Data Before Purchase @critical', () => {
-  test.setTimeout(120000);
+  // 240s: tail-of-batch churn stacks login backoff (~45s) + the 90s
+  // marketplace navigation wait past the old 120s budget — the run died
+  // inside waitForAppMainReady's settle wait with the budget expired (same
+  // convention as DE-010/015 and the features specs).
+  test.setTimeout(240000);
 
   test.describe('Success', () => {
     test('listing detail loads with preview section or content area', async ({ page }) => {
@@ -40,7 +45,7 @@ test.describe('UC-MKT-ADV-002: Preview Data Before Purchase @critical', () => {
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
 
-      const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      const listingLink = page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').first();
       // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
@@ -110,18 +115,32 @@ test.describe('UC-MKT-ADV-002: Preview Data Before Purchase @critical', () => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
 
       // D86: skip on login redirect
       test.skip(page.url().includes('/login'), 'Auth redirect — infrastructure issue');
+
+      // Gate-off terminal state: /marketplace is CapabilityRoute-gated; a
+      // /unavailable bounce under batch churn is a transient snapshot-fetch
+      // failure, not a disabled feature (MP-001 convention). W16-guarded:
+      // raises in CI, skips locally.
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'marketplace gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'marketplace gate bounced to /unavailable — transient snapshot failure'
+      );
 
       await waitForLoadingComplete(page, { timeout: 15000 });
       expect(page.url()).toContain('/marketplace');
 
       // Either listings are present or empty state is shown — both are valid
       const hasListings =
-        (await page.locator('.listing-list-page a[href*="/marketplace/listings/"]').count()) > 0;
+        (await page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').count()) > 0;
       const hasEmpty = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       const hasListPage = (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"]').count()) > 0;
       expect(hasListings || hasEmpty || hasListPage).toBe(true);

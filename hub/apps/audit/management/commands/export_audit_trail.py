@@ -5,6 +5,7 @@ Usage:
     python manage.py export_audit_trail --tenant <slug> --format jsonl --output /tmp/audit.jsonl
 """
 
+import contextlib
 import json
 
 from django.core.management.base import BaseCommand
@@ -23,7 +24,7 @@ class Command(BaseCommand):
         parser.add_argument("--output", type=str, default=None, help="Output file path.")
         parser.add_argument("--batch-size", type=int, default=10000, help="Events per batch.")
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         tenant_slug = options["tenant"]
         output_path = options["output"]
         fmt = options["format"]
@@ -51,10 +52,10 @@ class Command(BaseCommand):
         total = qs.count()
         self.stdout.write(f"Exporting {total} audit events for tenant {tenant.slug}")
 
-        out = open(output_path, "w") if output_path else self.stdout
-        exported = 0
+        with contextlib.ExitStack() as stack:
+            out = stack.enter_context(open(output_path, "w")) if output_path else self.stdout
 
-        try:
+            exported = 0
             for event in qs.iterator(chunk_size=batch_size):
                 record = {
                     "id": str(event.id),
@@ -70,6 +71,3 @@ class Command(BaseCommand):
                 exported += 1
 
             self.stdout.write(f"Exported {exported} events.")
-        finally:
-            if output_path:
-                out.close()

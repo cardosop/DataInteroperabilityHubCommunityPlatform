@@ -138,7 +138,8 @@ class TestPhase231Metrics(TestCase):
             before = labeled._value.get()
             record_compliance_intake_gate_event(event_label, self.tenant.id)
             self.assertEqual(
-                labeled._value.get(), before + 1,
+                labeled._value.get(),
+                before + 1,
                 f"Event constant {event_label!r} did not increment",
             )
 
@@ -154,19 +155,20 @@ class TestComplianceIntakeDashboardJson(TestCase):
     )
 
     @pytest.mark.integration
-    def test_dashboard_is_valid_nested_json(self):
+    def test_dashboard_is_valid_json(self):
         self.assertTrue(_DASHBOARD.exists(), f"Missing {_DASHBOARD}")
+        # Dashboards are stored in Grafana provisioning file format:
+        # the dashboard model IS the top-level object (no {"dashboard": ...} wrapper).
         data = json.loads(_DASHBOARD.read_text())
-        self.assertIn("dashboard", data)
         self.assertEqual(
-            data["dashboard"]["uid"],
+            data["uid"],
             "compliance-intake-gate-231",
         )
 
     @pytest.mark.integration
     def test_dashboard_queries_reference_known_metrics(self):
         data = json.loads(_DASHBOARD.read_text())
-        panels = data["dashboard"]["panels"]
+        panels = data["panels"]
         exprs = []
         for panel in panels:
             for target in panel.get("targets", []):

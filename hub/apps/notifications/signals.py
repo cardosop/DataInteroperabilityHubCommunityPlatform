@@ -14,7 +14,7 @@ from .tasks import send_job_completion_email, send_job_failure_email
 
 
 @receiver(post_save, sender=Job)
-def job_status_changed(sender, instance, created, **kwargs):
+def job_status_changed(sender, instance, created, **_kwargs):
     """
     Send email notifications when job status changes to COMPLETED or FAILED.
 

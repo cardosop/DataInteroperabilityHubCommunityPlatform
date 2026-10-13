@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 def _normalize_key_ring(raw: Mapping[str, Any] | None, tenant_id: str) -> list[bytes]:

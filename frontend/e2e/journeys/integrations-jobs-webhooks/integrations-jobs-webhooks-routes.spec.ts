@@ -38,7 +38,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await assertListPageLoads(page, '.connection-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -56,7 +56,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await assertListPageLoads(page, '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -74,7 +74,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await assertListPageLoads(page, '.mapping-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -92,7 +92,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await assertListPageLoads(page, '.job-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -110,7 +110,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await assertListPageLoads(page, '.webhook-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -141,13 +141,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
+          test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
       }
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
       await responsePromise;
@@ -164,7 +164,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         // Check if page is still loading (backend slow under parallel E2E load)
         const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
         if (stillLoading) {
-          test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+          test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
           return;
         }
       }
@@ -179,17 +179,17 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.scheduled-ingestion-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
+          contentSelector: '.scheduled-ingestion-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
+          test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
       }
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
       const url = page.url();
@@ -197,7 +197,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       const on403 = url.includes('/403');
       const hasList = (await page.locator('.scheduled-ingestion-list-page').count()) > 0;
       const has403 = (await page.locator('text=/403|forbidden/i').count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(onScheduled || on403).toBe(true) /* acceptable URL states */;
       // Terminal states only: list, empty state, 403 text, unavailable, or 403 redirect

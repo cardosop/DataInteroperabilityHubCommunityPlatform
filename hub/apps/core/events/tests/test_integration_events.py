@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from django.test import TestCase, override_settings
 
-from hub.apps.core.events.bus import EventBus
+from hub.apps.core.events.bus import EventBus, EventPublishError
 from hub.apps.core.events.event_types import validate_event_data
 from hub.apps.core.events.models import Event, EventSubscription
 from hub.apps.tenants.models import Tenant
@@ -145,7 +145,7 @@ class EventFlowIntegrationTest(TestCase):
         self.assertIn("Missing required field", error)
 
         # Try to publish invalid event
-        with self.assertRaises(Exception):
+        with self.assertRaises(EventPublishError):
             self.event_bus.publish(
                 event_type="contract.created", data=invalid_data, tenant_id=str(self.tenant.id)
             )

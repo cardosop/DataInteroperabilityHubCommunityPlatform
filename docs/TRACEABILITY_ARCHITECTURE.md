@@ -21,10 +21,10 @@ The Meshant platform maintains bidirectional traceability between documented use
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                     TEST MARKER LAYERS                             │
-│  @pytest.mark.journey("JOURNEY-XXX")  ← 73 distinct IDs          │
-│  @pytest.mark.uc("UC-XXX")            ← 57 distinct IDs          │
+│  @pytest.mark.journey("JOURNEY-XXX")  ← 166 distinct IDs         │
+│  @pytest.mark.uc("UC-XXX")            ← 142 distinct IDs         │
 │  @pytest.mark.persona("Persona Name") ← 13 personas              │
-│  frontend/e2e/journeys/**/JOURNEY-*.spec.ts ← 149 filename IDs   │
+│  frontend/e2e/journeys/**/JOURNEY-*.spec.ts ← 152 filename IDs   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -34,10 +34,10 @@ The Meshant platform maintains bidirectional traceability between documented use
 
 | Marker | Format | Example | Where Used | Count |
 |--------|--------|---------|-----------|-------|
-| `journey` | `JOURNEY-{PERSONA}-{NNN}` | `JOURNEY-DPO-001` | `tests/e2e/`, `hub/apps/*/tests/` | 73 |
-| `uc` | `UC-{DOMAIN}-{NNN}` | `UC-AUTH-001` | `tests/e2e/`, `tests/integration/`, `hub/apps/*/tests/` | 57 |
+| `journey` | `JOURNEY-{PERSONA}-{NNN}` | `JOURNEY-DPO-001` | `tests/e2e/`, `hub/apps/*/tests/` | 166 |
+| `uc` | `UC-{DOMAIN}-{NNN}` | `UC-AUTH-001` | `tests/e2e/`, `tests/integration/`, `hub/apps/*/tests/` | 142 |
 | `persona` | Free text | `"Data Product Owner"` | `tests/e2e/test_persona_*.py` | 13 |
-| (filename) | `JOURNEY-{PERSONA}-{NNN}.spec.ts` | `JOURNEY-DPO-001.spec.ts` | `frontend/e2e/journeys/` | 149 |
+| (filename) | `JOURNEY-{PERSONA}-{NNN}.spec.ts` | `JOURNEY-DPO-001.spec.ts` | `frontend/e2e/journeys/` | 152 |
 
 All markers are registered in `pytest.ini` and validated by `scripts/check_marker_consistency.py`.
 
@@ -47,11 +47,11 @@ All markers are registered in `pytest.ini` and validated by `scripts/check_marke
 
 | Registry | Path | Content | Canonical? |
 |----------|------|---------|-----------|
-| User Journey Index | `docs/USER_JOURNEYS.md` | 149 journeys across 13 personas | ✅ Yes |
-| Use Case Index | `docs/USE_CASES.md` | 95 use cases across 12 domains | ✅ Yes |
-| Critical ID Registry | `docs/CRITICAL_UC_JOURNEY_IDS.yaml` | 37 UC + 28 journey CI-gate-critical IDs | ✅ Yes |
+| User Journey Index | `docs/USER_JOURNEYS.md` | 166 journeys across 13 personas | ✅ Yes |
+| Use Case Index | `docs/USE_CASES.md` | 142 use cases across 12 domains | ✅ Yes |
+| Critical ID Registry | `docs/CRITICAL_UC_JOURNEY_IDS.yaml` | 35 UC + 29 journey CI-gate-critical IDs | ✅ Yes |
 | Persona Mapping | `docs/mvpdocs/_meta/persona-mapping.yaml` | 13 fixture personas → 6 canonical personas | ✅ Yes |
-| Persona-Journey Mapping | `docs/mvpdocs/_meta/persona-journey-mapping.yaml` | Persona → journey ID list | Planned (Phase 5) |
+| Persona-Journey Mapping | `docs/mvpdocs/_meta/persona-journey-mapping.yaml` | Persona → journey ID list | ✅ Yes |
 
 **Deprecated** (retained for historical reference only):
 - `docs/deprecated-doc/product-originals/USER_JOURNEYS.md`
@@ -99,7 +99,7 @@ All gates use `continue-on-error: ${{ inputs.warn-only }}` for a one-week tuning
 | Security Tests | `tests/security/` | ❌ 0 | ❌ 0 | GAP — P3 deferred |
 | Load Tests | `tests/load/` | ❌ (internal names) | ❌ 0 | GAP — Phase 4 |
 | Chaos/Resilience | `tests/chaos/`, `tests/resilience/` | ❌ 0 | ❌ 0 | GAP — P3 deferred |
-| Frontend E2E | `frontend/e2e/journeys/` | ✅ 149 (filename) | ✅ 27 (filename) | GATE-27, 28 |
+| Frontend E2E | `frontend/e2e/journeys/` | ✅ 152 (filename) | ✅ 18 (filename) | GATE-27, 28 |
 
 ---
 

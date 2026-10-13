@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import ClassVar, cast
 
 import structlog
 from rest_framework import permissions, status, viewsets
@@ -54,7 +54,7 @@ class ConsentPurposeViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = ConsentPurposeSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenantScoped]
+    permission_classes = (permissions.IsAuthenticated, IsTenantScoped)
     throttle_classes = [ConsentUserThrottle]  # 283.3.1.2 — G8 Rate gate
     lookup_field = "id"
 
@@ -162,10 +162,10 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
     Routes: /api/v1/governance/consent-records/
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsTenantScoped]
+    permission_classes = (permissions.IsAuthenticated, IsTenantScoped)
     throttle_classes = [ConsentUserThrottle]  # 283.3.1.2 — G8 Rate gate
     lookup_field = "id"
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names: ClassVar[list[str]] = ["get", "post", "patch", "head", "options"]
 
     def get_queryset(self):
         tenant = _tenant_from_request(self.request)
@@ -183,7 +183,7 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
             return ConsentRecordUpdateSerializer
         return ConsentRecordSerializer
 
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         tenant = _tenant_from_request(request)
         if not tenant:
             return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -212,7 +212,7 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
             return handle_service_exception(e)
         return Response(ConsentRecordSerializer(record).data, status=status.HTTP_201_CREATED)
 
-    def partial_update(self, request, *args, **kwargs):
+    def partial_update(self, request, *_args, **_kwargs):
         """Re-grant / refresh proof with a new payload (same purpose, same subject)."""
         tenant = _tenant_from_request(request)
         if not tenant:

@@ -16,7 +16,8 @@ class TestCircuitBreakerThresholds:
     """Validate the production circuit breaker threshold configuration."""
 
     @pytest.fixture(scope="class")
-    def thresholds(self):
+    @classmethod
+    def thresholds(cls):
         from hub.apps.core.resilience.circuit_breaker_thresholds import (
             PRODUCTION_THRESHOLDS,
         )
@@ -27,7 +28,8 @@ class TestCircuitBreakerThresholds:
         return PRODUCTION_THRESHOLDS
 
     @pytest.fixture(scope="class")
-    def default_threshold(self):
+    @classmethod
+    def default_threshold(cls):
         from hub.apps.core.resilience.circuit_breaker_thresholds import (
             get_default_threshold,
         )

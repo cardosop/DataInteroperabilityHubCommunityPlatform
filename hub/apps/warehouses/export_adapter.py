@@ -50,15 +50,25 @@ class DltAdapter(WriteAdapter):
     Replace with a native loader per warehouse if needed.
     """
 
-    def __init__(self, destination_type: str, credentials: dict):
+    def __init__(
+        self,
+        destination_type: str,
+        credentials: dict,
+        *,
+        tenant_id: str | None = None,
+        hub_asset_uri: str | None = None,
+    ):
         self._destination = destination_type  # "snowflake", "bigquery", etc.
         self._credentials = credentials
+        # 275.E.3c lineage context — optional; emission no-ops when absent.
+        self._tenant_id = tenant_id
+        self._hub_asset_uri = hub_asset_uri
 
     def write_rows(
         self,
         table_name: str,
         rows: list[dict[str, Any]],
-        schema: list[dict[str, str]] | None = None,
+        _schema: list[dict[str, str]] | None = None,
         *,
         mode: str = "append",
     ) -> dict[str, Any]:
@@ -73,6 +83,7 @@ class DltAdapter(WriteAdapter):
             )
             # dlt normalises schema + handles idempotency via load_id.
             info = pipeline.run(rows, table_name=table_name, write_disposition=mode)
+            self._emit_export_lineage(table_name)
             return {
                 "rows_written": len(rows),
                 "status": "success",
@@ -87,6 +98,25 @@ class DltAdapter(WriteAdapter):
             }
         except Exception as exc:
             return {"rows_written": 0, "status": "error", "load_id": "", "error": str(exc)}
+
+    def _emit_export_lineage(self, table_name: str) -> None:
+        """275.E.3c — fire-and-forget OpenLineage emit on successful export.
+
+        Best-effort by contract: a lineage-emission failure must never
+        fail or retry the export itself.
+        """
+        if not self._tenant_id or not self._hub_asset_uri:
+            return
+        try:
+            from hub.apps.warehouses.lineage import emit_warehouse_export_event
+
+            emit_warehouse_export_event(
+                tenant_id=self._tenant_id,
+                hub_asset_uri=self._hub_asset_uri,
+                warehouse_table_uri=f"{self._destination}://{table_name}",
+            )
+        except Exception:
+            pass
 
     def create_table(self, table_name: str, schema: list[dict[str, str]]) -> None:
         """dlt handles table creation during first write."""

@@ -66,14 +66,15 @@ def get_redis_client() -> redis.Redis | None:
 
         client = get_redis_cache_client()
         client.ping()
-        return client
-    except Exception as e:
+    except (ImportError, redis.RedisError, ValueError) as e:
         logger.warning(
             "circuit_breaker_redis_unavailable",
             error=str(e),
             message="Circuit breaker will use in-memory state only",
         )
         return None
+    else:
+        return client
 
 
 class CircuitBreaker:
@@ -308,7 +309,7 @@ class CircuitBreaker:
                     with self._local_lock:
                         self._local_state["state"] = state.value
                     return state
-            except Exception as e:
+            except (redis.RedisError, ValueError, AttributeError) as e:
                 logger.warning(
                     "circuit_breaker_redis_read_error",
                     error=str(e),
@@ -339,7 +340,7 @@ class CircuitBreaker:
                     {"state": state.value, "updated_at": datetime.now(UTC).isoformat()}
                 )
                 self.redis_client.set(self._get_state_key(), state_data)
-            except Exception as e:
+            except redis.RedisError as e:
                 logger.warning(
                     "circuit_breaker_redis_write_error",
                     error=str(e),
@@ -377,7 +378,7 @@ class CircuitBreaker:
                 count_key = f"{self._redis_key_prefix}:failure_count"
                 count = self.redis_client.get(count_key)
                 return int(count) if count else 0
-            except Exception:
+            except (redis.RedisError, ValueError):
                 pass
 
         with self._local_lock:
@@ -396,9 +397,10 @@ class CircuitBreaker:
                 new_count = self.redis_client.incr(count_key)
                 # Set expiration to prevent stale data
                 self.redis_client.expire(count_key, self.timeout_seconds * 2)
-                return new_count
-            except Exception:
+            except redis.RedisError:
                 pass
+            else:
+                return new_count
 
         with self._local_lock:
             self._local_state["failure_count"] = self._local_state.get("failure_count", 0) + 1
@@ -410,7 +412,7 @@ class CircuitBreaker:
             try:
                 count_key = f"{self._redis_key_prefix}:failure_count"
                 self.redis_client.delete(count_key)
-            except Exception:
+            except redis.RedisError:
                 pass
 
         with self._local_lock:
@@ -423,7 +425,7 @@ class CircuitBreaker:
                 count_key = f"{self._redis_key_prefix}:success_count"
                 count = self.redis_client.get(count_key)
                 return int(count) if count else 0
-            except Exception:
+            except (redis.RedisError, ValueError):
                 pass
 
         with self._local_lock:
@@ -442,9 +444,10 @@ class CircuitBreaker:
                 new_count = self.redis_client.incr(count_key)
                 # Set expiration
                 self.redis_client.expire(count_key, self.timeout_seconds * 2)
-                return new_count
-            except Exception:
+            except redis.RedisError:
                 pass
+            else:
+                return new_count
 
         with self._local_lock:
             self._local_state["success_count"] = self._local_state.get("success_count", 0) + 1
@@ -456,7 +459,7 @@ class CircuitBreaker:
             try:
                 count_key = f"{self._redis_key_prefix}:success_count"
                 self.redis_client.delete(count_key)
-            except Exception:
+            except redis.RedisError:
                 pass
 
         with self._local_lock:
@@ -474,7 +477,7 @@ class CircuitBreaker:
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=UTC)
                     return dt
-            except Exception:
+            except (redis.RedisError, ValueError):
                 pass
 
         with self._local_lock:
@@ -507,7 +510,7 @@ class CircuitBreaker:
                 timestamp_key = f"{self._redis_key_prefix}:opened_at"
                 self.redis_client.set(timestamp_key, timestamp_str)
                 self.redis_client.expire(timestamp_key, self.timeout_seconds * 2)
-            except Exception:
+            except redis.RedisError:
                 pass
 
         with self._local_lock:
@@ -519,7 +522,7 @@ class CircuitBreaker:
             try:
                 timestamp_key = f"{self._redis_key_prefix}:opened_at"
                 self.redis_client.delete(timestamp_key)
-            except Exception:
+            except redis.RedisError:
                 pass
 
         with self._local_lock:
@@ -573,10 +576,18 @@ class CircuitBreaker:
 
         Returns:
             True if timeout has elapsed, False otherwise
+
+        Phase U.6: an OPEN state with NO opened_at must attempt the probe.
+        The opened_at key carries a TTL (timeout_seconds*2) while the state
+        key never expires — once opened_at was evicted, returning False here
+        made the breaker permanently OPEN with no recovery path (staging
+        smoke: semantic-service-read stayed OPEN forever and every SPARQL
+        call 503'd with "circuit breaker open"). A missing timestamp means
+        "opened long ago" — let the half-open probe decide.
         """
         opened_at = self._get_opened_at()
         if opened_at is None:
-            return False
+            return True
 
         elapsed = (datetime.now(UTC) - opened_at).total_seconds()
         return elapsed >= self.timeout_seconds
@@ -689,8 +700,6 @@ class CircuitBreaker:
                         "circuit_breaker_success", service_name=self.service_name, state="CLOSED"
                     )
 
-            return result
-
         except Exception as e:
             # Failure - handle state transitions (under lock)
             use_fallback = False
@@ -756,10 +765,12 @@ class CircuitBreaker:
                 raise CircuitBreakerError(
                     f"Circuit breaker is OPEN for service '{self.service_name}'. "
                     f"Service unavailable. Retry after {self.timeout_seconds} seconds."
-                )
+                ) from None
 
             # Re-raise original exception
             raise
+        else:
+            return result
 
     def reset(self) -> None:
         """
@@ -794,7 +805,7 @@ class CircuitBreaker:
                 keys = self.redis_client.keys(pattern)
                 if keys:
                     self.redis_client.delete(*keys)
-            except Exception:
+            except redis.RedisError:
                 pass
 
         # Persist CLOSED to Redis so the next _get_state() sees it
@@ -824,7 +835,7 @@ def reset_circuit_breaker_by_name(service_name: str) -> None:
             keys = redis_client.keys(pattern)
             if keys:
                 redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     # ── 2. Reset any shared-store entries (belt-and-suspenders) ──────────

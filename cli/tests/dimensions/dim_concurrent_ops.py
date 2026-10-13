@@ -31,9 +31,10 @@ def _make_request(token: str) -> tuple[int, str]:
             headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
-        return resp.status_code, ""
     except Exception as exc:
         return -1, str(exc)
+    else:
+        return resp.status_code, ""
 
 
 def test_concurrent_reads_all_succeed(creds):
@@ -68,9 +69,10 @@ def test_concurrent_writes_no_server_error(creds):
                 },
                 timeout=30,
             )
-            return resp.status_code
         except Exception:
             return -1
+        else:
+            return resp.status_code
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
         futures = [pool.submit(_create_asset, i) for i in range(CONCURRENCY)]

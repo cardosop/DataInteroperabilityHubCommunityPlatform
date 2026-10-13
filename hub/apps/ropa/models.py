@@ -74,7 +74,7 @@ class RopaGeneration(models.Model):
     class Meta:
         db_table = "ropa_generations"
         ordering = ["-created_at"]
-        indexes = [
+        indexes = (
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "created_at"]),
-        ]
+        )

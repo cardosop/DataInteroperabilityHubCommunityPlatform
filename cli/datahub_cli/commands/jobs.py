@@ -8,6 +8,7 @@ import time
 import click
 
 from ..api_client import api_client
+from ..output import print_json_output
 
 
 @click.group()
@@ -38,8 +39,8 @@ def list_jobs(
         params["status"] = status
 
     try:
-        # API endpoint structure: /api/v1/jobs/jobs/ (jobs/ from api/urls.py + jobs from router)
-        data = api_client.get("jobs/jobs/", params=params)
+        # API endpoint structure: /api/v1/jobs/ (api/urls.py mounts jobs/ → hub.apps.jobs.urls)
+        data = api_client.get("jobs/", params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get("results", [])
@@ -69,7 +70,7 @@ def list_jobs(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list jobs: {e}")
+        raise click.ClickException(f"Failed to list jobs: {e}") from e
 
 
 @jobs.command("get")
@@ -84,11 +85,11 @@ def list_jobs(
 def get_job(job_id: str, output_format: str):
     """Get job details"""
     try:
-        # API endpoint structure: /api/v1/jobs/jobs/{id}/ (jobs/ from api/urls.py + jobs from router)
-        data = api_client.get(f"jobs/jobs/{job_id}/")
+        # API endpoint structure: /api/v1/jobs/{id}/ (api/urls.py mounts jobs/ → hub.apps.jobs.urls, router prefix is "")
+        data = api_client.get(f"jobs/{job_id}/")
 
         if output_format == "json":
-            click.echo(json.dumps(data, indent=2))
+            print_json_output(data)
         else:
             # Table format
             click.echo(f"ID: {data.get('id')}")
@@ -106,7 +107,7 @@ def get_job(job_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get job: {e}")
+        raise click.ClickException(f"Failed to get job: {e}") from e
 
 
 @jobs.command("cancel")
@@ -121,8 +122,8 @@ def get_job(job_id: str, output_format: str):
 def cancel_job(job_id: str, output_format: str):
     """Cancel a job"""
     try:
-        # API endpoint structure: /api/v1/jobs/jobs/{id}/cancel/ (jobs/ from api/urls.py + jobs from router)
-        result = api_client.post(f"jobs/jobs/{job_id}/cancel/")
+        # API endpoint structure: /api/v1/jobs/{id}/cancel/ (api/urls.py mounts jobs/ → hub.apps.jobs.urls, router prefix is "")
+        result = api_client.post(f"jobs/{job_id}/cancel/")
 
         if output_format == "json":
             click.echo(json.dumps(result, indent=2))
@@ -132,7 +133,7 @@ def cancel_job(job_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to cancel job: {e}")
+        raise click.ClickException(f"Failed to cancel job: {e}") from e
 
 
 @jobs.command("watch")
@@ -150,15 +151,18 @@ def watch_job(job_id: str, interval: int, timeout: int, output_format: str):
     """Watch a job until completion"""
     start_time = time.time()
 
+    def _check_timeout() -> None:
+        if time.time() - start_time > timeout:
+            raise click.ClickException(f"Timeout waiting for job {job_id} to complete")
+
     try:
         while True:
             # Check timeout
-            if time.time() - start_time > timeout:
-                raise click.ClickException(f"Timeout waiting for job {job_id} to complete")
+            _check_timeout()
 
             # Get job status
-            # API endpoint structure: /api/v1/jobs/jobs/{id}/ (jobs/ from api/urls.py + jobs from router)
-            data = api_client.get(f"jobs/jobs/{job_id}/")
+            # API endpoint structure: /api/v1/jobs/{id}/ (api/urls.py mounts jobs/ → hub.apps.jobs.urls, router prefix is "")
+            data = api_client.get(f"jobs/{job_id}/")
             status = data.get("status")
 
             if output_format == "table":
@@ -187,4 +191,4 @@ def watch_job(job_id: str, interval: int, timeout: int, output_format: str):
         click.echo("\nWatching cancelled by user.")
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to watch job: {e}")
+        raise click.ClickException(f"Failed to watch job: {e}") from e

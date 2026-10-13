@@ -19,6 +19,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
+
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
@@ -29,6 +32,7 @@ from hub.apps.scheduled_export.models import (
     DestinationType,
     ScheduledExport,
     ScheduledExportRun,
+    ScheduledExportRunStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,7 +112,7 @@ class ScheduledExportBusinessRules(BusinessRules):
         tenant: Any | None = None,
         user: Any | None = None,
         validation_type: str = "all",
-        **kwargs,
+        **_kwargs,
     ) -> ValidationResult:
         """
         Main validation entry point for scheduled export operations.
@@ -249,7 +253,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                         details.setdefault("validated_assets", []).append(str(asset.id))
                     except Asset.DoesNotExist:
                         errors.append(f"Asset {asset_id} not found or not in tenant")
-                    except Exception as e:
+                    except (ValidationError, DatabaseError) as e:
                         errors.append(f"Error validating asset {asset_id}: {e!s}")
 
         # Validate dataset_ids
@@ -265,7 +269,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                         details.setdefault("validated_datasets", []).append(str(dataset.id))
                     except Dataset.DoesNotExist:
                         errors.append(f"Dataset {dataset_id} not found or not in tenant")
-                    except Exception as e:
+                    except (ValidationError, DatabaseError) as e:
                         errors.append(f"Error validating dataset {dataset_id}: {e!s}")
 
         # Validate file_ids
@@ -281,7 +285,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                         details.setdefault("validated_files", []).append(str(file_obj.id))
                     except File.DoesNotExist:
                         errors.append(f"File {file_id} not found or not in tenant")
-                    except Exception as e:
+                    except (ValidationError, DatabaseError) as e:
                         errors.append(f"Error validating file {file_id}: {e!s}")
 
         # Validate contract_id
@@ -293,7 +297,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                 details["validated_contract"] = str(contract.id)
             except Contract.DoesNotExist:
                 errors.append(f"Contract {contract_id} not found or not in tenant")
-            except Exception as e:
+            except (ValidationError, DatabaseError) as e:
                 errors.append(f"Error validating contract {contract_id}: {e!s}")
 
         details["scope_validated"] = len(errors) == 0
@@ -565,12 +569,14 @@ class ScheduledExportBusinessRules(BusinessRules):
             )
 
         # Validate run belongs to scheduled export
-        if context.scheduled_export:
-            if context.export_run.scheduled_export_id != context.scheduled_export.id:
-                errors.append("Export run does not belong to scheduled export")
-                return ValidationResult(
-                    is_valid=False, errors=errors, warnings=warnings, details=details
-                )
+        if (
+            context.scheduled_export
+            and context.export_run.scheduled_export_id != context.scheduled_export.id
+        ):
+            errors.append("Export run does not belong to scheduled export")
+            return ValidationResult(
+                is_valid=False, errors=errors, warnings=warnings, details=details
+            )
 
         # Validate tenant isolation
         tenant_id = str(context.export_run.tenant_id)

@@ -17,8 +17,21 @@ from django.dispatch import receiver
 logger = logging.getLogger(__name__)
 
 
+def _run_with_tenant_context(tenant_id, func):
+    """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
+    is set, else directly.  Phase P.9 — worker/signal code that touches
+    tenant-scoped models must be scoped per the RLS contract (mirrors
+    webhooks/tasks.py)."""
+    if tenant_id is None:
+        return func()
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return func()
+
+
 @receiver(post_save, sender="datasets.Dataset")
-def invalidate_dataset_cache_on_save(sender, instance, **kwargs):
+def invalidate_dataset_cache_on_save(sender, instance, **_kwargs):
     """Invalidate dataset caches when a dataset is saved."""
     try:
         from hub.apps.datasets.caching import invalidate_dataset_caches
@@ -39,7 +52,7 @@ def invalidate_dataset_cache_on_save(sender, instance, **kwargs):
 
 
 @receiver(post_delete, sender="datasets.Dataset")
-def invalidate_dataset_cache_on_delete(sender, instance, **kwargs):
+def invalidate_dataset_cache_on_delete(sender, instance, **_kwargs):
     """Invalidate dataset caches when a dataset is deleted."""
     try:
         from hub.apps.datasets.caching import invalidate_dataset_caches
@@ -60,7 +73,7 @@ def invalidate_dataset_cache_on_delete(sender, instance, **kwargs):
 
 
 @receiver(post_delete, sender="datasets.Dataset")
-def schedule_orphan_file_check_on_dataset_delete(sender, instance, **kwargs):
+def schedule_orphan_file_check_on_dataset_delete(sender, instance, **_kwargs):
     """Phase 260.1.B — enqueue orphan-file soft-delete eligibility check."""
     try:
         from hub.apps.datasets.orphan_file_reconcile import (
@@ -93,7 +106,7 @@ def schedule_orphan_file_check_on_dataset_delete(sender, instance, **kwargs):
 _PRIOR_DATASET_ARCHIVED_ATTR = "_pre_save_archived_at_for_tombstone"
 
 
-def _capture_prior_dataset_archived_at(sender, instance, **kwargs):
+def _capture_prior_dataset_archived_at(sender, instance, **_kwargs):
     """pre_save listener — record ``archived_at`` from the DB row
     so post_save can detect a NULL → non-NULL transition exactly
     once."""
@@ -101,7 +114,12 @@ def _capture_prior_dataset_archived_at(sender, instance, **kwargs):
         setattr(instance, _PRIOR_DATASET_ARCHIVED_ATTR, None)
         return
     try:
-        prior = sender.objects.only("archived_at").get(pk=instance.pk)
+        # Phase P.9 — the prior-row read is tenant-scoped; pre_save fires
+        # outside the request cycle, so scope per the RLS contract.
+        prior = _run_with_tenant_context(
+            getattr(instance, "tenant_id", None),
+            lambda: sender.objects.only("archived_at").get(pk=instance.pk),
+        )
     except sender.DoesNotExist:
         setattr(instance, _PRIOR_DATASET_ARCHIVED_ATTR, None)
         return
@@ -109,7 +127,7 @@ def _capture_prior_dataset_archived_at(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender="datasets.Dataset")
-def fire_dataset_tombstone_on_archive(sender, instance, **kwargs):
+def fire_dataset_tombstone_on_archive(sender, instance, **_kwargs):
     """post_save listener — fires the canonical tombstone path when
     ``archived_at`` flips from NULL to non-NULL.
 
@@ -127,6 +145,7 @@ def fire_dataset_tombstone_on_archive(sender, instance, **kwargs):
         return
 
     dataset_id = instance.pk
+    tenant_id = getattr(instance, "tenant_id", None)
 
     def _dispatch():
         try:
@@ -135,10 +154,15 @@ def fire_dataset_tombstone_on_archive(sender, instance, **kwargs):
                 dispatch_tombstone,
             )
 
-            dispatch_tombstone(
-                resource_type="DATASET",
-                resource_id=dataset_id,
-                reason=REASON_DATASET_ARCHIVED,
+            # Phase P.9 — dispatch_tombstone reads/writes tenant-scoped
+            # SemanticResource rows on commit; scope per the RLS contract.
+            _run_with_tenant_context(
+                tenant_id,
+                lambda: dispatch_tombstone(
+                    resource_type="DATASET",
+                    resource_id=dataset_id,
+                    reason=REASON_DATASET_ARCHIVED,
+                ),
             )
         except Exception as exc:
             logger.warning(
@@ -163,7 +187,7 @@ _connect_dataset_tombstone_pre_save()
 
 
 @receiver(post_save, sender="datasets.Dataset")
-def rebuild_dataset_search_vector(sender, instance, **kwargs):
+def rebuild_dataset_search_vector(sender, instance, **_kwargs):
     """Enqueue a search vector rebuild for the saved Dataset."""
     try:
         from hub.apps.search.tasks import (

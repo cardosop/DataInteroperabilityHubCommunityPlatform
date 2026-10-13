@@ -71,7 +71,7 @@ def kustomize_available_check():
 class TestKubernetesConfig:
     """Validate ConfigMap and Secret resources and their usage."""
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_referenced_configmaps_exist(self, service_name, base_path, kustomize_available_check):
         """ConfigMaps referenced by workloads exist in the same kustomize build."""
         manifests = load_manifests_from_kustomize(base_path)
@@ -86,7 +86,7 @@ class TestKubernetesConfig:
                 f"{service_name} references ConfigMap {name} in ns {ns} but it is not in build"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_referenced_secrets_exist(self, service_name, base_path, kustomize_available_check):
         """Secrets referenced by workloads exist in the same kustomize build."""
         manifests = load_manifests_from_kustomize(base_path)
@@ -101,7 +101,7 @@ class TestKubernetesConfig:
                 f"{service_name} references Secret {name} in ns {ns} but it is not in build"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_configmaps_have_data_or_binary_data(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -114,7 +114,7 @@ class TestKubernetesConfig:
                 f"{service_name} ConfigMap {cm.get('metadata', {}).get('name')} should have data or binaryData"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_secrets_have_data_or_string_data_or_external(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -131,7 +131,7 @@ class TestKubernetesConfig:
                 f"{service_name} Secret {sec.get('metadata', {}).get('name')} (type={stype}) should have data or stringData"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_pvc_referenced_by_workloads_exist(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -160,7 +160,7 @@ class TestKubernetesConfig:
                 f"{service_name} references PVC {name} in ns {ns} but it is not in build"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_pvcs_have_storage_request(self, service_name, base_path, kustomize_available_check):
         """PersistentVolumeClaims have spec.resources.requests.storage."""
         manifests = load_manifests_from_kustomize(base_path)

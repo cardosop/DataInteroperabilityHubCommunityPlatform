@@ -42,7 +42,7 @@ def request_export(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to request data export: {e}")
+        raise click.ClickException(f"Failed to request data export: {e}") from e
 
 
 @gdpr.command("export-jobs")
@@ -92,7 +92,7 @@ def list_export_jobs(limit: int, offset: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list export jobs: {e}")
+        raise click.ClickException(f"Failed to list export jobs: {e}") from e
 
 
 @gdpr.command("request-erasure")
@@ -125,7 +125,7 @@ def request_erasure(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to request erasure: {e}")
+        raise click.ClickException(f"Failed to request erasure: {e}") from e
 
 
 @gdpr.command("erasure-requests")
@@ -179,4 +179,4 @@ def list_erasure_requests(limit: int, offset: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list erasure requests: {e}")
+        raise click.ClickException(f"Failed to list erasure requests: {e}") from e

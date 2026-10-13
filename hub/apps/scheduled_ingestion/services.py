@@ -7,9 +7,11 @@ All create/update paths call ScheduledIngestionBusinessRules before mutation.
 """
 
 import contextlib
+import logging
 from typing import Any
 
 from django.db import transaction
+from django.utils import timezone
 
 from hub.apps.core.events.service_publishers import IngestionEventPublisher
 from hub.apps.core.services.base import BaseService, ValidationError
@@ -17,8 +19,12 @@ from hub.apps.orchestration.workflows.scheduled_ingestion import ScheduledIngest
 from hub.apps.scheduled_ingestion.business_rules import ScheduledIngestionBusinessRules
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
+    ScheduledIngestionRun,
+    ScheduledIngestionRunStatus,
     ScheduledIngestionStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionService(BaseService, IngestionEventPublisher):
@@ -42,6 +48,150 @@ class IngestionService(BaseService, IngestionEventPublisher):
             user_id: Optional user ID
         """
         super().__init__(tenant_id=tenant_id, user_id=user_id)
+
+    def _find_existing_ingestion_run(
+        self,
+        scheduled_ingestion: ScheduledIngestion,
+        *,
+        prefect_flow_run_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> ScheduledIngestionRun | None:
+        """The shared idempotency lookup (6.11) — one source of truth for
+        the replay contract (mirrors the export side's helper)."""
+        if prefect_flow_run_id:
+            existing = ScheduledIngestionRun.objects.filter(
+                scheduled_ingestion=scheduled_ingestion,
+                prefect_flow_run_id=prefect_flow_run_id,
+            ).first()
+            if existing:
+                return existing
+        if idempotency_key:
+            for r in ScheduledIngestionRun.objects.filter(
+                scheduled_ingestion=scheduled_ingestion
+            ).order_by("-created_at")[:100]:
+                if (r.result_json or {}).get("idempotency_key") == idempotency_key:
+                    return r
+        return None
+
+    def execute_ingestion_run(
+        self,
+        scheduled_ingestion_id: str,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        prefect_flow_run_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """6.2 (wire-databricks-dlt-movement) — the dlt dispatch spine
+        (design D1): create the run, dispatch through the canonical
+        ``execute_ingestion`` seam (which routes to the
+        ``execute_dlt_ingestion`` entrypoint for flagged tenants), and
+        record the outcome on the run's terminal state."""
+        effective_tenant_id = tenant_id or self.tenant_id
+        scheduled_ingestion = self.get_resource_or_raise(
+            ScheduledIngestion, scheduled_ingestion_id, tenant_id=effective_tenant_id
+        )
+
+        # 6.11 — the service-level no-double-dispatch contract: a replay
+        # returns the existing run WITHOUT re-dispatching (the view layer
+        # guards the HTTP surface; this guard covers direct seam callers).
+        existing = self._find_existing_ingestion_run(
+            scheduled_ingestion,
+            prefect_flow_run_id=prefect_flow_run_id,
+            idempotency_key=idempotency_key,
+        )
+        if existing:
+            return {
+                "run_id": str(existing.id),
+                "run_status": existing.status,
+                "files_found": existing.files_found or 0,
+                "files_processed": existing.files_processed or 0,
+                "files_failed": existing.files_failed or 0,
+                # W3.8 — the replay returns the RECORDED count (the
+                # pre-fix hardcoded 0 even for runs that created real
+                # dataset rows).
+                "datasets_created": existing.datasets_created or 0,
+                "error_message": None,
+                "replayed": True,
+            }
+
+        run = ScheduledIngestionRun.objects.create(
+            scheduled_ingestion=scheduled_ingestion,
+            status=ScheduledIngestionRunStatus.PENDING,
+            started_at=timezone.now(),
+            prefect_flow_run_id=prefect_flow_run_id or None,
+            result_json={"idempotency_key": idempotency_key} if idempotency_key else {},
+        )
+
+        # W3.1 (R2-P1) — the lifecycle is explicit: PENDING→RUNNING before
+        # the entrypoint executes, then RUNNING→terminal on the outcome.
+        # W3.5 (R2-P4) — the RUNNING transition carries the worker's
+        # heartbeat (the liveness lease): a crash mid-spine leaves a
+        # stale lease the stuck-run detector can recover.
+        run.status = ScheduledIngestionRunStatus.RUNNING
+        run.heartbeat_at = timezone.now()
+        run.save(update_fields=["status", "heartbeat_at", "updated_at"])
+
+        result = self.execute_ingestion(
+            str(scheduled_ingestion.id), tenant_id=str(scheduled_ingestion.tenant_id)
+        )
+
+        # W3.1 (R2-P1) — the spine honors CANCELLED: a run cancelled while
+        # the entrypoint executed keeps its terminal state; the dlt
+        # outcome is recorded without overwriting it.
+        run.refresh_from_db()
+        if run.status == ScheduledIngestionRunStatus.CANCELLED:
+            run.result_json = {**(run.result_json or {}), "dlt_outcome": result}
+            run.save(update_fields=["result_json", "updated_at"])
+            return {**result, "run_id": str(run.id), "run_status": run.status}
+
+        failed = bool(result.get("files_failed")) or bool(result.get("error_message"))
+        new_status = (
+            ScheduledIngestionRunStatus.FAILED if failed else ScheduledIngestionRunStatus.COMPLETED
+        )
+
+        run.status = new_status
+        run.files_found = result.get("files_found") or 0
+        run.files_processed = result.get("files_processed") or 0
+        run.files_failed = result.get("files_failed") or 0
+        # W3.2 (R2-P5) — the spine records the same run-row fields as the
+        # RQ worker task: datasets_created (one per ingested file) and the
+        # canonical error_message (the parent propagation reads it).
+        run.datasets_created = result.get("datasets_created") or 0
+        run.error_message = result.get("error_message")
+        run.completed_at = timezone.now()
+        run.result_json = {**(run.result_json or {}), "dlt_outcome": result}
+        run.save(
+            update_fields=[
+                "status",
+                "files_found",
+                "files_processed",
+                "files_failed",
+                "datasets_created",
+                "error_message",
+                "completed_at",
+                "result_json",
+                "updated_at",
+            ]
+        )
+
+        # W3.2 (R2-P5) — uniform completion: the spine routes completion
+        # through the canonical side-effect contract exactly once (the
+        # same contract as the RQ worker task and the internal PATCH).
+        # A side-effect failure must never roll back the run's terminal
+        # state — the outbox retries them (Phase 76).
+        try:
+            from .worker_run_lifecycle import apply_run_completion_side_effects
+
+            apply_run_completion_side_effects(run, new_status)
+        except Exception as e:
+            logger.error(
+                "dlt_ingestion_side_effects_failed",
+                run_id=str(run.id),
+                error=str(e),
+                exc_info=True,
+            )
+
+        return {**result, "run_id": str(run.id), "run_status": run.status}
 
     def execute_ingestion(
         self, scheduled_ingestion_id: str, tenant_id: str | None = None
@@ -176,22 +326,22 @@ class IngestionService(BaseService, IngestionEventPublisher):
             delta=1,
         )
 
-        create_kw = dict(
-            tenant=tenant,
-            created_by=created_by,
-            name=name,
-            description=description or "",
-            source_type=source_type,
-            source_config=source_config,
-            schedule_type=schedule_type,
-            schedule_config=schedule_config,
-            file_pattern=file_pattern or ".*",
-            asset=asset,
-            contract=contract,
-            auto_create_asset=auto_create_asset,
-            auto_activate=auto_activate,
-            status=ScheduledIngestionStatus.ACTIVE,
-        )
+        create_kw = {
+            "tenant": tenant,
+            "created_by": created_by,
+            "name": name,
+            "description": description or "",
+            "source_type": source_type,
+            "source_config": source_config,
+            "schedule_type": schedule_type,
+            "schedule_config": schedule_config,
+            "file_pattern": file_pattern or ".*",
+            "asset": asset,
+            "contract": contract,
+            "auto_create_asset": auto_create_asset,
+            "auto_activate": auto_activate,
+            "status": ScheduledIngestionStatus.ACTIVE,
+        }
         for k in ["prefect_work_pool_name"]:
             if k in kwargs and kwargs[k] is not None:
                 create_kw[k] = kwargs[k]

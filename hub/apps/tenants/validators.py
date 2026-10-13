@@ -163,20 +163,22 @@ def validate_rate_limits(value: dict[str, Any]) -> None:
         platform_max = PLATFORM_MAX_RATE_LIMITS[category]
 
         # Check burst_per_10s
-        if "burst_per_10s" in limits:
-            if limits["burst_per_10s"] > platform_max.get("burst_per_10s", float("inf")):
-                raise ValidationError(
-                    f"Rate limit {category}.burst_per_10s ({limits['burst_per_10s']}) "
-                    f"exceeds platform maximum ({platform_max.get('burst_per_10s')})"
-                )
+        if "burst_per_10s" in limits and limits["burst_per_10s"] > platform_max.get(
+            "burst_per_10s", float("inf")
+        ):
+            raise ValidationError(
+                f"Rate limit {category}.burst_per_10s ({limits['burst_per_10s']}) "
+                f"exceeds platform maximum ({platform_max.get('burst_per_10s')})"
+            )
 
         # Check sustained_per_min
-        if "sustained_per_min" in limits:
-            if limits["sustained_per_min"] > platform_max.get("sustained_per_min", float("inf")):
-                raise ValidationError(
-                    f"Rate limit {category}.sustained_per_min ({limits['sustained_per_min']}) "
-                    f"exceeds platform maximum ({platform_max.get('sustained_per_min')})"
-                )
+        if "sustained_per_min" in limits and limits["sustained_per_min"] > platform_max.get(
+            "sustained_per_min", float("inf")
+        ):
+            raise ValidationError(
+                f"Rate limit {category}.sustained_per_min ({limits['sustained_per_min']}) "
+                f"exceeds platform maximum ({platform_max.get('sustained_per_min')})"
+            )
 
         # Check daily_cap (if applicable)
         if "daily_cap" in limits:

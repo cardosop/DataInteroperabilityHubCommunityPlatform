@@ -80,7 +80,10 @@ def _setup_two_tenants(creds: PersonaCredentials):
             validate_resp = _r.get(
                 f"{base}/auth/me/",
                 headers={"Authorization": f"Bearer {current.api_key}"},
-                timeout=5,
+                # 15s (not 5s): under concurrent batch load the API can
+                # stall past a 5s read window, and a false "stale token"
+                # here cascades into needless re-provisioning.
+                timeout=15,
             )
             if validate_resp.status_code != 200:
                 # Token is stale — purge cache, re-provision, and fall
@@ -123,8 +126,26 @@ def _setup_two_tenants(creds: PersonaCredentials):
                 pytest.skip("Primary and secondary tenants are identical")
             return primary, secondary
 
+        if resp.status_code == 404 and attempt == 0:
+            # A 404 can also mean the token belongs to a DELETED
+            # incarnation of the persona (GDPR-scrubbed email fails the
+            # endpoint's E2E_EMAILS allowlist).  Purge the cache and
+            # re-provision once before concluding the endpoint is
+            # genuinely absent.
+            import glob as _glob
+            import pathlib as _pl
+
+            from tests._persona_provisioning import _CACHE_DIR as _cdir
+
+            for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
+                _pl.Path(_f).unlink(missing_ok=True)
+            fresh = _safe_provision(role)
+            if fresh is not None:
+                current = fresh
+                continue
+
         if resp.status_code == 404:
-            pytest.skip("E2E tenant-switch-setup helper not available (404)")
+            pytest.skip(f"E2E tenant-switch-setup helper not available (404): {resp.text[:200]}")
 
         # 401 / 403 (token invalidated) — purge cache + re-provision
         # on this attempt rather than waiting for next iteration.
@@ -144,36 +165,50 @@ def _setup_two_tenants(creds: PersonaCredentials):
         # Any other error — retry with fresh credentials
         continue
 
-    # If we exhausted all retries, try one last-resort fresh login
-    # with a longer backoff (rate-limiting may have cooled down).
+    # If we exhausted all retries, ride out the load with fresh logins
+    # and escalating backoff — under concurrent batch load the API can
+    # stall past single-attempt timeouts, and one retry is not enough.
+    # Each failed attempt is surfaced as a warning so a future skip can
+    # be diagnosed from the run output instead of guessing.
+    import glob as _glob
+    import pathlib as _pl
     import time as _time
 
-    _time.sleep(3)
-    try:
-        import glob as _glob
-        import pathlib as _pl
+    from tests._persona_provisioning import _CACHE_DIR as _cdir
+    from tests._persona_provisioning import _provision_via_login
 
-        from tests._persona_provisioning import _CACHE_DIR as _cdir
-        from tests._persona_provisioning import _provision_via_login
+    for _attempt in range(3):
+        _time.sleep(5 * (_attempt + 1))
+        try:
+            for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
+                _pl.Path(_f).unlink(missing_ok=True)
+            last_creds = _provision_via_login(role, None)
+            base = api_base_url()
+            resp = requests.post(
+                f"{base}/test/ensure-e2e-tenant-switch-setup/",
+                headers=_auth_headers(last_creds.api_key, e2e=True),
+                json={},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                body = resp.json()
+                primary = body.get("primary_tenant_id")
+                secondary = body.get("secondary_tenant_id")
+                if primary and secondary and primary != secondary:
+                    return primary, secondary
+            import warnings as _warnings
 
-        for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
-            _pl.Path(_f).unlink(missing_ok=True)
-        last_creds = _provision_via_login(role, None)
-        base = api_base_url()
-        resp = requests.post(
-            f"{base}/test/ensure-e2e-tenant-switch-setup/",
-            headers=_auth_headers(last_creds.api_key, e2e=True),
-            json={},
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            body = resp.json()
-            primary = body.get("primary_tenant_id")
-            secondary = body.get("secondary_tenant_id")
-            if primary and secondary and primary != secondary:
-                return primary, secondary
-    except Exception:
-        pass
+            _warnings.warn(
+                f"ensure-e2e-tenant-switch-setup last-resort attempt "
+                f"{_attempt + 1}/3: {resp.status_code} {resp.text[:200]}"
+            )
+        except (requests.RequestException, ValueError, AttributeError) as _exc:
+            import warnings as _warnings
+
+            _warnings.warn(
+                f"ensure-e2e-tenant-switch-setup last-resort attempt "
+                f"{_attempt + 1}/3 raised: {_exc!r}"
+            )
 
     pytest.skip("E2E tenant-switch-setup failed after 3 attempts")
 
@@ -213,7 +248,7 @@ def test_switch_tenant_header_changes_context():
     2. Creating an asset in tenant A via X-Tenant-Id
     3. Verifying the asset is NOT visible in tenant B
     """
-    creds = _provision_with_retry("tenant_admin")
+    creds = _provision_with_retry("tenant_admin")  # noqa: PHASE216-STATIC-ID
     base = api_base_url()
 
     tenant_a, tenant_b = _setup_two_tenants(creds)
@@ -310,7 +345,7 @@ def test_no_tenant_header_uses_default():
     )
 
     body = resp.json()
-    returned_tenant_id = body.get("tenant_id") or (
+    returned_tenant_id = body.get("tenant_id") or (  # noqa: PHASE216-STATIC-ID
         body.get("tenant", {}).get("id") if isinstance(body.get("tenant"), dict) else None
     )
     assert returned_tenant_id is not None, f"/auth/me/ response has no tenant information: {body}"

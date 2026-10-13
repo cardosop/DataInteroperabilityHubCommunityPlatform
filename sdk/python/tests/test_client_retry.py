@@ -4,6 +4,7 @@ import pytest
 
 from datahub_interoperability.client import calculate_backoff_delay, is_retryable_error
 from datahub_interoperability.errors import (
+    ConflictError,
     DataHubError,
     NetworkError,
     RateLimitError,
@@ -14,7 +15,7 @@ from datahub_interoperability.errors import (
 
 class TestCalculateBackoffDelay:
     @pytest.mark.parametrize(
-        "attempt,base_delay,expected",
+        ("attempt", "base_delay", "expected"),
         [
             (0, 1.0, 1.0),
             (1, 1.0, 2.0),
@@ -29,7 +30,7 @@ class TestCalculateBackoffDelay:
 
 class TestIsRetryableError:
     @pytest.mark.parametrize(
-        "error,expected",
+        ("error", "expected"),
         [
             (NetworkError("timeout"), True),
             (ServerError("boom", http_status=500), True),
@@ -39,6 +40,17 @@ class TestIsRetryableError:
             (DataHubError("missing", "NOT_FOUND", 404), False),
             (DataHubError("auth", "UNAUTHORIZED", 401), False),
             (ValueError("not our error"), False),
+            # 409 idempotency-in-progress is a "retry shortly" state —
+            # the same-key retry replays the finished result.
+            (
+                ConflictError(
+                    "Another request with this Idempotency-Key is currently in progress.",
+                    code="IDEMPOTENCY_REQUEST_IN_PROGRESS",
+                ),
+                True,
+            ),
+            # A plain 409 is a real conflict — terminal.
+            (ConflictError("already exists"), False),
         ],
     )
     def test_is_retryable_error(self, error, expected):

@@ -417,9 +417,7 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,  # noqa: F401
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -462,9 +460,7 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,  # noqa: F401
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -490,9 +486,7 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,  # noqa: F401
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -817,9 +811,7 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import (
-                AccessRequestWorkflow,  # noqa: F401
-            )
+            import hub.apps.orchestration.workflows.access_request
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 

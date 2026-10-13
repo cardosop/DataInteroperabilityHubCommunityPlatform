@@ -39,7 +39,7 @@ class TestVirtualizationCommandsRegistrationRealAPI:
                     break
             except Exception:
                 if attempt < max_retries - 1:
-                    time.sleep(1)  # noqa: sleep-needed — retry loop
+                    time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 else:
                     pytest.skip("API service not available at http://localhost:8000")
 

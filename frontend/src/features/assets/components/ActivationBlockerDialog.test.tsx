@@ -11,9 +11,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActivationBlockerDialog,
-  extractBlockersFromError,
   type ActivationBlockerDialogProps,
 } from './ActivationBlockerDialog';
+import { extractBlockersFromError } from './extractBlockersFromError';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {

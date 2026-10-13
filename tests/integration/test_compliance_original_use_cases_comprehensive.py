@@ -22,6 +22,7 @@ Features:
 Total: 100+ test cases
 """
 
+import contextlib
 import json
 import time
 import uuid
@@ -502,18 +503,21 @@ class UCCOMP008TrackComplianceHistoryTest(ComplianceOriginalUseCasesTestBase):
         # fail if a prior test left the RLS context in an unexpected state.
         # We wrap each iteration in tenant_context + a fresh savepoint so
         # that any stale GUC setting is discarded before the next API call.
+        # DatabaseError comes from django.db directly — Django 6 removed the
+        # exception classes from the DatabaseWrapper (connection.DatabaseError
+        # raises AttributeError).
+        from django.db import DatabaseError
         from django.db import connection as _db_connection
+
         compliance_runs = []
         for _i in range(3):
             with tenant_context(str(self.tenant.id)):
                 # Discard any prior sub-transaction context that could
                 # have been left by a synchronous job in a previous test.
-                try:
+                # Expected: no open transaction to create a savepoint in, or the
+                # prior savepoint was already released/rolled back.
+                with contextlib.suppress(DatabaseError):
                     _db_connection.savepoint()
-                except _db_connection.DatabaseError:
-                    # Expected: no open transaction to create a savepoint in,
-                    # or the prior savepoint was already released/rolled back.
-                    pass
                 compliance_data = {
                     "asset_id": str(self.asset.id),
                     "scan_mode": "internal",
@@ -541,10 +545,7 @@ class UCCOMP008TrackComplianceHistoryTest(ComplianceOriginalUseCasesTestBase):
         self.assertEqual(runs_response.status_code, status.HTTP_200_OK)
         # Should return at least the runs we created for history tracking
         runs_data = runs_response.data
-        if isinstance(runs_data, dict):
-            results = runs_data.get("results", [])
-        else:
-            results = runs_data
+        results = runs_data.get("results", []) if isinstance(runs_data, dict) else runs_data
         self.assertGreaterEqual(
             len(results),
             len(compliance_runs),

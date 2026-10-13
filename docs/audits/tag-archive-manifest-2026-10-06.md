@@ -1,0 +1,53 @@
+# Tag Archive Manifest — 2026-10-06 (W0.6 / S5)
+
+The 17 ``backup-staging-*`` tag trees and the ``backups/staging_*``
+restore-point dirs, archived to the staging MinIO BEFORE local
+deletion. Contract-enforced by GATE-52
+(`scripts/check_tag_archive_manifest.py`).
+
+## Archive destination
+
+- the staging MinIO bucket from ``.env.staging`` (name length 17 — redacted per the W0.9 contract)
+- prefix: ``w06-s5-archive/``
+
+## Tag trees
+
+- backup-staging-20251207_194944 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251207_195141 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251207_200213 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251207_200633 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251207_201334 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251207_201512 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251207_203026 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_032012 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_033706 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_040204 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_042829 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_050033 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_053421 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_065403 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_070728 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_074900 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+- backup-staging-20251208_093914 — commit 3690717a8cecb1388cb409ee739ff78c916c1e7a — key w06-s5-archive/tag-tree-3690717a8cecb1388cb409ee739ff78c916c1e7a.tar.gz — sha256 a2a9560c849eca2add64d829633fcccc5446d7a92c60b3f2480f09df3afc013d — size 11550740 — ETag 9695d4a861f7b272b157b802d6dcf650-2 — verified: yes — deleted: yes
+
+## Backup directories
+
+- staging_20251207_194944 — key w06-s5-archive/staging_20251207_194944/backup-dir.tar.gz — sha256 994a03a03b3028ada738b226da54f00e0fee3b873a14f73bffe7f5847461c212 — size 2487301 — ETag b1cd4fae66d12353c84db9c1d3225a83 — verified: yes — deleted: yes
+- staging_20251207_195141 — key w06-s5-archive/staging_20251207_195141/backup-dir.tar.gz — sha256 3719c1dcdd97972133aa9c7896e7007ac627d074a1ebf8f6a70f9eb3495c9f5e — size 2483123 — ETag becf6c2414a27c2a6ccb5fb8f5810e53 — verified: yes — deleted: yes
+- staging_20251207_195434 — key w06-s5-archive/staging_20251207_195434/backup-dir.tar.gz — sha256 17de2b9b390d6e075518337918c03df9da9801bf718ce48177bd496b6c4859a0 — size 272 — ETag 412ae016a1d7c9c86dab4d40a124d90b — verified: yes — deleted: yes
+- staging_20251207_195457 — key w06-s5-archive/staging_20251207_195457/backup-dir.tar.gz — sha256 a7e27dc6ecf9cbabe1c66b489cfbfcd2118846d5ecd3708056fb23fc1b147ffa — size 271 — ETag b13e94f5190427a14df414de7c8b77a2 — verified: yes — deleted: yes
+- staging_20251207_200213 — key w06-s5-archive/staging_20251207_200213/backup-dir.tar.gz — sha256 569f03cb3da3d7d460d066fe9b6d92ca8206364d7fc9b7259ef814f3594ccc8a — size 2483999 — ETag 43133bc86cb9e84f86fde13433d175b6 — verified: yes — deleted: yes
+- staging_20251207_200633 — key w06-s5-archive/staging_20251207_200633/backup-dir.tar.gz — sha256 640e48ceb10ab1e8157f054b9a20618bf9ab46922f80502b49169c93358db595 — size 2483235 — ETag 8383136dbb0010245133256e606716ae — verified: yes — deleted: yes
+- staging_20251207_201334 — key w06-s5-archive/staging_20251207_201334/backup-dir.tar.gz — sha256 d42fe564de8b3df209d3e3a8026cb924c8438c8f7a59788328434511ac73ed72 — size 2484218 — ETag 32583c9145a10621fee2acd8fc197584 — verified: yes — deleted: yes
+- staging_20251207_201512 — key w06-s5-archive/staging_20251207_201512/backup-dir.tar.gz — sha256 bdc2a20de44d0d7e5cc2af407e9877c6fac705a2c89686d27cb00cf61dab5503 — size 2483391 — ETag 9566189149d8b81bd232e352d0260819 — verified: yes — deleted: yes
+- staging_20251207_203026 — key w06-s5-archive/staging_20251207_203026/backup-dir.tar.gz — sha256 50fe62df2db8507caf8b0237a2908278a60011250cc8da089843ed1a09aeeed5 — size 2484550 — ETag 097750f3c8fb014344e44bc8c82b1d77 — verified: yes — deleted: yes
+- staging_20251208_032012 — key w06-s5-archive/staging_20251208_032012/backup-dir.tar.gz — sha256 b66d35096a7c735de4c12c21887f8bca93fab127e0aaf929e30f00f0b8af8d6b — size 2493480 — ETag 9cc6e7db69e75b4587c5804c2c97fe48 — verified: yes — deleted: yes
+- staging_20251208_033706 — key w06-s5-archive/staging_20251208_033706/backup-dir.tar.gz — sha256 bade9255cb194e5c991ea8e108e4e575622e150a853ef8a63492861df6dd8177 — size 2494355 — ETag 4aa268b398d1022ccf1de7fbb0b134e3 — verified: yes — deleted: yes
+- staging_20251208_040204 — key w06-s5-archive/staging_20251208_040204/backup-dir.tar.gz — sha256 8b27e9e2928d27fe810f5860dd7852a23913b44d0746322e2cd8b54d60b9f0b3 — size 2493327 — ETag 5bc7eaf152c5cd3163f27a507f17bfc5 — verified: yes — deleted: yes
+- staging_20251208_042829 — key w06-s5-archive/staging_20251208_042829/backup-dir.tar.gz — sha256 d0257d87b0582a5cd1169185a3a997329a8bf6a456070fa5016d314d421f976e — size 2494740 — ETag e022af05b10abab05e21b6090a648fbf — verified: yes — deleted: yes
+- staging_20251208_050033 — key w06-s5-archive/staging_20251208_050033/backup-dir.tar.gz — sha256 f6fd2e2b695fb132a5649ba013e5b60a2cc07a77b091aa3a8b22317ac8e0f07f — size 2493346 — ETag 1c539d021a6f10831d497f45a905e061 — verified: yes — deleted: yes
+- staging_20251208_053421 — key w06-s5-archive/staging_20251208_053421/backup-dir.tar.gz — sha256 ed5cddf10b37e3221fb24c67690ba617ffb673003be4a68e577d4edd2b9f1804 — size 2493566 — ETag b2205cebe27b1e9fb7f7130345fa5888 — verified: yes — deleted: yes
+- staging_20251208_065403 — key w06-s5-archive/staging_20251208_065403/backup-dir.tar.gz — sha256 3417102c28e07c7d582cd942d989f648bd69e1314e5a935344043f4cd9919bfa — size 2493189 — ETag 66eee5233730284981fd867343c1bcbe — verified: yes — deleted: yes
+- staging_20251208_070728 — key w06-s5-archive/staging_20251208_070728/backup-dir.tar.gz — sha256 b9d2bf2b3266b34d852e0d29977fa5b7bf82cdfcfafbbb8a16741e5fcee4eeb9 — size 2493411 — ETag f792641d41e0cd7f55d58e5361979923 — verified: yes — deleted: yes
+- staging_20251208_074900 — key w06-s5-archive/staging_20251208_074900/backup-dir.tar.gz — sha256 88293a43ccc132bf9fe8e6c33ed98a48dab666ae2467030e88a8bccfdcb74127 — size 2493683 — ETag 446af92d9be1d20c3af617222f5e5967 — verified: yes — deleted: yes
+- staging_20251208_093914 — key w06-s5-archive/staging_20251208_093914/backup-dir.tar.gz — sha256 5897f779c64cefdf00e7c488260f4267228cad94e5b3c8c0ab4824e411b6b3ac — size 2493857 — ETag 7cb9dabba35315df4954f1f63f2008e4 — verified: yes — deleted: yes

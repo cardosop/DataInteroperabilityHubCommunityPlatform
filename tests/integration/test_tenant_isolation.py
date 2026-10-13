@@ -925,7 +925,7 @@ class PersonalTenantIsolationTest(TestCase):
         # reachable in CI, password denylist hit).  If registration fails
         # we still validate the core isolation assertion via ORM below.
         if reg.status_code != status.HTTP_201_CREATED:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 f"Registration returned {reg.status_code}: {reg.data}. "
                 "Skipping personal-tenant isolation test."
             )

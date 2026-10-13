@@ -92,7 +92,9 @@ export interface TrainingJobSubmitRequest {
 }
 
 export interface InferenceDeployment {
-  id: string;
+  /** ODH deployment id — the API contract names it `deployment_id` (the
+   * hub model id is exposed as `model_id`). */
+  deployment_id: string;
   model_id: string;
   status: InferenceDeploymentStatus;
   replicas?: number;

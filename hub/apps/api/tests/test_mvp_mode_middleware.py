@@ -29,8 +29,21 @@ class MvpGatedPrefixRoutabilityTest(TestCase):
 
     def test_every_gated_prefix_has_a_url_route(self):
         """Catches typos: if a prefix doesn't match any URL, the gate is useless."""
+        # Phase 313 — in core-only mode the paid prefixes (baas/, ml/,
+        # ai/, social/) are not mounted at all: their apps are absent from
+        # INSTALLED_APPS. The routability invariant applies to mounted
+        # prefixes only, so exclude the paid set when HUB_CORE_ONLY=1.
+        import os
+
+        from hub.apps.manifest import _PAID_MODULES
+
+        core_only = os.environ.get("HUB_CORE_ONLY") == "1"
+        paid_prefixes = {module.split(".")[-1] + "/" for module in _PAID_MODULES}
+
         unroutable = []
         for prefix in MVP_GATED_RELATIVE_PREFIXES:
+            if core_only and prefix in paid_prefixes:
+                continue
             test_path = f"{API_V1_PREFIX}{prefix}"
             try:
                 resolve(test_path)
@@ -104,7 +117,17 @@ class MvpModeMiddlewareIntegrationTest(TestCase):
 
     @override_settings(MVP_MODE=False)
     def test_gated_path_not_404_when_mvp_mode_false(self):
+        # Phase 313 — in core-only mode the paid prefixes are not mounted
+        # (their apps are absent from INSTALLED_APPS); 404 is correct there.
+        import os
+
+        from hub.apps.manifest import _PAID_MODULES
+
+        core_only = os.environ.get("HUB_CORE_ONLY") == "1"
+        paid_prefixes = {module.split(".")[-1] + "/" for module in _PAID_MODULES}
         for prefix in MVP_GATED_RELATIVE_PREFIXES:
+            if core_only and prefix in paid_prefixes:
+                continue
             path = f"{API_V1_PREFIX}{prefix}"
             response = self.client.get(path)
             self.assertNotEqual(
@@ -180,6 +203,10 @@ MVP_CORE_PREFIXES = frozenset(
         "webhooks/",
         "events/",
         "notifications/",
+        # Operational health probe (health/business-rules/, urls.py:31 — P.8
+        # D4): credential-free and probe-friendly, it must stay reachable
+        # under MVP_MODE for ops healthchecks — CORE, not gated.
+        "health/",
         "governance/",
         "billing/",
         "platform/",
@@ -227,6 +254,46 @@ class EveryMountedPrefixIsClassifiedTest(TestCase):
         api_v1_resolver = None
         for entry in resolver.url_patterns:
             pattern_str = str(getattr(entry, "pattern", ""))
+
+            # Phase 313.1 — paid prefixes mount at the ROOT via
+            # path("", include("hub.apps.api.paid_urls")) carrying full
+            # "api/v1/<prefix>/" paths (mounted before the api/v1 include).
+            # Unroll them here so the classification walk still sees every
+            # /api/v1/* prefix (e.g. "api/v1/ai/" → "ai/"). Social mounts
+            # a bare "api/v1/" plus its own "social/" prefix one level
+            # deeper — descend for that case.
+            if pattern_str == "":
+                inner = getattr(entry, "url_patterns", None)
+                if inner is None:
+                    continue
+                for sub in inner:
+                    sub_str = str(getattr(sub, "pattern", ""))
+                    if not sub_str:
+                        continue
+                    if sub_str.startswith("api/v1/"):
+                        rest = sub_str[len("api/v1/") :]
+                        if rest:
+                            head = rest.split("/", 1)[0] + "/"
+                            if head and head != "/":
+                                prefixes.add(head)
+                            continue
+                        # Bare "api/v1/" include — the inner urlconf
+                        # carries its own prefix (social/).
+                        sub_inner = getattr(sub, "url_patterns", None)
+                        if sub_inner is None:
+                            continue
+                        for leaf in sub_inner:
+                            leaf_str = str(getattr(leaf, "pattern", ""))
+                            if (
+                                leaf_str
+                                and not leaf_str.startswith("^")
+                                and not leaf_str.startswith("(?")
+                            ):
+                                leaf_head = leaf_str.split("/", 1)[0] + "/"
+                                if leaf_head and leaf_head != "/":
+                                    prefixes.add(leaf_head)
+                continue
+
             if pattern_str == "api/v1/":
                 api_v1_resolver = entry
                 break
@@ -237,7 +304,7 @@ class EveryMountedPrefixIsClassifiedTest(TestCase):
             pattern_str = str(getattr(entry, "pattern", ""))
 
             # Skip raw re_path catch-alls.
-            if pattern_str.startswith("^") or pattern_str.startswith("(?"):
+            if pattern_str.startswith(("^", "(?")):
                 continue
 
             # Skip non-prefix endpoints (no trailing slash + has dot →
@@ -292,8 +359,17 @@ class EveryMountedPrefixIsClassifiedTest(TestCase):
 
         # Inverse: a classification entry that doesn't match a real mount
         # is harmless but stale — flag it so the lists stay tidy.
-        stale_gated = gated - mounted
-        stale_core = core - mounted
+        # Phase 313 — in core-only mode the paid prefixes are not mounted
+        # (their apps are absent from INSTALLED_APPS); exclude them from
+        # the staleness check.
+        import os
+
+        from hub.apps.manifest import _PAID_MODULES
+
+        core_only = os.environ.get("HUB_CORE_ONLY") == "1"
+        paid_prefixes = {module.split(".")[-1] + "/" for module in _PAID_MODULES}
+        stale_gated = (gated - mounted) - (paid_prefixes if core_only else set())
+        stale_core = (core - mounted) - (paid_prefixes if core_only else set())
         self.assertFalse(
             stale_gated,
             f"MVP_GATED_RELATIVE_PREFIXES has entries with no matching "

@@ -219,7 +219,7 @@ info:
         dcs_contract = {"dataContractSpecification": "0.9.0", "id": "test"}
 
         # Detection should return ODCS (but normalization will reject)
-        spec_type, spec_version = detect_spec_type(dcs_contract)
+        spec_type, _spec_version = detect_spec_type(dcs_contract)
         self.assertEqual(spec_type, OriginalSpecType.ODCS)
 
         # But normalization should detect and reject

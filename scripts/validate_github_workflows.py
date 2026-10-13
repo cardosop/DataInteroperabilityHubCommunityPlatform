@@ -57,7 +57,7 @@ def check_python_version_in_workflow(workflow_path: Path) -> tuple[bool, list[st
         with open(workflow_path) as f:
             content = f.read()
             yaml.safe_load(content)
-    except Exception as e:
+    except (OSError, yaml.YAMLError, ValueError) as e:
         return False, [f"Error reading workflow: {e}"], []
 
     # Check for setup-python actions

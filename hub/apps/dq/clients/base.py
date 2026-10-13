@@ -25,6 +25,35 @@ from typing import Any
 
 from ..log_helpers import _redact
 
+
+def _ssrf_enabled() -> bool:
+    """Kill switch for the deliver-time SSRF gate (W1.13)."""
+    from django.conf import settings
+
+    return bool(getattr(settings, "DQ_ALERT_SSRF_ENABLED", True))
+
+
+def _audit_ssrf_block(rule, violation: str) -> None:
+    """W1.19 — convention 8: the deliver-time SSRF block emits its
+    audit event (best-effort — an audit outage must not break the
+    alert-delivery path)."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        from hub.apps.audit.utils import create_audit_event
+
+        create_audit_event(
+            resource_type="DQ_ALERTING_RULE",
+            action="DQ_ALERT_DELIVERY_SSRF_BLOCKED",
+            tenant=rule.tenant,
+            resource_id=str(rule.id),
+            result="BLOCKED",
+            details={"violation": violation},
+        )
+    except Exception:
+        logger.warning("dq_alert_ssrf_audit_failed", exc_info=True)
+
 logger = logging.getLogger(__name__)
 
 

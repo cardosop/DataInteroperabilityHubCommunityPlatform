@@ -73,6 +73,9 @@ class TestConcurrentPlanDowngrade:
     @pytest.mark.django_db(transaction=True)
     def test_concurrent_plan_switch_preserves_consistency(self):
         """Concurrent plan changes on the same tenant don't corrupt plan state."""
+        from hub.conftest import _seed_tenant_plans_if_missing
+
+        _seed_tenant_plans_if_missing()
         plan_free = TenantPlan.objects.get(slug="free")
         plan_pro = TenantPlan.objects.get(slug="pro")
         tenant_slug = f"plan-switch-{uuid.uuid4().hex[:8]}"
@@ -141,7 +144,9 @@ class TestConcurrentAccessRequestApproval:
             AccessRequest,
             AccessRequestStatus,
         )
+        from hub.conftest import _seed_tenant_plans_if_missing
 
+        _seed_tenant_plans_if_missing()
         plan = TenantPlan.objects.get(slug="enterprise")
         tenant = Tenant.objects.create(
             name=f"ar-concurrent-{uuid.uuid4().hex[:8]}",
@@ -156,12 +161,20 @@ class TestConcurrentAccessRequestApproval:
             status=AssetStatus.ACTIVE,
             visibility=AssetVisibility.INTERNAL,
         )
+        from django.contrib.auth import get_user_model
+
+        requester = get_user_model().objects.create_user(
+            email=f"ar-requester-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=tenant,
+        )
         ar = AccessRequest.objects.create(
             tenant=tenant,
-            resource_type="ASSET",
-            resource_id=asset.id,
+            asset=asset,
             status=AccessRequestStatus.PENDING,
-            requested_by="test-user",
+            requested_by=requester,
+            reason="Concurrency test access request",
+            requested_access_type="READ",
         )
 
         transitions = []
@@ -207,7 +220,9 @@ class TestConcurrentIdempotencyKey:
     def test_concurrent_idempotency_key_one_succeeds(self):
         """Two threads with the same idempotency key: first writes, second finds existing."""
         from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.conftest import _seed_tenant_plans_if_missing
 
+        _seed_tenant_plans_if_missing()
         plan = TenantPlan.objects.get(slug="free")
         tenant = Tenant.objects.create(
             name=f"idem-key-{uuid.uuid4().hex[:8]}",

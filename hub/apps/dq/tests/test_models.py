@@ -385,6 +385,50 @@ class DQAlertingRuleModelTest(DQTestBase):
         with self.assertRaises(ValidationError):
             rule.full_clean()
 
+    def test_alerting_rule_slack_requires_webhook_url_config(self):
+        """SLACK channel without 'webhook_url' in config → ValidationError."""
+        rule = DQAlertingRule(
+            tenant=self.tenant,
+            name="Bad slack rule",
+            metric_type="quality_score",
+            threshold=70.0,
+            comparison_operator="<",
+            severity=DQAnomalySeverity.MEDIUM,
+            alert_channels=[DQAlertChannel.SLACK],
+            channel_config={"wrong_key": "value"},
+        )
+        with self.assertRaises(ValidationError):
+            rule.full_clean()
+
+    def test_alerting_rule_pagerduty_requires_integration_key_config(self):
+        """PAGERDUTY channel without 'integration_key' in config → ValidationError."""
+        rule = DQAlertingRule(
+            tenant=self.tenant,
+            name="Bad pagerduty rule",
+            metric_type="quality_score",
+            threshold=70.0,
+            comparison_operator="<",
+            severity=DQAnomalySeverity.MEDIUM,
+            alert_channels=[DQAlertChannel.PAGERDUTY],
+            channel_config={"service_key": "legacy-key"},
+        )
+        with self.assertRaises(ValidationError):
+            rule.full_clean()
+
+    def test_alerting_rule_pagerduty_accepts_routing_key_alias(self):
+        """PAGERDUTY channel accepts the 'routing_key' alias in channel_config."""
+        rule = DQAlertingRule.objects.create(
+            tenant=self.tenant,
+            name="Pagerduty routing-key rule",
+            metric_type="quality_score",
+            threshold=70.0,
+            comparison_operator="<",
+            severity=DQAnomalySeverity.MEDIUM,
+            alert_channels=[DQAlertChannel.PAGERDUTY],
+            channel_config={"routing_key": "routing-123"},
+        )
+        self.assertEqual(rule.get_channel_config()["routing_key"], "routing-123")
+
     def test_alerting_rule_disabled(self):
         """DQAlertingRule can be created with enabled=False."""
         rule = DQAlertingRule.objects.create(

@@ -565,7 +565,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
         self.assertIn("odps_link", x_odps, "ODCS contract should have ODPS link before rollback")
 
         # Perform rollback within transaction through public API
-        try:
+        def _run_rollback():
             with transaction.atomic():
                 out = StringIO()
                 call_command(
@@ -587,6 +587,9 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
                     odps_contract_exists,
                     "ODPS contract should be deleted after successful rollback",
                 )
+
+        try:
+            _run_rollback()
         except ValueError:
             # Transaction was rolled back — verify ODPS contract still exists
             odps_contract_exists = Contract.objects.filter(id=odps_contract_id).exists()

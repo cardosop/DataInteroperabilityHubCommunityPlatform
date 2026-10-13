@@ -68,6 +68,26 @@ class WarehouseConnection(models.Model):
         default=True,
         help_text="Deactivation without deletion",
     )
+    # P0 (openspec add-databricks-control-plane task 0.10) — optional
+    # linkage to the control-plane registry. SET_NULL: the connection owns
+    # its encrypted config; deleting the workspace/credential unlinks but
+    # never destroys the connection.
+    databricks_workspace = models.ForeignKey(
+        "databricks_admin.DatabricksWorkspace",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="warehouse_connections",
+        help_text="Control-plane workspace this connection derives from",
+    )
+    databricks_credential = models.ForeignKey(
+        "databricks_admin.DatabricksCredential",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="warehouse_connections",
+        help_text="Control-plane credential this connection mirrors",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -88,6 +108,115 @@ class WarehouseConnection(models.Model):
     def __str__(self):
         return f"WarehouseConnection {self.name} ({self.warehouse_type})"
 
+    @classmethod
+    def derive_from_databricks(
+        cls,
+        workspace,
+        credential,
+        *,
+        http_path: str = "",
+        name: str | None = None,
+    ) -> WarehouseConnection:
+        """P0 (task 0.10) — derive a ready-to-save connection from the
+        control-plane registry (PAT credentials only — M2M derivation is
+        not part of the P3 http_path linkage either).
+
+        The config is encrypted through the real chain in-memory; the
+        caller saves when ready.
+        """
+        if credential.workspace_id != workspace.id:
+            raise ValueError(
+                f"Credential '{credential.id}' does not belong to workspace '{workspace.id}'"
+            )
+        # The PAT-only contract is ENFORCED here, not just documented: an
+        # M2M credential (or a token-less config) would silently derive a
+        # connection with an empty pat_token that only fails later, at
+        # connect time. (String comparison — the provider-boundary contract
+        # forbids importing the databricks_admin enum into this app.)
+        if credential.auth_mode != "PAT":
+            raise ValueError(
+                f"Credential '{credential.id}' is {credential.auth_mode}; "
+                "derive_from_databricks supports PAT credentials only "
+                "(M2M derivation lands with P3)"
+            )
+        token = credential.get_config().get("token", "")
+        if not token:
+            raise ValueError(f"Credential '{credential.id}' carries no PAT token to derive from")
+        http_path = (http_path or "").strip()
+        if not http_path:
+            raise ValueError("http_path is required to derive a Databricks warehouse connection")
+        conn = cls(
+            tenant=workspace.tenant,
+            name=name or f"{workspace.name} live connection",
+            warehouse_type=WarehouseType.DATABRICKS,
+            region=workspace.region,
+            databricks_workspace=workspace,
+            databricks_credential=credential,
+        )
+        conn.set_config(
+            {
+                "host": workspace.host,
+                "http_path": http_path,
+                "pat_token": token,
+            }
+        )
+        return conn
+
+    @classmethod
+    def derive_from_sql_warehouse(
+        cls,
+        workspace,
+        credential,
+        sql_warehouse,
+        *,
+        name: str | None = None,
+    ) -> WarehouseConnection:
+        """P3 (task 3.6) — derive a ready-to-save connection from the
+        control-plane registry + a SQL warehouse MIRROR row.
+
+        The http_path is DERIVED from the mirror's warehouse id —
+        ``/sql/1.0/warehouses/{id}`` (the Databricks connector's
+        canonical form): the connection stores the derived path, the
+        mirror row stays the source of the id (the path is never stored
+        twice — design D5).
+
+        Duck-typed boundary: the provider-boundary contract forbids
+        importing ``databricks_admin`` models into this app, so the
+        warehouse row is read through its public attributes
+        (``workspace_id`` / ``warehouse_id`` / ``name``) — the 0.10
+        string-comparison discipline. The PAT-only contract is inherited
+        from ``derive_from_databricks``.
+
+        Guards: a foreign-workspace warehouse, an empty/blank id, or a
+        slash-bearing id (which would break the canonical path shape)
+        raise ValueError; a non-string id raises TypeError — all BEFORE
+        any config is built.
+        """
+        if sql_warehouse.workspace_id != workspace.id:
+            raise ValueError(
+                f"SQL warehouse '{getattr(sql_warehouse, 'id', '?')}' does not belong to "
+                f"workspace '{workspace.id}'"
+            )
+        raw_id = sql_warehouse.warehouse_id
+        if not isinstance(raw_id, str):
+            raise TypeError("sql_warehouse.warehouse_id must be a string")
+        warehouse_id = raw_id.strip()
+        if not warehouse_id:
+            raise ValueError("SQL warehouse id must not be empty")
+        if "/" in warehouse_id:
+            # A slash would produce /sql/1.0/warehouses/<a>/<b> — a
+            # structurally broken path the executor's resolve_warehouse_id
+            # would mis-parse.
+            raise ValueError(
+                "SQL warehouse id must not contain '/' — it would break the canonical http_path"
+            )
+        return cls.derive_from_databricks(
+            workspace,
+            credential,
+            http_path=f"/sql/1.0/warehouses/{warehouse_id}",
+            name=name or f"{sql_warehouse.name} connection",
+        )
+
     def get_config(self) -> dict:
         """Decrypt and return the connection config."""
         from hub.apps.integrations.encryption import decrypt_json_field
@@ -104,6 +233,12 @@ class WarehouseConnection(models.Model):
         # Phase 277.B.093 — data residency cross-validation:
         # warehouse region must be compatible with tenant residency.
         self._validate_residency()
+
+        # W1.13 — the COLUMN check must run on EVERY save: the pre-fix
+        # placement inside the raw-config branch let an update on an
+        # already-encrypted connection change private_endpoint_url to an
+        # internal address with no SSRF validation at all.
+        self._validate_private_endpoint_url()
 
         # Phase 275.A.1 — SSRF guard at config-save: validate any URL-like
         # fields in the raw config before encrypting. Reuses the SPARQL
@@ -131,15 +266,25 @@ class WarehouseConnection(models.Model):
     def _validate_config_urls(config: dict) -> None:
         """Phase 275.A.1 — SSRF guard on URL-like config keys.
 
-        Reuses the existing SSRF validation infrastructure (is_safe_url
-        from hub.apps.security.url_validators) to prevent connections
-        to internal/loopback addresses.
+        Any value carrying a scheme (``://``) MUST pass the SSRF guard —
+        non-http schemes (ftp/file/jdbc/gopher) are rejected by the
+        scheme gate, never silently skipped (the pre-fix
+        ``startswith(http)`` filter skipped them). Bare hostnames
+        (no scheme) are warehouse-specific host configs (JDBC-style)
+        and stay out of scope.
+
+        NOTE: the pre-fix import of ``is_safe_url`` from
+        ``hub.apps.security.url_validators`` was broken (that module
+        defines no such symbol — the guard lives in
+        ``hub.apps.webhooks.ssrf_guard``), so ANY URL-shaped config
+        value crashed the save with ImportError and the check was dead
+        code (pilot-readiness 4.1 root cause).
         """
         url_keys = {"host", "endpoint", "api_url", "base_url", "private_endpoint_url"}
         for key in url_keys:
             value = config.get(key)
-            if value and isinstance(value, str) and value.startswith(("http://", "https://")):
-                from hub.apps.security.url_validators import is_safe_url
+            if value and isinstance(value, str) and "://" in value:
+                from hub.apps.webhooks.ssrf_guard import is_safe_url
 
                 if not is_safe_url(value):
                     from django.core.exceptions import ValidationError
@@ -148,6 +293,22 @@ class WarehouseConnection(models.Model):
                         f"URL in '{key}' is not safe: {value}. "
                         f"Internal/loopback addresses are blocked per SSRF policy."
                     )
+
+    def _validate_private_endpoint_url(self) -> None:
+        """pilot-readiness 4.1 — the ``private_endpoint_url`` COLUMN was
+        never SSRF-checked (only the same-named key inside the config
+        dict was). Same gate, same policy."""
+        value = self.private_endpoint_url
+        if value and isinstance(value, str) and "://" in value:
+            from hub.apps.webhooks.ssrf_guard import is_safe_url
+
+            if not is_safe_url(value):
+                from django.core.exceptions import ValidationError
+
+                raise ValidationError(
+                    f"private_endpoint_url is not safe: {value}. "
+                    f"Internal/loopback addresses are blocked per SSRF policy."
+                )
 
     def _validate_residency(self) -> None:
         """Phase 277.B.093 — enforce tenant data residency on warehouse region."""
@@ -230,9 +391,9 @@ class WarehouseConnectionACL(models.Model):
 
     class Meta:
         db_table = "warehouse_connection_acls"
-        constraints = [
+        constraints = (
             models.UniqueConstraint(
                 fields=["connection", "user"],
                 name="unique_warehouse_acl_per_user",
             ),
-        ]
+        )

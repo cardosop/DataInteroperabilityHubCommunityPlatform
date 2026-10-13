@@ -1,0 +1,160 @@
+/* TenantSignupPage — PLATFORM_ADMIN tenant provisioning surface
+ * (close-test-coverage-gaps 3.0). Standalone card layout matching the
+ * other auth-area pages. */
+
+.tenant-signup-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 3rem 1rem;
+  background: var(--color-bg-subtle, #f6f8fa);
+}
+
+.tenant-signup-card {
+  width: 100%;
+  max-width: 30rem;
+  padding: 2rem;
+  background: #fff;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.tenant-signup-card h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+.tenant-signup-subtitle {
+  margin: 0 0 1.25rem;
+  color: var(--color-text-muted, #57606a);
+  font-size: 0.9rem;
+}
+
+.tenant-signup-plans .plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.plan-card--selected {
+  border-color: var(--color-accent, #0969da);
+  box-shadow: 0 0 0 2px rgb(9 105 218 / 25%);
+}
+
+.plan-name {
+  font-weight: 600;
+}
+
+.plan-price {
+  font-size: 0.95rem;
+}
+
+.plan-limits {
+  color: var(--color-text-muted, #57606a);
+  font-size: 0.78rem;
+}
+
+.tenant-signup-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.tenant-signup-form label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.tenant-signup-form input,
+.tenant-signup-form select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.tenant-signup-form input:focus,
+.tenant-signup-form select:focus {
+  outline: none;
+  border-color: var(--color-accent, #0969da);
+}
+
+.slug-input {
+  display: flex;
+  align-items: stretch;
+}
+
+.slug-input .slug-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 0.6rem;
+  color: var(--color-text-muted, #57606a);
+  background: var(--color-bg-subtle, #f6f8fa);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  font-size: 0.85rem;
+}
+
+.slug-input input {
+  border-radius: 0 6px 6px 0;
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--color-danger, #cf222e);
+  font-size: 0.8rem;
+}
+
+.server-error {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  color: var(--color-danger, #cf222e);
+  background: #ffebe9;
+  border: 1px solid #ff818266;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.link-button {
+  padding: 0;
+  color: var(--color-accent, #0969da);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.tenant-signup-submitting p {
+  color: var(--color-text-muted, #57606a);
+}
+
+.tenant-signup-done h2 {
+  margin-top: 0;
+}
+
+.tenant-id {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #57606a);
+}

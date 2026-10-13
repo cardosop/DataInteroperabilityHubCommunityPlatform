@@ -112,10 +112,11 @@ class UserJourneyTestBase(E2ETestBase):
         try:
             result = step_func(*args, **kwargs)
             step.complete(metadata={"result_type": type(result).__name__})
-            return result
         except Exception as e:
             step.fail(e, metadata={"args": str(args), "kwargs": str(kwargs)})
             raise
+        else:
+            return result
 
 
 class Persona1DataProductOwnerJourneys(UserJourneyTestBase):
@@ -592,11 +593,12 @@ class Persona1DataProductOwnerJourneys(UserJourneyTestBase):
             if isinstance(result, dict) and "status_code" in result:
                 # Service unavailable - prepare contract manually
                 self.prepare_contract_for_activation(contract_id)
-            return result
         except Exception:
             # If validation fails, prepare contract manually for test
             self.prepare_contract_for_activation(contract_id)
             return None
+        else:
+            return result
 
     def _create_activated_asset(self):
         """Create and activate an asset (contract-only, no dataset)."""
@@ -837,13 +839,14 @@ class Persona2DataEngineerJourneys(UserJourneyTestBase):
                 contract.normalization_status = NormalizationStatus.NORMALIZED_OK
                 contract.save()
                 return None
-            return result
         except Exception:
             # If validation fails (service unavailable), set status manually
             contract.validation_status = ValidationStatus.VALID
             contract.normalization_status = NormalizationStatus.NORMALIZED_OK
             contract.save()
             return None
+        else:
+            return result
 
     def _create_activated_asset(self):
         """Create and activate an asset (contract-only, no dataset)."""
@@ -1298,7 +1301,7 @@ class Persona2DataEngineerJourneys(UserJourneyTestBase):
                     compliance_run.refresh_from_db()
                     if compliance_run.status in terminal:
                         break
-                    time.sleep(2)  # noqa: sleep-needed — polling loop
+                    time.sleep(2)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             except Exception as exc:
                 _logger.warning("poll_compliance_job failed: %s", exc)
 
@@ -2783,6 +2786,36 @@ class Persona6PlatformAdminJourneys(UserJourneyTestBase):
         )
 
         try:
+            # Create a deterministic DRAFT listing in this test's tenant so the
+            # journey is self-contained under --reuse-db: the shared DB
+            # accumulates listings from other runs whose assets may not be
+            # ACTIVE, which full_clean rejects on publish ("Only ACTIVE assets
+            # can be listed in the marketplace").
+            from hub.apps.assets.models import Asset, AssetStatus
+            from hub.apps.marketplace.models import Listing, PricingModel
+            from hub.apps.tenants.models import KYCStatus
+
+            # Listing.full_clean gates publishing on VERIFIED KYC (and on the
+            # asset being ACTIVE) — make the fixture satisfy both.
+            if self.tenant.kyc_status != KYCStatus.VERIFIED:
+                self.tenant.kyc_status = KYCStatus.VERIFIED
+                self.tenant.save()
+
+            asset = Asset.objects.create(
+                tenant=self.tenant,
+                key=f"mpa-001-{uuid.uuid4().hex[:8]}",
+                name="MPA-001 Approval Asset",
+                status=AssetStatus.ACTIVE,
+                created_by=self.user,
+            )
+            Listing.objects.create(
+                tenant=self.tenant,
+                asset=asset,
+                pricing_model=PricingModel.FREE_AUTO_APPROVE,
+                metadata_json={"title": "MPA-001 Deterministic Listing"},
+                created_by=self.user,
+            )
+
             # Step 1: List all listings
             listings = self.execute_journey_step("List All Listings", self._list_all_listings)
 
@@ -2966,16 +2999,16 @@ class Persona6PlatformAdminJourneys(UserJourneyTestBase):
         return tenant_id
 
     def _list_all_listings(self):
-        """List all listings."""
+        """List all listings (scoped to this test's tenant for determinism)."""
         from hub.apps.marketplace.models import Listing
 
-        return list(Listing.objects.all()[:10])
+        return list(Listing.objects.filter(tenant=self.tenant)[:10])
 
     def _filter_listings(self, listings):
         """Filter listings."""
         from hub.apps.marketplace.models import ListingStatus
 
-        return [l for l in listings if l.status == ListingStatus.DRAFT]
+        return [listing for listing in listings if listing.status == ListingStatus.DRAFT]
 
     def _review_listing_details(self, listing):
         """Review listing details."""
@@ -3492,8 +3525,12 @@ class JourneyErrorHandlingTest(UserJourneyTestBase):
 
         # Step that will fail
         step = self.tracker.start_step("Failing Step")
-        try:
+
+        def _raise_test_error():
             raise ValueError("Test error")
+
+        try:
+            _raise_test_error()
         except Exception as e:
             step.fail(e)
             journey.fail(e)

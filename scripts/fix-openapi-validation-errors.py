@@ -80,34 +80,34 @@ def fix_date_time_examples(obj: Any, parent_format: str | None = None) -> bool:
         # Check for date-time fields
         current_format = obj.get("format", parent_format)
 
-        if current_format == "date-time":
+        if current_format == "date-time" and "example" in obj:
             # Fix example if it's not a valid date-time
-            if "example" in obj:
-                example = obj["example"]
-                if isinstance(example, str):
-                    # Check if it's already valid ISO 8601
-                    if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", example):
-                        # If it's not a date-time, remove the format or change example
-                        # For time_range, it might be a string like "last_month", so remove format
-                        if example in [
-                            "last_month",
-                            "last_week",
-                            "last_year",
-                            "today",
-                            "yesterday",
-                        ]:
-                            # This is not a date-time, remove format
-                            if "format" in obj:
-                                del obj["format"]
-                                fixed = True
-                        # Try to fix common issues
-                        elif (
-                            "Z" not in example
-                            and "+" not in example
-                            and re.match(r"^\d{4}-\d{2}-\d{2}", example)
-                        ):
-                            obj["example"] = example + "T00:00:00Z"
-                            fixed = True
+            example = obj["example"]
+            if isinstance(example, str) and not re.match(
+                r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", example
+            ):
+                # Check if it's already valid ISO 8601
+                # If it's not a date-time, remove the format or change example
+                # For time_range, it might be a string like "last_month", so remove format
+                if example in [
+                    "last_month",
+                    "last_week",
+                    "last_year",
+                    "today",
+                    "yesterday",
+                ]:
+                    # This is not a date-time, remove format
+                    if "format" in obj:
+                        del obj["format"]
+                        fixed = True
+                # Try to fix common issues
+                elif (
+                    "Z" not in example
+                    and "+" not in example
+                    and re.match(r"^\d{4}-\d{2}-\d{2}", example)
+                ):
+                    obj["example"] = example + "T00:00:00Z"
+                    fixed = True
 
         # Recursively fix nested objects
         for _key, value in list(obj.items()):
@@ -145,7 +145,7 @@ def fix_content_type_encoding(spec: dict[str, Any]) -> bool:
                     obj["content"] = new_content
 
             # Recursively fix nested objects
-            for key, value in list(obj.items()):
+            for _key, value in list(obj.items()):
                 if fix_in_object(value):
                     local_fixed = True
 

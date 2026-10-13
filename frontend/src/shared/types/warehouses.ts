@@ -73,11 +73,8 @@ export interface WarehouseConnectionACL {
   created_at: string;
 }
 
-export interface DeltaShareTable {
-  name: string;
-  share: string;
-  schema: string;
-}
+// (DeltaShareTable removed with 5.5 — the fabricated /share/ surface
+// is gone; the native bearer-token protocol has no frontend consumer.)
 
 export interface ResidencyMismatch {
   tenant_id: string;

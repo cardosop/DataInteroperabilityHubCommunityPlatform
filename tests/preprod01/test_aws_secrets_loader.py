@@ -12,40 +12,40 @@ import os
 
 import pytest
 
+# Repo-root settings.py — resolved at MODULE level so the class-body
+# ``@pytest.mark.skipif`` decorators can reference it (they evaluate at import
+# time, before any test method runs).
+SETTINGS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "hub",
+    "settings.py",
+)
+
 
 class TestAWSSecretsLoaderConfig:
     """Validate the AWS Secrets Manager loader configuration."""
 
-@pytest.mark.skip(reason="aws_secrets_loader module not available in this environment")
     def test_loader_module_exists(self):
         """The aws_secrets_loader module exists and is importable."""
-        try:
-            from hub import aws_secrets_loader  # noqa: F401
-        except ImportError:
+        from hub import aws_secrets_loader
 
-@pytest.mark.skip(reason="aws_secrets_loader not available")
+        assert aws_secrets_loader is not None
+
     def test_loader_has_load_function(self):
         """The loader exports a load_from_aws function."""
-        try:
-            from hub.aws_secrets_loader import load_from_aws
+        from hub.aws_secrets_loader import load_from_aws
 
-            assert callable(load_from_aws), "load_from_aws must be callable"
-        except ImportError:
+        assert callable(load_from_aws), "load_from_aws must be callable"
 
     def test_loader_disabled_by_default(self):
         """AWS_SECRETS_ENABLED defaults to false — no secrets loaded unless explicitly enabled."""
         default = os.environ.get("AWS_SECRETS_ENABLED", "false").strip().lower()
         assert default == "false", f"AWS_SECRETS_ENABLED should default to 'false', got '{default}'"
 
-@pytest.mark.skipif(not os.path.exists(settings_path), reason="settings.py not found")
+    @pytest.mark.skipif(not os.path.exists(SETTINGS_PATH), reason="settings.py not found")
     def test_loader_gate_in_settings(self):
         """settings.py gates AWS SM loading behind AWS_SECRETS_ENABLED."""
-        settings_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "hub",
-            "settings.py",
-        )
-        with open(settings_path) as f:
+        with open(SETTINGS_PATH) as f:
             source = f.read()
         assert "AWS_SECRETS_ENABLED" in source, (
             "settings.py must check AWS_SECRETS_ENABLED before calling load_from_aws()"
@@ -58,19 +58,39 @@ class TestAWSSecretsLoaderConfig:
 class TestIRSAIntegration:
     """IRSA (IAM Roles for Service Accounts) integration checks."""
 
-    def test_irsa_env_var_recognized(self):
-        """AWS_WEB_IDENTITY_TOKEN_FILE is the IRSA indicator."""
-        token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE", "")
-        role_arn = os.environ.get("AWS_ROLE_ARN", "")
-        if not token_file and not role_arn:
-            pytest.skip("IRSA not configured in this environment")  # noqa: skip-in-body — runtime service dependency
+    def test_irsa_env_var_recognized(self, monkeypatch):
+        """AWS_WEB_IDENTITY_TOKEN_FILE is the IRSA indicator.
 
-    def test_irsa_token_file_exists_if_configured(self):
+        With IRSA env present but a fake token, the web-identity chain
+        engages and the loader must fail LOUD per its documented contract
+        (RuntimeError after exhausting retries) — it must not hang or
+        silently return.
+        """
+        monkeypatch.setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "/tmp/fake-irsa-token")
+        monkeypatch.setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/fake")
+        # Clear the test stack's ambient static creds (MinIO etc.) so the
+        # credential chain reaches web-identity and then no-credentials —
+        # instead of attempting a real AWS call with minio creds.
+        for var in (
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "ATHENA_AWS_ACCESS_KEY_ID",
+            "ATHENA_AWS_SECRET_ACCESS_KEY",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
+        from hub.aws_secrets_loader import load_from_aws
+
+        with pytest.raises(RuntimeError):
+            load_from_aws()
+
+    def test_irsa_token_file_exists_if_configured(self, monkeypatch, tmp_path):
         """If IRSA is configured, the token file should exist."""
-        token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE", "")
-        if not token_file:
-            pytest.skip("AWS_WEB_IDENTITY_TOKEN_FILE not set")  # noqa: skip-in-body — runtime service dependency
-        assert os.path.exists(token_file), (
+        token_file = tmp_path / "web-identity-token"
+        token_file.write_text("fake-jwt-token")
+        monkeypatch.setenv("AWS_WEB_IDENTITY_TOKEN_FILE", str(token_file))
+        assert os.path.exists(str(token_file)), (
             f"AWS_WEB_IDENTITY_TOKEN_FILE points to non-existent file: {token_file}"
         )
 
@@ -78,15 +98,10 @@ class TestIRSAIntegration:
 class TestSecretsLoadingOrder:
     """Secrets must be loaded before any downstream setting consumes them."""
 
-@pytest.mark.skipif(not os.path.exists(settings_path), reason="settings.py not found")
+    @pytest.mark.skipif(not os.path.exists(SETTINGS_PATH), reason="settings.py not found")
     def test_secrets_loaded_before_database_config(self):
         """In settings.py, the AWS SM block must appear before DATABASES configuration."""
-        settings_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "hub",
-            "settings.py",
-        )
-        with open(settings_path) as f:
+        with open(SETTINGS_PATH) as f:
             lines = f.readlines()
 
         aws_line = None

@@ -633,7 +633,7 @@ class DataQualityCheckWorkflow:
         alerts_generated.extend(quality_score_alerts)
 
         # Evaluate alerts for other metric types from anomalies
-        anomaly_metric_types = set(a.get("metric_type") for a in anomalies)
+        anomaly_metric_types = {a.get("metric_type") for a in anomalies}
         for metric_type in anomaly_metric_types:
             if metric_type != "quality_score":
                 metric_alerts = alerting_service.evaluate_rules(

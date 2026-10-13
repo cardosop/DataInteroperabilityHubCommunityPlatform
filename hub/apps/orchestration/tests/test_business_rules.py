@@ -519,7 +519,6 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_definition_integration_with_engine(self):
         """Test workflow definition validation integration with WorkflowEngine"""
         from hub.apps.orchestration.registry import WorkflowRegistry
-        from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
         # Create workflow definition
         workflow_def = WorkflowDefinition.objects.create(

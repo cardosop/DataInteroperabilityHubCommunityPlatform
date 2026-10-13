@@ -600,10 +600,9 @@ class MarketplaceIntegrationServiceTest(TestCase):
 
             # Result may be success=False or raise exception
             # Both are valid behaviors
-            if "success" in result:
+            if "success" in result and not result["success"]:
                 # If connector test fails, success should be False
-                if not result["success"]:
-                    self.assertIsNotNone(result.get("error"))
+                self.assertIsNotNone(result.get("error"))
         except (ValueError, ImportError, AttributeError, ValidationError) as e:
             self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 

@@ -9,6 +9,7 @@ structured warnings rather than silently swallowed.  Tests that:
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -101,7 +102,7 @@ class TestMetricsImportFailureIsLogged:
 class TestMetricsImportInAllServices:
     """All services must log, not silently swallow, ImportError for metrics."""
 
-    _SERVICE_DIRS = [
+    _SERVICE_DIRS: ClassVar[list] = [
         "services/semantic-service",
         "services/compliance-service",
         "services/dq-service",

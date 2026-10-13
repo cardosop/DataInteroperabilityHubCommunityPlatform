@@ -363,9 +363,8 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         data = response.json()
 
         # May have pagination structure
-        if isinstance(data, dict):
+        if isinstance(data, dict) and "results" in data:
             # Could have 'results', 'count', 'next', 'previous'
-            if "results" in data:
-                self.assertIsInstance(data["results"], list, "Results should be a list")
-                if "count" in data:
-                    self.assertIsInstance(data["count"], int, "Count should be integer")
+            self.assertIsInstance(data["results"], list, "Results should be a list")
+            if "count" in data:
+                self.assertIsInstance(data["count"], int, "Count should be integer")

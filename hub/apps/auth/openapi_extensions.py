@@ -39,3 +39,21 @@ class APIKeyAuthenticationScheme(OpenApiAuthenticationExtension):
             "name": "X-API-Key",
             "description": "API key authentication. Include API key in X-API-Key header.",
         }
+
+
+class DeltaShareTokenAuthenticationScheme(OpenApiAuthenticationExtension):
+    """OpenAPI extension for the Delta Sharing protocol token auth."""
+
+    target_class = "hub.apps.databricks_admin.delta_sharing_auth.DeltaShareTokenAuthentication"
+    name = "DeltaShareTokenAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "DeltaShareToken",
+            "description": (
+                "Delta Sharing protocol token authentication. Include the "
+                "token in the Authorization header as: Bearer <token>"
+            ),
+        }

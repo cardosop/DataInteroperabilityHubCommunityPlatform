@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { e2eTestHeaders } from '../fixtures/e2e-token';
+import { getApiBaseUrl } from '../fixtures/api-base';
 
 /** Compare API base URLs ignoring trailing slashes. */
 function normalizeApiBaseUrl(u: string): string {
@@ -31,13 +32,9 @@ function isSubscriptionPrimedForBaseUrl(baseUrl: string): boolean {
   }
 }
 
-// Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
-// Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
-const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
-const API_BASE_URL =
-  process.env.E2E_API_BASE_URL ||
-  (process.env.VITE_PROXY_TARGET ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1` : null) ||
-  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
+// Canonical API base — same resolver as fixtures/auth.ts so test-user
+// setup can never target a different backend than the login flow.
+const API_BASE_URL = getApiBaseUrl();
 
 // Remote API detection: when targeting a deployed environment (staging/production),
 // docker exec and self-registration are unavailable. Users must be pre-seeded via
@@ -263,6 +260,9 @@ export async function ensureTestUser(): Promise<TestUser> {
         // 5xx is transient (API restart / pgbouncer pool / downstream).
         // Throw a typed error so withRetry's `isTransientServerError`
         // branch fires and we get the same backoff as connection errors.
+        // intentional: diagnostic-only read — the body preview is best-effort
+        // extra context for the error message below; the throw is the primary
+        // failure path.
         const preview = (await resp.text().catch(() => '')).slice(0, 200);
         throw new Error(
           `HTTP ${resp.status} on /auth/login/ (transient server error); will retry — ${label}. Body: ${preview}`,
@@ -271,6 +271,9 @@ export async function ensureTestUser(): Promise<TestUser> {
       // 4xx / unknown — capture for the final diagnostic, return null so
       // the caller can attempt the registration-fallback path before
       // giving up.
+      // intentional: diagnostic-only read — the body preview is best-effort
+      // extra context for the final error message; returning null to the
+      // caller is the primary failure path.
       const preview = (await resp.text().catch(() => '')).slice(0, 200);
       lastFailureDiagnostic = `HTTP ${resp.status} (${cls}). Body: ${preview}`;
       return null;

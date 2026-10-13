@@ -39,9 +39,11 @@ class TestMagicByteMimeValidation:
         from hub.apps.files.validators import validate_file_magic
 
         file_obj = BytesIO(b"%PDF-1.4 fake content")
-        with patch.dict(sys.modules, {"magic": _mock_magic("application/pdf")}):
-            with pytest.raises(ValidationError, match="content type mismatch"):
-                validate_file_magic(file_obj, "text/plain", "test.txt")
+        with (
+            patch.dict(sys.modules, {"magic": _mock_magic("application/pdf")}),
+            pytest.raises(ValidationError, match="content type mismatch"),
+        ):
+            validate_file_magic(file_obj, "text/plain", "test.txt")
 
     def test_valid_text_file_accepted(self):
         """A genuine text/plain file must not raise."""

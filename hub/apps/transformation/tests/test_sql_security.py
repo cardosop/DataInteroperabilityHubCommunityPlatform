@@ -32,12 +32,12 @@ class SQLInjectionPreventionTest(TestCase):
     def test_drop_table_in_filter_expression(self):
         """DROP TABLE in filter_expression must be rejected."""
         result = self.rules._validate_node_config(
-            node_type="filter",
-            node_config={
+            "filter",
+            {
                 "filter_expression": "1=1; DROP TABLE users--",
             },
-            step_name="malicious_filter",
-            step_index=0,
+            "malicious_filter",
+            0,
         )
         self.assertTrue(
             any("forbidden" in e.lower() or "DROP" in e for e in result),
@@ -47,12 +47,12 @@ class SQLInjectionPreventionTest(TestCase):
     def test_union_select_in_transform(self):
         """UNION SELECT in transform_expression must be rejected."""
         result = self.rules._validate_node_config(
-            node_type="transform",
-            node_config={
+            "transform",
+            {
                 "transform_expression": "col1 UNION SELECT * FROM secrets",
             },
-            step_name="union_inject",
-            step_index=0,
+            "union_inject",
+            0,
         )
         self.assertTrue(
             any("forbidden" in e.lower() or "UNION" in e for e in result),
@@ -62,12 +62,12 @@ class SQLInjectionPreventionTest(TestCase):
     def test_comment_injection_blocked(self):
         """SQL comments (-- and /*) must be rejected."""
         result = self.rules._validate_node_config(
-            node_type="filter",
-            node_config={
+            "filter",
+            {
                 "filter_expression": "status = 'active' -- drop table",
             },
-            step_name="comment_inject",
-            step_index=0,
+            "comment_inject",
+            0,
         )
         self.assertTrue(
             any("forbidden" in e.lower() or "--" in e for e in result),
@@ -77,36 +77,36 @@ class SQLInjectionPreventionTest(TestCase):
     def test_safe_filter_expression_allowed(self):
         """Normal filter expressions should pass validation."""
         result = self.rules._validate_node_config(
-            node_type="filter",
-            node_config={
+            "filter",
+            {
                 "filter_expression": "status = 'active' AND age > 18",
             },
-            step_name="safe_filter",
-            step_index=0,
+            "safe_filter",
+            0,
         )
         self.assertEqual(result, [])
 
     def test_safe_transform_expression_allowed(self):
         """Normal transform expressions should pass."""
         result = self.rules._validate_node_config(
-            node_type="transform",
-            node_config={
+            "transform",
+            {
                 "transform_expression": "UPPER(name)",
             },
-            step_name="safe_transform",
-            step_index=0,
+            "safe_transform",
+            0,
         )
         self.assertEqual(result, [])
 
     def test_insert_blocked(self):
         """INSERT statement in expression must be rejected."""
         result = self.rules._validate_node_config(
-            node_type="filter",
-            node_config={
+            "filter",
+            {
                 "filter_expression": "INSERT INTO users VALUES(1)",
             },
-            step_name="insert_inject",
-            step_index=0,
+            "insert_inject",
+            0,
         )
         self.assertTrue(
             any("forbidden" in e.lower() or "INSERT" in e for e in result),
@@ -116,12 +116,12 @@ class SQLInjectionPreventionTest(TestCase):
     def test_update_blocked(self):
         """UPDATE statement in expression must be rejected."""
         result = self.rules._validate_node_config(
-            node_type="filter",
-            node_config={
+            "filter",
+            {
                 "filter_expression": "UPDATE users SET admin=true",
             },
-            step_name="update_inject",
-            step_index=0,
+            "update_inject",
+            0,
         )
         self.assertTrue(
             any("forbidden" in e.lower() or "UPDATE" in e for e in result),

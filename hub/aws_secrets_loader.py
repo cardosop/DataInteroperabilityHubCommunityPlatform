@@ -189,10 +189,9 @@ def load_from_aws() -> None:
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
         try:
             _do_load()
-            return  # Success
 
         except _NON_RETRYABLE_EXCEPTIONS as exc:
-            logger.error("AWS SM load failed (non-retryable): %s", exc)
+            logger.exception("AWS SM load failed (non-retryable)")
             raise RuntimeError(
                 f"Failed to load secrets from AWS Secrets Manager (non-retryable): {exc}"
             ) from exc
@@ -200,7 +199,7 @@ def load_from_aws() -> None:
         except ClientError as exc:
             error_code = exc.response["Error"]["Code"]
             if error_code in ("AccessDeniedException", "UnrecognizedClientException"):
-                logger.error("AWS SM load failed (auth error): %s", exc)
+                logger.exception("AWS SM load failed (auth error)")
                 raise RuntimeError(
                     f"Failed to load secrets from AWS Secrets Manager (auth): {exc}"
                 ) from exc
@@ -233,11 +232,7 @@ def load_from_aws() -> None:
                 )
                 time.sleep(delay)
             else:
-                logger.error(
-                    "AWS SM load failed after %d attempts: %s",
-                    _RETRY_ATTEMPTS,
-                    exc,
-                )
+                logger.exception("AWS SM load failed after %d attempts", _RETRY_ATTEMPTS)
 
         except Exception as exc:
             last_exc = exc
@@ -252,11 +247,11 @@ def load_from_aws() -> None:
                 )
                 time.sleep(delay)
             else:
-                logger.error(
-                    "AWS SM load failed after %d attempts (unexpected): %s",
-                    _RETRY_ATTEMPTS,
-                    exc,
+                logger.exception(
+                    "AWS SM load failed after %d attempts (unexpected)", _RETRY_ATTEMPTS
                 )
+        else:
+            return  # Success
 
     raise RuntimeError(
         f"Failed to load secrets from AWS Secrets Manager after {_RETRY_ATTEMPTS} attempts. "

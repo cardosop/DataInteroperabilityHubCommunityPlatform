@@ -80,8 +80,9 @@ class TestAsyncTokenRefreshRace:
         auth = headers.get("Authorization", "")
 
         # Must still have a Bearer header with the old (non-empty) token
-        assert auth.startswith("Bearer ") and len(auth) > 7, (
+        assert auth.startswith("Bearer "), (
             f"Authorization header invalid after failed refresh: {auth!r}"
         )
+        assert len(auth) > 7, f"Authorization header invalid after failed refresh: {auth!r}"
         # The client's stored token must be unchanged
         assert client.config.api_token == token, "Client token was overwritten after failed refresh"

@@ -82,7 +82,7 @@ def _create_token_family(user, family_id=None, count=1, seq_start=0, revoke_all_
         )
         tokens.append((raw, obj))
     if revoke_all_but_last and len(tokens) > 1:
-        for raw, obj in tokens[:-1]:
+        for _raw, obj in tokens[:-1]:
             obj.revoke()
     return tokens
 
@@ -258,7 +258,7 @@ class RefreshRateLimitTest(TransactionTestCase):
 
         # Create enough tokens for the test (each refresh rotates the token)
         tokens = [refresh_token_str]
-        for i in range(5):
+        for _i in range(5):
             raw = RefreshToken.generate_token()
             RefreshToken.objects.create(
                 user=self.user,
@@ -345,6 +345,7 @@ class RefreshRateLimitTest(TransactionTestCase):
 # ======================================================================
 
 
+@pytest.mark.journey("JOURNEY-AUTH-SECURITY")
 class CookiePrecedenceTest(TransactionTestCase):
     """In body mode, body token should take precedence over stale cookie."""
 

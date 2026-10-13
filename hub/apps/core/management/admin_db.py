@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 MANAGEMENT_DB_MODE_ENV = "HUB_USE_ADMIN_DB_FOR_COMMANDS"
 MANAGEMENT_DB_ALIAS_ENV = "HUB_COMMAND_DB_ALIAS"

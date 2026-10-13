@@ -5,8 +5,9 @@ Creates TenantConfig with platform defaults for all tenants that don't have one.
 """
 
 import structlog
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.validators import get_platform_defaults
@@ -29,7 +30,7 @@ class Command(BaseCommand):
             help="Initialize config for specific tenant ID only",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         tenant_id = options.get("tenant_id")
 
@@ -42,7 +43,7 @@ class Command(BaseCommand):
                 if not tenants.exists():
                     self.stdout.write(self.style.ERROR(f"Tenant with ID {tenant_id} not found."))
                     return
-            except Exception as e:
+            except (ValidationError, DatabaseError) as e:
                 self.stdout.write(self.style.ERROR(f"Invalid tenant ID: {e}"))
                 return
         else:
@@ -119,7 +120,7 @@ class Command(BaseCommand):
                     message=f"Initialized TenantConfig for tenant {tenant.id}",
                 )
 
-            except Exception as e:
+            except (DatabaseError, ValidationError) as e:
                 error_count += 1
                 self.stdout.write(
                     self.style.ERROR(

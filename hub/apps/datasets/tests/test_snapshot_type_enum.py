@@ -100,7 +100,7 @@ class SnapshotTypeEnumMembershipTest(TestCase):
     @pytest.mark.integration
     def test_enum_members_match_spec(self):
         # Phase 260.6.B canonical set per
-        # ``openspec/changes/fullcontract/specs/file-storage/spec.md``.
+        # ``openspec/changes/archive/fullcontract/specs/file-storage/spec.md``.
         members = {member.value for member in SnapshotType}
         self.assertEqual(
             members,

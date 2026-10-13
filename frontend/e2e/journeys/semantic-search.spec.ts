@@ -19,6 +19,7 @@ test.describe('Semantic Search journey @e2e @semantic-search', () => {
 
     // Enable semantic search
     const toggle = page.locator('[data-testid="search-semantic-toggle"]');
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     if (await toggle.isVisible().catch(() => false)) {
       await toggle.check();
     }
@@ -29,9 +30,11 @@ test.describe('Semantic Search journey @e2e @semantic-search', () => {
 
     // If facets appear, verify they are interactive
     const facets = page.locator('[data-testid="semantic-search-facets"]');
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     if (await facets.isVisible({ timeout: 8_000 }).catch(() => false)) {
       // Try clicking an ontology type filter
       const firstFacet = page.locator('[data-testid^="facet-ontology-type-"]').first();
+      // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
       if (await firstFacet.isVisible().catch(() => false)) {
         await firstFacet.click();
         await page.waitForTimeout(300);
@@ -52,6 +55,7 @@ test.describe('Semantic Search journey @e2e @semantic-search', () => {
     await page.locator('[data-testid="search-page"]').first().waitFor({ state: 'visible', timeout: 15_000 });
 
     const toggle = page.locator('[data-testid="search-semantic-toggle"]');
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     if (await toggle.isVisible().catch(() => false)) {
       await toggle.check();
     }
@@ -69,6 +73,7 @@ test.describe('Semantic Search journey @e2e @semantic-search', () => {
 
     // If retry button appears, click it
     const retryBtn = page.locator('[data-testid="facets-retry-btn"]');
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     if (await retryBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await retryBtn.click();
       await page.waitForTimeout(500);

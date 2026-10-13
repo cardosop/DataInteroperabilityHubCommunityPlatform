@@ -87,7 +87,21 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
         expect(page.url()).toContain('/login');
         return;
       }
-      const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // Phase 2: wait for the list API to resolve into a TERMINAL state
+      // before branching — the always-rendered `.listing-list-page`
+      // container resolves instantly during the loading skeleton, so it
+      // must NOT be in this locator (the empty/error branch would run a
+      // beat before the response landed).
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      await page
+        .locator('.listing-card, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 30000 })
+        .catch(() => null);
+      // Rows are .listing-card divs (role="button", onClick navigate), NOT
+      // anchors — the anchor selector alone never matches and silently
+      // routes populated marketplaces into the empty branch.
+      const listingLink = page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').first();
       // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();

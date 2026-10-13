@@ -5,6 +5,11 @@ Tests: connections (list, get, create, update, delete, test), schemas, queries, 
 """
 
 from datahub_cli.main import cli
+from tests.fixtures.test_data import fresh_id
+
+# Unique per test process (and per xdist worker) so a static literal
+# can never collide across parallel runs — Phase 216.X.2.
+ASSET_ID = fresh_id("asset")
 
 
 class TestWarehouseConnectionsList:
@@ -82,44 +87,87 @@ class TestWarehouseConnectionsTest:
 
 
 class TestWarehouseSchemas:
-    """Test warehouse schemas command"""
+    """Test warehouse schema reflection command.
+
+    The backend exposes no ``schemas`` route: schema reflection lives at
+    ``GET /api/v1/warehouses/connections/{id}/schema/?table=<name>``
+    (``reflect_schema``), which the CLI surfaces as
+    ``warehouses connections schema <id> --table <name>``.
+    """
 
     def test_list_schemas(self, runner, mock_api_client):
-        """Test listing schemas"""
-        mock_api_client.get.return_value = {"schemas": ["public", "analytics", "staging"]}
+        """Test reflecting the schema of a warehouse table"""
+        mock_api_client.get.return_value = {
+            "connection_id": "wh-1",
+            "table": "orders",
+            "warehouse_type": "SNOWFLAKE",
+            "columns": [
+                {"name": "public_id", "data_type": "VARCHAR", "nullable": False, "comment": None},
+                {"name": "amount", "data_type": "NUMBER", "nullable": True, "comment": None},
+            ],
+            "reflected_at": "2026-08-27T00:00:00Z",
+        }
 
-        result = runner.invoke(cli, ["warehouses", "schemas", "list", "--connection-id", "wh-1"])
+        result = runner.invoke(
+            cli, ["warehouses", "connections", "schema", "wh-1", "--table", "orders"]
+        )
 
         assert result.exit_code == 0
         assert "public" in result.output
 
     def test_refresh_schema(self, runner, mock_api_client):
-        """Test refreshing schema cache"""
-        mock_api_client.post.return_value = {"status": "refreshed", "tables_found": 42}
-
-        result = runner.invoke(cli, ["warehouses", "schemas", "refresh", "--connection-id", "wh-1"])
-
-        assert result.exit_code == 0
-        assert "42" in result.output
-
-
-class TestWarehouseQueries:
-    """Test warehouse live queries command"""
-
-    def test_run_query(self, runner, mock_api_client):
-        """Test running a live query"""
-        mock_api_client.post.return_value = {
-            "columns": ["id", "name"],
-            "rows": [["1", "test"]],
-            "row_count": 1,
+        """Test re-reflecting schema (reflection is live — re-invoking refreshes)"""
+        mock_api_client.get.return_value = {
+            "connection_id": "wh-1",
+            "table": "events",
+            "warehouse_type": "SNOWFLAKE",
+            "columns": [
+                {
+                    "name": "analytics_events",
+                    "data_type": "VARCHAR",
+                    "nullable": True,
+                    "comment": None,
+                }
+            ],
+            "reflected_at": "2026-08-27T00:05:00Z",
         }
 
         result = runner.invoke(
-            cli, ["warehouses", "queries", "run", "--connection-id", "wh-1", "--sql", "SELECT 1"]
+            cli, ["warehouses", "connections", "schema", "wh-1", "--table", "events"]
         )
 
         assert result.exit_code == 0
+        assert "analytics" in result.output
+        mock_api_client.get.assert_called_once_with(
+            "warehouses/connections/wh-1/schema/?table=events"
+        )
+
+
+class TestWarehouseQueries:
+    """Test warehouse live queries command.
+
+    The backend route is ``GET /api/v1/warehouses/query/``
+    (``LiveQueryViewSet``), which queries a LIVE_QUERY asset by
+    ``asset_id`` with optional ``limit``/``cursor`` — the CLI surfaces it
+    as ``warehouses query --asset-id <id>``.
+    """
+
+    def test_run_query(self, runner, mock_api_client):
+        """Test running a live query"""
+        mock_api_client.get.return_value = {
+            "rows": [["1", "test"]],
+            "cursor": None,
+            "row_count": 1,
+            "cached": False,
+        }
+
+        result = runner.invoke(cli, ["warehouses", "query", "--asset-id", ASSET_ID])
+
+        assert result.exit_code == 0
         assert "test" in result.output
+        mock_api_client.get.assert_called_once_with(
+            "warehouses/query/", params={"asset_id": ASSET_ID, "limit": 100}
+        )
 
 
 class TestWarehouseACL:
@@ -128,10 +176,26 @@ class TestWarehouseACL:
     def test_list_acl(self, runner, mock_api_client):
         """Test listing ACL entries"""
         mock_api_client.get.return_value = {
-            "results": [{"id": "acl-1", "principal": "user@example.com", "role": "reader"}]
+            "results": [{"id": "acl-1", "user": "user@example.com", "role": "VIEWER"}]
         }
 
-        result = runner.invoke(cli, ["warehouses", "acl", "list", "--connection-id", "wh-1"])
+        result = runner.invoke(cli, ["warehouses", "acls", "list"])
 
         assert result.exit_code == 0
-        assert "reader" in result.output
+        assert "VIEWER" in result.output
+
+
+class TestFabricatedShareGroupRemoved:
+    """5.5 — the `warehouses share` group targeted the removed
+    SessionAuth stub; the native protocol surface is bearer-token
+    only (no session CLI consumer), so the group is gone (design D6 —
+    removed, not migrated)."""
+
+    def test_share_group_is_not_registered(self, runner):
+        result = runner.invoke(cli, ["warehouses", "share", "--help"])
+        assert result.exit_code != 0
+
+    def test_share_group_absent_from_help(self, runner):
+        result = runner.invoke(cli, ["warehouses", "--help"])
+        assert result.exit_code == 0
+        assert "share" not in result.output

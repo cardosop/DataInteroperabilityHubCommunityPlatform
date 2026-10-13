@@ -28,13 +28,15 @@
  *
  * SPARQL is a hard dependency of staging infra; if the endpoint is flaky
  * (Open Question §7) the SPARQL step degrades to `test.skip(cond, reason)`
- * via the `options.skipSparqlOn` callback.
+ * via the `options.skipSparqlOn` callback. W16: in CI a degraded SPARQL
+ * endpoint announces itself via `environmentSkipGuard` instead of skipping.
  *
  * Phase 226 PR B5 — see
  * /home/ph/.claude/plans/now-pls-create-a-binary-cloud.md §Track B.
  */
 
 import type { Page, TestInfo } from '@playwright/test';
+import { environmentSkipGuard } from './envPolicy.cjs';
 
 export type SemanticResourceType =
   | 'asset'
@@ -70,6 +72,12 @@ export interface VerifySemanticIriOptions {
    * is unavailable on the current env. If returns true, the step is skipped
    * (not failed). */
   skipSparqlOn?: (res: { status: number; bodyPreview: string }) => boolean;
+  /** When false, the SPARQL triple-visibility assertion is skipped entirely
+   * (dereference + JSON-LD steps still run). Use for resource types the
+   * semantic index does NOT ingest — contracts are never indexed (the
+   * product-creation workflow has no semantic-mapping task for them), so
+   * the triple check is a false guarantee there. Default true. */
+  expectSparqlTriple?: boolean;
   /** Test info used to emit degradation skips. When present, SPARQL
    * unavailability becomes a skip rather than a failure. */
   testInfo?: TestInfo;
@@ -98,16 +106,26 @@ export type DereferenceClassification =
   | 'server-error'
   | 'unexpected';
 
-/** Classify a GET-with-RDF-accept response. */
+/** Classify a GET-with-RDF-accept response.
+ *
+ * When `expectedIri` is null (no base pinned by the caller or env), the
+ * redirect is validated by PATH SUFFIX instead: the Location must end with
+ * `expectedIriSuffix` (the canonical `/id/<type>/<id>` resource path). The
+ * backend derives the IRI origin from HUB_DOMAIN (test.hub.example.com on
+ * the test stack), which the E2E runner cannot hardcode without drift. */
 export function classifyDereferenceResponse(
   res: { status: number; locationHeader: string | null },
-  expectedIri: string,
+  expectedIri: string | null,
+  expectedIriSuffix?: string,
 ): DereferenceClassification {
   if (res.status === 303) {
     if (res.locationHeader === null || res.locationHeader === '') {
       return 'redirect-missing-location';
     }
-    return res.locationHeader === expectedIri ? 'redirect-match' : 'redirect-mismatch';
+    const matches = expectedIri !== null
+      ? res.locationHeader === expectedIri
+      : expectedIriSuffix !== undefined && res.locationHeader.endsWith(expectedIriSuffix);
+    return matches ? 'redirect-match' : 'redirect-mismatch';
   }
   if (res.status >= 200 && res.status < 300) return 'direct-payload';
   if (res.status === 404) return 'not-found';
@@ -121,10 +139,15 @@ function isArray(x: unknown): x is unknown[] {
 }
 
 /** Check JSON-LD payload shape against expectations. Returns null or a mismatch
- * message. */
+ * message.
+ *
+ * Exactly one of `expectedIri` (exact @id match — use when a base is pinned)
+ * or `expectedIriSuffix` (canonical `/id/<type>/<id>` path match — use when
+ * the IRI origin is env-derived, see classifyDereferenceResponse) must be
+ * provided. */
 export function validateJsonLdPayload(
   body: unknown,
-  expected: { expectedIri: string; expectedType?: string },
+  expected: { expectedIri?: string; expectedIriSuffix?: string; expectedType?: string },
 ): string | null {
   if (!body || typeof body !== 'object') {
     return `JSON-LD payload is not an object: ${JSON.stringify(body)}`;
@@ -138,9 +161,16 @@ export function validateJsonLdPayload(
   if (!('@id' in obj)) {
     return `JSON-LD payload missing @id. Keys: ${JSON.stringify(Object.keys(obj))}`;
   }
-  if (obj['@id'] !== expected.expectedIri) {
+  const actualId = typeof obj['@id'] === 'string' ? obj['@id'] : JSON.stringify(obj['@id']);
+  const idMismatch =
+    expected.expectedIri !== undefined
+      ? actualId !== expected.expectedIri
+      : expected.expectedIriSuffix !== undefined
+        ? !actualId.endsWith(expected.expectedIriSuffix)
+        : true;
+  if (idMismatch) {
     return (
-      `JSON-LD @id mismatch: expected=${expected.expectedIri}, ` +
+      `JSON-LD @id mismatch: expected=${expected.expectedIri ?? `*${expected.expectedIriSuffix}`}, ` +
       `actual=${JSON.stringify(obj['@id'])}`
     );
   }
@@ -184,11 +214,23 @@ async function extractBearerHeaders(
   override?: Record<string, string>,
 ): Promise<Record<string, string>> {
   if (override !== undefined) return override;
-  const token = await page.evaluate<string | null>(
-    () =>
-      (globalThis as unknown as { localStorage?: { getItem: (k: string) => string | null } })
-        .localStorage?.getItem('access_token') ?? null,
-  );
+  // Phase 11.1 — the access_token lives in JS module memory; localStorage
+  // holds it only transiently (the E2E injection helper writes it, and every
+  // SPA-side refresh rotation removes it in the same tick). Reading
+  // localStorage only made long flows fail with a bare 401 the moment the
+  // SPA rotated the token (batch3 contract/dataset-create). The sanctioned
+  // probe is window.__getAccessToken (client.ts) — read it first, fall back
+  // to localStorage for pages that predate the hook.
+  const token = await page.evaluate<string | null>(() => {
+    const w = globalThis as unknown as {
+      localStorage?: { getItem: (k: string) => string | null };
+      __getAccessToken?: () => string | null;
+    };
+    if (typeof w.__getAccessToken === 'function') {
+      return w.__getAccessToken();
+    }
+    return w.localStorage?.getItem('access_token') ?? null;
+  });
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
 }
@@ -206,11 +248,17 @@ export async function verifySemanticIri(
   resourceId: string,
   options: VerifySemanticIriOptions = {},
 ): Promise<string> {
-  const base =
-    options.semanticBaseIri ??
-    process.env.SEMANTIC_BASE_IRI ??
-    'https://hub.example.com';
-  const iri = canonicalIriFor(base, resourceType, resourceId);
+  // When no base is pinned (caller option or SEMANTIC_BASE_IRI env), learn the
+  // canonical IRI from the dereference's own 303 Location and verify the
+  // resource PATH suffix. The IRI origin is backend-derived (HUB_DOMAIN,
+  // docker-compose.test.yml → test.hub.example.com on the test stack), so a
+  // hardcoded runner-side fallback drifts — the old 'https://hub.example.com'
+  // fallback made batch3's dataset-create fail with a @id mismatch.
+  const pinnedBase = options.semanticBaseIri ?? process.env.SEMANTIC_BASE_IRI ?? null;
+  const canonicalPath = `/id/${resourceType}/${resourceId}`;
+  const pinnedIri = pinnedBase
+    ? canonicalIriFor(pinnedBase, resourceType, resourceId)
+    : null;
   const derefBase = options.derefEndpointBase ?? '/api/v1/semantic/id';
   const sparqlEndpoint = options.sparqlEndpoint ?? '/api/v1/semantic/sparql';
   const contextEndpoint = options.contextEndpoint ?? '/api/v1/semantic/context.jsonld';
@@ -222,14 +270,16 @@ export async function verifySemanticIri(
     headers: { ...headers, Accept: 'application/rdf+xml' },
     maxRedirects: 0,
   });
+  const redirectLocation = derefRes.headers()['location'] ?? null;
   const classification = classifyDereferenceResponse(
-    { status: derefRes.status(), locationHeader: derefRes.headers()['location'] ?? null },
-    iri,
+    { status: derefRes.status(), locationHeader: redirectLocation },
+    pinnedIri,
+    pinnedIri === null ? canonicalPath : undefined,
   );
   if (classification === 'redirect-mismatch') {
     throw new Error(
       `verifySemanticIri: GET ${derefUrl} redirect Location mismatch. ` +
-        `Expected=${iri}, actual=${derefRes.headers()['location']}`,
+        `Expected=${pinnedIri ?? `*${canonicalPath}`}, actual=${redirectLocation}`,
     );
   }
   if (classification === 'redirect-missing-location') {
@@ -260,8 +310,19 @@ export async function verifySemanticIri(
     );
   }
   const jsonLdBody = await jsonLdRes.json();
+  // Effective IRI for downstream steps: the pinned value, or the value the
+  // backend itself declared (redirect Location, falling back to the
+  // payload's own @id when the deref serves the document directly).
+  const effectiveIri =
+    pinnedIri ??
+    redirectLocation ??
+    (typeof (jsonLdBody as Record<string, unknown>)?.['@id'] === 'string'
+      ? ((jsonLdBody as Record<string, unknown>)['@id'] as string)
+      : '');
   const jsonLdMismatch = validateJsonLdPayload(jsonLdBody, {
-    expectedIri: iri,
+    ...(pinnedIri !== null
+      ? { expectedIri: pinnedIri }
+      : { expectedIriSuffix: canonicalPath }),
     expectedType: options.expectedType,
   });
   if (jsonLdMismatch !== null) {
@@ -278,15 +339,23 @@ export async function verifySemanticIri(
     }
   }
 
-  // ---- Step 4: SPARQL triple visibility (may degrade to skip)
-  const sparqlQuery = `SELECT ?p ?o WHERE { <${iri}> ?p ?o } LIMIT 10`;
-  const sparqlRes = await page.request.post(sparqlEndpoint, {
+  // ---- Step 4: SPARQL triple visibility (may degrade to skip, or be
+  // opted out entirely for resource types the index never ingests)
+  if (options.expectSparqlTriple === false) {
+    return effectiveIri;
+  }
+  const sparqlQuery = `SELECT ?p ?o WHERE { <${effectiveIri}> ?p ?o } LIMIT 10`;
+  // SPARQL endpoint contract (semantic/views.py sparql_query): POST a JSON
+  // body {"query": ..., "format": ..., "timeout": ...} — the legacy raw
+  // `application/sparql-query` content-type is rejected by the API's
+  // JSON-only POST middleware (400 INVALID_FORMAT).
+  let sparqlRes = await page.request.post(sparqlEndpoint, {
     headers: {
       ...headers,
-      'Content-Type': 'application/sparql-query',
+      'Content-Type': 'application/json',
       Accept: 'application/sparql-results+json',
     },
-    data: sparqlQuery,
+    data: { query: sparqlQuery, format: 'json' },
   });
 
   if (!sparqlRes.ok()) {
@@ -298,6 +367,12 @@ export async function verifySemanticIri(
       /* ignore */
     }
     if (options.skipSparqlOn?.({ status: sparqlRes.status(), bodyPreview: preview })) {
+      // W16 — in CI a SPARQL-outage skip is an environment failure and must
+      // announce itself; local runs keep the documented degrade-to-skip.
+      environmentSkipGuard(
+        `SPARQL verification degraded: status=${sparqlRes.status()} ` +
+          `preview=${preview.slice(0, 120)}`,
+      );
       options.testInfo?.annotations.push({
         type: 'sparql-endpoint-unavailable',
         description: `status=${sparqlRes.status()} preview=${preview.slice(0, 120)}`,
@@ -308,21 +383,55 @@ export async function verifySemanticIri(
       );
     }
   } else {
-    const sparqlBody = (await sparqlRes.json()) as {
-      results?: { bindings?: SparqlBinding[] };
-    };
-    const bindings = sparqlBody.results?.bindings ?? [];
+    // The semantic index ingests asynchronously — a freshly created
+    // resource can return 0 bindings for seconds after its row is
+    // visible elsewhere (contract-create failed exactly this: 200 with
+    // Bindings: []). Retry the query with a short bounded budget before
+    // declaring the triple missing.
+    // Ingestion lag under batch load measured beyond 20s (dataset-create
+    // and asset-activation both exhausted 20s with the triple appearing
+    // later) — 45s covers the batch-restart cold path.
+    const SPARQL_INDEX_BUDGET_MS = 45_000;
+    const SPARQL_RETRY_DELAY_MS = 5_000;
+    const sparqlDeadline = Date.now() + SPARQL_INDEX_BUDGET_MS;
+    let bindings: SparqlBinding[] = [];
+    let lastSparqlBody: { results?: { bindings?: SparqlBinding[] } } | null = null;
+    while (true) {
+      const sparqlBody = (await sparqlRes.json()) as {
+        results?: { bindings?: SparqlBinding[] };
+      };
+      lastSparqlBody = sparqlBody;
+      bindings = sparqlBody.results?.bindings ?? [];
+      if (sparqlResultHasExpectedTriple(bindings, {
+        requireRdfType: options.expectedType !== undefined,
+      })) {
+        break;
+      }
+      if (Date.now() >= sparqlDeadline) break;
+      await new Promise((r) => setTimeout(r, SPARQL_RETRY_DELAY_MS));
+      // Re-run the query — the previous response body is consumed.
+      sparqlRes = await page.request.post(sparqlEndpoint, {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+          Accept: 'application/sparql-results+json',
+        },
+        data: { query: sparqlQuery, format: 'json' },
+      });
+      if (!sparqlRes.ok()) break;
+    }
     if (
       !sparqlResultHasExpectedTriple(bindings, {
         requireRdfType: options.expectedType !== undefined,
       })
     ) {
       throw new Error(
-        `verifySemanticIri: SPARQL returned 0 matching triples for <${iri}>. ` +
+        `verifySemanticIri: SPARQL returned 0 matching triples for <${effectiveIri}>. ` +
           `requireRdfType=${options.expectedType !== undefined}. ` +
           `Bindings: ${JSON.stringify(bindings).slice(0, 400)}`,
       );
     }
+    void lastSparqlBody;
   }
 
   // ---- Step 5: Negative-path — bogus UUID must 404
@@ -351,5 +460,5 @@ export async function verifySemanticIri(
     }
   }
 
-  return iri;
+  return effectiveIri;
 }

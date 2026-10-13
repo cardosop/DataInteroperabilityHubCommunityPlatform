@@ -74,9 +74,10 @@ def _ensure_pip_audit() -> Path | None:
             check=True,
         )
         _pip_audit_venv = Path(sys.executable).parent.parent  # venv root
-        return _pip_audit_venv
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         pass
+    else:
+        return _pip_audit_venv
 
     # Slow path: create a temporary venv and install pip-audit into it
     venv_dir = Path(tempfile.mkdtemp(prefix="pip-audit-venv-"))
@@ -99,11 +100,12 @@ def _ensure_pip_audit() -> Path | None:
             check=True,
         )
         _pip_audit_venv = venv_dir
-        return venv_dir
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         # Clean up the failed venv
         shutil.rmtree(venv_dir, ignore_errors=True)
         return None
+    else:
+        return venv_dir
 
 
 def _run_pip_audit(target_dir: Path) -> tuple[int, str]:
@@ -212,11 +214,14 @@ def _check_pip_audit_result(rc: int, output: str, label: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def pytest_sessionfinish(session):  # noqa: ARG001
+def pytest_sessionfinish(session):
     """Clean up any pip-audit temp venvs left behind by this module."""
     import shutil as _shutil
 
-    if _pip_audit_venv is not None and _pip_audit_venv.exists():
+    if (
+        _pip_audit_venv is not None
+        and _pip_audit_venv.exists()
+        and "pip-audit-venv-" in str(_pip_audit_venv)
+    ):
         # Only clean up venvs in temp directories (safety check)
-        if "pip-audit-venv-" in str(_pip_audit_venv):
-            _shutil.rmtree(_pip_audit_venv, ignore_errors=True)
+        _shutil.rmtree(_pip_audit_venv, ignore_errors=True)

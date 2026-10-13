@@ -81,7 +81,7 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if hasattr(cls, '_aws_patcher'):
+        if hasattr(cls, "_aws_patcher"):
             cls._aws_patcher.stop()
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
         super().tearDownClass()

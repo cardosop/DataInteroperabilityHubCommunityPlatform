@@ -10,8 +10,6 @@ These are pure unit tests: they instantiate CKANConnector directly with a
 dummy base_url (no connectivity required) and verify the harvest-only contract.
 """
 
-import unittest
-
 from django.test import SimpleTestCase
 
 from hub.apps.integrations.base import (
@@ -59,7 +57,7 @@ class TestCKANConnectorPushOperations(SimpleTestCase):
     def test_create_listing_with_none(self):
         """create_listing(None) raises NotImplementedError (no validation first)."""
         with self.assertRaises(NotImplementedError):
-            self.connector.create_listing(None)  # type: ignore[arg-type]
+            self.connector.create_listing(None)
 
     # ── update_listing ──────────────────────────────────────────────────
 
@@ -97,7 +95,7 @@ class TestCKANConnectorPushOperations(SimpleTestCase):
             title="Test Package",
         )
         with self.assertRaises(NotImplementedError):
-            self.connector.update_listing(None, listing)  # type: ignore[arg-type]
+            self.connector.update_listing(None, listing)
 
     # ── publish_resource ────────────────────────────────────────────────
 
@@ -137,7 +135,7 @@ class TestCKANConnectorPushOperations(SimpleTestCase):
             name="Test Resource",
         )
         with self.assertRaises(NotImplementedError):
-            self.connector.publish_resource(None, resource)  # type: ignore[arg-type]
+            self.connector.publish_resource(None, resource)
 
     # ── sync_push ───────────────────────────────────────────────────────
 
@@ -192,7 +190,7 @@ class TestCKANConnectorPushOperations(SimpleTestCase):
     def test_map_from_hub_asset_with_none(self):
         """map_from_hub_asset(None) raises NotImplementedError (no validation first)."""
         with self.assertRaises(NotImplementedError):
-            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_from_hub_asset(None)
 
     def test_map_from_hub_asset_with_empty_dict(self):
         """map_from_hub_asset({}) raises NotImplementedError (no validation first)."""

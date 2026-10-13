@@ -87,9 +87,12 @@ describe('RoleDashboard', () => {
   it('TENANT_ADMIN sees Pending Approvals card with count and link', () => {
     mockAR.mockReturnValue(pageResult(7) as never);
     renderWithRoles(['TENANT_ADMIN']);
+    // The testid IS the react-router <Link> (an <a>) — querySelector('a')
+    // hunted for a NESTED anchor that never exists.
     const card = screen.getByTestId('role-card-pending-approvals');
     expect(card).toHaveTextContent('7');
-    expect(card.querySelector('a')).toHaveAttribute('href', '/governance');
+    expect(card.tagName).toBe('A');
+    expect(card.getAttribute('href')).toBe('/governance');
   });
 
   it('DATA_PROVIDER sees My Draft Assets with CTA to activate', () => {
@@ -97,7 +100,8 @@ describe('RoleDashboard', () => {
     renderWithRoles(['DATA_PROVIDER']);
     const card = screen.getByTestId('role-card-my-draft-assets');
     expect(card).toHaveTextContent('3');
-    expect(card.querySelector('a')).toHaveAttribute('href', '/assets?status=DRAFT');
+    expect(card.tagName).toBe('A');
+    expect(card.getAttribute('href')).toBe('/assets?status=DRAFT');
   });
 
   it('DATA_CONSUMER sees My Orders and My Entitlements summaries', () => {

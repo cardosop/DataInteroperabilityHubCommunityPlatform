@@ -51,7 +51,7 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
             slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
         from hub.apps.users.models import User
 
         ensure_e2e_tenant_ready(self.consumer_tenant)

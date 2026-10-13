@@ -131,6 +131,7 @@ test.describe('Auth storage setup', () => {
           { headers: e2eTestHeaders(), timeout: 15_000 },
         );
         if (resetRes.ok()) {
+          // intentional: diagnostic body parse — a failed parse yields {} for the error message; the throw/assert below is the failure path
           const body = (await resetRes.json().catch(() => ({}))) as {
             cleared?: number;
           };
@@ -264,9 +265,6 @@ test.describe('Auth storage setup', () => {
     // localStorage if present (authService.ts line 263), so subsequent page
     // loads in the test project will have a valid access_token immediately
     // without needing a refresh cycle.
-    const hasAccessToken = await page.evaluate(
-      () => !!localStorage.getItem('access_token')
-    );
     // Always re-mint credentials via API login so the storageState carries a
     // FRESH access_token + a refresh_token whose family has not been rotated
     // by any other actor. The previous behavior (only injecting when

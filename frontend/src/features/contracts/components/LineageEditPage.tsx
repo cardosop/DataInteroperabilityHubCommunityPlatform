@@ -258,34 +258,68 @@ function FieldsPane({
   return (
     <div>
       <h3>{heading}</h3>
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any, react-hooks/static-components -- the
+          factory memoizes the component identity at module scope, so the
+          list's state is NOT reset across renders (the rule cannot see
+          the memoization through the lazy factory). */}
       <VirtualList items={fields as any[]} />
     </div>
   );
 }
 
+function FieldsRowRenderer({
+  index,
+  style,
+  ariaAttributes,
+  items,
+}: {
+  index: number;
+  style: React.CSSProperties;
+  ariaAttributes: Record<string, string | number>;
+  items: Array<{ qname: string; type: string }>;
+}) {
+  const f = items[index];
+  return (
+    <div {...ariaAttributes} style={style} key={f.qname}>
+      <code>{f.qname}</code> <small>({f.type})</small>
+    </div>
+  );
+}
+
+let _virtualFieldsList: ((props: {
+  items: Array<{ qname: string; type: string }>;
+}) => React.ReactElement) | null = null;
+
 function lazyVirtualList() {
   // Defer the react-window import to render time so the bundle
-  // tree-shakes it out for contracts with ≤100 fields.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-  const { FixedSizeList } = require('react-window') as { FixedSizeList: any };
-  return ({ items }: { items: Array<{ qname: string; type: string }> }) => (
-    <FixedSizeList
-      height={240}
-      itemCount={items.length}
-      itemSize={32}
-      width="100%"
-    >
-      {({ index, style }: { index: number; style: React.CSSProperties }) => {
-        const f = items[index];
-        return (
-          <div style={style} key={f.qname}>
-            <code>{f.qname}</code> <small>({f.type})</small>
-          </div>
-        );
-      }}
-    </FixedSizeList>
-  );
+  // tree-shakes it out for contracts with ≤100 fields; the component
+  // identity is memoized at MODULE scope — creating it during render
+  // resets the list's scroll/state on every render.
+  //
+  // react-window v2 API (List + rowComponent/rowCount/rowHeight/
+  // rowProps) — the v1 FixedSizeList name was REMOVED in 2.x, so the
+  // previous require returned undefined and the >100-fields surface
+  // crashed at render time (found during the task 1.9 react-window
+  // audit; the row renderer is hoisted so the List does not remount
+  // on every render).
+  if (_virtualFieldsList === null) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+    const { List } = require('react-window') as { List: any };
+    _virtualFieldsList = ({
+      items,
+    }: {
+      items: Array<{ qname: string; type: string }>;
+    }) => (
+      <List
+        style={{ height: 240, width: '100%' }}
+        rowCount={items.length}
+        rowHeight={32}
+        rowComponent={FieldsRowRenderer}
+        rowProps={{ items }}
+      />
+    );
+  }
+  return _virtualFieldsList;
 }
 
 function EdgesTable({

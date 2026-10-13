@@ -5,7 +5,7 @@ from __future__ import annotations
 from hub.apps.dpia.services.review_due import run_dpia_review_due_scan
 
 
-def _execute_dpia_review_due_job(job_obj) -> dict:
+def _execute_dpia_review_due_job(_job_obj) -> dict:
     """
     Cross-tenant periodic scan: reopen APPROVED DPIAs past next_review_due_at.
 

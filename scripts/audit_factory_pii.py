@@ -60,9 +60,7 @@ def _is_test_ip(octets: tuple) -> bool:
         return True
     if octets[0] == 172 and 16 <= octets[1] <= 31:
         return True
-    if octets[0] == 192 and octets[1] == 168:
-        return True
-    return False
+    return bool(octets[0] == 192 and octets[1] == 168)
 
 
 def _is_faker_pattern(value: str) -> bool:
@@ -71,9 +69,7 @@ def _is_faker_pattern(value: str) -> bool:
     if "@example.com" in value or "@example.org" in value or "@example.net" in value:
         return True
     # Faker names contain random-looking hex
-    if re.search(r"[a-f0-9]{6,}", value):
-        return True
-    return False
+    return bool(re.search(r"[a-f0-9]{6,}", value))
 
 
 def audit_factory_file(filepath: Path) -> list:
@@ -84,7 +80,7 @@ def audit_factory_file(filepath: Path) -> list:
     violations = []
     try:
         content = filepath.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, ValueError):
         return violations
 
     lines = content.split("\n")
@@ -115,7 +111,7 @@ def find_factory_files(root: Path) -> list:
     files = []
     for pattern in ["**/factories.py", "**/factory.py", "**/factories/*.py"]:
         files.extend(root.glob(pattern))
-    return sorted(set(f for f in files if f.is_file()))
+    return sorted({f for f in files if f.is_file()})
 
 
 def main() -> int:

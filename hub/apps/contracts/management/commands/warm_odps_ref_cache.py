@@ -73,7 +73,7 @@ class Command(BaseCommand):
             help="Number of refs to process per batch (default: 10)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         global logger
         import structlog
 
@@ -100,7 +100,7 @@ class Command(BaseCommand):
                 tenant_id=tenant_id,
             )
         except Exception as e:
-            raise CommandError(f"Failed to get frequently accessed refs: {e}")
+            raise CommandError(f"Failed to get frequently accessed refs: {e}") from e
 
         if not ref_urls:
             self.stdout.write(
@@ -137,7 +137,7 @@ class Command(BaseCommand):
         try:
             result = warm_ref_cache(ref_urls=ref_urls, tenant_id=tenant_id, batch_size=batch_size)
         except Exception as e:
-            raise CommandError(f"Failed to warm cache: {e}")
+            raise CommandError(f"Failed to warm cache: {e}") from e
 
         # Report results
         self.stdout.write(self.style.SUCCESS("\nCache warming complete:"))

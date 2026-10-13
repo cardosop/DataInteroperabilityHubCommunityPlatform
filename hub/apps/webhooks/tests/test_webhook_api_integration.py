@@ -102,11 +102,13 @@ class WebhookAPIIntegrationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.data or {}
         if isinstance(data, dict):
-            self.assertIn("name", data,
-                          f"Expected 'name' in error response keys, got: {list(data.keys())}")
+            self.assertIn(
+                "name", data, f"Expected 'name' in error response keys, got: {list(data.keys())}"
+            )
         else:
-            self.assertIn("name", str(data).lower(),
-                          f"Expected 'name' in error response body, got: {data}")
+            self.assertIn(
+                "name", str(data).lower(), f"Expected 'name' in error response body, got: {data}"
+            )
         self.assertEqual(Webhook.objects.filter(tenant=self.tenant).count(), 0)
 
     def test_update_webhook_via_api_failure_not_found(self):
@@ -154,11 +156,13 @@ class WebhookAPIIntegrationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.data or {}
         if isinstance(data, dict):
-            self.assertIn("url", data,
-                          f"Expected 'url' in error response, got keys: {list(data.keys())}")
+            self.assertIn(
+                "url", data, f"Expected 'url' in error response, got keys: {list(data.keys())}"
+            )
         else:
-            self.assertIn("url", str(data).lower(),
-                          f"Expected 'url' in error response body, got: {data}")
+            self.assertIn(
+                "url", str(data).lower(), f"Expected 'url' in error response body, got: {data}"
+            )
 
     def test_update_webhook_via_api(self):
         """Test updating webhook via API endpoint (Phase 12.2.2)"""
@@ -216,8 +220,7 @@ class WebhookAPIIntegrationTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.data or {}
-        self.assertIn("name", data,
-                      f"Expected 'name' field error in response, got: {data}")
+        self.assertIn("name", data, f"Expected 'name' field error in response, got: {data}")
 
     def test_create_webhook_invalid_url_returns_400(self):
         """Error handling: invalid URL returns 400."""
@@ -234,11 +237,13 @@ class WebhookAPIIntegrationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.data or {}
         if isinstance(data, dict):
-            self.assertIn("url", data,
-                          f"Expected 'url' in error response, got keys: {list(data.keys())}")
+            self.assertIn(
+                "url", data, f"Expected 'url' in error response, got keys: {list(data.keys())}"
+            )
         else:
-            self.assertIn("url", str(data).lower(),
-                          f"Expected 'url' in error response body, got: {data}")
+            self.assertIn(
+                "url", str(data).lower(), f"Expected 'url' in error response body, got: {data}"
+            )
 
     def test_retrieve_webhook_not_found_returns_404(self):
         """Error handling: retrieve non-existent webhook returns 404."""
@@ -248,8 +253,7 @@ class WebhookAPIIntegrationTest(TestCase):
         response = self.client.get(f"/api/v1/webhooks/webhooks/{fake_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         data = response.data or {}
-        self.assertIn("error", data,
-                      f"Expected 'error' key in 404 response, got: {data}")
+        self.assertIn("error", data, f"Expected 'error' key in 404 response, got: {data}")
 
     def test_create_webhook_response_structure_tdd(self):
         """TDD: create response contains required keys."""
@@ -285,9 +289,7 @@ class WebhookAPIIntegrationTest(TestCase):
             payload={"event_type": "asset.created", "data": {}},
             signature="test",
         )
-        response = self.client.get(
-            f"/api/v1/webhooks/webhooks/{webhook.id}/deliveries/"
-        )
+        response = self.client.get(f"/api/v1/webhooks/webhooks/{webhook.id}/deliveries/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response should be a paginated list
         self.assertIn("results", response.data)
@@ -303,9 +305,7 @@ class WebhookAPIIntegrationTest(TestCase):
             event_types=[WebhookEventType.ASSET_CREATED],
             created_by=self.user,
         )
-        response = self.client.post(
-            f"/api/v1/webhooks/webhooks/{webhook.id}/retry/"
-        )
+        response = self.client.post(f"/api/v1/webhooks/webhooks/{webhook.id}/retry/")
         # 200 means retry was queued or webhook has no failed deliveries
         self.assertIn(
             response.status_code,
@@ -317,7 +317,5 @@ class WebhookAPIIntegrationTest(TestCase):
         import uuid
 
         fake_id = uuid.uuid4()
-        response = self.client.post(
-            f"/api/v1/webhooks/webhooks/{fake_id}/retry/"
-        )
+        response = self.client.post(f"/api/v1/webhooks/webhooks/{fake_id}/retry/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

@@ -54,7 +54,7 @@ class Command(BaseCommand):
             help="Do not persist a Job observability row (smoke tests).",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         skip_job = bool(options.get("skip_job_row", False))
 
         resource_key = uuid.uuid4()

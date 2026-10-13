@@ -54,7 +54,7 @@ def create(
             click.echo(f"Risk Level: {data.get('risk_level')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dpia.command("list")
@@ -92,7 +92,7 @@ def list_assessments(filter_status: str | None, page: int, page_size: int, outpu
                 )
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dpia.command("get")
@@ -118,7 +118,7 @@ def get(dpia_id: str, output_format: str):
             click.echo(f"Description: {data.get('description', '')[:200]}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dpia.command("submit")
@@ -140,7 +140,7 @@ def submit(dpia_id: str, output_format: str):
             click.echo(f"DPIA submitted: {data.get('status')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dpia.command("review-queue")
@@ -168,7 +168,7 @@ def review_queue(page: int, page_size: int, output_format: str):
                 click.echo(f"  {r.get('id', '?')[:8]}… {r.get('title', '?')[:50]}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dpia.command("trigger-review")
@@ -192,7 +192,7 @@ def trigger_review(dpia_id: str, notes: str, assigned_to: str | None, output_for
             click.echo(f"Review triggered: {data.get('review_status', 'PENDING')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dpia.command("wizard")
@@ -234,4 +234,4 @@ def wizard(title: str, description: str, data_categories: str, risk_level: str):
         click.echo(f"   Submit when ready: datahub dpia submit --dpia-id {data.get('id')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e

@@ -1,0 +1,27 @@
+# 285.8.1.2 — Mutual TLS middleware for internal service-to-service traffic.
+# Applied to all internal routes. External routes (public API) are excluded.
+http:
+  middlewares:
+    internal-mtls:
+      plugin:
+        mtls:
+          # Verify client certificates for internal service communication
+          verifyClientCert: true
+          # CA certificate for verifying client certs (mounted via K8s secret)
+          caCert: "/etc/traefik/certs/ca.crt"
+          # Reject requests without valid client certificates
+          failOnMissingCert: true
+          # Log certificate subject for audit
+          logCertSubject: true
+
+  routers:
+    # Internal-only router with mTLS enforced
+    internal-api:
+      rule: "Host(`apimeshant-internal.example.com`)"
+      middlewares:
+        - internal-mtls
+      tls:
+        # Server certificate for Traefik
+        certResolver: letsencrypt
+        domains:
+          - main: "*meshant-internal.example.com"

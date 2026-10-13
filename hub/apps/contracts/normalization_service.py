@@ -14,6 +14,21 @@ from hub.apps.core.events.service_publishers import NormalizationEventPublisher
 from hub.apps.core.services.base import BaseService, ValidationError
 
 
+def _raise_validation_error(
+    message: str,
+    code: str = "VALIDATION_ERROR",
+    details: dict[str, Any] | None = None,
+    http_status: int = 400,
+) -> None:
+    """
+    Raise a ValidationError with the given details.
+
+    Helper indirection so call sites inside try blocks do not couple
+    the raise to the block's own handlers.
+    """
+    raise ValidationError(message=message, code=code, details=details, http_status=http_status)
+
+
 class NormalizationService(BaseService, NormalizationEventPublisher):
     """
     Service for contract normalization operations.
@@ -178,7 +193,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                             error=str(exc),
                             message="Failed to publish event (non-critical)",
                         )
-                raise ValidationError(
+                _raise_validation_error(
                     message="Contract YAML failed to parse",
                     details={"code": "INVALID_YAML", "errors": norm_errors},
                 )
@@ -269,7 +284,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 # structural-floor check above (pre-floor branch);
                 # anything that reaches here failed for a non-parse,
                 # non-structureless reason and is the generic case.
-                raise ValidationError(
+                _raise_validation_error(
                     message="Contract normalization failed",
                     details={"code": "NORMALIZATION_FAILED", "errors": norm_errors},
                 )
@@ -306,7 +321,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                                 error=str(exc),
                                 message="Failed to publish normalization.failed event (non-critical)",
                             )
-                    raise ValidationError(
+                    _raise_validation_error(
                         message="Contract validation failed",
                         code="VALIDATION_ERROR",
                         details={
@@ -365,15 +380,6 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                         message="Failed to publish normalization.completed event (non-critical)",
                     )
 
-            return (
-                hub_contract,
-                detected_spec_type,
-                detected_spec_version,
-                norm_status,
-                norm_errors,
-                norm_warnings,
-            )
-
         except ValidationError:
             # Re-raise validation errors (events already published above)
             raise
@@ -402,6 +408,15 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                         message="Failed to publish normalization.failed event (non-critical)",
                     )
             raise
+        else:
+            return (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            )
 
     def validate_hubcontract(self, hub_contract: dict[str, Any]) -> tuple[bool, list[str]]:
         """

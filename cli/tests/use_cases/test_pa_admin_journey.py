@@ -25,6 +25,17 @@ pytestmark = [
 DATAHUB_BASE_URL = os.environ.get("DATAHUB_BASE_URL", "")
 DATAHUB_CLI = os.environ.get("DATAHUB_CLI", "datahub")
 API_TOKEN = os.environ.get("DATAHUB_API_TOKEN", "")
+ROLE = "platform_admin"
+
+
+def _journey_token(role: str) -> str:
+    """Provision the journey persona's token (see the cpo/ta journeys)."""
+    try:
+        from tests._persona_provisioning import provision_persona
+
+        return provision_persona(role).api_key
+    except Exception:
+        return API_TOKEN
 
 
 def _backend_available():
@@ -34,13 +45,14 @@ def _backend_available():
 
     try:
         req = urllib.request.Request(
-            f"{DATAHUB_BASE_URL.rstrip('/')}/health/",
+            f"{DATAHUB_BASE_URL.rstrip('/')}/health/business-rules/",
             headers={"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {},
         )
         resp = urllib.request.urlopen(req, timeout=5)
-        return resp.status == 200
     except Exception:
         return False
+    else:
+        return resp.status == 200
 
 
 BACKEND_AVAILABLE = _backend_available()
@@ -51,10 +63,11 @@ requires_backend = pytest.mark.skipif(
 
 
 def _cli(*args):
-    cmd = [DATAHUB_CLI] + list(args) + ["--format", "json"]
+    cmd = [DATAHUB_CLI, *list(args), "--format", "json"]
     env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
-    if API_TOKEN:
-        env["DATAHUB_API_TOKEN"] = API_TOKEN
+    _token = _journey_token(ROLE)
+    if _token:
+        env["DATAHUB_API_TOKEN"] = _token
     result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60, env=env)
     if result.returncode != 0:
         pytest.skip(f"CLI command failed (rc={result.returncode}): {result.stderr[:200]}")

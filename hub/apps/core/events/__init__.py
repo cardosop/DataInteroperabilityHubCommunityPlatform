@@ -6,9 +6,13 @@ Provides event-driven communication infrastructure with Redis Pub/Sub and Postgr
 
 from .bus import EventBus, EventBusError, EventPublishError, EventSubscribeError, get_event_bus
 from .deduplication import (
+    CONSUMER_DEDUP_NAMESPACE,
     DEDUPLICATION_KEY_PREFIX,
+    DEFAULT_DEDUP_NAMESPACE,
     DEFAULT_DEDUPLICATION_TTL,
+    PUBLISHER_DEDUP_NAMESPACE,
     check_event_duplicate,
+    clear_all_dedup_namespaces,
     generate_deduplication_key,
     is_event_duplicate,
     store_event_id,
@@ -20,9 +24,9 @@ from .event_types import (
     CURRENT_EVENT_VERSION,
     EVENT_TYPE_SCHEMAS,
     get_all_event_types,
-    get_event_schema,
     validate_event_data,
 )
+from .listener import EventBusListener, start_event_listener, stop_event_listener
 from .models import DeadLetterQueue, Event, EventSubscription
 from .publisher import EventPublisher, event_publisher, publish_event
 from .schema import BASE_EVENT_SCHEMA, EventSchema, get_event_schema
@@ -36,33 +40,34 @@ from .subscribers import (
 from .versioning import EventSchemaVersionManager, get_version_manager
 
 __all__ = [
-    # Bus
-    "EventBus",
-    "get_event_bus",
-    "EventBusError",
-    "EventPublishError",
-    "EventSubscribeError",
-    # Schema
-    "EventSchema",
     "BASE_EVENT_SCHEMA",
-    "get_event_schema",
-    # Publisher
-    "EventPublisher",
-    "publish_event",
-    "event_publisher",
-    # Subscriber
-    "EventSubscriber",
-    "event_subscriber",
-    # Models
-    "Event",
-    "DeadLetterQueue",
-    "EventSubscription",
-    # Deduplication
-    "generate_deduplication_key",
-    "check_event_duplicate",
-    "store_event_id",
-    "is_event_duplicate",
-    "get_deduplication_redis_client",
-    "DEFAULT_DEDUPLICATION_TTL",
+    "CONSUMER_DEDUP_NAMESPACE",
     "DEDUPLICATION_KEY_PREFIX",
+    "DEFAULT_DEDUPLICATION_TTL",
+    "DEFAULT_DEDUP_NAMESPACE",
+    "PUBLISHER_DEDUP_NAMESPACE",
+    "DeadLetterQueue",
+    "Event",
+    "EventBus",
+    "EventBusError",
+    "EventBusListener",
+    "EventPublishError",
+    "EventPublisher",
+    "EventSchema",
+    "EventSubscribeError",
+    "EventSubscriber",
+    "EventSubscription",
+    "check_event_duplicate",
+    "clear_all_dedup_namespaces",
+    "event_publisher",
+    "event_subscriber",
+    "generate_deduplication_key",
+    "get_deduplication_redis_client",
+    "get_event_bus",
+    "get_event_schema",
+    "is_event_duplicate",
+    "publish_event",
+    "start_event_listener",
+    "stop_event_listener",
+    "store_event_id",
 ]

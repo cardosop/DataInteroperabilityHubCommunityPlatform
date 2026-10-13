@@ -48,10 +48,7 @@ class ODPSNormalizerV2_X(ODPSNormalizerBase):
             return True
 
         # Also support "2.x" as a generic version identifier
-        if spec_version == "2.x":
-            return True
-
-        return False
+        return spec_version == "2.x"
 
     def _map_version_specific_fields(
         self,

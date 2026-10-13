@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="formdraft",
             constraint=models.UniqueConstraint(
-                fields=("user", "tenant", "resource_type", "draft_key"),
+                fields=["user", "tenant", "resource_type", "draft_key"],
                 name="unique_form_draft_per_user_tenant_resource_key",
             ),
         ),

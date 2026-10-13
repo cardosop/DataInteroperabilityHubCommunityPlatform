@@ -16,10 +16,9 @@ import pytest
 
 # Try to import SDK
 try:
-    from datahub_interoperability import DataHubClient, DataHubClientConfig
+    from datahub_interoperability import DataHubClient
     from datahub_interoperability.errors import (
         NotFoundError,
-        ValidationError,
     )
 
     SDK_AVAILABLE = True
@@ -372,18 +371,22 @@ class TestContractsODPSLinking(SDKTestBase):
     @pytest.mark.asyncio
     async def test_link_odps_to_odcs_validation_errors(self):
         """Test validation errors when linking ODPS to ODCS"""
+        from datahub_interoperability.errors import ODPSValidationError
+
         config = await self.get_sdk_config()
         client = DataHubClient(config)
         contracts_api = client.contracts
 
         # Test: Neither odps_contract_id nor odps_raw provided
-        with pytest.raises(ValueError, match="Must provide either"):
-            await contracts_api.link_odps_to_odcs(odcs_contract_id="invalid-id")
+        # (odcs_contract_id must be a valid UUID for the SDK to reach
+        # the mode-selection validation)
+        with pytest.raises(ODPSValidationError, match="Must provide either"):
+            await contracts_api.link_odps_to_odcs(odcs_contract_id=str(uuid.uuid4()))
 
         # Test: odps_raw provided without odps_format
-        with pytest.raises(ValueError, match="odps_format is required"):
+        with pytest.raises(ODPSValidationError, match="odps_format is required"):
             await contracts_api.link_odps_to_odcs(
-                odcs_contract_id="invalid-id",
+                odcs_contract_id=str(uuid.uuid4()),
                 odps_raw='{"schema": "https://opendataproducts.org/schema/v4.1"}',
             )
 
@@ -424,7 +427,7 @@ class TestContractsODPSLinking(SDKTestBase):
         # Accepting both NotFoundError (correct) and ServerError (current backend behavior)
         from datahub_interoperability.errors import ServerError
 
-        with pytest.raises((NotFoundError, ServerError), match="not found|Not Found"):
+        with pytest.raises((NotFoundError, ServerError), match=r"not found|Not Found"):
             await contracts_api.link_odps_to_odcs(
                 odcs_contract_id=odcs_contract_id, odps_contract_id=str(uuid.uuid4())
             )

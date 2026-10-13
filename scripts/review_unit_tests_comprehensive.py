@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 
 @dataclass
@@ -55,7 +56,7 @@ class TestReviewer:
     """Comprehensive test reviewer"""
 
     # Mock/stub patterns to detect
-    MOCK_PATTERNS = [
+    MOCK_PATTERNS: ClassVar[list[str]] = [
         r"@patch\s*\(",
         r"Mock\s*\(",
         r"mock\s*\.",
@@ -67,14 +68,14 @@ class TestReviewer:
         r"@pytest\.mock",
     ]
 
-    STUB_PATTERNS = [
+    STUB_PATTERNS: ClassVar[list[str]] = [
         r"stub\s*\(",
         r"Stub\s*\(",
         r"\.stub\s*\(",
     ]
 
     # TDD indicators
-    TDD_PATTERNS = [
+    TDD_PATTERNS: ClassVar[list[str]] = [
         r"def test_.*\(self\):",
         r"def test_.*\(\):",
         r"@pytest\.mark\..*",
@@ -82,7 +83,7 @@ class TestReviewer:
     ]
 
     # Best practices violations
-    VIOLATION_PATTERNS = [
+    VIOLATION_PATTERNS: ClassVar[list[str]] = [
         r"# TODO.*mock",
         r"# FIXME.*mock",
         r"skip.*flaky",
@@ -454,7 +455,7 @@ class TestReviewer:
 
         return expected_files_map.get(app_name, [])
 
-    def review_test_file(self, file_path: str, app_name: str) -> TestFileReview:
+    def review_test_file(self, file_path: str, _app_name: str) -> TestFileReview:
         """Review a single test file"""
         path = Path(file_path)
         exists = path.exists()
@@ -558,7 +559,7 @@ class TestReviewer:
 
         return stubs
 
-    def _is_justified_mock(self, line: str, content: str, file_path: str) -> bool:
+    def _is_justified_mock(self, line: str, content: str, _file_path: str) -> bool:
         """Check if mock is justified (external process boundary)"""
         # Middleware get_response mock is acceptable
         if "get_response" in line.lower() and "middleware" in content.lower():
@@ -664,7 +665,7 @@ class TestReviewer:
 
         return has_tests and has_assertions
 
-    def _check_best_practices(self, content: str, file_path: str) -> list[str]:
+    def _check_best_practices(self, content: str, _file_path: str) -> list[str]:
         """Check for best practices violations"""
         issues = []
 
@@ -748,7 +749,7 @@ class TestReviewer:
         return gaps
 
     def _create_update_plan(
-        self, test_files: dict[str, TestFileReview], gaps: list[str], app_name: str
+        self, _test_files: dict[str, TestFileReview], gaps: list[str], _app_name: str
     ) -> list[str]:
         """Create update plan for an app"""
         plan = []

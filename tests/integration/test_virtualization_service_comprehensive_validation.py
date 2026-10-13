@@ -66,6 +66,9 @@ class VirtualDatasetManagementTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from hub.apps.testing.plan_seeding import seed_default_plans_committed
+
+        seed_default_plans_committed(self)
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Virtualization Test Tenant {uuid.uuid4().hex[:8]}",
@@ -433,6 +436,9 @@ class FederatedQueryExecutionTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from hub.apps.testing.plan_seeding import seed_default_plans_committed
+
+        seed_default_plans_committed(self)
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Federated Query Test Tenant {uuid.uuid4().hex[:8]}",
@@ -787,6 +793,9 @@ class FederationTopologyTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from hub.apps.testing.plan_seeding import seed_default_plans_committed
+
+        seed_default_plans_committed(self)
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Topology Test Tenant {uuid.uuid4().hex[:8]}",
@@ -1097,6 +1106,9 @@ class VirtualizationPerformanceTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from hub.apps.testing.plan_seeding import seed_default_plans_committed
+
+        seed_default_plans_committed(self)
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
@@ -1209,8 +1221,9 @@ class VirtualizationPerformanceTest(TestCase):
         # For sync mode, execution should complete quickly.
         # Note: Actual performance depends on source availability.
         # This test verifies the execution flow, not actual source performance.
-        self.assertLess(elapsed, 20.0,
-                        f"Query execution flow should complete within 20s, took {elapsed:.1f}s")
+        self.assertLess(
+            elapsed, 20.0, f"Query execution flow should complete within 20s, took {elapsed:.1f}s"
+        )
         if execution.status == QueryExecutionStatus.COMPLETED:
             # Check metrics
             metrics = execution.metrics or {}
@@ -1458,6 +1471,9 @@ class VirtualizationODPSIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        from hub.apps.testing.plan_seeding import seed_default_plans_committed
+
+        seed_default_plans_committed(self)
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"ODPS Integration Test Tenant {uuid.uuid4().hex[:8]}",

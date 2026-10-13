@@ -68,7 +68,7 @@ try:
         "Outbound webhook deliveries rate-limited at the tenant per-minute budget.",
         ["tenant_id", "webhook_id", "event_type"],
     )
-except Exception:  # pragma: no cover — defensive fallback
+except Exception:
 
     class _CounterStub:
         def labels(self, **_: object) -> _CounterStub:
@@ -158,7 +158,7 @@ def check_outbound_rate_limit(tenant: Tenant) -> tuple[bool, int, str]:
         # callers see distinct values via Redis's serialised execution
         # (REQ-WH-RL-002 Scenario 4).
         observed_count = int(results[0])
-    except Exception as exc:  # pragma: no cover — env-dependent
+    except Exception as exc:
         # Fail-open: log + allow. Blocking all outbound webhooks
         # platform-wide on a Redis blip is worse than transient
         # over-burst during the outage.
@@ -192,7 +192,7 @@ def emit_rate_limit_block_metric(
             webhook_id=webhook_id,
             event_type=event_type,
         ).inc()
-    except Exception as exc:  # pragma: no cover — metric backend issues
+    except Exception as exc:
         logger.warning(
             "webhook_rate_limit_metric_emit_failed",
             tenant_id=tenant_id,

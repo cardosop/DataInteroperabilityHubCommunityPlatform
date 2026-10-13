@@ -95,7 +95,7 @@ def parse_comprehensive_log(log_file: Path) -> dict[str, Any]:
             # Parse final summary
             pass
 
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         print(f"Error parsing comprehensive log: {e}")
 
     return results
@@ -133,7 +133,7 @@ def parse_unit_tests(log_files: list[Path]) -> dict[str, Any]:
             if error_match:
                 errors += int(error_match.group(1))
 
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             pass
 
     return {
@@ -179,7 +179,7 @@ def parse_test_log(log_file: Path) -> dict[str, Any]:
 
         passed = total_tests - failed - errors - skipped
 
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         print(f"Error parsing test log {log_file}: {e}")
 
     return {
@@ -214,7 +214,7 @@ def generate_execution_report(results: dict[str, Any]) -> str:
     total_errors = 0
     total_skipped = 0
 
-    for test_type, data in results.get("results", {}).items():
+    for _test_type, data in results.get("results", {}).items():
         total_tests += data.get("total_tests", 0)
         total_passed += data.get("passed", 0)
         total_failed += data.get("failed", 0)
@@ -290,7 +290,7 @@ def generate_coverage_report() -> str:
             report.append(f"- **Coverage**: {percent:.2f}%")
             report.append(f"- **Lines Covered**: {lines}/{total_lines}")
             report.append("")
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             report.append(f"Error reading coverage file: {e}")
             report.append("")
 

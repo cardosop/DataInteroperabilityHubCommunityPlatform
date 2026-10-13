@@ -227,11 +227,11 @@ class UUIDValidator(BaseModel):
             try:
                 return UUID(value)
             except ValueError:
-                raise ValueError("Invalid UUID format")
+                raise ValueError("Invalid UUID format") from None
         elif isinstance(value, UUID):
             return value
         else:
-            raise ValueError("UUID must be string or UUID instance")
+            raise TypeError("UUID must be string or UUID instance")
 
 
 class IdempotencyKeyValidator(BaseModel):

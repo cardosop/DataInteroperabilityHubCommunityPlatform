@@ -5,12 +5,16 @@
  * Reference: E2E_FULL_COVERAGE_PLAN.md
  */
 
-import '../journeys/aud/JOURNEY-AUD-001.spec';
-import '../journeys/aud/JOURNEY-AUD-002.spec';
-import '../journeys/aud/JOURNEY-AUD-003.spec';
-import '../journeys/aud/JOURNEY-AUD-004.spec';
-import '../journeys/aud/JOURNEY-AUD-005.spec';
-import '../journeys/aud/JOURNEY-AUD-006.spec';
+// Core-only mode (E2E_CORE_ONLY=1): the imported journey specs are FULL-mode
+// journeys; the core subset runs the persona's own RBAC tests below instead.
+if (process.env.E2E_CORE_ONLY !== '1') {
+  await import('../journeys/aud/JOURNEY-AUD-001.spec');
+  await import('../journeys/aud/JOURNEY-AUD-002.spec');
+  await import('../journeys/aud/JOURNEY-AUD-003.spec');
+  await import('../journeys/aud/JOURNEY-AUD-004.spec');
+  await import('../journeys/aud/JOURNEY-AUD-005.spec');
+  await import('../journeys/aud/JOURNEY-AUD-006.spec');
+}
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getAuditorUser } from '../fixtures/auth';

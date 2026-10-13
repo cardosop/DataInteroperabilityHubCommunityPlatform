@@ -1,10 +1,18 @@
 """
 Unit tests for Processor Agreements CLI commands.
 
-Tests: processors (list, create, get, update, delete), agreements (list, create, sign, revoke).
+Tests: processors (list, create, get, delete), agreements (list, create, delete),
+links (create).
+
+Backend mount (hub/apps/api/urls.py): /api/v1/processor-agreements/.
 """
 
 from datahub_cli.main import cli
+from tests.fixtures.test_data import fresh_id
+
+# Unique per test process (and per xdist worker) so a static literal
+# can never collide across parallel runs — Phase 216.X.2.
+ASSET_ID = fresh_id("asset")
 
 
 class TestProcessorList:
@@ -28,7 +36,7 @@ class TestProcessorList:
         assert result.exit_code == 0
         assert "AWS" in result.output
         mock_api_client.get.assert_called_once_with(
-            "governance/processors/", params={"page": 1, "page_size": 25}
+            "processor-agreements/processors/", params={"page": 1, "page_size": 25}
         )
 
     def test_list_processors_empty(self, runner, mock_api_client):
@@ -86,6 +94,7 @@ class TestProcessorGet:
 
         assert result.exit_code == 0
         assert "AWS" in result.output
+        mock_api_client.get.assert_called_once_with("processor-agreements/processors/proc-1/")
 
 
 class TestAgreementList:
@@ -108,7 +117,11 @@ class TestAgreementCreate:
 
     def test_create_agreement(self, runner, mock_api_client):
         """Test creating an agreement"""
-        mock_api_client.post.return_value = {"id": "agr-new", "status": "DRAFT"}
+        mock_api_client.post.return_value = {
+            "id": "agr-new",
+            "agreement_type": "DPA",
+            "status": "ACTIVE",
+        }
 
         result = runner.invoke(
             cli,
@@ -118,41 +131,72 @@ class TestAgreementCreate:
                 "create",
                 "--processor-id",
                 "proc-1",
-                "--transfer-purpose",
-                "Cloud hosting",
-                "--data-categories",
-                "PII",
+                "--type",
+                "DPA",
+                "--document-uri",
+                "https://example.com/dpa.pdf",
+                "--document-hash",
+                "a" * 64,
+                "--effective-from",
+                "2026-01-01",
             ],
         )
 
         assert result.exit_code == 0
-        assert "DRAFT" in result.output
+        assert "agr-new" in result.output
+        assert "DPA" in result.output
+        mock_api_client.post.assert_called_once_with(
+            "processor-agreements/processor-agreements/",
+            json_data={
+                "processor": "proc-1",
+                "agreement_type": "DPA",
+                "document_uri": "https://example.com/dpa.pdf",
+                "document_hash": "a" * 64,
+                "effective_from": "2026-01-01",
+            },
+        )
 
 
-class TestAgreementSign:
-    """Test agreements sign command"""
+class TestAgreementDelete:
+    """Test agreements delete command"""
 
-    def test_sign_agreement(self, runner, mock_api_client):
-        """Test signing an agreement"""
-        mock_api_client.post.return_value = {
-            "status": "SIGNED",
-            "signed_at": "2026-01-01T00:00:00Z",
-        }
-
-        result = runner.invoke(cli, ["processor-agreements", "agreements", "sign", "agr-1"])
-
-        assert result.exit_code == 0
-        assert "SIGNED" in result.output
-
-
-class TestAgreementRevoke:
-    """Test agreements revoke command"""
-
-    def test_revoke_agreement(self, runner, mock_api_client):
-        """Test revoking an agreement"""
-        mock_api_client.post.return_value = {"status": "REVOKED"}
-
-        result = runner.invoke(cli, ["processor-agreements", "agreements", "revoke", "agr-1"])
+    def test_delete_agreement(self, runner, mock_api_client):
+        """Test deleting an agreement"""
+        result = runner.invoke(
+            cli,
+            ["processor-agreements", "agreements", "delete", "agr-1", "--yes"],
+        )
 
         assert result.exit_code == 0
-        assert "REVOKED" in result.output
+        assert "Deleted agreement: agr-1" in result.output
+        mock_api_client.delete.assert_called_once_with(
+            "processor-agreements/processor-agreements/agr-1/"
+        )
+
+
+class TestLinkCreate:
+    """Test asset-processor links create command"""
+
+    def test_create_link(self, runner, mock_api_client):
+        """Test linking an asset to a processor"""
+        mock_api_client.post.return_value = {"id": "link-1"}
+
+        result = runner.invoke(
+            cli,
+            [
+                "processor-agreements",
+                "links",
+                "create",
+                "--asset-id",
+                ASSET_ID,
+                "--processor-id",
+                "proc-1",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "link-1" in result.output
+        mock_api_client.post.assert_called_once_with(
+            "processor-agreements/asset-processor-links/",
+            json_data={"asset": ASSET_ID, "processor": "proc-1"},
+        )

@@ -26,7 +26,7 @@ test.describe('A11y axe coverage — RopaListPage @a11y @ropa', () => {
   });
 
   test('RoPA list page has no critical a11y violations', async ({ page }) => {
-    await page.goto('/governance/ropa', { waitUntil: 'domcontentloaded' });
+    await page.goto('/settings/ropa', { waitUntil: 'domcontentloaded' });
     await assertNoA11yViolations(page);
   });
 });

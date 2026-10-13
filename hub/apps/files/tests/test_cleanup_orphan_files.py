@@ -17,7 +17,6 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from hub.apps.api.middleware.idempotency_utils import get_redis_client
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.datasets.models import Dataset

@@ -350,7 +350,7 @@ class Command(BaseCommand):
                     "residue_count": residue_count,
                 },
             )
-        except Exception as exc:  # pragma: no cover — best-effort
+        except Exception as exc:
             self.stdout.write(
                 self.style.WARNING(
                     f"  [warn] failed to emit escalation audit row "

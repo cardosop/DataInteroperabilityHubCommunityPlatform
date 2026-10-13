@@ -83,7 +83,4 @@ def is_password_reused(
     recent_hashes = PasswordHistory.objects.filter(user=user).values_list(
         "password_hash", flat=True
     )[:window]
-    for stored_hash in recent_hashes:
-        if check_password(plaintext, stored_hash):
-            return True
-    return False
+    return any(check_password(plaintext, stored_hash) for stored_hash in recent_hashes)

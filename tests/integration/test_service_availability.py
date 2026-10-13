@@ -39,8 +39,11 @@ class ServiceAvailabilityTests(TestCase):
         if not is_available:
             self.assertIsNotNone(error_msg)
             self.assertIsInstance(error_msg, str)
-            self.assertGreater(len(error_msg.strip()), 0,
-                               "Error message should contain diagnostic info when service is unavailable")
+            self.assertGreater(
+                len(error_msg.strip()),
+                0,
+                "Error message should contain diagnostic info when service is unavailable",
+            )
 
     def test_check_compliance_service_availability(self):
         """Test checking compliance service availability"""
@@ -57,8 +60,11 @@ class ServiceAvailabilityTests(TestCase):
         if not is_available:
             self.assertIsNotNone(error_msg)
             self.assertIsInstance(error_msg, str)
-            self.assertGreater(len(error_msg.strip()), 0,
-                               "Error message should contain diagnostic info when service is unavailable")
+            self.assertGreater(
+                len(error_msg.strip()),
+                0,
+                "Error message should contain diagnostic info when service is unavailable",
+            )
 
     def test_check_datacontract_service_availability(self):
         """Test checking DataContract service availability"""
@@ -77,8 +83,11 @@ class ServiceAvailabilityTests(TestCase):
         if not is_available:
             self.assertIsNotNone(error_msg)
             self.assertIsInstance(error_msg, str)
-            self.assertGreater(len(error_msg.strip()), 0,
-                               "Error message should contain diagnostic info when service is unavailable")
+            self.assertGreater(
+                len(error_msg.strip()),
+                0,
+                "Error message should contain diagnostic info when service is unavailable",
+            )
 
     def test_check_semantic_service_availability(self):
         """Test checking semantic service availability"""
@@ -95,8 +104,11 @@ class ServiceAvailabilityTests(TestCase):
         if not is_available:
             self.assertIsNotNone(error_msg)
             self.assertIsInstance(error_msg, str)
-            self.assertGreater(len(error_msg.strip()), 0,
-                               "Error message should contain diagnostic info when service is unavailable")
+            self.assertGreater(
+                len(error_msg.strip()),
+                0,
+                "Error message should contain diagnostic info when service is unavailable",
+            )
 
     def test_check_all_services(self):
         """Test checking all services at once"""
@@ -138,8 +150,9 @@ class ServiceAvailabilityTests(TestCase):
         # Verify results were generated
         self.assertGreater(len(results), 0)
         # Verify log output was produced
-        self.assertGreater(len(cm.output), 0,
-                           "log_service_status_summary should produce log output")
+        self.assertGreater(
+            len(cm.output), 0, "log_service_status_summary should produce log output"
+        )
 
     def test_service_checker_handles_timeout(self):
         """Test that service checker handles timeouts gracefully"""

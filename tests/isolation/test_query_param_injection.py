@@ -102,5 +102,5 @@ class TestQueryParamInjection:
         results = resp.data.get("results", resp.data)
         ids = {str(r["id"]) for r in results} if isinstance(results, list) else set()
         # Must not contain any tenant A asset IDs
-        a_assets = set(str(a.id) for a in Asset.objects.filter(tenant=tenant_a))
+        a_assets = {str(a.id) for a in Asset.objects.filter(tenant=tenant_a)}
         assert ids.isdisjoint(a_assets), "Cross-tenant leak via query param"

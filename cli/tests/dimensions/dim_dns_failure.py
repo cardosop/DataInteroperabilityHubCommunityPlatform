@@ -32,9 +32,10 @@ def test_dns_error_message_contains_hostname():
         pytest.fail("Expected ConnectionError")
     except requests.exceptions.ConnectionError as exc:
         msg = str(exc).lower()
-        assert "unresolvable-host-meshant-test" in msg or "name" in msg or "resolve" in msg, (
-            f"DNS error message does not mention the hostname or resolution: {str(exc)[:200]}"
-        )
+        if not ("unresolvable-host-meshant-test" in msg or "name" in msg or "resolve" in msg):
+            pytest.fail(
+                f"DNS error message does not mention the hostname or resolution: {str(exc)[:200]}"
+            )
 
 
 def test_dns_failure_does_not_hang():

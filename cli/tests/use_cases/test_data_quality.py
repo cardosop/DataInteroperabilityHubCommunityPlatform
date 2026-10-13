@@ -9,7 +9,12 @@ import json
 
 import pytest
 from datahub_cli.main import cli
-from tests.use_cases.conftest import unique_key
+from tests.use_cases.conftest import (
+    extract_id,
+    register_asset_cleanup,
+    register_file_cleanup,
+    unique_key,
+)
 
 pytestmark = pytest.mark.mvp
 
@@ -17,7 +22,7 @@ pytestmark = pytest.mark.mvp
 class TestDQCheckExecution:
     """E2E tests for DQ check execution"""
 
-    def test_run_dq_check_on_asset(self, runner, authenticated_config):
+    def test_run_dq_check_on_asset(self, runner, authenticated_config, cleanup_registry):
         """Test running DQ check on an asset.
 
         The DQ run creation endpoint is local (creates a DB record and
@@ -31,6 +36,7 @@ class TestDQCheckExecution:
         )
 
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
         if "ID:" in asset_result.output:
             asset_id = None
             for line in asset_result.output.split("\n"):
@@ -67,7 +73,7 @@ class TestDQCheckExecution:
         assert dq_result.exit_code == 1
         assert "not found" in dq_result.output.lower() or "failed" in dq_result.output.lower()
 
-    def test_run_dq_check_with_custom_profile(self, runner, authenticated_config):
+    def test_run_dq_check_with_custom_profile(self, runner, authenticated_config, cleanup_registry):
         """Test running DQ check with explicit profile key."""
         asset_result = runner.invoke(
             cli,
@@ -75,6 +81,7 @@ class TestDQCheckExecution:
         )
 
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
         asset_id = None
         for line in asset_result.output.split("\n"):
             if "ID:" in line:
@@ -89,7 +96,9 @@ class TestDQCheckExecution:
             assert dq_result.exit_code == 0, f"DQ run creation failed: {dq_result.output}"
             assert "started successfully" in dq_result.output.lower()
 
-    def test_run_dq_check_external_scan_only(self, runner, authenticated_config, temp_file):
+    def test_run_dq_check_external_scan_only(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test running DQ check on an uploaded file (scan-only mode).
 
         File upload requires S3/object-storage to be configured.
@@ -107,6 +116,8 @@ class TestDQCheckExecution:
                 file_id = line.split("ID:")[1].strip()
                 break
 
+        register_file_cleanup(cleanup_registry, file_id)
+
         if file_id:
             dq_result = runner.invoke(
                 cli, ["dq", "run", "--file-id", file_id, "--profile-key", "intake_basic_gx"]
@@ -120,13 +131,14 @@ class TestDQCheckExecution:
         assert result.exit_code != 0
         assert "must be provided" in result.output.lower() or "required" in result.output.lower()
 
-    def test_run_dq_check_json_output(self, runner, authenticated_config):
+    def test_run_dq_check_json_output(self, runner, authenticated_config, cleanup_registry):
         """Test running DQ check with JSON output format"""
         asset_result = runner.invoke(
             cli, ["assets", "create", "--name", "JSON DQ Asset", "--key", unique_key("json-dq-")]
         )
 
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
         asset_id = None
         for line in asset_result.output.split("\n"):
             if "ID:" in line:
@@ -155,7 +167,7 @@ class TestDQResultReview:
         assert result.exit_code == 1
         assert "not found" in result.output.lower() or "failed" in result.output.lower()
 
-    def test_get_dq_run_results_with_checks(self, runner, authenticated_config):
+    def test_get_dq_run_results_with_checks(self, runner, authenticated_config, cleanup_registry):
         """Test getting DQ run that was just created (has real data)."""
         # Create asset
         asset_result = runner.invoke(
@@ -169,6 +181,7 @@ class TestDQResultReview:
                 asset_id = line.split("ID:")[1].strip()
                 break
         assert asset_id
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         # Create a DQ run
         run_result = runner.invoke(cli, ["dq", "run", "--asset-id", asset_id])
@@ -188,13 +201,14 @@ class TestDQResultReview:
             )
             assert "Status:" in get_result.output
 
-    def test_get_dq_run_json_output(self, runner, authenticated_config):
+    def test_get_dq_run_json_output(self, runner, authenticated_config, cleanup_registry):
         """Test getting DQ run results with JSON output."""
         # Create a real DQ run first
         asset_result = runner.invoke(
             cli, ["assets", "create", "--name", "JSON Get Asset", "--key", unique_key("json-get")]
         )
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
 
         asset_id = None
         for line in asset_result.output.split("\n"):
@@ -239,12 +253,13 @@ class TestDQResultReview:
         result = runner.invoke(cli, ["dq", "list", "--status", "SUCCEEDED"])
         assert result.exit_code == 0, result.output
 
-    def test_get_dq_scorecard(self, runner, authenticated_config):
+    def test_get_dq_scorecard(self, runner, authenticated_config, cleanup_registry):
         """Test getting DQ scorecard for an asset"""
         asset_result = runner.invoke(
             cli, ["assets", "create", "--name", "Scorecard Asset", "--key", unique_key("scorecar")]
         )
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
 
         asset_id = None
         for line in asset_result.output.split("\n"):
@@ -258,7 +273,7 @@ class TestDQResultReview:
                 f"DQ scorecard failed: {scorecard_result.output}"
             )
 
-    def test_get_asset_with_dq_results(self, runner, authenticated_config):
+    def test_get_asset_with_dq_results(self, runner, authenticated_config, cleanup_registry):
         """Test getting asset details with DQ results included"""
         asset_result = runner.invoke(
             cli,
@@ -272,6 +287,7 @@ class TestDQResultReview:
             ],
         )
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
 
         asset_id = None
         for line in asset_result.output.split("\n"):
@@ -300,12 +316,13 @@ class TestDQAlerts:
         result = runner.invoke(cli, ["dq", "alerts", "--list"])
         assert result.exit_code == 0, result.output
 
-    def test_create_alerting_rule(self, runner, authenticated_config):
+    def test_create_alerting_rule(self, runner, authenticated_config, cleanup_registry):
         """Test creating a DQ alerting rule"""
         asset_result = runner.invoke(
             cli, ["assets", "create", "--name", "Alert Asset", "--key", unique_key("alert-as")]
         )
         assert asset_result.exit_code == 0, asset_result.output
+        register_asset_cleanup(cleanup_registry, extract_id(asset_result.output))
 
         asset_id = None
         for line in asset_result.output.split("\n"):
@@ -334,7 +351,7 @@ class TestDQAlerts:
 class TestDQWorkflows:
     """E2E tests for complete DQ workflows"""
 
-    def test_complete_dq_workflow(self, runner, authenticated_config):
+    def test_complete_dq_workflow(self, runner, authenticated_config, cleanup_registry):
         """Test complete DQ workflow: run -> get -> list -> scorecard"""
         # Step 1: Create asset
         asset_result = runner.invoke(
@@ -349,6 +366,7 @@ class TestDQWorkflows:
                 asset_id = line.split("ID:")[1].strip()
                 break
         assert asset_id
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         # Step 2: Run DQ check
         run_result = runner.invoke(cli, ["dq", "run", "--asset-id", asset_id])

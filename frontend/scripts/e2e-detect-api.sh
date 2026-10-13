@@ -8,6 +8,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$FRONTEND_DIR"
 
+# Concurrent-run guard: a parallel invocation of this wrapper restarts the
+# shared API container and mutates shared DB state (auth rate-limit resets,
+# plan/user seeding) — mid-batch that tears the running tests. Observed in
+# batch b7: a parallel single-spec run restarted api-service-test while the
+# batch was mid-flight and produced NETWORK_ERROR storms / 120s timeouts in
+# three subsequent specs. The PID file also survives the `exec npx playwright`
+# fast-path below (exec keeps the PID), so the lock tracks the real run
+# lifetime; a stale file (dead PID) is silently taken over.
+# E2E_FORCE_PARALLEL=1 overrides for explicitly coordinated runs.
+E2E_LOCKFILE="${TMPDIR:-/tmp}/dih-e2e-batch.pid"
+if [[ "${E2E_FORCE_PARALLEL:-0}" != "1" ]]; then
+  if [[ -f "$E2E_LOCKFILE" ]] && kill -0 "$(cat "$E2E_LOCKFILE" 2>/dev/null)" 2>/dev/null; then
+    echo "❌ Another E2E run (PID $(cat "$E2E_LOCKFILE")) is in progress on this stack."
+    echo "   A parallel run would restart the shared API and corrupt the in-flight batch."
+    echo "   Wait for it to finish, or set E2E_FORCE_PARALLEL=1 to override."
+    exit 1
+  fi
+  echo "$$" > "$E2E_LOCKFILE"
+fi
+
 # Fail fast with clear message when backend is unreachable
 fail_no_backend() {
   echo "❌ Backend API is not reachable."
@@ -28,8 +48,61 @@ curl_frontend_root() {
     || curl -sf --connect-timeout 3 --max-time 10 "http://localhost:${port}/" > /dev/null 2>&1
 }
 
+# Per-invocation PID file ($$ suffix) + shared log file for the supervised
+# dev server. The PID file is the ownership marker: the EXIT trap only kills
+# a server THIS invocation started (or restarted via the watchdog) — a reused
+# pre-existing server is left alone, and concurrent runs on the same port
+# each kill only their own process group (a shared PID file let run A's exit
+# trap kill run B's restarted server).
+frontend_pid_file() { echo "${TMPDIR:-/tmp}/dih-e2e-frontend-${1}-$$.pid"; }
+frontend_log_file() { echo "${TMPDIR:-/tmp}/dih-e2e-frontend-${1}.log"; }
+
+# Start npm run dev on port as its own session/process-group leader and
+# wait until HTTP answers. The whole tree (npm wrapper + vite) is killed
+# later via the process group — killing only the npm wrapper PID left
+# orphaned vites holding the port (stale-server drift across runs).
+start_frontend_server() {
+  local port="${1:?}"
+  local pid_file log_file pid i
+  pid_file="$(frontend_pid_file "$port")"
+  log_file="$(frontend_log_file "$port")"
+  VITE_WS_ENABLED=false VITE_E2E_TEST=true setsid npm run dev -- --port "${port}" --strictPort \
+    > "$log_file" 2>&1 &
+  pid=$!
+  echo "$pid" > "$pid_file"
+  for i in $(seq 1 60); do
+    if curl_frontend_root "$port"; then
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "❌ Frontend process exited unexpectedly before becoming ready."
+      echo "   Check: ${log_file} (strictPort fails if the port is held by a stale process)"
+      rm -f "$pid_file"
+      return 1
+    fi
+    sleep 2
+  done
+  echo "❌ Frontend failed to become ready within ~120s"
+  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  rm -f "$pid_file"
+  return 1
+}
+
+# Kill the supervised dev server (whole process group) when this script
+# owns one. No-op when no PID file exists (server was reused).
+stop_frontend_server() {
+  local port="${1:?}"
+  local pid_file pid
+  pid_file="$(frontend_pid_file "$port")"
+  [[ -f "$pid_file" ]] || return 0
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  rm -f "$pid_file"
+  [[ -n "$pid" ]] || return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+}
+
 # Start npm run dev on port if nothing is listening; wait until HTTP answers.
-# Sets FRONTEND_STARTED=true and EXIT trap when this process starts Vite (see bottom: no exec).
 ensure_e2e_frontend_dev_server() {
   local port="${1:?}"
   if curl_frontend_root "$port"; then
@@ -37,26 +110,42 @@ ensure_e2e_frontend_dev_server() {
     return 0
   fi
   echo "Starting frontend dev server on port ${port}..."
-  VITE_WS_ENABLED=false VITE_E2E_TEST=true npm run dev -- --port "${port}" --strictPort &
-  FRONTEND_PID=$!
-  FRONTEND_STARTED=true
-  trap 'kill "$FRONTEND_PID" 2>/dev/null || true' EXIT
-  local i
-  for i in $(seq 1 60); do
+  start_frontend_server "$port" || return 1
+  echo "Frontend ready at http://localhost:${port}"
+}
+
+# Mid-run supervisor. Playwright's webServer (reuseExistingServer) never
+# restarts a dev server that dies AFTER the run started — OOM, a vite
+# dependency re-optimization restart window, or a concurrent run's cleanup
+# killing the shared port all turn into cascading ERR_CONNECTION_REFUSED
+# with nothing to recover them. Poll the port while playwright runs; when
+# it stays down for two consecutive polls (~6s), start a fresh server so
+# later tests recover. Bounded restarts avoid a crash-loop on a port that
+# can never come up.
+watchdog_frontend() {
+  local port="${1:?}"
+  local misses=0 restarts=0
+  while kill -0 "$PLAYWRIGHT_PID" 2>/dev/null; do
+    sleep 3
     if curl_frontend_root "$port"; then
-      echo "Frontend ready at http://localhost:${port}"
-      return 0
+      misses=0
+    else
+      misses=$((misses + 1))
+      if (( misses >= 2 )); then
+        misses=0
+        if (( restarts >= 3 )); then
+          echo "❌ Frontend restarted ${restarts} times and is still failing; giving up supervision (tests will surface connection errors)"
+          return 1
+        fi
+        echo "⚠️  Frontend on port ${port} went down mid-run; restarting (${restarts}/3)…"
+        if start_frontend_server "$port"; then
+          restarts=$((restarts + 1))
+        else
+          echo "❌ Frontend restart failed; will retry next cycle"
+        fi
+      fi
     fi
-    if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
-      echo "❌ Frontend process exited unexpectedly before becoming ready."
-      echo "   Check: npm run dev -- --port ${port} --strictPort (strictPort fails if port is held by a stale process)"
-      return 1
-    fi
-    sleep 2
   done
-  echo "❌ Frontend failed to become ready within ~120s"
-  kill "$FRONTEND_PID" 2>/dev/null || true
-  return 1
 }
 
 # If VITE_API_BASE_URL is already set, still verify backend is reachable before running
@@ -114,7 +203,11 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
   export E2E_API_BASE_URL=http://localhost:8001/api/v1
   # Local Vite on 5184 — must override FRONTEND_URL from .env (often :3010 for docker nginx)
   # so Playwright baseURL and webServer use the same port (see src/lib/playwright-frontend-resolve.ts).
-  export E2E_WEB_PORT=5184
+  export E2E_WEB_PORT="${E2E_WEB_PORT:-5184}"
+  # Ownership cleanup: kill the supervised dev server on exit ONLY when this
+  # script started/restarted it (PID file present). Reused servers are left
+  # untouched for any concurrent run still using them.
+  trap 'stop_frontend_server "${E2E_WEB_PORT}"' EXIT
   export PREFECT_INTEGRATION_SERVICE_URL="${PREFECT_INTEGRATION_SERVICE_URL:-http://localhost:8114}"
   # ODBC E2E (phase6): API connects to postgres-test from inside container
   export E2E_POSTGRES_HOST="${E2E_POSTGRES_HOST:-postgres-test}"
@@ -122,6 +215,10 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
   export E2E_POSTGRES_PASSWORD="${E2E_POSTGRES_PASSWORD:-hub_test}"
   export E2E_POSTGRES_DB="${E2E_POSTGRES_DB:-hub_test_test_shared}"
   echo "Detected API at port 8001 (docker-compose.test)"
+  # The test stack ships Stripe test-mode keys (docker-compose.test.yml
+  # defaults) — enable the Stripe checkout E2E on this stack instead of
+  # leaving it permanently skipped. Staging/CI still opt in explicitly.
+  export E2E_MARKETPLACE_STRIPE="${E2E_MARKETPLACE_STRIPE:-1}"
   REPO_ROOT="$(cd "$FRONTEND_DIR/.." && pwd)"
   # Ensure MailHog and worker-service for JOURNEY-AUTH-003 (password reset email delivery).
   # Always start worker-service when using test compose; worker processes send_password_reset_email jobs.
@@ -161,14 +258,22 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
       sleep 2
     done
   fi
-  # Restart API so storage presigned-URL fix (minio-test→localhost:9010 for browser) is applied.
-  # Skip with E2E_SKIP_API_RESTART=1 when API is already stable (avoids socket hang up / ECONNREFUSED during tests).
+  # Recreate the API container so the current compose env is applied (e.g.
+  # GUNICORN_MAX_REQUESTS=0, which stops the single-worker recycle cycle that
+  # killed in-flight connections every ~15-30 min mid-batch — batch-7's
+  # NETWORK_ERROR storm root cause). `docker compose restart` only restarts
+  # the PROCESS with the OLD env: env changes in docker-compose.test.yml
+  # never reach a stale container, and the recycling keeps happening no
+  # matter how many times the wrapper restarts it. `up -d --force-recreate`
+  # rebuilds the container with current compose config (env + code paths).
+  # Skip with E2E_SKIP_API_RESTART=1 when the API is known-good (avoids the
+  # recreate + settle window during repeated single-spec runs).
   REPO_ROOT="$(cd "$FRONTEND_DIR/.." && pwd)"
   if [[ "${E2E_SKIP_API_RESTART:-0}" != "1" ]]; then
-    echo "Restarting API service (may take 10–30s)..."
-    docker compose -f "$REPO_ROOT/docker-compose.test.yml" restart api-service-test 2>/dev/null || true
+    echo "Recreating API service with current compose env (may take 10–30s)..."
+    docker compose -f "$REPO_ROOT/docker-compose.test.yml" up -d --force-recreate api-service-test 2>/dev/null || true
   else
-    echo "Skipping API restart (E2E_SKIP_API_RESTART=1)"
+    echo "Skipping API recreate (E2E_SKIP_API_RESTART=1)"
   fi
   API_READY=false
   for i in $(seq 1 30); do
@@ -189,6 +294,23 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
     echo "Waiting 30s for gunicorn workers and proxy connections to settle after API restart..."
     sleep 30
   fi
+  # Worker warm-up probe: /health/ goes green as soon as the gunicorn MASTER
+  # is up, while workers are still importing Django (per-worker app init +
+  # ref-warming thread — 30s+ on the HDD dev box). Requests that land on
+  # booting workers fail or stall, which surfaces as the batch-start
+  # NETWORK_ERROR / timeout storms. Probe a worker-backed endpoint (OpenAPI
+  # schema needs a fully-booted worker + DB) until it answers, bounded.
+  WARM_READY=false
+  for i in $(seq 1 30); do
+    if curl -sf --connect-timeout 10 --max-time 30 http://localhost:8001/api/v1/openapi.json > /dev/null 2>&1; then
+      WARM_READY=true
+      break
+    fi
+    sleep 3
+  done
+  if [[ "$WARM_READY" != "true" ]]; then
+    echo "⚠️ API workers not warm after ~90s — continuing anyway (tests have their own retries)"
+  fi
   # Reset auth rate limits so setup and tests can log in (avoids 429 after many runs)
   # Try both legacy `hub-test-api` and current `hub-test-api-mvp` container names
   # (test stack was renamed when the MVP-mode build replaced the dual container layout).
@@ -206,7 +328,6 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
 
   # Start frontend dev server explicitly so Playwright has a reliable target.
   # Playwright's webServer with reuseExistingServer will reuse this if HTTP still answers.
-  FRONTEND_STARTED=false
   ensure_e2e_frontend_dev_server "${E2E_WEB_PORT}" || exit 1
 else
   fail_no_backend
@@ -280,9 +401,22 @@ if [[ "$HAS_PROJECT_ARG" == "false" ]] && [[ "${E2E_ALL_PROJECTS:-0}" != "1" ]];
   fi
 fi
 
-# When we started the frontend, don't use exec so the EXIT trap runs to kill it
-if [[ "${FRONTEND_STARTED:-false}" == "true" ]]; then
-  npx playwright test "${ARGS[@]}"
-else
-  exec npx playwright test "${ARGS[@]}"
+# Supervised run (no exec) when an explicit E2E web port is in play: the
+# watchdog keeps the dev server alive mid-run and the EXIT trap kills the
+# process group this script owns. Without a known port, keep the exec
+# fast-path (Playwright's own webServer manages the frontend there).
+if [[ -n "${E2E_WEB_PORT:-}" ]]; then
+  npx playwright test "${ARGS[@]}" &
+  PLAYWRIGHT_PID=$!
+  watchdog_frontend "${E2E_WEB_PORT}" &
+  WATCHDOG_PID=$!
+  set +e
+  wait "$PLAYWRIGHT_PID"
+  PW_STATUS=$?
+  set -e
+  kill "$WATCHDOG_PID" 2>/dev/null || true
+  wait "$WATCHDOG_PID" 2>/dev/null || true
+  exit "$PW_STATUS"
 fi
+
+exec npx playwright test "${ARGS[@]}"

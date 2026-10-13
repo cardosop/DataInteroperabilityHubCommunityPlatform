@@ -134,7 +134,7 @@ def find_commented_out_blocks() -> list[dict]:
             continue
         try:
             lines = py_file.read_text().split("\n")
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         i = 0
@@ -143,7 +143,7 @@ def find_commented_out_blocks() -> list[dict]:
             if stripped.startswith("#") and not stripped.startswith("##"):
                 # Check if this is a comment-only line (not a docstring/inline comment)
                 # Skip license headers and section dividers
-                if stripped.startswith("# Copyright") or stripped.startswith("# ~"):
+                if stripped.startswith(("# Copyright", "# ~")):
                     i += 1
                     continue
 
@@ -180,7 +180,7 @@ def find_always_true_flags() -> list[dict]:
             continue
         try:
             content = py_file.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         for m in flag_pattern.finditer(content):

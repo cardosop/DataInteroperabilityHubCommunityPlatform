@@ -1,10 +1,12 @@
 /**
  * Warehouse API Service — Phase 275
  *
- * Client for /api/v1/warehouses/connections/, /acls/, and /share/ endpoints.
+ * Client for /api/v1/warehouses/connections/ and /acls/ endpoints.
+ *
+ * (The fabricated Delta Sharing /share/ client was removed with 5.5 —
+ * the native bearer-token protocol surface has no session consumer.)
  */
 import type {
-  DeltaShareTable,
   ResidencyMismatch,
   SchemaReflection,
   WarehouseConnection,
@@ -27,10 +29,29 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+/**
+ * Normalize a list response at the service boundary (Phase 1.5).
+ *
+ * The backend paginates both list endpoints via the DRF global
+ * ``StandardPageNumberPagination``, so the wire shape is
+ * ``{count, ..., results: [...]}`` — not a bare array. Before this
+ * normalization ``ConnectionListPage`` set the whole envelope into state
+ * and crashed with ``connections.map is not a function`` on every render.
+ * Accepts a bare array for forward-compat; anything else degrades to ``[]``
+ * so a drift/error shape renders the empty state instead of crashing.
+ */
+function normalizeList<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload as T[];
+  }
+  const results = (payload as { results?: unknown } | null | undefined)?.results;
+  return Array.isArray(results) ? (results as T[]) : [];
+}
+
 // ── Connections ──────────────────────────────────────────────────────
 
 export function listConnections(): Promise<WarehouseConnection[]> {
-  return request<WarehouseConnection[]>('/connections/');
+  return request<unknown>('/connections/').then((data) => normalizeList<WarehouseConnection>(data));
 }
 
 export function getConnection(id: string): Promise<WarehouseConnection> {
@@ -38,7 +59,7 @@ export function getConnection(id: string): Promise<WarehouseConnection> {
 }
 
 export function createConnection(
-  payload: WarehouseConnectionCreatePayload,
+  payload: WarehouseConnectionCreatePayload
 ): Promise<WarehouseConnection> {
   return request<WarehouseConnection>('/connections/', {
     method: 'POST',
@@ -48,7 +69,7 @@ export function createConnection(
 
 export function updateConnection(
   id: string,
-  payload: Partial<WarehouseConnectionCreatePayload>,
+  payload: Partial<WarehouseConnectionCreatePayload>
 ): Promise<WarehouseConnection> {
   return request<WarehouseConnection>(`/connections/${id}/`, {
     method: 'PATCH',
@@ -60,21 +81,14 @@ export function deleteConnection(id: string): Promise<void> {
   return request<void>(`/connections/${id}/`, { method: 'DELETE' });
 }
 
-export function testConnection(
-  id: string,
-): Promise<WarehouseConnectionTestResult> {
+export function testConnection(id: string): Promise<WarehouseConnectionTestResult> {
   return request<WarehouseConnectionTestResult>(`/connections/${id}/test/`, {
     method: 'POST',
   });
 }
 
-export function reflectSchema(
-  id: string,
-  table: string,
-): Promise<SchemaReflection> {
-  return request<SchemaReflection>(
-    `/connections/${id}/schema/?table=${encodeURIComponent(table)}`,
-  );
+export function reflectSchema(id: string, table: string): Promise<SchemaReflection> {
+  return request<SchemaReflection>(`/connections/${id}/schema/?table=${encodeURIComponent(table)}`);
 }
 
 export function listResidencyMismatches(): Promise<{
@@ -87,7 +101,7 @@ export function listResidencyMismatches(): Promise<{
 // ── ACLs ─────────────────────────────────────────────────────────────
 
 export function listACLs(): Promise<WarehouseConnectionACL[]> {
-  return request<WarehouseConnectionACL[]>('/acls/');
+  return request<unknown>('/acls/').then((data) => normalizeList<WarehouseConnectionACL>(data));
 }
 
 export function createACL(payload: {
@@ -103,20 +117,4 @@ export function createACL(payload: {
 
 export function deleteACL(id: string): Promise<void> {
   return request<void>(`/acls/${id}/`, { method: 'DELETE' });
-}
-
-// ── Delta Sharing ────────────────────────────────────────────────────
-
-export function listShareTables(assetId: string): Promise<{
-  share: { name: string };
-  tables: DeltaShareTable[];
-}> {
-  return request(`/share/${assetId}/`);
-}
-
-export function queryShareTable(
-  assetId: string,
-  limit = 100,
-): Promise<{ rows: unknown[][] }> {
-  return request(`/share/${assetId}/query/?limit=${limit}`);
 }

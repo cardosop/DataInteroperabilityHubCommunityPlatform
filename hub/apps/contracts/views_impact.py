@@ -106,7 +106,7 @@ class ContractImpactMixin:
         except Contract.DoesNotExist:
             from rest_framework.exceptions import NotFound
 
-            raise NotFound("Contract not found")
+            raise NotFound("Contract not found") from None
 
         # Verify tenant access (same logic as get_queryset)
         user = request.user
@@ -160,7 +160,7 @@ class ContractImpactMixin:
             raise DRFValidationError(
                 {"depth": "Must be a valid integer."},
                 code="invalid",
-            )
+            ) from None
         if depth < 0:
             from rest_framework.exceptions import ValidationError as DRFValidationError
 

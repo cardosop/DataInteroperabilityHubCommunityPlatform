@@ -8,6 +8,9 @@ for the NotificationsBusinessRules class.
 import logging
 from typing import Any
 
+from django.core.exceptions import ImproperlyConfigured
+from django.template import TemplateDoesNotExist, TemplateSyntaxError
+
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.notifications.business_rules import NotificationsBusinessRules
 
@@ -49,7 +52,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
             template = get_template(template_name)
             details["template_exists"] = True
             details["template_loaded"] = True
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             errors.append(f"Template '{template_name}' cannot be loaded: {e!s}")
             details["template_exists"] = False
             details["template_loaded"] = False
@@ -103,7 +106,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
 
             # Validate Django template syntax (basic check)
             try:
-                from django.template import Template, TemplateSyntaxError
+                from django.template import Template
 
                 Template(template_source)
                 details["syntax_valid"] = True
@@ -129,7 +132,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
         )
 
     def validate_template_variables(
-        self, template_name: str, context: Dict[str, Any]
+        self, template_name: str, context: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate template variables (valid variable placeholders, no undefined variables).
@@ -166,7 +169,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
             rendered = render_to_string(template_name, context)
             details["rendered_successfully"] = True
             details["rendered_length"] = len(rendered)
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             # Check if error is due to missing variables
             error_str = str(e).lower()
             if "variable" in error_str or "undefined" in error_str:
@@ -221,7 +224,12 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
 
             details["variables_validated"] = True
 
-        except Exception as e:
+        except (
+            TemplateDoesNotExist,
+            TemplateSyntaxError,
+            ImproperlyConfigured,
+            AttributeError,
+        ) as e:
             warnings.append(f"Could not extract variables from template: {e!s}")
             details["variables_validated"] = False
             details["variable_extraction_error"] = str(e)
@@ -234,7 +242,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
         )
 
     def validate_template_content(
-        self, template_name: str, context: Dict[str, Any]
+        self, template_name: str, context: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate template content (content length, prohibited content).
@@ -267,7 +275,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
             rendered = render_to_string(template_name, context)
             details["rendered_successfully"] = True
             details["rendered_length"] = len(rendered)
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             errors.append(f"Template '{template_name}' rendering failed: {e!s}")
             details["rendered_successfully"] = False
             details["render_error"] = str(e)
@@ -349,7 +357,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
         )
 
     def validate_template_security(
-        self, template_name: str, context: Dict[str, Any]
+        self, template_name: str, context: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate template security (no injection vulnerabilities, XSS protection).
@@ -384,7 +392,7 @@ class NotificationsTemplateValidationRules(NotificationsBusinessRules):
             rendered = render_to_string(template_name, context)
             details["rendered_successfully"] = True
             details["rendered_length"] = len(rendered)
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             errors.append(f"Template '{template_name}' rendering failed: {e!s}")
             details["rendered_successfully"] = False
             details["render_error"] = str(e)

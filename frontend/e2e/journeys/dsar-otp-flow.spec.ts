@@ -44,6 +44,9 @@ test.describe('DSAR OTP Flow (283.3.2.3)', () => {
 
     // ── A11y: after submission ─────────────────────────────────────
     // Success state renders reference token + status text
+    // intentional: best-effort wait — if the success link never renders (e.g. the
+    // OTP flow landed in an error state) the axe audit below still runs against
+    // whichever state rendered, which is itself a valid a11y target.
     await page.waitForSelector('a[href*="/legal/dsar/status/"]', { timeout: 15000 })
       .catch(() => null);
     const successAudit = await runAxeAudit(page, 'dsar-submit-result');
@@ -78,14 +81,15 @@ test.describe('DSAR OTP Flow (283.3.2.3)', () => {
   });
 
   test('DSAR queue page audits clean (authenticated)', async ({ page }) => {
-    await page.goto('/governance/dsar', { waitUntil: 'domcontentloaded' });
+    await page.goto('/governance/dsar-requests', { waitUntil: 'domcontentloaded' });
 
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Not authenticated — skipping DSAR queue a11y audit');
-      return;
-    }
+    const bouncedToLogin = page.url().includes('/login');
+    test.skip(bouncedToLogin, 'Not authenticated — skipping DSAR queue a11y audit');
+    if (bouncedToLogin) return;
 
     // Wait for page content to load (uses i18n headline)
+    // intentional: best-effort wait — the axe audit below runs against whichever
+    // state rendered (queue, empty, or error), all valid a11y targets.
     await page.waitForSelector('h1, h2', { timeout: 15000 }).catch(() => null);
 
     // ── A11y: DSAR queue page ──────────────────────────────────────
@@ -102,12 +106,11 @@ test.describe('DSAR OTP Flow (283.3.2.3)', () => {
   });
 
   test('DSAR detail page audits clean', async ({ page }) => {
-    await page.goto('/governance/dsar', { waitUntil: 'domcontentloaded' });
+    await page.goto('/governance/dsar-requests', { waitUntil: 'domcontentloaded' });
 
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Not authenticated');
-      return;
-    }
+    const bouncedToLogin = page.url().includes('/login');
+    test.skip(bouncedToLogin, 'Not authenticated');
+    if (bouncedToLogin) return;
 
     // Click on the first DSAR row to navigate to detail page
     const firstRow = page.locator('table tbody tr').first();

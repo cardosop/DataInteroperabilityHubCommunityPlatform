@@ -71,7 +71,7 @@ def main() -> int:
     if args.dry_run:
         return 0
 
-    cmd = [sys.executable, "-m", "pytest"] + node_ids + args.pytest_args
+    cmd = [sys.executable, "-m", "pytest", *node_ids, *args.pytest_args]
     return subprocess.run(cmd, check=False, cwd=Path(__file__).resolve().parent.parent).returncode
 
 

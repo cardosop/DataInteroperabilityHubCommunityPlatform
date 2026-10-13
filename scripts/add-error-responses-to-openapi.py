@@ -446,13 +446,13 @@ class OpenAPIErrorResponseEnhancer:
                     )
                 return True
 
-            return False
-
-        except Exception as e:
+        except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e:
             print(f"Error processing {spec_path}: {e}")
             import traceback
 
             traceback.print_exc()
+            return False
+        else:
             return False
 
     def _extract_endpoint_name(self, path: str) -> str | None:
@@ -474,15 +474,11 @@ class OpenAPIErrorResponseEnhancer:
         """Determine if operation requires authentication"""
         # Check security in operation
         if "security" in operation:
-            if operation["security"] == []:
-                return False
-            return True
+            return operation["security"] != []
 
         # Check global security
         if "security" in spec:
-            if spec["security"] == []:
-                return False
-            return True
+            return spec["security"] != []
 
         # Default to requiring auth
         return True

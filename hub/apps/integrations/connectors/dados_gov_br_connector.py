@@ -16,7 +16,7 @@ from django.utils import timezone
 
 # dateutil for Brazilian date format parsing
 try:
-    from dateutil import parser as date_parser
+    from dateutil import parser as date_parser  # type: ignore[import-untyped]
 except ImportError:
     date_parser = None
 
@@ -178,7 +178,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 return False
         except Exception as e:
             self._authenticated = False
-            logger.error(f"Authentication test failed for dados.gov.br: {e}")
+            logger.exception("Authentication test failed for dados.gov.br")
             raise ConnectionError(f"Unable to authenticate with dados.gov.br: {e}") from e
 
     def test_connection(self) -> bool:
@@ -204,7 +204,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 logger.warning("Connection test failed: Invalid response format")
                 return False
         except Exception as e:
-            logger.error(f"Connection test failed for dados.gov.br: {e}")
+            logger.exception("Connection test failed for dados.gov.br")
             raise ConnectionError(f"Unable to connect to dados.gov.br: {e}") from e
 
     def list_listings(
@@ -304,13 +304,14 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                     logger.warning(f"Failed to convert dataset to listing: {e}")
                     continue
 
-            return listings
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ConnectionError(f"dados.gov.br API endpoint not found: {e}") from e
             raise ConnectionError(f"dados.gov.br API error: {e}") from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Unable to connect to dados.gov.br: {e}") from e
+        else:
+            return listings
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
         """
@@ -359,8 +360,6 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 raise NotFoundError(f"Dataset '{listing_id}' not found in dados.gov.br")
 
             return self._swagger_dataset_to_listing(dataset_data)
-        except NotFoundError:
-            raise
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise NotFoundError(f"Dataset '{listing_id}' not found in dados.gov.br") from e
@@ -383,10 +382,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to dados.gov.br
         """
         # Get dataset to retrieve resources (already includes recursos from get_listing)
-        try:
-            dataset = self.get_listing(listing_id)
-        except NotFoundError:
-            raise
+        dataset = self.get_listing(listing_id)
 
         # Resources are already included in listing.resources from get_listing()
         if dataset.resources:
@@ -814,7 +810,8 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             PermissionError: If user lacks permission to download resource
         """
         listing_id = kwargs.get("listing_id")
-        try:
+
+        def _download() -> str:
             # Get resource details — use dataset-scoped lookup when
             # listing_id is available, since the Swagger API nests
             # resources inside datasets.
@@ -863,20 +860,23 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             logger.info(f"Downloaded resource '{resource_id}' to {destination_path}")
             return destination_path
 
+        try:
+            result = _download()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise NotFoundError(
-                    f"Resource '{resource_id}' not found in dados.gov.br"
-                ) from e
+                raise NotFoundError(f"Resource '{resource_id}' not found in dados.gov.br") from e
             raise ConnectionError(f"dados.gov.br API error: {e}") from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Unable to connect to dados.gov.br: {e}") from e
-        except OSError:
-            raise
         except (NotFoundError, PermissionError, ConnectionError, OSError, ValueError):
+            # Expected error types (incl. IOError) — propagate as-is.
+            # The former separate ``except OSError: raise`` clause was
+            # unreachable-shadowed by this tuple — merged.
             raise
         except Exception as e:
             raise ConnectionError(f"Unexpected error downloading resource: {e}") from e
+        else:
+            return result
 
     def sync_pull(
         self,
@@ -1097,10 +1097,9 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         if visibilidade == "PUBLICA":
             # Check if dataset has resources and is updated
             atualizado = swagger_dataset.get("atualizado", "").upper()
-            if atualizado == "ATUALIZADO" and listing.resources:
-                status = "PUBLIC"  # D250.4: PUBLIC status → PUBLIC visibility
-            else:
-                status = "DRAFT"  # no resources / not updated → INTERNAL visibility
+            # D250.4: PUBLIC status → PUBLIC visibility; no resources /
+            # not updated → INTERNAL visibility.
+            status = "PUBLIC" if atualizado == "ATUALIZADO" and listing.resources else "DRAFT"
         elif visibilidade == "PRIVADA":
             status = "DRAFT"  # INTERNAL visibility
 

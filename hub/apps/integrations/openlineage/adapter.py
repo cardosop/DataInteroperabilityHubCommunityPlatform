@@ -58,7 +58,7 @@ DEFAULT_MAX_ATTEMPTS = 5
 RETRYABLE_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 
-class DeliveryOutcome(str, enum.Enum):
+class DeliveryOutcome(enum.StrEnum):
     DELIVERED = "delivered"
     DEAD_LETTERED = "dead_lettered"
 

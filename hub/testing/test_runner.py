@@ -22,13 +22,14 @@ def _ensure_connection_with_retry(connection, max_attempts=3, delay=5):
     for attempt in range(1, max_attempts + 1):
         try:
             connection.ensure_connection()
-            return
         except Exception as e:
             last_error = e
             if attempt < max_attempts:
-                time.sleep(delay)  # noqa: sleep-needed — retry loop
+                time.sleep(delay)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             else:
-                raise last_error
+                raise last_error from None
+        else:
+            return
 
 
 class NoMigrateDatabaseCreation(PostgresDatabaseCreation):
@@ -48,8 +49,7 @@ class NoMigrateDatabaseCreation(PostgresDatabaseCreation):
         test_database_name = self._get_test_db_name()
         if verbosity >= 1:
             self.log(
-                "Using existing test database for alias %s (SKIP_TEST_MIGRATIONS=1)..."
-                % (self._get_database_display_str(verbosity, test_database_name),)
+                f"Using existing test database for alias {self._get_database_display_str(verbosity, test_database_name)} (SKIP_TEST_MIGRATIONS=1)..."
             )
         self._create_test_db(verbosity, autoclobber, keepdb)
         self.connection.close()

@@ -10,21 +10,21 @@ from hub.apps.ropa.cache import bump_cache_version
 
 
 @receiver(post_save, sender=Asset)
-def _invalidate_ro_cache_asset(sender, instance: Asset, **kwargs):
+def _invalidate_ro_cache_asset(sender, instance: Asset, **_kwargs):
     bump_cache_version(str(instance.tenant_id))
 
 
 @receiver(m2m_changed, sender=Asset.processing_purposes.through)
-def _invalidate_ro_cache_asset_purposes(sender, instance, **kwargs):
+def _invalidate_ro_cache_asset_purposes(sender, instance, **_kwargs):
     if isinstance(instance, Asset):
         bump_cache_version(str(instance.tenant_id))
 
 
 @receiver(post_save, sender=ConsentPurpose)
-def _invalidate_ro_cache_purpose(sender, instance: ConsentPurpose, **kwargs):
+def _invalidate_ro_cache_purpose(sender, instance: ConsentPurpose, **_kwargs):
     bump_cache_version(str(instance.tenant_id))
 
 
 @receiver([post_save, post_delete], sender=RetentionPolicy)
-def _invalidate_ro_cache_retention(sender, instance: RetentionPolicy, **kwargs):
+def _invalidate_ro_cache_retention(sender, instance: RetentionPolicy, **_kwargs):
     bump_cache_version(str(instance.tenant_id))

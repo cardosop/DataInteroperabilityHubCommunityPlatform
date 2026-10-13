@@ -75,7 +75,9 @@ class MarketplaceConnection(models.Model):
             models.Index(fields=["marketplace_type", "is_active"]),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "name"], name="unique_tenant_connection_name")
+            models.UniqueConstraint(
+                fields=["tenant", "name"], name="unique_tenant_connection_name"
+            ),
         ]
 
     def __str__(self):
@@ -302,6 +304,7 @@ class MarketplaceSyncJob(models.Model):
             SyncStatus.COMPLETED.value,
             SyncStatus.FAILED.value,
             SyncStatus.PARTIAL.value,
+            SyncStatus.CANCELLED.value,
         ]
 
     def is_running(self) -> bool:
@@ -313,7 +316,7 @@ class MarketplaceSyncJob(models.Model):
         """
         return self.status == SyncStatus.RUNNING.value
 
-    def mark_completed(self, items_synced: int = None, metadata: dict = None):
+    def mark_completed(self, items_synced: int | None = None, metadata: dict | None = None):
         """
         Mark sync job as completed.
 
@@ -348,10 +351,10 @@ class MarketplaceSyncJob(models.Model):
 
     def mark_failed(
         self,
-        error_message: str = None,
-        items_synced: int = None,
-        items_failed: int = None,
-        metadata: dict = None,
+        error_message: str | None = None,
+        items_synced: int | None = None,
+        items_failed: int | None = None,
+        metadata: dict | None = None,
     ):
         """
         Mark sync job as failed.
@@ -398,7 +401,7 @@ class MarketplaceSyncJob(models.Model):
         self,
         error_message: str,
         save: bool = True,
-        error_type: str = None,
+        error_type: str | None = None,
     ):
         """
         Add an error message to the errors list.
@@ -412,7 +415,7 @@ class MarketplaceSyncJob(models.Model):
                 provided (Phase 77).
         """
         if not isinstance(error_message, str):
-            raise ValueError("Error message must be a string")
+            raise TypeError("Error message must be a string")
 
         if not error_message.strip():
             raise ValueError("Error message cannot be empty")
@@ -442,7 +445,7 @@ class MarketplaceSyncJob(models.Model):
             self.status = SyncStatus.RUNNING.value
             self.save(update_fields=["status", "updated_at"])
 
-    def mark_partial(self, items_synced: int, items_failed: int, metadata: dict = None):
+    def mark_partial(self, items_synced: int, items_failed: int, metadata: dict | None = None):
         """
         Mark sync job as partially completed (some items succeeded, some failed).
 
@@ -541,7 +544,7 @@ class MarketplaceMapping(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["connection", "hub_asset"], name="unique_connection_asset_mapping"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -731,7 +734,7 @@ class ScheduledMarketplaceSync(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "name"], name="unique_scheduled_sync_name_per_tenant"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -750,11 +753,11 @@ class ScheduledMarketplaceSync(models.Model):
                 )
             # Validate cron expression
             try:
-                from croniter import croniter
+                from croniter import croniter  # type: ignore[import-untyped]
 
                 croniter(cron_expr)
             except Exception as e:
-                raise ValidationError({"schedule_config": f"Invalid cron expression: {e!s}"})
+                raise ValidationError({"schedule_config": f"Invalid cron expression: {e!s}"}) from e
 
     def save(self, *args, **kwargs):
         """Override save to validate and calculate next_run_at"""
@@ -829,13 +832,13 @@ class ScheduledMarketplaceSync(models.Model):
 
             try:
                 from croniter import croniter
-                from pytz import timezone as pytz_timezone
+                from pytz import timezone as pytz_timezone  # type: ignore[import-untyped]
 
                 tz = pytz_timezone(timezone_str)
                 cron = croniter(cron_expr, now.astimezone(tz))
                 next_run = cron.get_next(datetime)
                 return timezone.make_aware(next_run)
-            except Exception:
+            except (KeyError, TypeError, ValueError):
                 # Fallback to tomorrow if cron parsing fails
                 return now + timedelta(days=1)
 
@@ -862,7 +865,8 @@ class ScheduledMarketplaceSync(models.Model):
 # app-loader picks them up. The models themselves live in the
 # ``openlineage`` sub-package for namespacing; this re-export is the
 # canonical pattern for sub-package models in a single app.
-from hub.apps.integrations.openlineage.models import (  # noqa: F401
+from hub.apps.integrations.openlineage.models import (  # noqa: F401 — model registration re-export
     OpenLineageDeadLetter,
+    OpenLineageInboundEvent,
     OpenLineageIngestApiKey,
 )

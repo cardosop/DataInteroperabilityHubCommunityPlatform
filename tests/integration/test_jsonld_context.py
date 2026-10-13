@@ -17,9 +17,10 @@ def check_semantic_service_available():
     try:
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 def _skip_if_circuit_breaker(context):
@@ -67,10 +68,7 @@ class JSONLDContextTest(TestCase):
         ]
 
         # Context should be a dict with @context key
-        if "@context" in context:
-            context_dict = context["@context"]
-        else:
-            context_dict = context
+        context_dict = context.get("@context", context)
 
         # Prefixes that MUST be present in every JSON-LD context
         required = {"rdf", "rdfs", "xsd", "schema", "dct"}
@@ -84,7 +82,8 @@ class JSONLDContextTest(TestCase):
                 missing.append(prefix)
 
         self.assertEqual(
-            missing, [],
+            missing,
+            [],
             f"Missing required JSON-LD context prefixes: {missing}. "
             f"Context keys: {list(context_dict.keys())[:20]}",
         )
@@ -102,10 +101,7 @@ class JSONLDContextTest(TestCase):
         self.assertIsInstance(context, dict)
 
         # Should have @context key or be the context itself
-        if "@context" in context:
-            context_dict = context["@context"]
-        else:
-            context_dict = context
+        context_dict = context.get("@context", context)
 
         # Should be a dictionary
         self.assertIsInstance(context_dict, dict)
@@ -119,17 +115,14 @@ class JSONLDContextTest(TestCase):
         _skip_if_circuit_breaker(context)
         self.assertNotIn("error", context)
 
-        if "@context" in context:
-            context_dict = context["@context"]
-        else:
-            context_dict = context
+        context_dict = context.get("@context", context)
 
         # Check that values are strings (URIs) or objects with @id
         for key, value in context_dict.items():
             if isinstance(value, str):
                 # Should be a valid URI or compact IRI (e.g., "hub:DataAsset")
                 # Compact IRIs are valid in JSON-LD (prefix:local)
-                is_uri = value.startswith("http://") or value.startswith("https://")
+                is_uri = value.startswith(("http://", "https://"))
                 is_compact_iri = (
                     ":" in value and not value.startswith("http") and not value.startswith("/")
                 )

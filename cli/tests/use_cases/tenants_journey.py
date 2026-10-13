@@ -58,10 +58,7 @@ def test_list_tenants():
 
     body = resp.json()
     # Response is either a list or a paginated dict with results
-    if isinstance(body, list):
-        tenants = body
-    else:
-        tenants = body.get("results", body.get("items", []))
+    tenants = body if isinstance(body, list) else body.get("results", body.get("items", []))
 
     assert isinstance(tenants, list), f"Expected a list of tenants, got {type(tenants).__name__}"
     assert len(tenants) >= 1, "User should belong to at least one tenant"
@@ -79,10 +76,7 @@ def test_tenant_has_name_and_slug():
     assert resp.status_code == 200, f"/tenants/ returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
-    if isinstance(body, list):
-        tenants = body
-    else:
-        tenants = body.get("results", body.get("items", []))
+    tenants = body if isinstance(body, list) else body.get("results", body.get("items", []))
 
     if not tenants:
         pytest.skip("No tenants returned — cannot validate structure")
@@ -93,6 +87,5 @@ def test_tenant_has_name_and_slug():
         f"Tenant missing 'slug' or 'id' field. Keys: {list(tenant.keys())}"
     )
     if "name" in tenant:
-        assert isinstance(tenant["name"], str) and len(tenant["name"]) > 0, (
-            "Tenant name should be a non-empty string"
-        )
+        assert isinstance(tenant["name"], str), "Tenant name should be a non-empty string"
+        assert len(tenant["name"]) > 0, "Tenant name should be a non-empty string"

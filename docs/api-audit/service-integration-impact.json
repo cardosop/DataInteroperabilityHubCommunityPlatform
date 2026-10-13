@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-13T21:03:51.404101",
+  "generated_at": "2026-10-04T21:12:23.408339",
   "summary": {
     "total_services": 21,
     "total_integrations": 10,
@@ -309,7 +309,7 @@
       "service_clients": [
         {
           "class_name": "ComplianceServiceClient",
-          "base_url": "http://compliance-service:8082",
+          "base_url": "unknown",
           "file_path": "hub/apps/compliance/service_client.py",
           "methods": [
             {
@@ -347,6 +347,11 @@
               "http_methods": [
                 "GET"
               ]
+            },
+            {
+              "method_name": "close",
+              "endpoints": [],
+              "http_methods": []
             }
           ]
         }
@@ -505,6 +510,15 @@
               ]
             },
             {
+              "method_name": "is_odps_map_endpoint_available",
+              "endpoints": [
+                "/map/odps"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
               "method_name": "map_odps",
               "endpoints": [
                 "/map/odps"
@@ -516,7 +530,7 @@
             {
               "method_name": "query_sparql",
               "endpoints": [
-                "/sparql"
+                "/query"
               ],
               "http_methods": [
                 "POST"
@@ -535,6 +549,42 @@
               "method_name": "ingest_rdf",
               "endpoints": [
                 "/ingest"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "delete_resource_triples",
+              "endpoints": [
+                "/delete-resource-triples"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "load_ontology",
+              "endpoints": [
+                "/ontology/load"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "drop_ontology",
+              "endpoints": [
+                "/ontology/load"
+              ],
+              "http_methods": [
+                "DELETE"
+              ]
+            },
+            {
+              "method_name": "export_rdf",
+              "endpoints": [
+                "/export"
               ],
               "http_methods": [
                 "POST"
@@ -585,11 +635,13 @@
         }
       ],
       "call_count": 344,
-      "endpoint_count": 19,
+      "endpoint_count": 22,
       "endpoints": [
         "/api/v1/assets/{asset.id}/contracts/",
         "/api/v1/semantic/ontologies/{ont.id}/",
         "/context.jsonld",
+        "/delete-resource-triples",
+        "/export",
         "/health",
         "/id/",
         "/ingest",
@@ -598,6 +650,7 @@
         "/map/dataset",
         "/map/odps",
         "/ontology",
+        "/ontology/load",
         "/query",
         "/semantic/relationships/",
         "/sparql",
@@ -707,6 +760,11 @@
               "http_methods": []
             },
             {
+              "method_name": "deliver_webhook_with_response",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
               "method_name": "health_check",
               "endpoints": [],
               "http_methods": []
@@ -730,7 +788,7 @@
       "service_clients": [
         {
           "class_name": "DQServiceClient",
-          "base_url": "http://localhost:8084",
+          "base_url": "unknown",
           "file_path": "hub/apps/dq/service_client.py",
           "methods": [
             {

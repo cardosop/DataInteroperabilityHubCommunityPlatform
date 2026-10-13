@@ -13,11 +13,13 @@ Test Duration: Typically 1-24 hours
 Load: Normal to moderate (50-70% of capacity)
 """
 
+import contextlib
+
 import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, task
+    from locust import between, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -210,15 +212,14 @@ if LOCUST_AVAILABLE:
             self.client.get("/health", name="endurance_health_check")
 
             # Check API metrics if available
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # optional metrics endpoint in endurance run; unavailability is OK
                 self.client.get(
                     "/api/v1/observability/metrics/",
                     headers=self.headers,
                     name="endurance_metrics_check",
                 )
-            except Exception:
-                # Metrics endpoint might not be available, that's OK
-                pass
 
             # Log elapsed time periodically
             elapsed = time.time() - self.start_time

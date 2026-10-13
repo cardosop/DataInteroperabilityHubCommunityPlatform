@@ -103,10 +103,7 @@ class TenantSwitchIntegrationTest(TestCase):
             if isinstance(resp.json(), dict)
             else resp.json()
         )
-        if isinstance(results, list):
-            asset_ids = [a["id"] for a in results]
-        else:
-            asset_ids = []
+        asset_ids = [a["id"] for a in results] if isinstance(results, list) else []
         assert str(asset_a.id) in asset_ids
         assert str(asset_b.id) not in asset_ids
 
@@ -123,10 +120,7 @@ class TenantSwitchIntegrationTest(TestCase):
             if isinstance(resp.json(), dict)
             else resp.json()
         )
-        if isinstance(results, list):
-            asset_ids = [a["id"] for a in results]
-        else:
-            asset_ids = []
+        asset_ids = [a["id"] for a in results] if isinstance(results, list) else []
         assert str(asset_a.id) not in asset_ids
         assert str(asset_b.id) in asset_ids
 

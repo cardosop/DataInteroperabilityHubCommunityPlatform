@@ -46,7 +46,6 @@ class ODPSServiceIntegrationTestBase(ContractsTestBase):
             name="Test Asset for Integration",
             description="Asset for testing service integration",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user,
         )
 

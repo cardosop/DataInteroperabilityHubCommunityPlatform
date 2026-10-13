@@ -117,9 +117,10 @@ class FusekiURLSSRFGuardTest(TestCase):
                 f"{self._get_semantic_service_url()}/health",
                 timeout=5,
             )
-            return resp.status_code == 200
-        except Exception:
+        except (httpx.HTTPError, ImportError, OSError):
             return False
+        else:
+            return resp.status_code == 200
 
     def test_fuseki_url_ssrf_guard_rejects_public_host(self):
         """Verify semantic service rejects queries when FUSEKI_URL
@@ -171,7 +172,7 @@ class ScopedAPIKeyTest(TestCase):
         )
         try:
             resp = httpx.get(f"{svc_url}/health", timeout=5)
-        except Exception:
+        except (httpx.HTTPError, OSError):
             self.skipTest("Semantic service unavailable")
         if resp.status_code != 200:
             self.skipTest("Semantic service unavailable")

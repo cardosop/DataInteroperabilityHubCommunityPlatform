@@ -106,7 +106,8 @@ def test_outbound_inputs_outputs_carry_dataset_facets():
     assert len(event["inputs"]) == 1
     assert len(event["outputs"]) == 1
     inp = event["inputs"][0]
-    assert "namespace" in inp and "name" in inp
+    assert "namespace" in inp
+    assert "name" in inp
     # Custom Meshant facet.
     assert "facets" in inp
     assert "meshant_contract_ref" in inp["facets"], (
@@ -259,7 +260,7 @@ def test_round_trip_preserves_scope_tuple():
 
 
 def test_validation_rejects_missing_required_keys():
-    from jsonschema import ValidationError
+    from jsonschema import ValidationError  # type: ignore[import-untyped]
 
     from hub.apps.integrations.openlineage.translator import validate_openlineage_event
 
@@ -301,7 +302,7 @@ def test_outbound_raises_value_error_when_edge_missing_id():
 
     edge = _meshant_edge()
     edge["id"] = ""
-    with pytest.raises(ValueError, match="missing required.*id"):
+    with pytest.raises(ValueError, match=r"missing required.*id"):
         meshant_edge_to_openlineage(edge, producer="x")
 
 
@@ -320,12 +321,18 @@ def test_inbound_unknown_event_type_falls_back_to_reference():
         "run": {"runId": str(uuid.uuid4())},
         "job": {"namespace": "x", "name": "y"},
         "inputs": [
-            {"namespace": "meshant.contracts", "name": "src-uuid",
-             "facets": {"meshant_contract_ref": {"contract_id": "src-uuid"}}},
+            {
+                "namespace": "meshant.contracts",
+                "name": "src-uuid",
+                "facets": {"meshant_contract_ref": {"contract_id": "src-uuid"}},
+            },
         ],
         "outputs": [
-            {"namespace": "meshant.contracts", "name": "tgt-uuid",
-             "facets": {"meshant_contract_ref": {"contract_id": "tgt-uuid"}}},
+            {
+                "namespace": "meshant.contracts",
+                "name": "tgt-uuid",
+                "facets": {"meshant_contract_ref": {"contract_id": "tgt-uuid"}},
+            },
         ],
     }
     tup = openlineage_to_meshant_edge(event)

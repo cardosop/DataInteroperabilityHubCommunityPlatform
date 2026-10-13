@@ -17,23 +17,21 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
-from typing import Any, Dict, List
-from unittest import TestCase
 
 import pytest
 
 pytestmark = pytest.mark.slow
+import contextlib
+
 from django.test import TestCase as DjangoTestCase
 
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.ref_resolver import (
-    ExternalRefHandling,
-    RefMode,
     RefResolver,
 )
 
 
-def calculate_percentile(values: List[float], percentile: float) -> float:
+def calculate_percentile(values: list[float], percentile: float) -> float:
     """
     Calculate percentile from list of values.
 
@@ -228,7 +226,7 @@ class RefResolverInternalRefPerformanceTest(RefResolverPerformanceTestBase):
         )
 
         # Log metrics for monitoring
-        print(f"\nInternal $ref Performance:")
+        print("\nInternal $ref Performance:")
         print(f"  P50: {p50:.2f}ms")
         print(f"  P95: {p95:.2f}ms (target: <10ms)")
         print(f"  P99: {p99:.2f}ms")
@@ -271,7 +269,7 @@ class RefResolverLocalRefPerformanceTest(RefResolverPerformanceTestBase):
         )
 
         # Log metrics for monitoring
-        print(f"\nLocal $ref Performance:")
+        print("\nLocal $ref Performance:")
         print(f"  P50: {p50:.2f}ms")
         print(f"  P95: {p95:.2f}ms (target: <50ms)")
         print(f"  P99: {p99:.2f}ms")
@@ -352,7 +350,7 @@ class RefResolverExternalRefPerformanceTest(RefResolverPerformanceTestBase):
         )
 
         # Log metrics for monitoring
-        print(f"\nExternal $ref Performance:")
+        print("\nExternal $ref Performance:")
         print(f"  P50: {p50:.2f}ms")
         print(f"  P95: {p95:.2f}ms (target: <5s)")
         print(f"  P99: {p99:.2f}ms")
@@ -408,19 +406,21 @@ class RefResolverCachedExternalRefPerformanceTest(RefResolverPerformanceTestBase
         test_url = f"http://localhost:{self.http_server.port}/schema.json"
 
         # First resolution (cache miss) - not measured
-        try:
+        with contextlib.suppress(Exception):
             self.resolver.resolve_external(test_url)
-        except Exception:
-            pass
 
         # Wait a bit to ensure cache is written
-        time.sleep(0.1)  # INTENTIONAL: wait for cache write to complete before benchmarking cache hits
+        time.sleep(  # noqa: sleep-needed — performance test simulation  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
+            0.1
+        )  # INTENTIONAL: wait for cache write to complete before benchmarking cache hits
 
         def resolve_cached_external_ref():
             return self.resolver.resolve_external(test_url)
 
         # Measure 100 iterations (cached refs should be fast)
-        durations, failures = self._measure_resolution_time(resolve_cached_external_ref, iterations=100)
+        durations, failures = self._measure_resolution_time(
+            resolve_cached_external_ref, iterations=100
+        )
         self.assertLess(failures, 9999, f"Cached external ref resolution had {failures} failures")
 
         # Calculate percentiles
@@ -437,7 +437,7 @@ class RefResolverCachedExternalRefPerformanceTest(RefResolverPerformanceTestBase
         )
 
         # Log metrics for monitoring
-        print(f"\nCached External $ref Performance:")
+        print("\nCached External $ref Performance:")
         print(f"  P50: {p50:.2f}ms")
         print(f"  P95: {p95:.2f}ms (target: <10ms)")
         print(f"  P99: {p99:.2f}ms")
@@ -508,7 +508,9 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
         def resolve_internal():
             return self.resolver.resolve_internal("#/definitions/user", test_doc)
 
-        internal_durations, internal_failures = self._measure_resolution_time(resolve_internal, iterations=100)
+        internal_durations, internal_failures = self._measure_resolution_time(
+            resolve_internal, iterations=100
+        )
         self.assertLess(internal_failures, 9999, f"Internal ref had {internal_failures} failures")
         results["internal"] = {
             "p50": calculate_percentile(internal_durations, 50),
@@ -523,7 +525,9 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
         def resolve_local():
             return self.resolver.resolve_local("./schemas/user.json")
 
-        local_durations, local_failures = self._measure_resolution_time(resolve_local, iterations=100)
+        local_durations, local_failures = self._measure_resolution_time(
+            resolve_local, iterations=100
+        )
         self.assertLess(local_failures, 9999, f"Local ref had {local_failures} failures")
         results["local"] = {
             "p50": calculate_percentile(local_durations, 50),
@@ -540,7 +544,9 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
         def resolve_external():
             return self.resolver.resolve_external(test_url)
 
-        external_durations, external_failures = self._measure_resolution_time(resolve_external, iterations=20)
+        external_durations, external_failures = self._measure_resolution_time(
+            resolve_external, iterations=20
+        )
         self.assertLess(external_failures, 9999, f"External ref had {external_failures} failures")
         results["external"] = {
             "p50": calculate_percentile(external_durations, 50),
@@ -553,17 +559,21 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
 
         # 4. Cached external $ref performance
         # Ensure first resolution is cached
-        try:
+        with contextlib.suppress(Exception):
             self.resolver.resolve_external(test_url)
-        except Exception:
-            pass
-        time.sleep(0.1)  # INTENTIONAL: wait for cache write to complete before benchmarking cache hits
+        time.sleep(  # noqa: sleep-needed — performance test simulation  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
+            0.1
+        )  # INTENTIONAL: wait for cache write to complete before benchmarking cache hits
 
         def resolve_cached_external():
             return self.resolver.resolve_external(test_url)
 
-        cached_durations, cached_failures = self._measure_resolution_time(resolve_cached_external, iterations=100)
-        self.assertLess(cached_failures, 9999, f"Cached external ref had {cached_failures} failures")
+        cached_durations, cached_failures = self._measure_resolution_time(
+            resolve_cached_external, iterations=100
+        )
+        self.assertLess(
+            cached_failures, 9999, f"Cached external ref had {cached_failures} failures"
+        )
         results["cached_external"] = {
             "p50": calculate_percentile(cached_durations, 50),
             "p95": calculate_percentile(cached_durations, 95),
@@ -622,7 +632,9 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
             current[f"level_{i}"] = {
                 "type": "object",
                 "properties": {
-                    "ref": {"$ref": f"#/definitions/level_{i+1}"} if i < 19 else {"type": "string"}
+                    "ref": {"$ref": f"#/definitions/level_{i + 1}"}
+                    if i < 19
+                    else {"type": "string"}
                 },
             }
             current = current[f"level_{i}"]["properties"]
@@ -669,20 +681,39 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
 
     def test_local_ref_performance_with_large_file(self):
         """Test local ref performance with large file."""
+        # NOTE: the per-ref SIZE limit is a security control (1 MiB,
+        # SIZE_LIMIT_EXCEEDED) — the file must stay under it; ~850 KiB is
+        # still a genuinely large schema for the resolution path.
         large_schema = {
             "type": "object",
             "properties": {
-                f"field_{i}": {"type": "string", "description": "A" * 1000} for i in range(1000)
+                f"field_{i}": {"type": "string", "description": "A" * 800} for i in range(1000)
             },
         }
         large_file = self.temp_dir / "large_schema.json"
         large_file.write_text(json.dumps(large_schema))
+        assert large_file.stat().st_size < 1048576, (
+            f"test fixture {large_file.stat().st_size} bytes exceeds the 1 MiB "
+            "per-ref size limit — reduce the description/field count"
+        )
 
         def resolve_large_file():
             return self.resolver.resolve_local("./large_schema.json")
 
-        durations, failures = self._measure_resolution_time(resolve_large_file, iterations=20)
-        self.assertLess(failures, 9999, f"Large file ref had {failures} failures")
+        # Warm-up: the first resolution pays cold-start costs (module
+        # imports, file-open cache, JSON parse warm-up) that are not part
+        # of steady-state latency — same pattern as the warm-up before the
+        # retrieval latency measurement (5ec643769).
+        resolve_large_file()
+
+        # 8 iterations: the resolver's TOTAL-size security control caps the
+        # summed ref sizes per instance at 10 MiB (max_total_size) — 20
+        # iterations of an 850 KiB file would trip it mid-measurement and
+        # every later call raises RESOLUTION_FAILED. 8 x 850 KiB ≈ 6.8 MiB
+        # stays inside the control, and failures MUST be zero per the
+        # measurement helper's contract.
+        durations, failures = self._measure_resolution_time(resolve_large_file, iterations=8)
+        self.assertEqual(failures, 0, f"Large file ref had {failures} failures")
         p95 = calculate_percentile(durations, 95)
         self.assertLess(p95, 200.0, f"Large file P95 ({p95:.2f}ms) too slow")
 
@@ -692,7 +723,8 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
         class SlowHandler(BaseHTTPRequestHandler):
             def do_GET(self):
                 import time
-                time.sleep(0.1)  # INTENTIONAL: simulating slow server response for performance test
+
+                time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: simulating slow server response for performance test
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -773,9 +805,11 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
             all_durations = []
             threads = []
             for _ in range(10):
+
                 def worker():
-                    d, f = self._measure_resolution_time(resolve_concurrent, iterations=10)
+                    d, _f = self._measure_resolution_time(resolve_concurrent, iterations=10)
                     all_durations.extend(d)
+
                 thread = threading.Thread(target=worker)
                 threads.append(thread)
                 thread.start()
@@ -796,7 +830,8 @@ class RefResolverPerformanceBaselineTest(RefResolverPerformanceTestBase):
             # under heavy lock contention.  Only flag catastrophic
             # degradation (>30 seconds per resolution).
             self.assertLess(
-                p95, 30000.0,
+                p95,
+                30000.0,
                 f"Concurrent resolution P95 ({p95:.2f}ms) degraded",
             )
 

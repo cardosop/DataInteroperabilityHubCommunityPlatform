@@ -427,15 +427,16 @@ class WebhookDeliveryValidator:
                 )
 
             # SUCCESS deliveries should have successful HTTP status code
-            if delivery.http_status_code is not None:
-                if not (200 <= delivery.http_status_code < 300):
-                    warnings.append(
-                        f"Delivery with status SUCCESS has non-success HTTP status code: "
-                        f"{delivery.http_status_code}"
-                    )
-                    details["success_constraints_valid"] = details.get(
-                        "success_constraints_valid", True
-                    )
+            if delivery.http_status_code is not None and not (
+                200 <= delivery.http_status_code < 300
+            ):
+                warnings.append(
+                    f"Delivery with status SUCCESS has non-success HTTP status code: "
+                    f"{delivery.http_status_code}"
+                )
+                details["success_constraints_valid"] = details.get(
+                    "success_constraints_valid", True
+                )
 
         elif delivery.status == DeliveryStatus.FAILED:
             # FAILED deliveries should have error_message

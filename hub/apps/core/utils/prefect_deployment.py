@@ -87,7 +87,6 @@ def delete_prefect_deployment(
             resp.status_code,
             resp.text[:200],
         )
-        return False
     except Exception as e:
         logger.error(
             "Failed to call integration service delete for %s %s: %s",
@@ -97,3 +96,5 @@ def delete_prefect_deployment(
             exc_info=True,
         )
         return False
+
+    return False

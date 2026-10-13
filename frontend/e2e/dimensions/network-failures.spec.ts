@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser, loginUser } from '../fixtures/auth';
+import { clearAuthStorage, getTestUser } from '../fixtures/auth';
 
 test.describe('Dimension: Network failures', () => {
   test.setTimeout(60000);

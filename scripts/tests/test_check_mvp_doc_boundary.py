@@ -25,8 +25,10 @@ class TestWrongSdkIdentifiers:
             "test.md",
             errors,
         )
-        assert len(errors) >= 1
-        assert "datahub_sdk" in errors[0]
+        # Both deprecated identifiers must be caught; frozenset iteration
+        # order is not stable, so pin the SET, not the first element.
+        assert any("datahub_sdk" in e for e in errors)
+        assert any("MeshantClient" in e for e in errors)
 
     def test_catches_meshant_client(self):
         errors = []

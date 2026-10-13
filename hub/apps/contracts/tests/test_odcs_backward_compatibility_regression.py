@@ -15,9 +15,7 @@ from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
-    NormalizationResult,
     get_normalizer,
-    normalize_contract,
 )
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
@@ -305,7 +303,7 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
             results[version] = result.hub_contract
 
         # All versions should produce hub contracts with same structure
-        for version, hub_contract in results.items():
+        for _version, hub_contract in results.items():
             self.assertIsNotNone(hub_contract)
             # All should have these core fields
             self.assertIn("id", hub_contract)
@@ -337,7 +335,7 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
                 # After Pydantic model_dump(by_alias=True), "data_type" is serialized as "type"
                 self.assertTrue(
                     "type" in field or "data_type" in field,
-                    f"Field {field.get('name')} missing 'type' or 'data_type' key"
+                    f"Field {field.get('name')} missing 'type' or 'data_type' key",
                 )
 
     def test_all_versions_normalize_info_section_correctly(self):

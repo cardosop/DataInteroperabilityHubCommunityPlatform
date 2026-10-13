@@ -86,7 +86,7 @@ def validate_contract(input_data: dict[str, Any]) -> SagaStepResult:
         )
 
 
-def compensate_contract_validation(input_data: dict[str, Any]) -> SagaStepResult:
+def compensate_contract_validation(_input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for contract validation step.
 
@@ -162,7 +162,7 @@ def check_data_quality(input_data: dict[str, Any]) -> SagaStepResult:
         )
 
 
-def compensate_dq_check(input_data: dict[str, Any]) -> SagaStepResult:
+def compensate_dq_check(_input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for DQ check step.
 
@@ -241,7 +241,7 @@ def check_compliance(input_data: dict[str, Any]) -> SagaStepResult:
         )
 
 
-def compensate_compliance_check(input_data: dict[str, Any]) -> SagaStepResult:
+def compensate_compliance_check(_input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for compliance check step.
 
@@ -469,15 +469,8 @@ def execute_asset_activation(asset_id: str) -> dict[str, Any]:
 
     try:
         context = orchestrator.execute(steps, initial_state={"asset_id": asset_id})
-
-        return {
-            "success": True,
-            "saga_id": orchestrator.saga_id,
-            "status": orchestrator.status.value,
-            "context": {"asset_id": asset_id, "final_state": context.state},
-        }
     except SagaExecutionError as e:
-        logger.error(
+        logger.exception(
             "asset_activation_saga_failed",
             extra={"saga_id": orchestrator.saga_id, "asset_id": asset_id, "error": str(e)},
         )
@@ -487,4 +480,11 @@ def execute_asset_activation(asset_id: str) -> dict[str, Any]:
             "status": orchestrator.status.value,
             "error": str(e),
             "context": orchestrator.context,
+        }
+    else:
+        return {
+            "success": True,
+            "saga_id": orchestrator.saga_id,
+            "status": orchestrator.status.value,
+            "context": {"asset_id": asset_id, "final_state": context.state},
         }

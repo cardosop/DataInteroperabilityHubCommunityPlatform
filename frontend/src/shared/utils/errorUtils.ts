@@ -3,7 +3,7 @@
  * Functions for normalizing and handling errors consistently across the application
  */
 
-import type { ApiError } from '../types/api';
+import { isApiError, type ApiError } from '../types/api';
 
 // Re-export so consumers that already import error helpers from this
 // module can also pull the `ApiError` type without reaching into
@@ -172,6 +172,68 @@ export function getErrorRemediation(
  * @param err - Error input (Error instance, string, ApiError from client, or unknown)
  * @returns Normalized ApiError with all required fields
  */
+/**
+ * Resolve a user-facing message for an arbitrary thrown error, with
+ * the same remediation-aware copy used by
+ * ``useMutationWithNotification`` toasts: known typed codes surface
+ * the curated remediation title, API envelopes fall back to their
+ * detail/message, and raw JS errors use ``error.message``.
+ */
+export function getErrorMessage(error: unknown): string {
+  // When the error carries a known typed code (STRUCTURELESS_CONTRACT,
+  // PRECONDITION_FAILED, SCHEMA_TOO_DEEP, …), surface the user-friendly
+  // remediation copy from ``getErrorRemediation`` instead of the raw
+  // API message.
+  if (isApiError(error)) {
+    const code = error.error.code;
+    const subcode =
+      typeof error.error.details?.subcode === 'string' ? error.error.details.subcode : undefined;
+    const remediationDetails =
+      typeof error.error.details?.remediation_url === 'string'
+        ? { remediation_url: error.error.details.remediation_url }
+        : undefined;
+    const remediation = getErrorRemediation(code, subcode, remediationDetails);
+    if (remediation) {
+      return remediation.title;
+    }
+    const detailMessage =
+      typeof error.error.details?.error === 'string' ? error.error.details.error : null;
+    return detailMessage || error.error.message || 'An unexpected error occurred';
+  }
+  // Some axios-shaped errors carry a top-level ``code`` + nested
+  // ``response.data`` — handle that path before falling back to raw msg.
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error
+  ) {
+    const resp = (error as {
+      response?: {
+        data?: {
+          code?: string;
+          detail?: string;
+          message?: string;
+          details?: { subcode?: string; remediation_url?: string };
+        };
+      };
+    }).response;
+    const code = resp?.data?.code;
+    const subcode = resp?.data?.details?.subcode;
+    const remediationDetails =
+      typeof resp?.data?.details?.remediation_url === 'string'
+        ? { remediation_url: resp.data.details.remediation_url }
+        : undefined;
+    if (code) {
+      const remediation = getErrorRemediation(code, subcode, remediationDetails);
+      if (remediation) return remediation.title;
+    }
+    if (resp?.data?.detail) return resp.data.detail;
+    if (resp?.data?.message) return resp.data.message;
+  }
+  if (error instanceof Error) return error.message;
+  return 'An unexpected error occurred';
+}
+
 export function normalizeError(err: unknown): ApiError {
   // Phase 273.5 — search/semantic endpoints now return the canonical
   // ``{error: {code, message, http_status, request_id, ...}}`` envelope.

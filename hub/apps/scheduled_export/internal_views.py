@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
 
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.observability.otel_metrics import (
     scheduled_export_duration_seconds,
     scheduled_export_items_exported_total,
@@ -36,6 +37,7 @@ from .internal_serializers import (
 from .models import (
     ScheduledExport,
     ScheduledExportRun,
+    ScheduledExportRunStatus,
 )
 from .services import ScheduledExportService
 
@@ -70,8 +72,8 @@ class InternalRunViewSet(ViewSet):
     Worker-only; tenant and ownership validated on every request.
     """
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     @extend_schema(
         summary="Create scheduled export run",
@@ -164,56 +166,81 @@ class InternalRunViewSet(ViewSet):
         service = ScheduledExportService(
             tenant_id=tenant_id, user_id=str(request.user.id) if request.user else None
         )
-        run = service.create_export_run(
-            scheduled_export_id=scheduled_export_id,
-            tenant_id=tenant_id,
-            user_id=str(request.user.id) if request.user else None,
-            prefect_flow_run_id=prefect_flow_run_id or None,
-            idempotency_key=idempotency_key or None,
-        )
 
-        # Set started_at for new run
-        if not run.started_at:
-            run.started_at = timezone.now()
-            run.save(update_fields=["started_at"])
-
-        try:
-            scheduled_export_runs_total.labels(
-                status="RUNNING",
-                scheduled_export_id=scheduled_export_id,
+        # 6.2 — the dlt dispatch spine: a dlt-flagged tenant executes
+        # the canonical entrypoint synchronously (the hub performs the
+        # write); the run's terminal state records the dlt outcome. The
+        # legacy Prefect-driven create stays for everyone else — one
+        # shared return keeps the early-error returns the only extras.
+        if getattr(scheduled_export.tenant, "data_movement_enabled", False):
+            result = service.execute_export(
+                scheduled_export_id,
                 tenant_id=tenant_id,
-            ).inc(1)
-            scheduled_export_runs_running.labels(
-                scheduled_export_id=scheduled_export_id,
-                tenant_id=tenant_id,
-            ).inc(1)
-        except Exception as e:
-            logger.warning("Failed to emit run-created metrics: %s", e)
-
-        tenant = _get_tenant(request)
-        create_audit_event(
-            resource_type="SCHEDULED_EXPORT_RUN",
-            action="CREATED",
-            actor_user=request.user,
-            tenant=tenant,
-            resource_id=str(run.id),
-            details={
+                user_id=str(request.user.id) if request.user else None,
+                prefect_flow_run_id=prefect_flow_run_id or None,
+                idempotency_key=idempotency_key or None,
+            )
+            # ``result`` carries the run id under "run_id"; every other
+            # response shape (idempotent early-returns, legacy create)
+            # uses "id".  Emit both so HubClient.create_export_run can
+            # drive patch_export_run(run_id=...) unchanged.
+            payload = {
+                "id": result.get("run_id"),
                 "scheduled_export_id": scheduled_export_id,
-                "status": run.status,
-                "prefect_flow_run_id": prefect_flow_run_id or None,
-            },
-        )
+                **result,
+            }
+            resp_status = status.HTTP_200_OK
+        else:
+            run = service.create_export_run(
+                scheduled_export_id=scheduled_export_id,
+                tenant_id=tenant_id,
+                user_id=str(request.user.id) if request.user else None,
+                prefect_flow_run_id=prefect_flow_run_id or None,
+                idempotency_key=idempotency_key or None,
+            )
 
-        return Response(
-            {
+            # Set started_at for new run
+            if not run.started_at:
+                run.started_at = timezone.now()
+                run.save(update_fields=["started_at"])
+
+            try:
+                scheduled_export_runs_total.labels(
+                    status="RUNNING",
+                    scheduled_export_id=scheduled_export_id,
+                    tenant_id=tenant_id,
+                ).inc(1)
+                scheduled_export_runs_running.labels(
+                    scheduled_export_id=scheduled_export_id,
+                    tenant_id=tenant_id,
+                ).inc(1)
+            except Exception as e:
+                logger.warning("Failed to emit run-created metrics: %s", e)
+
+            tenant = _get_tenant(request)
+            create_audit_event(
+                resource_type="SCHEDULED_EXPORT_RUN",
+                action="CREATED",
+                actor_user=request.user,
+                tenant=tenant,
+                resource_id=str(run.id),
+                details={
+                    "scheduled_export_id": scheduled_export_id,
+                    "status": run.status,
+                    "prefect_flow_run_id": prefect_flow_run_id or None,
+                },
+            )
+
+            payload = {
                 "id": str(run.id),
                 "scheduled_export_id": scheduled_export_id,
                 "status": run.status,
                 "started_at": run.started_at.isoformat() if run.started_at else None,
                 "prefect_flow_run_id": run.prefect_flow_run_id,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+            }
+            resp_status = status.HTTP_201_CREATED
+
+        return Response(payload, status=resp_status)
 
     @extend_schema(
         summary="Update scheduled export run",
@@ -232,6 +259,92 @@ class InternalRunViewSet(ViewSet):
             404: OpenApiResponse(description="Run not found"),
         },
     )
+    @extend_schema(
+        summary="Cancel scheduled export run",
+        description=(
+            "Cancel a PENDING/RUNNING run (the guarded matrix admits "
+            "PENDING/RUNNING → CANCELLED; the export worker already "
+            "honours CANCELLED).  A terminal run answers 400 "
+            "INVALID_TRANSITION.  Requires worker authentication and "
+            "X-Tenant-ID header."
+        ),
+        responses={
+            200: OpenApiResponse(description="Run cancelled"),
+            400: OpenApiResponse(description="Invalid transition"),
+            401: OpenApiResponse(description="Authentication required"),
+            403: OpenApiResponse(description="Forbidden (tenant mismatch)"),
+            404: OpenApiResponse(description="Run not found"),
+        },
+    )
+    def cancel(self, request, pk=None):
+        """POST .../internal/runs/{run_id}/cancel/ — the semantic cancel
+        action (W3.6, R2-P4/F13)."""
+        tenant_id = _get_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant required", "code": "TENANT_REQUIRED", "details": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            run = ScheduledExportRun.objects.select_related("scheduled_export").get(id=pk)
+        except ScheduledExportRun.DoesNotExist:
+            return Response(
+                {"error": "Run not found", "code": "NOT_FOUND", "details": {"run_id": pk}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if str(run.scheduled_export.tenant_id) != tenant_id:
+            return Response(
+                {"error": "Run does not belong to tenant", "code": "FORBIDDEN", "details": {}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        service = ScheduledExportService(
+            tenant_id=tenant_id, user_id=str(request.user.id) if request.user else None
+        )
+        try:
+            service.update_export_run(
+                run_id=str(run.id),
+                tenant_id=tenant_id,
+                user_id=str(request.user.id) if request.user else None,
+                status=ScheduledExportRunStatus.CANCELLED,
+                completed_at=timezone.now().isoformat(),
+            )
+        except ServiceValidationError as e:
+            return Response(
+                {
+                    "error": str(e),
+                    "code": getattr(e, "code", "VALIDATION_ERROR"),
+                    "details": getattr(e, "details", {}),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        run.refresh_from_db()
+        # Terminal-status metric (mirrors the PATCH's completion block).
+        try:
+            duration = (
+                (run.completed_at - run.started_at).total_seconds()
+                if run.completed_at and run.started_at
+                else 0
+            )
+            scheduled_export_runs_total.labels(
+                status=ScheduledExportRunStatus.CANCELLED,
+                scheduled_export_id=str(run.scheduled_export_id),
+                tenant_id=tenant_id,
+            ).inc(1)
+            scheduled_export_duration_seconds.labels(
+                scheduled_export_id=str(run.scheduled_export_id),
+                status=ScheduledExportRunStatus.CANCELLED,
+                tenant_id=tenant_id,
+            ).observe(duration)
+        except Exception:
+            logger.exception("export_cancel_metrics_failed")
+
+        return Response(
+            {"id": str(run.id), "status": ScheduledExportRunStatus.CANCELLED},
+            status=status.HTTP_200_OK,
+        )
+
     def partial_update(self, request, pk=None):
         """PATCH .../internal/runs/{run_id}/ — update status, counts, result_json, completed_at."""
         tenant_id = _get_tenant_id(request)
@@ -272,19 +385,40 @@ class InternalRunViewSet(ViewSet):
             else:
                 completed_at_iso = str(data["completed_at"])
 
-        # Update run via service
-        service.update_export_run(
-            run_id=str(run.id),
-            tenant_id=tenant_id,
-            user_id=str(request.user.id) if request.user else None,
-            status=data.get("status"),
-            items_found=data.get("items_found"),
-            items_exported=data.get("items_exported"),
-            items_failed=data.get("items_failed"),
-            result_json=data.get("result_json"),
-            completed_at=completed_at_iso,
-            prefect_flow_run_id=data.get("prefect_flow_run_id"),
-        )
+        # W3.5 (R2-P4) — the worker's heartbeat (liveness lease)
+        heartbeat_at_iso = None
+        if data.get("heartbeat_at"):
+            if hasattr(data["heartbeat_at"], "isoformat"):
+                heartbeat_at_iso = data["heartbeat_at"].isoformat()
+            else:
+                heartbeat_at_iso = str(data["heartbeat_at"])
+
+        # Update run via service. W3.1 (R2-P1): an illegal transition
+        # raises ServiceValidationError (INVALID_TRANSITION) — surface it
+        # as the internal-API 400 envelope instead of a 500.
+        try:
+            service.update_export_run(
+                run_id=str(run.id),
+                tenant_id=tenant_id,
+                user_id=str(request.user.id) if request.user else None,
+                status=data.get("status"),
+                items_found=data.get("items_found"),
+                items_exported=data.get("items_exported"),
+                items_failed=data.get("items_failed"),
+                result_json=data.get("result_json"),
+                completed_at=completed_at_iso,
+                prefect_flow_run_id=data.get("prefect_flow_run_id"),
+                heartbeat_at=heartbeat_at_iso,
+            )
+        except ServiceValidationError as e:
+            return Response(
+                {
+                    "error": str(e),
+                    "code": getattr(e, "code", "VALIDATION_ERROR"),
+                    "details": getattr(e, "details", {}),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Refresh run from DB
         run.refresh_from_db()
@@ -370,8 +504,8 @@ class InternalRunViewSet(ViewSet):
 class InternalProcessExportView(APIView):
     """POST .../internal/process-export/ — process one export item (validate, apply business rules, prepare upload)."""
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     def post(self, request):
         tenant_id = _get_tenant_id(request)
@@ -489,8 +623,8 @@ class InternalProcessExportView(APIView):
 class InternalConfigView(APIView):
     """GET .../internal/config/{scheduled_export_id}/ — config for worker (credentials masked)."""
 
-    authentication_classes = [WorkerAPIKeyAuthentication]
-    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
+    authentication_classes = (WorkerAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated, WorkerInternalAPIPermission)
 
     def get(self, request, scheduled_export_id):
         tenant_id = _get_tenant_id(request)

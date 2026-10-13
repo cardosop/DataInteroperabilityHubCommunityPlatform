@@ -13,12 +13,20 @@ Also provides ``TableFQN`` for warehouse-aware table name parsing,
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
+
+# 6.3 — the production connector factory (the D12 M2M background path:
+# the connection's own decrypted config IS the identity). A module-level
+# attribute so the sanctioned test patch point (monkeypatching
+# ``warehouse_query_runner.get_connector_for_connection``) reaches every
+# delegation — the 5.3 service-module convention.
+from hub.apps.warehouses.base import get_connector_for_connection
 
 # ── 285.10.1.1.2 — TableFQN ───────────────────────────────────────────
 
@@ -42,10 +50,7 @@ class TableFQN:
 
     def quoted(self) -> str:
         """Return the FQN with warehouse-appropriate quoting."""
-        if self.warehouse_type == "snowflake":
-            q = '"'
-        else:
-            q = "`"
+        q = '"' if self.warehouse_type == "snowflake" else "`"
         parts = (
             [self.database, self.schema_name, self.table_name]
             if self.database
@@ -75,11 +80,25 @@ _READ_ONLY_BLOCKED = re.compile(
 
 
 class ReadOnlyGuard:
-    """Reject write-SQL statements to enforce read-only execution."""
+    """Reject write-SQL statements to enforce read-only execution.
+
+    The ONLY bypass is the pipeline execution scope (task 6.5 / design D4):
+    inside ``MovementPipelineExecutor.execute`` the guard passes write SQL
+    on the executor's thread; everywhere else — including every API
+    boundary — it blocks. The default is always blocking.
+    """
+
+    @staticmethod
+    def is_bypassed() -> bool:
+        from hub.data_movement.pipeline_scope import is_guard_bypassed
+
+        return is_guard_bypassed()
 
     @staticmethod
     def check(sql: str | None) -> None:
         if not sql:
+            return
+        if ReadOnlyGuard.is_bypassed():
             return
         match = _READ_ONLY_BLOCKED.search(sql)
         if match:
@@ -125,6 +144,22 @@ class WarehouseIdempotencyKey:
 # ── 285.10.1.1.1 — WarehouseQueryRunner ───────────────────────────────
 
 
+class WarehouseQueryRunnerError(Exception):
+    """A classified runner failure carrying a catalogued error code.
+
+    Raised fail-closed BEFORE any connector work: a run without a
+    warehouse connection, or a connection that stores no credential
+    config (``WAREHOUSE_CONNECTION_REQUIRED``). The retry loop never
+    retries it — it is a configuration state, not a transport hiccup,
+    so the failure is immediate with zero retry budget and zero breaker
+    churn.
+    """
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
 class WarehouseQueryRunner:
     """Shared read-only SQL runner for Snowflake, BigQuery, and Databricks.
 
@@ -136,7 +171,7 @@ class WarehouseQueryRunner:
     """
 
     _MAX_RETRIES = 3
-    _RETRY_DELAYS = [5, 15, 45]  # seconds
+    _RETRY_DELAYS: ClassVar[list[int]] = [5, 15, 45]  # seconds
     _CIRCUIT_FAILURE_THRESHOLD = 5
 
     def __init__(
@@ -145,15 +180,49 @@ class WarehouseQueryRunner:
         credential_ref: str,
         tenant_slug: str = "",
         query_type: str = "",
+        *,
+        lineage_tenant_id: str | None = None,
+        lineage_asset_uri: str | None = None,
     ):
         self.warehouse_type = warehouse_type.upper()
         self.credential_ref = credential_ref
         self.tenant_slug = tenant_slug
         self.query_type = query_type  # "dq" or "compliance" (285.10.V.32)
+        # 275.E.3c — optional OpenLineage context; emission is capability-
+        # gated (lineage.warehouse_live_query, OFF by default) and
+        # fire-and-forget, so absent context is a clean no-op.
+        self._lineage_tenant_id = lineage_tenant_id
+        self._lineage_asset_uri = lineage_asset_uri
         self._consecutive_failures = 0
         self.total_cost = 0.0
         self.query_count = 0
         self._connection = None
+
+    # ── Construction ──────────────────────────────────────────────────
+
+    @classmethod
+    def from_connection(
+        cls,
+        connection,
+        *,
+        tenant_slug: str = "",
+        query_type: str = "",
+        lineage_tenant_id: str | None = None,
+        lineage_asset_uri: str | None = None,
+    ) -> WarehouseQueryRunner:
+        """Build the runner bound to a ``WarehouseConnection`` (6.3 — the
+        D12 M2M background path: the connection's own config IS the
+        identity; a hand-built credential is never consulted)."""
+        runner = cls(
+            warehouse_type=str(connection.warehouse_type),
+            credential_ref=str(connection.id),
+            tenant_slug=tenant_slug,
+            query_type=query_type,
+            lineage_tenant_id=lineage_tenant_id,
+            lineage_asset_uri=lineage_asset_uri,
+        )
+        runner._connection = connection
+        return runner
 
     # ── Public API ────────────────────────────────────────────────────
 
@@ -163,7 +232,27 @@ class WarehouseQueryRunner:
         result = self._execute_with_retry(sql, params)
         # 285.10.V.32 — emit warehouse query metric
         self._emit_query_metric(outcome="success")
+        self._emit_live_query_lineage()
         return result
+
+    def _emit_live_query_lineage(self) -> None:
+        """275.E.3c — fire-and-forget OpenLineage emit for a live query.
+
+        OFF by default (``lineage.warehouse_live_query`` capability) and
+        only armed when the caller supplied tenant/asset context.
+        """
+        if not self._lineage_tenant_id or not self._lineage_asset_uri:
+            return
+        try:
+            from hub.apps.warehouses.lineage import emit_live_query_event
+
+            emit_live_query_event(
+                tenant_id=self._lineage_tenant_id,
+                warehouse_table_uri=f"{self.warehouse_type.lower()}://{getattr(self, 'table_fqn', '') or ''}",
+                hub_asset_uri=self._lineage_asset_uri,
+            )
+        except Exception:
+            pass  # lineage is a downstream signal, never a query gate
 
     def _emit_query_metric(self, outcome: str) -> None:
         """Emit ``warehouse_native_query_total`` counter (best-effort)."""
@@ -236,7 +325,10 @@ class WarehouseQueryRunner:
             try:
                 result = self._execute_single(sql, params)
                 self._consecutive_failures = 0
-                return result
+            except WarehouseQueryRunnerError:
+                # A classified configuration failure — never a transport
+                # hiccup: fail fast, zero retry budget, zero breaker churn.
+                raise
             except Exception as exc:
                 last_exc = exc
                 self._consecutive_failures += 1
@@ -246,6 +338,8 @@ class WarehouseQueryRunner:
                 if attempt < self._MAX_RETRIES - 1:
                     delay = self._RETRY_DELAYS[attempt]
                     time.sleep(delay)
+            else:
+                return result
 
         self._emit_query_metric(outcome="failure")
         raise RuntimeError(
@@ -255,13 +349,44 @@ class WarehouseQueryRunner:
     def _execute_single(
         self, sql: str, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        """Execute a single query attempt. Override per warehouse driver."""
+        """Execute a single query attempt (6.3 — the production
+        delegation).
+
+        The bound connection's own decrypted config IS the M2M identity
+        (the D12 background path): the production connector factory is
+        consulted with the connection's warehouse type and the connector
+        receives the decrypted config verbatim. A runner without a
+        connection, or a connection that stores no credential config,
+        fails CLOSED with ``WAREHOUSE_CONNECTION_REQUIRED`` BEFORE any
+        factory/connector work — never a NotImplementedError crash,
+        never a silently empty read. ``limit=0`` is the connectors'
+        documented full-fetch convention — the movement read is never
+        silently truncated at the driver default.
+        """
+        connection = self._connection
+        if connection is None:
+            raise WarehouseQueryRunnerError(
+                "WAREHOUSE_CONNECTION_REQUIRED",
+                "the run has no warehouse connection — fail-closed before any connector work",
+            )
+        config = connection.get_config()
+        if not config:
+            raise WarehouseQueryRunnerError(
+                "WAREHOUSE_CONNECTION_REQUIRED",
+                "the connection stores no credential config — fail-closed before any connector work",
+            )
         self.query_count += 1
         self._track_cost(sql)
-        raise NotImplementedError(
-            f"_execute_single not implemented for {self.warehouse_type}. "
-            "Use a warehouse-specific subclass."
-        )
+
+        connector_cls = get_connector_for_connection(str(connection.warehouse_type))
+        connector = connector_cls(config, tenant_id=str(connection.tenant_id))
+        try:
+            connector.connect()
+            result = connector.execute_query(sql, params=params, limit=0)
+            return [dict(zip(result.columns, row, strict=True)) for row in result.rows]
+        finally:
+            with contextlib.suppress(Exception):
+                connector.close()
 
     def _track_cost(self, sql: str) -> None:
         """Estimate per-query cost. Override for warehouse-specific pricing."""
@@ -306,15 +431,21 @@ class FakeWarehouseQueryRunner(WarehouseQueryRunner):
         self.total_cost = 0.0
 
     def _execute_single(
-        self, sql: str, params: dict[str, Any] | None = None
+        self,
+        sql: str,
+        params: dict[str, Any] | None = None,  # override of WarehouseQueryRunner signature
     ) -> list[dict[str, Any]]:
         self.query_count += 1
         self._track_cost(sql)
         return list(self._rows)
 
-    def execute_aggregate(self, sql: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def execute_aggregate(
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:  # override of WarehouseQueryRunner signature
         self.query_count += 1
         return dict(self._aggregate)
 
-    def get_table_schema(self, table_fqn: str) -> list[dict[str, Any]]:
+    def get_table_schema(
+        self, table_fqn: str
+    ) -> list[dict[str, Any]]:  # override of WarehouseQueryRunner signature
         return list(self._schema)

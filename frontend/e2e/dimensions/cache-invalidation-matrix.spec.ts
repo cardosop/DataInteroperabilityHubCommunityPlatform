@@ -107,6 +107,7 @@ async function getJson<T>(
     headers: { Authorization: `Bearer ${opts.authToken}` },
   });
   if (!res.ok()) {
+    // intentional: diagnostic extraction — a failed read yields '' for the error message; the throw/assert below is the failure path
     const text = await res.text().catch(() => '');
     throw new Error(`GET ${url} returned ${res.status()}: ${text.slice(0, 300)}`);
   }
@@ -148,7 +149,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       // Some envs require ODPS-only contract create paths; skip cleanly
       // rather than fail this scenario when the create endpoint isn't open.
       test.skip(
-        true,
+        !contractRes.ok(),
         `contract create returned ${contractRes.status()}; environment may not support direct ODCS create`,
       );
     }
@@ -160,7 +161,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
     });
     if (!attachRes.ok()) {
       test.skip(
-        true,
+        !attachRes.ok(),
         `attach_contract returned ${attachRes.status()}; UI flow may use different endpoint`,
       );
     }
@@ -189,7 +190,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       data: { description: `Updated by cache-invalidation-matrix at ${Date.now()}` },
     });
     if (!patchRes.ok()) {
-      test.skip(true, `dataset PATCH returned ${patchRes.status()}; skipping cache check`);
+      test.skip(!patchRes.ok(), `dataset PATCH returned ${patchRes.status()}; skipping cache check`);
     }
 
     await pollUntil<{ version?: number; current_version?: number; description?: string }>(
@@ -235,14 +236,14 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
     });
     if (!triggerRes.ok()) {
       test.skip(
-        true,
+        !triggerRes.ok(),
         `dq trigger returned ${triggerRes.status()}; capability may not be enabled in this env`,
       );
     }
     const triggered = (await triggerRes.json()) as { id?: string };
     const runId = triggered.id;
     if (!runId) {
-      test.skip(true, 'dq trigger did not return run id');
+      test.skip(!runId, 'dq trigger did not return run id');
     }
 
     // Wait for the run to reach a terminal state.
@@ -274,13 +275,13 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
     });
     if (!triggerRes.ok()) {
       test.skip(
-        true,
+        !triggerRes.ok(),
         `compliance trigger returned ${triggerRes.status()}; capability may not be enabled`,
       );
     }
     const triggered = (await triggerRes.json()) as { id?: string };
     const runId = triggered.id;
-    if (!runId) test.skip(true, 'compliance trigger did not return run id');
+test.skip(!runId, 'compliance trigger did not return run id');
 
     await pollUntil<{ status?: string }>(
       () => getJson(`${API_BASE}/compliance/runs/${runId}/`, { authToken: token, page }),
@@ -338,7 +339,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       data: { listing_id: listingId },
     });
     if (!orderRes.ok() && orderRes.status() !== 409) {
-      test.skip(true, `order place returned ${orderRes.status()}; cannot proceed`);
+      test.skip(!orderRes.ok() && orderRes.status() !== 409, `order place returned ${orderRes.status()}; cannot proceed`);
     }
 
     // Retire the asset (provider side).
@@ -347,7 +348,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       headers: { Authorization: `Bearer ${providerToken}`, 'Content-Type': 'application/json' },
     });
     if (!retireRes.ok()) {
-      test.skip(true, `asset retire returned ${retireRes.status()}`);
+      test.skip(!retireRes.ok(), `asset retire returned ${retireRes.status()}`);
     }
 
     // Consumer-side projection: entitlement must reflect inactive within 30 s.
@@ -382,7 +383,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       },
     });
     if (!contractRes.ok()) {
-      test.skip(true, `contract create returned ${contractRes.status()}`);
+      test.skip(!contractRes.ok(), `contract create returned ${contractRes.status()}`);
     }
     const contract = (await contractRes.json()) as { id: string };
     const attachRes = await page.request.post(`${API_BASE}/assets/${assetId}/attach_contract/`, {
@@ -390,7 +391,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       data: { contract_id: contract.id },
     });
     if (!attachRes.ok()) {
-      test.skip(true, `attach_contract returned ${attachRes.status()}`);
+      test.skip(!attachRes.ok(), `attach_contract returned ${attachRes.status()}`);
     }
 
     // Deprecate the contract.
@@ -406,7 +407,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
       });
       if (!patchRes.ok()) {
         test.skip(
-          true,
+          !patchRes.ok(),
           `cannot deprecate contract: action=${deprecateRes.status()} patch=${patchRes.status()}`,
         );
       }
@@ -441,7 +442,7 @@ test.describe('Dimension: Cache-invalidation matrix', () => {
     });
     if (!patchRes.ok()) {
       test.skip(
-        true,
+        !patchRes.ok(),
         `tenant PATCH returned ${patchRes.status()}; user may lack tenant-write rights in this env`,
       );
     }

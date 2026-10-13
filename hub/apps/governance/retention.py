@@ -7,10 +7,11 @@ Handles time-based and event-based retention policies with legal hold support.
 from datetime import timedelta
 from typing import Any
 
-from django.db import transaction
+from botocore.exceptions import BotoCoreError
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.files.storage import S3StorageClient, StorageError
 
 from .models import RetentionAction, RetentionPolicy, RetentionPolicyType
 
@@ -120,7 +121,7 @@ class RetentionPolicyEnforcer:
             policy.save()
 
             result["success"] = True
-        except Exception as e:
+        except DatabaseError as e:
             result["error"] = str(e)
 
         return result
@@ -181,7 +182,7 @@ class RetentionPolicyEnforcer:
                 result["action"] = "ARCHIVE"
 
             result["success"] = True
-        except Exception as e:
+        except DatabaseError as e:
             result["error"] = str(e)
 
         return result
@@ -220,7 +221,7 @@ class RetentionPolicyEnforcer:
                 try:
                     storage_client = S3StorageClient()
                     storage_client.delete_file(file_obj.storage_path)
-                except Exception:
+                except (StorageError, BotoCoreError, RuntimeError):
                     pass  # Continue so DB record is still removed below
         resource.delete()
 
@@ -243,7 +244,8 @@ class RetentionPolicyEnforcer:
                     storage_client = S3StorageClient()
                     # Move to archive storage class
                     storage_client.archive_file(file_obj.storage_path)
-                except Exception:
+                except (StorageError, BotoCoreError, RuntimeError, AttributeError):
+                    # AttributeError: S3StorageClient has no archive_file (unimplemented) — continue anyway
                     pass  # Continue even if archive fails
 
     @staticmethod

@@ -69,7 +69,19 @@ def _inferred_schema(*fields: dict) -> dict:
 
 class TestSchemaDriftResultShape:
     def test_imports_cleanly(self):
-        from hub.apps.contracts.services.schema_compare import SchemaDriftResult  # noqa: F401
+        from hub.apps.contracts.services.schema_compare import (
+            SchemaCompareService,
+            SchemaDriftResult,
+        )
+
+        result = SchemaDriftResult(
+            missing_fields=[],
+            extra_fields=[],
+            type_mismatches=[],
+            structural_incompatibility=False,
+        )
+        assert result.detected is False
+        assert SchemaCompareService.__name__ == "SchemaCompareService"
 
     def test_default_no_drift_result_is_clean(self):
         from hub.apps.contracts.services.schema_compare import SchemaDriftResult

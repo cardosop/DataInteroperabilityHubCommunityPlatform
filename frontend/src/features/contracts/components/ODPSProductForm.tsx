@@ -19,7 +19,6 @@ import { Button } from '../../../shared/components/Button';
 import {
   buildODPSDocument,
   validateODPSFormData,
-  BITOL_V1_SCHEMA_URL,
   type OutputFormat,
   type ValidationError,
 } from '../utils/odpsDocumentBuilder';
@@ -41,39 +40,6 @@ export interface ODPSProductFormProps {
   disabled?: boolean;
 }
 
-export function makeEmptyODPSFormData(): ODPSFormData {
-  return {
-    schema: BITOL_V1_SCHEMA_URL,
-    apiVersion: 'v1.0.0',
-    kind: 'DataProduct',
-    language: 'en',
-    productID: '',
-    productName: '',
-    productVersion: '1.0.0',
-    productStatus: 'draft',
-    productDescription: '',
-    productDomain: '',
-    productTenant: '',
-    productVisibility: 'internal',
-    productCategory: undefined,
-    productType: undefined,
-    team: [],
-    outputPorts: [],
-    inputPorts: [],
-    inputSchemas: [],
-    slaProperties: [],
-    qualityRules: [],
-    tags: [],
-    categories: [],
-    price: undefined,
-    currency: undefined,
-    licenseType: undefined,
-    marketplaceListed: false,
-    marketplaceDescription: undefined,
-    linkedAssetId: null,
-    linkedContractId: null,
-  };
-}
 
 export function ODPSProductForm({
   value,

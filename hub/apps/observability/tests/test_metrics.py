@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from hub.apps.observability.otel_metrics import (
+    OPENTELEMETRY_AVAILABLE,
     get_status_class,
     http_request_duration_seconds,
     http_requests_total,
@@ -36,6 +37,12 @@ class MetricsTest(TestCase):
 
     def test_metrics_endpoint(self):
         """Test Prometheus metrics endpoint"""
+        # The endpoint's availability contract: 503 "Metrics not
+        # available" when the optional OTel prometheus exporter is not
+        # installed (test_metrics_endpoint_not_available covers that
+        # branch); the 200 path requires the exporter.
+        if not OPENTELEMETRY_AVAILABLE:
+            self.skipTest("opentelemetry prometheus exporter not installed")
         # Use trailing slash to match URL pattern
         response = self.client.get("/metrics/")
         # If we get a redirect, follow it
@@ -144,7 +151,9 @@ class MetricsEdgeCasesTest(TestCase):
 
     def test_metrics_with_unicode(self):
         """Test metrics with unicode characters in labels"""
-        labeled = http_requests_total.labels(method="GET", route="/api/v1/测试/", status_class="2xx")
+        labeled = http_requests_total.labels(
+            method="GET", route="/api/v1/测试/", status_class="2xx"
+        )
         before = labeled._value.get()
         labeled.inc()
         self.assertEqual(labeled._value.get(), before + 1)

@@ -112,7 +112,7 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
         for path in required_paths:
             # Check if path exists (with or without trailing slash)
             path_found = False
-            for spec_path in paths.keys():
+            for spec_path in paths:
                 if path.rstrip("/") in spec_path or spec_path in path:
                     path_found = True
                     break
@@ -311,13 +311,12 @@ class APIConsistencyE2ETest(E2ETestBase):
                 response_data = {}
 
         # Verify error response structure
-        if isinstance(response_data, dict):
+        if isinstance(response_data, dict) and "error" in response_data:
             # Check for error structure
-            if "error" in response_data:
-                error = response_data["error"]
-                self.assertIn("code", error)
-                self.assertIn("message", error)
-                self.assertIn("http_status", error)
+            error = response_data["error"]
+            self.assertIn("code", error)
+            self.assertIn("message", error)
+            self.assertIn("http_status", error)
 
     def test_pagination_consistency(self):
         """Test that pagination works consistently across endpoints"""
@@ -549,13 +548,14 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
         # Verify error message exists
-        if isinstance(get_response_data(response) or {}, dict):
-            if "error" in get_response_data(response) or {}:
-                error = (get_response_data(response) or {})["error"]
-                self.assertIn("message", error)
-                message = error["message"]
-                self.assertIsInstance(message, str)
-                self.assertGreater(len(message), 0)
+        if isinstance(get_response_data(response) or {}, dict) and "error" in (
+            get_response_data(response) or {}
+        ):
+            error = (get_response_data(response) or {})["error"]
+            self.assertIn("message", error)
+            message = error["message"]
+            self.assertIsInstance(message, str)
+            self.assertGreater(len(message), 0)
 
     def test_403_error_message_clarity(self):
         """Test that 403 errors have clear, helpful messages"""
@@ -566,14 +566,16 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         response = self.client.get(url)
 
         # If we get 403, verify message
-        if response.status_code == status.HTTP_403_FORBIDDEN:
-            if isinstance(get_response_data(response) or {}, dict):
-                if "error" in get_response_data(response) or {}:
-                    error = (get_response_data(response) or {})["error"]
-                    self.assertIn("message", error)
-                    message = error["message"]
-                    self.assertIsInstance(message, str)
-                    self.assertGreater(len(message), 0)
+        if (
+            response.status_code == status.HTTP_403_FORBIDDEN
+            and isinstance(get_response_data(response) or {}, dict)
+            and "error" in (get_response_data(response) or {})
+        ):
+            error = (get_response_data(response) or {})["error"]
+            self.assertIn("message", error)
+            message = error["message"]
+            self.assertIsInstance(message, str)
+            self.assertGreater(len(message), 0)
 
     def test_validation_error_field_details(self):
         """Test that validation errors include field-level details"""
@@ -583,14 +585,15 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Verify error includes field details
-        if isinstance(get_response_data(response) or {}, dict):
-            if "error" in get_response_data(response) or {}:
-                error = (get_response_data(response) or {})["error"]
-                # Check for details or field_errors
-                if "details" in error:
-                    details = error["details"]
-                    # May have field_errors or other details
-                    self.assertIsInstance(details, dict)
+        if isinstance(get_response_data(response) or {}, dict) and "error" in (
+            get_response_data(response) or {}
+        ):
+            error = (get_response_data(response) or {})["error"]
+            # Check for details or field_errors
+            if "details" in error:
+                details = error["details"]
+                # May have field_errors or other details
+                self.assertIsInstance(details, dict)
 
     def test_error_codes_are_machine_readable(self):
         """Test that error codes are machine-readable"""
@@ -603,17 +606,18 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Verify error code exists
-        if isinstance(get_response_data(response) or {}, dict):
-            if "error" in get_response_data(response) or {}:
-                error = (get_response_data(response) or {})["error"]
-                if "code" in error:
-                    code = error["code"]
-                    self.assertIsInstance(code, str)
-                    # Code should be uppercase and use underscores
-                    self.assertTrue(
-                        code.isupper() or code.replace("_", "").isalnum(),
-                        f"Error code {code} should be machine-readable (uppercase with underscores)",
-                    )
+        if isinstance(get_response_data(response) or {}, dict) and "error" in (
+            get_response_data(response) or {}
+        ):
+            error = (get_response_data(response) or {})["error"]
+            if "code" in error:
+                code = error["code"]
+                self.assertIsInstance(code, str)
+                # Code should be uppercase and use underscores
+                self.assertTrue(
+                    code.isupper() or code.replace("_", "").isalnum(),
+                    f"Error code {code} should be machine-readable (uppercase with underscores)",
+                )
 
     def test_error_includes_request_id(self):
         """Test that errors include request ID for tracking"""
@@ -654,14 +658,15 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Verify timestamp exists
-        if isinstance(get_response_data(response) or {}, dict):
-            if "error" in get_response_data(response) or {}:
-                error = (get_response_data(response) or {})["error"]
-                if "timestamp" in error:
-                    timestamp = error["timestamp"]
-                    self.assertIsInstance(timestamp, str)
-                    # Should be ISO format
-                    self.assertIn("T", timestamp or "")
+        if isinstance(get_response_data(response) or {}, dict) and "error" in (
+            get_response_data(response) or {}
+        ):
+            error = (get_response_data(response) or {})["error"]
+            if "timestamp" in error:
+                timestamp = error["timestamp"]
+                self.assertIsInstance(timestamp, str)
+                # Should be ISO format
+                self.assertIn("T", timestamp or "")
 
     def test_error_message_helpfulness(self):
         """Test that error messages are helpful and actionable"""
@@ -671,24 +676,25 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Verify message is helpful (not just "Bad Request")
-        if isinstance(get_response_data(response) or {}, dict):
-            if "error" in get_response_data(response) or {}:
-                error = (get_response_data(response) or {})["error"]
-                if "message" in error:
-                    message = error["message"]
-                    message_lower = message.lower()
-                    # Message should not be a generic unhelpful phrase
-                    self.assertNotEqual(message_lower, "bad request")
-                    self.assertNotEqual(message_lower, "error")
-                    self.assertNotIn("something went wrong", message_lower)
-                    self.assertNotIn("an error occurred", message_lower)
-                    self.assertNotIn("internal server error", message_lower)
-                    # Should contain enough context to be actionable (at least 15 chars)
-                    self.assertGreaterEqual(
-                        len(message),
-                        15,
-                        f"Error message too short to be actionable: {message!r}",
-                    )
+        if isinstance(get_response_data(response) or {}, dict) and "error" in (
+            get_response_data(response) or {}
+        ):
+            error = (get_response_data(response) or {})["error"]
+            if "message" in error:
+                message = error["message"]
+                message_lower = message.lower()
+                # Message should not be a generic unhelpful phrase
+                self.assertNotEqual(message_lower, "bad request")
+                self.assertNotEqual(message_lower, "error")
+                self.assertNotIn("something went wrong", message_lower)
+                self.assertNotIn("an error occurred", message_lower)
+                self.assertNotIn("internal server error", message_lower)
+                # Should contain enough context to be actionable (at least 15 chars)
+                self.assertGreaterEqual(
+                    len(message),
+                    15,
+                    f"Error message too short to be actionable: {message!r}",
+                )
 
 
 class APIResponseTimesE2ETest(E2ETestBase):

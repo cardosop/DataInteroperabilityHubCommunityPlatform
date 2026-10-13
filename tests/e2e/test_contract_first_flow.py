@@ -15,15 +15,15 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.files.models import File
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
-from .conftest import get_response_data
+from .conftest import get_response_data, mark_file_scan_unavailable_if_pending
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 User = get_user_model()
@@ -112,7 +112,7 @@ class ContractFirstE2ETest(TestCase):
         # Step 1: Create asset
         asset_response = self.client.post(
             "/api/v1/assets/",
-            {"key": "product-catalog", "name": "Product Catalog", "visibility": "INTERNAL"},
+            {"key": "product-catalog", "name": "Product Catalog"},
             format="json",
         )
         self.assertEqual(
@@ -202,6 +202,9 @@ class ContractFirstE2ETest(TestCase):
             f"/api/v1/files/{file_id}/complete/", {"content_sha256": content_sha256}, format="json"
         )
         self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
+        # Phase 260.2.D — under TestCase the on_commit-deferred ClamAV scan
+        # never runs; mark the scan terminal so the dataset gate allows it.
+        mark_file_scan_unavailable_if_pending(File.objects.get(id=file_id))
 
         # Step 6: Create dataset (uses real S3)
         dataset_response = self.client.post(
@@ -290,8 +293,7 @@ class ContractFirstE2ETest(TestCase):
         self.assertNotEqual(
             dq_run.status,
             DQRunStatus.FAILED,
-            f"DQ run FAILED — real defect, not an environmental skip. "
-            f"Status: {dq_run.status!r}",
+            f"DQ run FAILED — real defect, not an environmental skip. Status: {dq_run.status!r}",
         )
 
         # Step 8: Attach dataset and contract to asset

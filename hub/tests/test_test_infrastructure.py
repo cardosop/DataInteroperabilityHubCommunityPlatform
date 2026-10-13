@@ -28,7 +28,8 @@ class ConftestConsolidationTest(TestCase):
         """
         import hub.conftest as hub_conf
 
-        source = open(hub_conf.__file__).read()
+        with open(hub_conf.__file__) as f:
+            source = f.read()
         self.assertIn(
             "import tests.conftest",
             source,
@@ -42,7 +43,8 @@ class ConftestConsolidationTest(TestCase):
         """
         import hub.conftest as hub_conf
 
-        source = open(hub_conf.__file__).read()
+        with open(hub_conf.__file__) as f:
+            source = f.read()
         self.assertIn(
             "tests_conftest.pytest_configure(config)",
             source,
@@ -78,7 +80,8 @@ class StrictTeardownFlagTest(TestCase):
         """
         import hub.conftest as hub_conf
 
-        source = open(hub_conf.__file__).read()
+        with open(hub_conf.__file__) as f:
+            source = f.read()
         self.assertIn(
             '"canceling statement"',
             source,
@@ -110,7 +113,8 @@ class StrictTeardownFlagTest(TestCase):
         """
         import hub.conftest as hub_conf
 
-        source = open(hub_conf.__file__).read()
+        with open(hub_conf.__file__) as f:
+            source = f.read()
         # Count occurrences of STRICT_TEST_TEARDOWN check
         count = source.count('os.environ.get("STRICT_TEST_TEARDOWN") == "1"')
         self.assertGreaterEqual(
@@ -202,7 +206,8 @@ class ProductionDBGuardTest(TestCase):
         """NoMigrateTestRunner.setup_databases must call the guard."""
         import hub.test_runner as runner_mod
 
-        source = open(runner_mod.__file__).read()
+        with open(runner_mod.__file__) as f:
+            source = f.read()
         self.assertIn(
             "_guard_against_production_db()",
             source,

@@ -85,8 +85,9 @@ class MinimalTimeoutTest(TestCase):
         elapsed = time.time() - start
         print(f"Asset creation took {elapsed:.3f}s, status: {asset_response.status_code}")
 
-        self.assertEqual(asset_response.status_code, 201,
-            f"Asset creation failed: {asset_response.data}")
+        self.assertEqual(
+            asset_response.status_code, 201, f"Asset creation failed: {asset_response.data}"
+        )
         asset_id = asset_response.data["id"]
         self.assertIsNotNone(asset_id, "Asset ID should be present in response")
         print(f"Asset created: {asset_id}")
@@ -114,10 +115,15 @@ class MinimalTimeoutTest(TestCase):
         contract_start = time.time()
         contract_response = self.client.post(reverse("contract-list"), contract_data, format="json")
         contract_elapsed = time.time() - contract_start
-        print(f"Contract creation took {contract_elapsed:.3f}s, status: {contract_response.status_code}")
+        print(
+            f"Contract creation took {contract_elapsed:.3f}s, status: {contract_response.status_code}"
+        )
 
-        self.assertEqual(contract_response.status_code, 201,
-            f"Contract creation failed: {contract_response.data}")
+        self.assertEqual(
+            contract_response.status_code,
+            201,
+            f"Contract creation failed: {contract_response.data}",
+        )
         contract_id = contract_response.data["id"]
         self.assertIsNotNone(contract_id, "Contract ID should be present in response")
         print(f"Contract created: {contract_id}")

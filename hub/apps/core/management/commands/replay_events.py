@@ -11,6 +11,7 @@ Usage:
 import uuid
 from datetime import datetime
 
+import redis
 import structlog
 from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
@@ -69,7 +70,7 @@ class Command(BaseCommand):
             help="Skip events that have already been replayed (idempotency, default: True)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         event_type = options.get("event_type")
         tenant_id = options.get("tenant_id")
         start_time_str = options.get("start_time")
@@ -93,20 +94,24 @@ class Command(BaseCommand):
             except ValueError:
                 raise CommandError(
                     f"Invalid start-time format: {start_time_str}. Use ISO 8601 format."
-                )
+                ) from None
 
         if end_time_str:
             try:
                 end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
             except ValueError:
-                raise CommandError(f"Invalid end-time format: {end_time_str}. Use ISO 8601 format.")
+                raise CommandError(
+                    f"Invalid end-time format: {end_time_str}. Use ISO 8601 format."
+                ) from None
 
         # Validate tenant_id format if provided
         if tenant_id:
             try:
                 uuid.UUID(tenant_id)
             except ValueError:
-                raise CommandError(f"Invalid tenant-id format: {tenant_id}. Must be a valid UUID.")
+                raise CommandError(
+                    f"Invalid tenant-id format: {tenant_id}. Must be a valid UUID."
+                ) from None
 
         # Build query
         queryset = Event.objects.all()
@@ -301,19 +306,19 @@ class Command(BaseCommand):
         if redis_client:
             try:
                 exists = redis_client.exists(replay_key)
-                return exists > 0
-            except Exception as e:
+            except redis.RedisError as e:
                 logger.warning(
                     "event_replay_duplicate_check_redis_error",
                     event_id=event_id,
                     error=str(e),
                     message="Redis error, falling back to Django cache",
                 )
+            else:
+                return exists > 0
 
         # Fallback to Django cache if Redis is unavailable
         try:
             cached_value = cache.get(replay_key)
-            return cached_value is not None
         except Exception as e:
             logger.warning(
                 "event_replay_duplicate_check_cache_error",
@@ -322,6 +327,8 @@ class Command(BaseCommand):
                 message="Cache unavailable, cannot check for duplicate replays",
             )
             return False
+        else:
+            return cached_value is not None
 
     def _mark_event_replayed(self, event_id: str):
         """
@@ -342,14 +349,15 @@ class Command(BaseCommand):
         if redis_client:
             try:
                 redis_client.setex(replay_key, ttl, "1")
-                return
-            except Exception as e:
+            except redis.RedisError as e:
                 logger.warning(
                     "event_replay_mark_redis_error",
                     event_id=event_id,
                     error=str(e),
                     message="Redis error, falling back to Django cache",
                 )
+            else:
+                return
 
         # Fallback to Django cache if Redis is unavailable
         try:

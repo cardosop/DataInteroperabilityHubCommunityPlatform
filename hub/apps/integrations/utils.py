@@ -11,7 +11,7 @@ import time
 from datetime import UTC, datetime, timezone
 from typing import Any
 
-from dateutil import parser as date_parser
+from dateutil import parser as date_parser  # type: ignore[import-untyped]
 
 from hub.apps.core.services.base import ServiceError
 from hub.apps.integrations.base import MarketplaceType
@@ -485,14 +485,13 @@ def normalize_marketplace_metadata(
     # Copy any remaining fields that weren't mapped
     for key, value in metadata.items():
         key_lower = key.lower()
-        if key_lower not in [k.lower() for k in normalized]:
+        if key_lower not in [k.lower() for k in normalized] and not any(
+            key_lower == mapped_key.lower()
+            for mapped_keys in field_mappings.values()
+            for mapped_key in mapped_keys
+        ):
             # Only copy if it's not already normalized
-            if not any(
-                key_lower == mapped_key.lower()
-                for mapped_keys in field_mappings.values()
-                for mapped_key in mapped_keys
-            ):
-                normalized[key] = value
+            normalized[key] = value
 
     return normalized
 
@@ -539,11 +538,10 @@ def parse_marketplace_datetime(
         # If timezone-naive, apply default timezone
         if parsed_dt.tzinfo is None:
             parsed_dt = parsed_dt.replace(tzinfo=default_timezone)
-
-        return parsed_dt
     except (ValueError, TypeError) as e:
         # Try manual parsing for common formats
-        try:
+        def _manual_parse(e: Exception = e) -> datetime:
+            nonlocal datetime_str
             # Try ISO format
             if "T" in datetime_str or "+" in datetime_str or datetime_str.endswith("Z"):
                 # ISO 8601 format
@@ -566,13 +564,18 @@ def parse_marketplace_datetime(
                 error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
                 details={"datetime_string": datetime_str, "error": str(e)},
             )
+
+        try:
+            return _manual_parse()
         except Exception as parse_error:
             raise MarketplaceError(
                 f"Unable to parse datetime string: {datetime_str}",
                 error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
                 details={"datetime_string": datetime_str, "error": str(parse_error)},
                 cause=e,
-            )
+            ) from parse_error
+    else:
+        return parsed_dt
 
 
 def sanitize_marketplace_id(

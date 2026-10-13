@@ -4,7 +4,10 @@ Phase 54.5 — Search Deprecation Header & Empty-Query Guard Tests
 Validates via real HTTP requests:
 - SearchViewSet returns Deprecation + Link headers
 - UnifiedSearchView does NOT return deprecation headers
-- Both views reject empty q with 400
+- The deprecated SearchViewSet rejects empty q with 400 (QUERY_REQUIRED);
+  the canonical UnifiedSearchView treats empty q as filter-only browse
+  mode (200, Phase 18.3 — the shipped frontend omits q when the search
+  box is empty)
 """
 
 import uuid
@@ -95,7 +98,7 @@ class SearchDeprecationHeaderTest(TestCase):
 
 
 class SearchViewSetEmptyQueryGuardTest(TestCase):
-    """Test that both search views reject empty q with 400."""
+    """Deprecated view rejects empty q (400); unified view stays filter-only (200)."""
 
     def setUp(self):
         self.client = _setup_auth_client()
@@ -110,18 +113,19 @@ class SearchViewSetEmptyQueryGuardTest(TestCase):
         )
         self.assertIn("required", str(resp.data).lower())
 
-    def test_unified_search_rejects_empty_q(self):
-        """GET /api/search/?q= must return 400."""
+    def test_unified_search_empty_q_returns_filter_only(self):
+        """GET /api/search/?q= returns 200 filter-only (Phase 18.3).
+
+        The canonical UnifiedSearchView treats an empty/missing ``q`` as
+        valid browse mode — the shipped frontend search page omits ``q``
+        when the search box is empty and expects filtered listings. Only
+        the deprecated /api/v1/search/search/ ViewSet requires ``q``.
+        """
         resp = self.client.get("/api/search/", {"q": ""})
         self.assertEqual(
             resp.status_code,
-            400,
-            f"Empty q must return 400, got {resp.status_code}",
+            200,
+            f"Empty q on the unified surface must return 200 filter-only, got {resp.status_code}",
         )
-        # Check for the specific error code, not just the substring
-        # "required" which could match unrelated validation errors.
-        self.assertEqual(
-            resp.data.get("error", {}).get("code"),
-            "QUERY_REQUIRED",
-            f"Expected QUERY_REQUIRED error code, got: {resp.data}",
-        )
+        data = resp.json() if hasattr(resp, "json") else resp.data
+        self.assertIn("results", data)

@@ -83,7 +83,7 @@ def run_dq(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to run DQ check: {e}")
+        raise click.ClickException(f"Failed to run DQ check: {e}") from e
 
 
 @dq.command("get")
@@ -146,7 +146,7 @@ def get_dq_run(dq_run_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get DQ run: {e}")
+        raise click.ClickException(f"Failed to get DQ run: {e}") from e
 
 
 def _safe_str(value, max_len=None):
@@ -219,7 +219,7 @@ def list_dq_runs(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list DQ runs: {e}")
+        raise click.ClickException(f"Failed to list DQ runs: {e}") from e
 
 
 @dq.command("watch")
@@ -237,16 +237,19 @@ def watch_dq_run(dq_run_id: str, interval: int, timeout: int, output_format: str
     """Watch a DQ run until completion"""
     start_time = time.time()
 
+    def _check_timeout() -> None:
+        if time.time() - start_time > timeout:
+            click.echo(f"\nPoll timeout for DQ run {dq_run_id}.")
+            click.echo("Overall Status: UNKNOWN")
+            click.echo("Error Code: POLL_TIMEOUT")
+            click.echo(
+                "The DQ run may still be in progress. Check with: datahub dq get " + dq_run_id
+            )
+            raise click.ClickException(f"Timeout waiting for DQ run {dq_run_id} to complete")
+
     try:
         while True:
-            if time.time() - start_time > timeout:
-                click.echo(f"\nPoll timeout for DQ run {dq_run_id}.")
-                click.echo("Overall Status: UNKNOWN")
-                click.echo("Error Code: POLL_TIMEOUT")
-                click.echo(
-                    "The DQ run may still be in progress. Check with: datahub dq get " + dq_run_id
-                )
-                raise click.ClickException(f"Timeout waiting for DQ run {dq_run_id} to complete")
+            _check_timeout()
 
             data = api_client.get(f"dq/runs/{dq_run_id}/")
             run_status = data.get("status")
@@ -283,7 +286,7 @@ def watch_dq_run(dq_run_id: str, interval: int, timeout: int, output_format: str
         click.echo("\nWatching cancelled by user.")
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to watch DQ run: {e}")
+        raise click.ClickException(f"Failed to watch DQ run: {e}") from e
 
 
 @dq.command("scorecard")
@@ -344,7 +347,7 @@ def get_scorecard(asset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get DQ scorecard: {e}")
+        raise click.ClickException(f"Failed to get DQ scorecard: {e}") from e
 
 
 @dq.command("alerts")
@@ -397,7 +400,7 @@ def manage_alerts(
         except click.ClickException:
             raise
         except Exception as e:
-            raise click.ClickException(f"Failed to list alerting rules: {e}")
+            raise click.ClickException(f"Failed to list alerting rules: {e}") from e
     elif create:
         if not asset_id or threshold is None:
             raise click.ClickException(
@@ -422,7 +425,7 @@ def manage_alerts(
         except click.ClickException:
             raise
         except Exception as e:
-            raise click.ClickException(f"Failed to create alerting rule: {e}")
+            raise click.ClickException(f"Failed to create alerting rule: {e}") from e
     else:
         click.echo("Use --list to list alerting rules or --create to create one")
         click.echo("Example: datahub dq alerts --list")

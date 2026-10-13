@@ -28,6 +28,14 @@ const VITE_RELOAD_FLAG = '__meshant_chunk_reload_at__';
 const VITE_RELOAD_COOLDOWN_MS = 30_000;
 window.addEventListener('vite:preloadError', (event) => {
   try {
+    // Offline guard (mirror of the ErrorBoundary's): a preload failure
+    // while offline is a connectivity error, not a stale-chunk race.
+    // Reloading would land on the browser's network-error page and hide
+    // the SPA's own error UI — let the rejection propagate so the
+    // boundary can surface it.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return;
+    }
     const last = Number(window.sessionStorage.getItem(VITE_RELOAD_FLAG)) || 0;
     if (Date.now() - last > VITE_RELOAD_COOLDOWN_MS) {
       window.sessionStorage.setItem(VITE_RELOAD_FLAG, String(Date.now()));

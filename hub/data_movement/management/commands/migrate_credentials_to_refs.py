@@ -90,10 +90,11 @@ def _delete_sm_secret(credential_ref: str) -> bool:
     try:
         client = boto3.client("secretsmanager")
         client.delete_secret(SecretId=credential_ref, ForceDeleteWithoutRecovery=True)
-        return True
     except Exception:
         logger.exception("sm_secret_delete_failed", arn=credential_ref)
         return False
+    else:
+        return True
 
 
 class Command(BaseCommand):
@@ -133,7 +134,7 @@ class Command(BaseCommand):
         if model_filter in ("export", "both"):
             self._migrate_exports(tenant_id, execute, dry_run)
 
-    def _migrate_ingestions(self, tenant_id, execute, dry_run):
+    def _migrate_ingestions(self, tenant_id, _execute, dry_run):
         from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 
         qs = ScheduledIngestion.objects.filter(credential_ref__isnull=True)
@@ -164,7 +165,7 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"[MIGRATED] ingestion {obj.id} → credential_ref={arn}")
 
-    def _migrate_exports(self, tenant_id, execute, dry_run):
+    def _migrate_exports(self, tenant_id, _execute, dry_run):
         from hub.apps.scheduled_export.models import ScheduledExport
 
         qs = ScheduledExport.objects.filter(credential_ref__isnull=True)

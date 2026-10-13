@@ -18,9 +18,10 @@ class CacheInvalidationTest(TestCase):
         try:
             cache.set("_probe", 1, 5)
             cache.delete("_probe")
-            return cache
         except Exception:
             self.skipTest("Redis cache not available")
+        else:
+            return cache
 
     def test_cache_write_visible_to_subsequent_read(self):
         c = self._get_cache()

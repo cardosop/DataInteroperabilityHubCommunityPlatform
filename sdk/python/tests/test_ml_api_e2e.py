@@ -13,7 +13,9 @@ These tests require:
 2. A test user and API key configured
    OR set via environment variables: TEST_API_KEY or DATAHUB_API_KEY
 """
+import contextlib
 import os
+import subprocess
 import uuid
 
 import pytest
@@ -21,15 +23,15 @@ import pytest
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
     ConflictError,
+    DataHubError,
     NotFoundError,
     ServerError,
     UnauthorizedError,
     ValidationError,
 )
-import contextlib
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str):
+def setup_authentication_for_sdk_tests(_api_base_url: str):
     """Set up authentication for SDK tests.
 
     Creates a dedicated tenant with ``ml_enabled=True`` so ML endpoints
@@ -40,7 +42,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str):
         key = _create_ml_e2e_tenant_and_key()
         if key:
             return key
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Method 2: Use canonical conftest helper
@@ -50,7 +52,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str):
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Fall back to env-var keys
@@ -69,7 +71,7 @@ def _create_ml_e2e_tenant_and_key():
     try:
         unique_id = uuid.uuid4().hex[:8]
         # Use .format() instead of f-string to avoid nested brace issues
-        django_shell_script = """
+        django_shell_script = f"""
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.auth.models import APIKey as AuthAPIKey
@@ -110,20 +112,40 @@ api_key_obj = AuthAPIKey.objects.create(
     user=user,
     tenant=tenant,
     name='ML SDK E2E Test Key',
-    key_hash=api_key_hash
+    key_hash=api_key_hash,
+    # ML viewsets enforce HasScope; API keys are ALWAYS scope-checked
+    # (no ENFORCE_JWT_SCOPES bypass for keys) — missing scopes = 403.
+    # assets:write covers the pipeline test's asset provisioning.
+    scopes=['ml:read', 'ml:write', 'assets:write'],
 )
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.tenants.models import TenantPlan
-plan = TenantPlan.objects.first()
+from hub.apps.tenants.models import TenantPlan, PlanTier, PlanCategory
+# The ML limit checker routes max_ml_models to tenant.ml_plan; a tenant
+# without one has max_limit=0 ("Plan limit exceeded" on every create).
+ml_plan, _ = TenantPlan.objects.get_or_create(
+    slug='ml-sdk-e2e-plan',
+    defaults={{
+        'name': 'ML SDK E2E Plan',
+        'tier': PlanTier.ENTERPRISE,
+        'category': PlanCategory.ML_AI,
+        'limits_json': {{'max_ml_models': 100}},
+        'is_active': True
+    }}
+)
+if not tenant.ml_plan or tenant.ml_plan.slug != 'ml-sdk-e2e-plan':
+    tenant.ml_plan = ml_plan
+    tenant.save(update_fields=['ml_plan'])
+
+plan = TenantPlan.objects.filter(slug='ml-sdk-e2e-plan').first() or TenantPlan.objects.first()
 if plan:
-    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
-    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={{'plan': plan, 'status': SubscriptionStatus.ACTIVE}})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={{'plan': plan, 'status': SubscriptionStatus.ACTIVE}})
 
 print('API_KEY_START')
 print(api_key_value)
 print('API_KEY_END')
-""".format(unique_id=unique_id)
+"""
         result = subprocess.run(
             [
                 "docker",
@@ -149,8 +171,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -162,11 +184,11 @@ print('API_KEY_END')
                     break
 
             if not api_key:
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if not line or len(line) < 20:
                         continue
-                    if line.startswith(">>>") or line.startswith("..."):
+                    if line.startswith((">>>", "...")):
                         continue
                     if "imported" in line.lower() or "objects" in line.lower() or "Error" in line:
                         continue
@@ -178,7 +200,7 @@ print('API_KEY_END')
 
             if api_key:
                 return api_key
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
     return None
 
@@ -327,11 +349,9 @@ class TestMLWorkflowE2E:
                         pass
 
                     # Step 6: Cancel training job (if still running)
-                    try:
+                    # Job may already be completed or not found
+                    with contextlib.suppress(NotFoundError, ServerError):
                         await training_api.cancel_training_job(job_id)
-                    except (NotFoundError, ServerError):
-                        # Job may already be completed or not found
-                        pass
                 except (NotFoundError, ValidationError) as e:
                     pytest.skip(f"Training job submission failed (may need setup): {e}")
         except (UnauthorizedError, ServerError) as e:
@@ -395,11 +415,9 @@ class TestMLWorkflowE2E:
                         pass
 
                     # Step 7: Undeploy model
-                    try:
+                    # Deployment may already be undeployed
+                    with contextlib.suppress(NotFoundError, ServerError):
                         await inference_api.undeploy_model(deployment_id)
-                    except (NotFoundError, ServerError):
-                        # Deployment may already be undeployed
-                        pass
                 except (NotFoundError, ValidationError, ServerError) as e:
                     pytest.skip(
                         f"Inference deployment failed (may need setup or ODH services): {e}"
@@ -457,20 +475,61 @@ class TestMLWorkflowE2E:
             pytest.skip(f"API not available or not authenticated: {e}")
 
     @pytest.mark.asyncio
-    async def test_complete_ml_pipeline_workflow(self, ml_api, training_api, inference_api):
+    async def test_complete_ml_pipeline_workflow(
+        self, client, ml_api, training_api, inference_api
+    ):
         """
         Test complete ML pipeline: create model → train → deploy → predict → cleanup
 
         This is a comprehensive E2E test that exercises the entire ML pipeline.
+        The asset + dataset are self-provisioned here (previously the test
+        depended on TEST_ASSET_ID / TEST_DATASET_ID env vars nobody set,
+        so it always skipped).
         """
         try:
-            # This test requires significant setup (assets, datasets, ODH services)
-            # So we'll test the workflow structure but skip if setup is incomplete
-            test_asset_id = os.getenv("TEST_ASSET_ID")
-            test_dataset_id = os.getenv("TEST_DATASET_ID")
+            # Self-provision an asset and a tiny dataset instead of
+            # depending on TEST_ASSET_ID / TEST_DATASET_ID env vars.
+            asset = await client.post(
+                "/assets/",
+                {
+                    "name": f"Pipeline Asset {uuid.uuid4().hex[:8]}",
+                    "key": f"pipeline-asset-{uuid.uuid4().hex[:8]}",
+                    "status": "DRAFT",
+                    "domain": "test",
+                    "visibility": "INTERNAL",
+                },
+            )
+            test_asset_id = asset.get("id")
+            if not test_asset_id:
+                pytest.skip("Could not create an asset for the pipeline test")
 
-            if not (test_asset_id and test_dataset_id):
-                pytest.skip("TEST_ASSET_ID and TEST_DATASET_ID environment variables not set")
+            test_dataset_id = None
+            try:
+                import hashlib
+
+                content = b"id,name\n1,alpha\n"
+                digest = hashlib.sha256(content).hexdigest()
+                file_result = await client.files.init_upload(
+                    name=f"pipeline-{uuid.uuid4().hex[:8]}.csv",
+                    content_type="text/csv",
+                    size=len(content),
+                )
+                # The init response uses ``file_id`` (not ``id``).
+                file_id = file_result.get("file_id")
+                if file_id:
+                    await client.files.complete_upload(file_id, content_sha256=digest)
+                    dataset_result = await client.datasets.create_dataset(
+                        file_id=file_id, asset_id=test_asset_id
+                    )
+                    test_dataset_id = dataset_result.get("id")
+            except (DataHubError, ValueError, AttributeError):
+                test_dataset_id = None
+
+            if not test_dataset_id:
+                # Clean up and skip — the pipeline needs a dataset.
+                with contextlib.suppress(Exception):
+                    await client.delete(f"/assets/{test_asset_id}/")
+                pytest.skip("Could not create a dataset for the pipeline test")
 
             # Step 1: Create model
             try:

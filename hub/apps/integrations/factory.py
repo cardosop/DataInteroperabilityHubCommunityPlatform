@@ -6,7 +6,7 @@ Follows the same pattern as SourceConnectorFactory for consistency.
 """
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
@@ -53,7 +53,7 @@ class MarketplaceConnectorFactory:
 
     # Class-level registry of connector classes
     # Maps MarketplaceType enum values to connector class types
-    _connectors: dict[str, type[DataMarketplaceConnector]] = {}
+    _connectors: ClassVar[dict[str, type[DataMarketplaceConnector]]] = {}
 
     @classmethod
     def register_connector(
@@ -240,7 +240,7 @@ class MarketplaceConnectorFactory:
                                     raise ValueError(
                                         "DadosGovBrConnector not available. "
                                         "Ensure dados_gov_br_connector.py is properly installed."
-                                    )
+                                    ) from None
                                 connector_class = DadosGovBrConnector
 
                                 # Use instance configuration for Swagger connector
@@ -616,7 +616,7 @@ class MarketplaceConnectorFactory:
                 raise ValueError(
                     "DadosGovBrConnector not available. "
                     "Ensure dados_gov_br_connector.py is properly installed."
-                )
+                ) from None
             connector_class = DadosGovBrConnector
         else:
             # Use CKANConnector explicitly for CKAN instances (demo.ckan.org, data.gov).
@@ -626,7 +626,7 @@ class MarketplaceConnectorFactory:
             except ImportError:
                 raise ValueError(
                     "CKANConnector not available. Ensure ckan_connector.py is properly installed."
-                )
+                ) from None
             connector_class = CKANConnector
 
         # Resolve API key/JWT token
@@ -681,11 +681,12 @@ class MarketplaceConnectorFactory:
                     f"Created CKANConnector for instance {instance_config.name} "
                     f"(base_url={instance_config.base_url})"
                 )
-            return connector
         except Exception as e:
             raise ValueError(
                 f"Failed to create connector for instance '{instance_id}': {e!s}"
             ) from e
+        else:
+            return connector
 
     @classmethod
     def create_marketplace_connector_from_instance(

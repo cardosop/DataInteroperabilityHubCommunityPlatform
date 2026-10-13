@@ -185,7 +185,7 @@ class TestSummaryReportGenerator:
                     "duration": round(duration, 2),
                 }
             }
-        except Exception as e:
+        except (OSError, ElementTree.ParseError, ValueError) as e:
             print(f"⚠️  Warning: Could not parse JUnit XML {path}: {e}")
             return None
 
@@ -372,12 +372,12 @@ class TestSummaryReportGenerator:
             for line in lines[1:]:
                 values = [v.strip() for v in line.split(",")]
                 if len(values) == len(headers):
-                    row = dict(zip(headers, values))
+                    row = dict(zip(headers, values, strict=False))
                     metric_name = row.get("Metric", "")
                     if metric_name:
                         metrics[metric_name] = row
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"⚠️  Warning: Could not parse performance CSV: {e}")
 
         return metrics
@@ -394,7 +394,7 @@ class TestSummaryReportGenerator:
             return 0.0
         return (passed / total) * 100.0
 
-    def _get_status(self, passed: int, failed: int, errors: int, total: int) -> str:
+    def _get_status(self, _passed: int, failed: int, errors: int, total: int) -> str:
         """Get status string based on test results."""
         if total == 0:
             return "NO_TESTS"
@@ -425,7 +425,7 @@ class TestSummaryReportGenerator:
                 match = re.search(r"pytest\s+(\d+\.\d+\.\d+)", result.stdout)
                 if match:
                     versions["pytest_version"] = match.group(1)
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
         # Get Django version
@@ -460,7 +460,7 @@ class TestSummaryReportGenerator:
                         uc_id = uc_match.group(0)
                         if uc_id not in use_cases:
                             use_cases.append(uc_id)
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"⚠️  Warning: Could not parse use cases: {e}")
 
         return sorted(use_cases)
@@ -487,7 +487,7 @@ class TestSummaryReportGenerator:
                         journey_id = journey_match.group(0)
                         if journey_id not in journeys:
                             journeys.append(journey_id)
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"⚠️  Warning: Could not parse journeys: {e}")
 
         return sorted(journeys)
@@ -1438,10 +1438,7 @@ class TestSummaryReportGenerator:
         journey_groups: dict[str, list[str]] = {}
         for journey_id in self.journeys:
             parts = journey_id.split("-")
-            if len(parts) >= 2:
-                prefix = parts[1]  # AUTH, DPO, etc.
-            else:
-                prefix = "OTHER"
+            prefix = parts[1] if len(parts) >= 2 else "OTHER"  # AUTH, DPO, etc.
             if prefix not in journey_groups:
                 journey_groups[prefix] = []
             journey_groups[prefix].append(journey_id)

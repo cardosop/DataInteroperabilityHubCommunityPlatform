@@ -18,9 +18,14 @@ import { waitForMarketplaceListings } from '../../fixtures/helpers';
 test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
   test.setTimeout(120000);
 
-  test.beforeAll(async () => {
-    await seedMarketplaceListings(3);
-  });
+  // Same hook budget as comparison-side-by-side: the seed's connection-
+  // failure settle waits need room under mid-batch API recreations.
+  test.beforeAll(
+    async () => {
+      await seedMarketplaceListings(3);
+    },
+    { timeout: 240_000 },
+  );
 
   test.describe('Success', () => {
     test('trust signals bar renders on listing cards', async ({ page }) => {
@@ -31,6 +36,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
 
       // Wait for the listing page, grid, or empty state
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator(
           '[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]',
@@ -40,7 +46,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
         .catch(() => null);
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session expired');
+        test.skip(page.url().includes('/login'), 'Auth session expired');
         return;
       }
 
@@ -48,10 +54,9 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       const cardCount = await waitForMarketplaceListings(page, '.listing-card', 1);
 
       if (cardCount === 0) {
-        test.skip(true, 'No published listings after retries — trust signals cannot be verified');
+        test.skip(cardCount === 0, 'No published listings after retries — trust signals cannot be verified');
         return;
       }
-      const cards = page.locator('.listing-card');
 
       // At minimum, some cards should have a trust signals bar
       const signalBars = page.locator('[data-testid="trust-signals-bar"]');
@@ -67,6 +72,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -76,7 +82,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (page.url().includes('/login')) return;
       const lcCount = await waitForMarketplaceListings(page, '.listing-card', 1);
       if (lcCount === 0) {
-        test.skip(true, 'No published listings after retries');
+        test.skip(lcCount === 0, 'No published listings after retries');
         return;
       }
 
@@ -86,7 +92,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (kycCount === 0) {
         // KYC signal is conditionally rendered — acceptable if no listings have
         // a confirmed kycStatus. TrustSignalsBar only renders it when truthy.
-        test.skip(true, 'No listings with KYC status — signal is conditional');
+        test.skip(kycCount === 0, 'No listings with KYC status — signal is conditional');
         return;
       }
 
@@ -116,6 +122,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -125,7 +132,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (page.url().includes('/login')) return;
       const lcCount = await waitForMarketplaceListings(page, '.listing-card', 1);
       if (lcCount === 0) {
-        test.skip(true, 'No published listings after retries');
+        test.skip(lcCount === 0, 'No published listings after retries');
         return;
       }
 
@@ -135,7 +142,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (compCount === 0) {
         // Compliance grade is conditional — only rendered when present and
         // not UNKNOWN. Acceptable if no listings have a known grade.
-        test.skip(true, 'No listings with compliance grade — signal is conditional');
+        test.skip(compCount === 0, 'No listings with compliance grade — signal is conditional');
         return;
       }
 
@@ -171,6 +178,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -180,7 +188,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (page.url().includes('/login')) return;
       const lcCount = await waitForMarketplaceListings(page, '.listing-card', 1);
       if (lcCount === 0) {
-        test.skip(true, 'No published listings after retries');
+        test.skip(lcCount === 0, 'No published listings after retries');
         return;
       }
 
@@ -189,7 +197,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if ((await sampleSignals.count()) === 0) {
         // Sample indicator is conditional — only shown when
         // sampleAvailable is true. Acceptable absence.
-        test.skip(true, 'No listings with samples — signal is conditional');
+        test.skip((await sampleSignals.count()) === 0, 'No listings with samples — signal is conditional');
         return;
       }
 
@@ -209,6 +217,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -218,7 +227,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (page.url().includes('/login')) return;
       const lcCount = await waitForMarketplaceListings(page, '.listing-card', 1);
       if (lcCount === 0) {
-        test.skip(true, 'No published listings after retries');
+        test.skip(lcCount === 0, 'No published listings after retries');
         return;
       }
 
@@ -226,7 +235,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
 
       if ((await updatedSignals.count()) === 0) {
         // updatedAt is conditional — only rendered when present.
-        test.skip(true, 'No listings with updated-at — signal is conditional');
+        test.skip((await updatedSignals.count()) === 0, 'No listings with updated-at — signal is conditional');
         return;
       }
 
@@ -259,6 +268,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -267,10 +277,9 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
 
       if (page.url().includes('/login')) return;
 
-      const cards = page.locator('.listing-card');
       const lc = await waitForMarketplaceListings(page, '.listing-card', 1);
       if (lc === 0) {
-        test.skip(true, 'No published listings after retries');
+        test.skip(lc === 0, 'No published listings after retries');
         return;
       }
 
@@ -296,6 +305,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -322,6 +332,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -331,7 +342,7 @@ test.describe('Trust Signals on Listing Cards (278.V.6) @critical', () => {
       if (page.url().includes('/login')) return;
       const lcCount = await waitForMarketplaceListings(page, '.listing-card', 1);
       if (lcCount === 0) {
-        test.skip(true, 'No published listings after retries');
+        test.skip(lcCount === 0, 'No published listings after retries');
         return;
       }
 

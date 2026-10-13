@@ -4,6 +4,7 @@ Marketplace Sync Job Views Tests
 Comprehensive tests for marketplace sync job management endpoints.
 """
 
+import contextlib
 import uuid
 
 import pytest
@@ -151,12 +152,11 @@ class MarketplaceSyncJobViewSetTest(TestCase):
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, self._saved_snowflake
             )
         else:
-            try:
+            with contextlib.suppress(ValueError):
+                # Already unregistered
                 MarketplaceConnectorFactory.unregister_connector(
                     MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
                 )
-            except ValueError:
-                pass  # Already unregistered
         super().tearDown()
 
     def test_create_push_sync_job_success(self):

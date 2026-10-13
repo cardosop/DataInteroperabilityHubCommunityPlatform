@@ -12,6 +12,7 @@ Covers:
 import uuid
 
 import pytest
+from django.db import IntegrityError
 from django.test import TestCase
 
 from hub.apps.audit.event_types import (
@@ -148,7 +149,9 @@ class PriceChangeApprovalModelTests(TestCase):
             new_price_cents=150000,
             requested_by=self.user1,
         )
-        with pytest.raises(Exception):
+        with pytest.raises(
+            IntegrityError
+        ):  # partial UniqueConstraint: one PENDING approval per plan
             PlanPriceChangeApproval.objects.create(
                 tenant_plan=self.plan,
                 old_price_cents=5000,

@@ -88,16 +88,15 @@ class ODPSTestStructureConventionsTest(TestCase):
 
                 # Find all function definitions
                 for node in ast.walk(tree):
-                    if isinstance(node, ast.FunctionDef):
-                        if node.name.startswith("test_"):
-                            # Check naming convention: test_<functionality>_<scenario>_<expected_result>
-                            parts = node.name.split("_")
-                            if len(parts) < 3:
-                                violations.append(
-                                    f"{test_file.name}::{node.name} - "
-                                    f"Test method should have at least 3 parts: "
-                                    f"test_<functionality>_<scenario>_<expected_result>"
-                                )
+                    if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+                        # Check naming convention: test_<functionality>_<scenario>_<expected_result>
+                        parts = node.name.split("_")
+                        if len(parts) < 3:
+                            violations.append(
+                                f"{test_file.name}::{node.name} - "
+                                f"Test method should have at least 3 parts: "
+                                f"test_<functionality>_<scenario>_<expected_result>"
+                            )
 
         if violations:
             self.fail(
@@ -171,28 +170,26 @@ class ODPSTestStructureConventionsTest(TestCase):
 
         # Check all fixture files
         for fixture_file in self.fixtures_dir.rglob("*.yaml"):
-            if fixture_file.name not in ["__init__.py"]:
-                # YAML files should follow naming convention
-                if not any(
-                    keyword in fixture_file.name.lower()
-                    for keyword in ["odps", "sample", "invalid", "ref"]
-                ):
-                    violations.append(
-                        f"Fixture file '{fixture_file.relative_to(self.fixtures_dir)}' "
-                        f"does not follow naming convention"
-                    )
+            # YAML files should follow naming convention
+            if fixture_file.name not in ["__init__.py"] and not any(
+                keyword in fixture_file.name.lower()
+                for keyword in ["odps", "sample", "invalid", "ref"]
+            ):
+                violations.append(
+                    f"Fixture file '{fixture_file.relative_to(self.fixtures_dir)}' "
+                    f"does not follow naming convention"
+                )
 
         for fixture_file in self.fixtures_dir.rglob("*.json"):
-            if fixture_file.name not in ["__init__.py"]:
-                # JSON files should follow naming convention
-                if not any(
-                    keyword in fixture_file.name.lower()
-                    for keyword in ["odps", "sample", "invalid", "ref", "malicious"]
-                ):
-                    violations.append(
-                        f"Fixture file '{fixture_file.relative_to(self.fixtures_dir)}' "
-                        f"does not follow naming convention"
-                    )
+            # JSON files should follow naming convention
+            if fixture_file.name not in ["__init__.py"] and not any(
+                keyword in fixture_file.name.lower()
+                for keyword in ["odps", "sample", "invalid", "ref", "malicious"]
+            ):
+                violations.append(
+                    f"Fixture file '{fixture_file.relative_to(self.fixtures_dir)}' "
+                    f"does not follow naming convention"
+                )
 
         # Only warn, don't fail (naming is flexible)
         if violations:
@@ -217,12 +214,16 @@ class ODPSTestStructureConventionsTest(TestCase):
 
                 # Check if file references fixtures directory
                 # Look for common patterns: fixtures/odps, tests/fixtures/odps
-                if "fixtures" in content.lower() and "odps" in content.lower():
+                if (
+                    "fixtures" in content.lower()
+                    and "odps" in content.lower()
                     # Check if path is correct
-                    if "tests/fixtures/odps" not in content and "fixtures/odps" not in content:
-                        violations.append(
-                            f"{test_file.name} - References fixtures but path may be incorrect"
-                        )
+                    and "tests/fixtures/odps" not in content
+                    and "fixtures/odps" not in content
+                ):
+                    violations.append(
+                        f"{test_file.name} - References fixtures but path may be incorrect"
+                    )
 
         # Only warn, don't fail (some tests may use inline fixtures)
         if violations:
@@ -247,9 +248,8 @@ class ODPSTestStructureConventionsTest(TestCase):
                 tree = ast.parse(content, filename=str(test_file))
 
                 for node in ast.walk(tree):
-                    if isinstance(node, ast.FunctionDef):
-                        if node.name.startswith("test_"):
-                            test_methods.append(f"{test_file.name}::{node.name}")
+                    if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+                        test_methods.append(f"{test_file.name}::{node.name}")
 
         fixture_files = list(self.fixtures_dir.rglob("*.yaml")) + list(
             self.fixtures_dir.rglob("*.json")

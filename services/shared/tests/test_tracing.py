@@ -60,10 +60,7 @@ def test_setup_handles_missing_otel_packages(monkeypatch):
         if "opentelemetry" in mod_name:
             blocked[mod_name] = sys.modules.pop(mod_name)
 
-    if hasattr(__builtins__, "__import__"):
-        original_import = __builtins__.__import__
-    else:
-        original_import = __import__
+    original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
     def _mock_import(name, *args, **kwargs):
         if "opentelemetry" in name:
@@ -96,10 +93,7 @@ def test_get_tracer_handles_missing_otel_packages(monkeypatch):
         if "opentelemetry" in mod_name:
             blocked[mod_name] = sys.modules.pop(mod_name)
 
-    if hasattr(__builtins__, "__import__"):
-        original_import = __builtins__.__import__
-    else:
-        original_import = __import__
+    original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
     def _mock_import(name, *args, **kwargs):
         if "opentelemetry" in name:

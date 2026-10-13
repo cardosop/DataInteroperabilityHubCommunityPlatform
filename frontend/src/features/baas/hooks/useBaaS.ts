@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { baasService } from '../services/baasService';
 import type {
   APIKeyCreateRequest,
@@ -15,7 +16,7 @@ import type {
 export function useAPIKeys(filters: { tier?: string; active_only?: boolean } = {}) {
   return useQuery({
     queryKey: ['baas', 'api-keys', filters],
-    queryFn: () => baasService.listAPIKeys(filters),
+    queryFn: async () => normalizePaginated(await baasService.listAPIKeys(filters)),
   });
 }
 
@@ -94,7 +95,7 @@ export function useUsageByTenant(filters: UsageFilters = {}) {
 export function useBillingReports(filters: { customer_id?: string; status?: string } = {}) {
   return useQuery({
     queryKey: ['baas', 'billing-reports', filters],
-    queryFn: () => baasService.listBillingReports(filters),
+    queryFn: async () => normalizePaginated(await baasService.listBillingReports(filters)),
   });
 }
 
@@ -145,7 +146,8 @@ export function useSendBillingReport() {
 export function useVoidBillingReport() {
   const queryClient = useQueryClient();
   return useMutationWithNotification({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) => baasService.voidBillingReport(id, reason),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      baasService.voidBillingReport(id, reason),
     successMessage: 'Report voided',
     errorMessage: 'Failed to void report',
     onSuccess: () => {

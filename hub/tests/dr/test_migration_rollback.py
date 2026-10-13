@@ -18,7 +18,9 @@ class MigrationSchemaIntegrityTest(TestCase):
             call_command("showmigrations", "--plan", stdout=out)
             output = out.getvalue()
             # Unapplied migrations show as [ ] (no X)
-            unapplied = [l for l in output.split("\n") if l.strip().startswith("[ ]")]
+            unapplied = [
+                output for output in output.split("\n") if output.strip().startswith("[ ]")
+            ]
             # Some may be unapplied in test — just verify count is reasonable
             self.assertLessEqual(
                 len(unapplied), 20, f"Too many unapplied migrations: {len(unapplied)}"

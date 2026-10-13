@@ -98,7 +98,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO @critical', () => {
         }
         if (listingStatus && !['PUBLISHED', 'ACTIVE'].includes(listingStatus)) {
           test.skip(
-            true,
+            listingStatus && !['PUBLISHED', 'ACTIVE'].includes(listingStatus),
             `Listing ${listingId} is in status "${listingStatus}" (not PUBLISHED/ACTIVE). ` +
             'Cannot proceed with value chain test — verify marketplace publish workflow.'
           );
@@ -172,7 +172,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO @critical', () => {
         }
         if (!orderId) {
           test.skip(
-            true,
+            !orderId,
             `Could not place order via UI or API: ${orderErr}. Value chain test requires marketplace access.`
           );
           return;
@@ -248,7 +248,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO @critical', () => {
         // support cross-tenant marketplace, skip with a diagnostic message.
         const allEntitlements = entitlements.map((e) => e.listing_id).join(', ');
         test.skip(
-          true,
+          !matchingEntitlement,
           `No entitlement found for listing "${listingId}" in DC's entitlements (found: [${allEntitlements}]). ` +
           'The platform may not support cross-tenant marketplace or the order approval did not create an entitlement.'
         );

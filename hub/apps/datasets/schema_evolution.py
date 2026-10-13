@@ -6,15 +6,15 @@ and generates change logs.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from django.utils import timezone
 
-from .models import Dataset
+from .models import Dataset, SchemaVersion
 
 
-class CompatibilityLevel(str, Enum):
+class CompatibilityLevel(StrEnum):
     """Schema compatibility levels"""
 
     FULLY_COMPATIBLE = "FULLY_COMPATIBLE"  # No schema changes
@@ -23,7 +23,7 @@ class CompatibilityLevel(str, Enum):
     INCOMPATIBLE = "INCOMPATIBLE"  # Type changes or both added/removed
 
 
-class ChangeType(str, Enum):
+class ChangeType(StrEnum):
     """Types of schema changes"""
 
     FIELD_ADDED = "FIELD_ADDED"

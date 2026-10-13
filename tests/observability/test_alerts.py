@@ -82,12 +82,9 @@ class TestCriticalAlertsExist:
 class TestPrometheusConfigSyntax:
     """Prometheus configuration files are syntactically valid."""
 
-@pytest.mark.skip(reason="yaml library not installed")
     def test_alerts_yml_is_valid_yaml(self):
         """alerts.yml parses as valid YAML."""
-        try:
-            import yaml
-        except ImportError:
+        import yaml
 
         if not ALERTS_YML.exists():
             pytest.skip("alerts.yml not found")  # noqa: skip-in-body — runtime service dependency
@@ -101,25 +98,24 @@ class TestPrometheusConfigSyntax:
         except yaml.YAMLError as e:
             pytest.fail(f"alerts.yml is not valid YAML: {e}")
 
-@pytest.mark.skip(reason="promtool not installed — skipping syntax validation")
     def test_alert_files_use_valid_promtool(self):
-        """Alert files pass promtool validation if promtool is available."""
+        """Alert files pass promtool validation.
+
+        promtool ships in the api-service-test image (Dockerfile COPY
+        from the Prometheus image) — failures here are real rule drift.
+        """
         if not ALERTS_YML.exists():  # noqa: skip-in-body — runtime service dependency
             pytest.skip("alerts.yml not found")
 
-        try:
-            result = subprocess.run(
-                ["promtool", "check", "rules", str(ALERTS_YML)],
-                check=False,
-                capture_output=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                # promtool may not be installed — informational
-                pass
-        except FileNotFoundError:
-        except Exception:
-            pass  # promtool not available
+        result = subprocess.run(
+            ["promtool", "check", "rules", str(ALERTS_YML)],
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, (
+            f"promtool check rules failed:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        )
 
 
 @pytest.mark.unit

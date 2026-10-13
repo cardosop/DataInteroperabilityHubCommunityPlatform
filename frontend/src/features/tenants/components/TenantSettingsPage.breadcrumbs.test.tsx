@@ -24,11 +24,31 @@ describe('TenantSettingsPage breadcrumbs', () => {
     vi.clearAllMocks();
     vi.mocked(apiClient.getClient().get).mockImplementation((url: string) => {
       if (url.includes('usage')) {
+        // The CURRENT usage payload contract (the component renders
+        // storage/API/assets/datasets bars from these fields).
         return Promise.resolve({
           data: {
-            storage_bytes: 0,
-            api_calls_month: 0,
-            active_users: 0,
+            tenant_id: 'test-tenant',
+            plan_slug: 'pro',
+            plan_tier: 'PRO',
+            storage_bytes: 1073741824,
+            storage_gb: 1,
+            api_calls_this_month: 5000,
+            asset_count: 45,
+            dataset_count: 200,
+            plan_limits: {
+              max_storage_gb: 100,
+              max_api_calls_per_month: 100000,
+              max_assets: 100,
+              max_datasets: 500,
+            },
+            usage_percentages: {
+              max_storage_gb: 1,
+              max_api_calls_per_month: 5,
+              max_assets: 45,
+              max_datasets: 40,
+            },
+            quota_warnings: {},
           },
         } as never);
       }

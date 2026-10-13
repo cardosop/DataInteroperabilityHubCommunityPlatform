@@ -18,7 +18,7 @@ import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -37,7 +37,7 @@ if LOCUST_AVAILABLE:
     sys.path.insert(0, str(project_root))
     from tests.performance.helpers import PerformanceTestHelper
 
-    def create_odps_with_deep_refs(depth: int = 10, product_id: str = None) -> dict:
+    def create_odps_with_deep_refs(depth: int = 10, product_id: str | None = None) -> dict:
         """Create ODPS document with deep $ref chain"""
         if not product_id:
             product_id = f"ref-stress-{random.randint(10000, 99999)}"
@@ -82,7 +82,7 @@ if LOCUST_AVAILABLE:
 
         return base_doc
 
-    def create_odps_with_large_ref(product_id: str = None, size_mb: float = 10.0) -> dict:
+    def create_odps_with_large_ref(product_id: str | None = None, size_mb: float = 10.0) -> dict:
         """Create ODPS document with large $ref content"""
         if not product_id:
             product_id = f"large-ref-{random.randint(10000, 99999)}"
@@ -187,7 +187,7 @@ if LOCUST_AVAILABLE:
                             response.success()  # Expected failure for large files
                         else:
                             response.failure(f"Bad request: {error_msg}")
-                    except:
+                    except (json.JSONDecodeError, AttributeError):
                         response.failure(f"Bad request: {response.status_code}")
                 elif response.status_code == 500:
                     # Server error - log details
@@ -195,7 +195,7 @@ if LOCUST_AVAILABLE:
                         error_data = response.json()
                         error_msg = error_data.get("error", "Unknown error")
                         response.failure(f"Server error: {error_msg}")
-                    except:
+                    except (json.JSONDecodeError, AttributeError):
                         response.failure(f"Server error: {response.status_code}")
                 else:
                     response.failure(f"Unexpected status: {response.status_code}")
@@ -245,7 +245,7 @@ if LOCUST_AVAILABLE:
                             error_data = response.json()
                             error_msg = error_data.get("error", "Unknown error")
                             response.failure(f"Server error: {error_msg}")
-                        except:
+                        except (json.JSONDecodeError, AttributeError):
                             response.failure(f"Server error: {response.status_code}")
                     else:
                         response.failure(f"Unexpected status: {response.status_code}")
@@ -295,7 +295,7 @@ if LOCUST_AVAILABLE:
                             error_data = response.json()
                             error_msg = error_data.get("error", "Bad request")
                             response.failure(f"Bad request: {error_msg}")
-                        except:
+                        except (json.JSONDecodeError, AttributeError):
                             response.failure(f"Bad request: {response.status_code}")
                     elif response.status_code == 500:
                         # Server error - log details
@@ -303,7 +303,7 @@ if LOCUST_AVAILABLE:
                             error_data = response.json()
                             error_msg = error_data.get("error", "Unknown error")
                             response.failure(f"Server error: {error_msg}")
-                        except:
+                        except (json.JSONDecodeError, AttributeError):
                             response.failure(f"Server error: {response.status_code}")
                     else:
                         response.failure(f"Unexpected status: {response.status_code}")

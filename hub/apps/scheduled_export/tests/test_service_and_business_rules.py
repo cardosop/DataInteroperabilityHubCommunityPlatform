@@ -68,10 +68,10 @@ class ScheduledExportServiceTest(TestCase):
             source_scope={"asset_ids": [str(asset.id)]},
         )
 
-        self.assertEqual(export.name, "Test Export")
-        self.assertEqual(export.destination_type, DestinationType.S3)
-        self.assertEqual(export.status, ScheduledExportStatus.ACTIVE)
-        self.assertIsNotNone(export.next_run_at)
+        assert export.name == "Test Export"
+        assert export.destination_type == DestinationType.S3
+        assert export.status == ScheduledExportStatus.ACTIVE
+        assert export.next_run_at is not None
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
@@ -79,7 +79,7 @@ class ScheduledExportServiceTest(TestCase):
             action="CREATED",
             resource_id=str(export.id),
         )
-        self.assertEqual(audit_events.count(), 1)
+        assert audit_events.count() == 1
 
     def test_create_scheduled_export_business_rules_validation(self):
         """Test that business rules validation is applied during creation."""
@@ -103,7 +103,7 @@ class ScheduledExportServiceTest(TestCase):
                 source_scope={"asset_ids": [str(asset.id)]},
             )
         # Check that it's a business rules validation error
-        self.assertEqual(cm.exception.code, "BUSINESS_RULES_VALIDATION")
+        assert cm.exception.code == "BUSINESS_RULES_VALIDATION"
 
     def test_update_scheduled_export_success(self):
         """Test successful update of scheduled export via service."""
@@ -133,8 +133,8 @@ class ScheduledExportServiceTest(TestCase):
             status=ScheduledExportStatus.PAUSED,
         )
 
-        self.assertEqual(updated_export.name, "Updated Export Name")
-        self.assertEqual(updated_export.status, ScheduledExportStatus.PAUSED)
+        assert updated_export.name == "Updated Export Name"
+        assert updated_export.status == ScheduledExportStatus.PAUSED
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
@@ -142,7 +142,7 @@ class ScheduledExportServiceTest(TestCase):
             action="UPDATED",
             resource_id=str(export.id),
         )
-        self.assertEqual(audit_events.count(), 1)
+        assert audit_events.count() == 1
 
     def test_update_scheduled_export_schedule_recalculates_next_run_at(self):
         """Test that updating schedule_config recalculates next_run_at."""
@@ -164,7 +164,7 @@ class ScheduledExportServiceTest(TestCase):
         )
 
         original_next_run_at = export.next_run_at
-        self.assertIsNotNone(original_next_run_at)
+        assert original_next_run_at is not None
 
         # Update schedule with a different cron
         updated_export = self.service.update_scheduled_export(
@@ -178,20 +178,16 @@ class ScheduledExportServiceTest(TestCase):
         )
 
         # Verify schedule_config was updated
-        self.assertEqual(updated_export.schedule_config["cron"], "0 2 * * *")
+        assert updated_export.schedule_config["cron"] == "0 2 * * *"
         updated_export.refresh_from_db()
         # next_run_at must exist and be recalculated (at hour=2)
-        self.assertIsNotNone(updated_export.next_run_at)
-        self.assertEqual(
-            updated_export.next_run_at.hour,
-            2,
-            f"next_run_at should be at 02:00 UTC per new cron, got {updated_export.next_run_at}",
+        assert updated_export.next_run_at is not None
+        assert updated_export.next_run_at.hour == 2, (
+            f"next_run_at should be at 02:00 UTC per new cron, got {updated_export.next_run_at}"
         )
         # Must differ from original (which was midnight cron)
-        self.assertNotEqual(
-            updated_export.next_run_at,
-            original_next_run_at,
-            "next_run_at should change when schedule changes",
+        assert updated_export.next_run_at != original_next_run_at, (
+            "next_run_at should change when schedule changes"
         )
 
     def test_create_export_run_success(self):
@@ -219,8 +215,8 @@ class ScheduledExportServiceTest(TestCase):
             prefect_flow_run_id="prefect-123",
         )
 
-        self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
-        self.assertEqual(run.prefect_flow_run_id, "prefect-123")
+        assert run.status == ScheduledExportRunStatus.RUNNING
+        assert run.prefect_flow_run_id == "prefect-123"
 
     def test_create_export_run_idempotency_prefect_flow_run_id(self):
         """Test idempotency by prefect_flow_run_id."""
@@ -256,7 +252,7 @@ class ScheduledExportServiceTest(TestCase):
             prefect_flow_run_id="prefect-123",
         )
 
-        self.assertEqual(run1.id, run2.id)
+        assert run1.id == run2.id
 
     def test_update_export_run_success(self):
         """Test successful update of export run via service."""
@@ -294,11 +290,11 @@ class ScheduledExportServiceTest(TestCase):
             completed_at=timezone.now().isoformat(),
         )
 
-        self.assertEqual(updated_run.status, ScheduledExportRunStatus.COMPLETED)
-        self.assertEqual(updated_run.items_found, 10)
-        self.assertEqual(updated_run.items_exported, 8)
-        self.assertEqual(updated_run.items_failed, 2)
-        self.assertIsNotNone(updated_run.completed_at)
+        assert updated_run.status == ScheduledExportRunStatus.COMPLETED
+        assert updated_run.items_found == 10
+        assert updated_run.items_exported == 8
+        assert updated_run.items_failed == 2
+        assert updated_run.completed_at is not None
 
 
 class ScheduledExportBusinessRulesTest(TestCase):
@@ -343,7 +339,7 @@ class ScheduledExportBusinessRulesTest(TestCase):
             validation_type="destination",
         )
 
-        self.assertTrue(result.is_valid)
+        assert result.is_valid
 
     def test_validate_destination_format_limits_invalid_format(self):
         """Test validation fails for invalid format."""
@@ -367,8 +363,8 @@ class ScheduledExportBusinessRulesTest(TestCase):
         )
 
         # Should have warnings but still be valid (warnings don't fail validation)
-        self.assertTrue(result.is_valid)
-        self.assertTrue(len(result.warnings) > 0)
+        assert result.is_valid
+        assert len(result.warnings) > 0
 
     def test_validate_destination_size_limits_success(self):
         """Test validation of size limits."""
@@ -394,7 +390,7 @@ class ScheduledExportBusinessRulesTest(TestCase):
             validation_type="destination",
         )
 
-        self.assertTrue(result.is_valid)
+        assert result.is_valid
 
     def test_validate_destination_size_limits_invalid_negative(self):
         """Test validation fails for negative size limits."""
@@ -417,8 +413,8 @@ class ScheduledExportBusinessRulesTest(TestCase):
             validation_type="destination",
         )
 
-        self.assertFalse(result.is_valid)
-        self.assertTrue(any("max_file_size_bytes" in err for err in result.errors))
+        assert not result.is_valid
+        assert any("max_file_size_bytes" in err for err in result.errors)
 
     def test_validate_destination_size_limits_large_warning(self):
         """Test validation warns for very large size limits."""
@@ -444,9 +440,9 @@ class ScheduledExportBusinessRulesTest(TestCase):
         )
 
         # Should be valid but have warnings
-        self.assertTrue(result.is_valid)
-        self.assertTrue(len(result.warnings) > 0)
-        self.assertTrue(any("100GB" in w for w in result.warnings))
+        assert result.is_valid
+        assert len(result.warnings) > 0
+        assert any("100GB" in w for w in result.warnings)
 
     def test_validate_unknown_validation_type_returns_invalid(self):
         """Edge case: unknown validation_type returns invalid result with error."""
@@ -456,6 +452,6 @@ class ScheduledExportBusinessRulesTest(TestCase):
             user=self.user,
             validation_type="unknown_type",
         )
-        self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
-        self.assertIn("unknown_type", result.errors[0].lower())
+        assert not result.is_valid
+        assert len(result.errors) > 0
+        assert "unknown_type" in result.errors[0].lower()

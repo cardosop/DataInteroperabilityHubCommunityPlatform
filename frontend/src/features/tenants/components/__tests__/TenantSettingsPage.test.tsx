@@ -91,8 +91,12 @@ describe('TenantSettingsPage', () => {
   // ── Rendering ──────────────────────────────────────────────────────────
 
   it('renders without crashing', async () => {
+    // Phase T.1 — the previous body asserted nothing (vitest/expect-expect
+    // is zero-tolerance); the smoke test now verifies the page actually
+    // mounted its shell and default tab.
     render(<TenantSettingsPage />, { wrapper: Wrapper });
     await flushReactQueries();
+    expect(screen.getByTestId('tenant-settings-usage')).toBeTruthy();
   });
 
   it('renders usage tab by default', async () => {
@@ -105,7 +109,11 @@ describe('TenantSettingsPage', () => {
   it('shows plan slug and tier', async () => {
     render(<TenantSettingsPage />, { wrapper: Wrapper });
     await flushReactQueries();
-    expect(screen.getByText(/pro/i)).toBeTruthy();
+    // The plan line renders "Plan: pro (PRO)" with the slug nested in a
+    // <strong> — assert the container rather than the ambiguous text.
+    const planEl = screen.getByText(/Plan:/);
+    expect(planEl.textContent).toContain('pro');
+    expect(planEl.textContent).toContain('PRO');
   });
 
   // ── Tab navigation ─────────────────────────────────────────────────────
@@ -114,7 +122,10 @@ describe('TenantSettingsPage', () => {
     render(<TenantSettingsPage />, { wrapper: Wrapper });
     await flushReactQueries();
 
-    const configTab = screen.getByText('Config');
+    // close-test-coverage-gaps 5.4 — the tabs are a WAI-ARIA tablist
+    // (role="tab" inside role="tablist"); getByRole('tab') is the
+    // correct query for the pattern.
+    const configTab = screen.getByRole('tab', { name: 'Configuration' });
     act(() => configTab.click());
     await flushReactQueries();
 
@@ -126,23 +137,28 @@ describe('TenantSettingsPage', () => {
     render(<TenantSettingsPage />, { wrapper: Wrapper });
     await flushReactQueries();
 
-    const complianceTab = screen.getByText('Compliance');
+    const complianceTab = screen.getByRole('tab', { name: 'Compliance' });
     act(() => complianceTab.click());
     await flushReactQueries();
 
     // Compliance tab should render (even if sub-panels are empty)
     // Just verify the tab switched without crash
-    expect(screen.getByText('Compliance')).toBeTruthy();
+    expect(screen.getByTestId('tenant-settings-compliance')).toBeTruthy();
   });
 
-  it('tabs have aria-selected attribute', async () => {
+  it('tabs are an ARIA tablist with aria-selected states', async () => {
     render(<TenantSettingsPage />, { wrapper: Wrapper });
     await flushReactQueries();
 
-    const usageTab = screen.getByText('Usage');
+    // The tablist container carries the role + a label; each tab is a
+    // role="tab" whose aria-selected reflects the active section.
+    const tablist = screen.getByRole('tablist', { name: 'Tenant settings sections' });
+    expect(tablist).toBeTruthy();
+
+    const usageTab = screen.getByRole('tab', { name: 'Usage' });
     expect(usageTab.getAttribute('aria-selected')).toBe('true');
 
-    const configTab = screen.getByText('Config');
+    const configTab = screen.getByRole('tab', { name: 'Configuration' });
     expect(configTab.getAttribute('aria-selected')).toBe('false');
   });
 
@@ -195,9 +211,9 @@ describe('TenantSettingsPage', () => {
         return Promise.resolve({
           data: makeUsage({
             usage_percentages: {
-              max_storage_gb: 85,    // >80% → warn
+              max_storage_gb: 85,    // >80% → warn (the single warn bar)
               max_api_calls_per_month: 50,
-              max_assets: 95,        // >95% → danger
+              max_assets: 40,        // below 80 — stays out of warn
               max_datasets: 10,
             },
           }),

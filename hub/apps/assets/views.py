@@ -5,9 +5,10 @@ REST API views for asset management.
 """
 
 import logging
+from typing import ClassVar
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -236,6 +237,31 @@ def _emit_asset_operation(operation: str, tenant_id: str, status_label: str) -> 
         )
 
 
+def _asset_schema_fields(asset) -> list[dict]:
+    """Extract ``[{"name": ...}]`` entries from the asset's latest contract schema.
+
+    Used by the ``classify`` action to feed the rule-based classifier.
+    Returns an empty list when the asset has no structured contract.
+    """
+    try:
+        contract = (
+            asset.contracts.filter(hub_contract_json__isnull=False)
+            .exclude(hub_contract_json={})
+            .order_by("-version")
+            .first()
+        )
+        if not contract:
+            return []
+        schema_fields = (contract.hub_contract_json or {}).get("schema", {}).get("fields", [])
+        return [
+            {"name": str(f.get("name"))}
+            for f in schema_fields
+            if isinstance(f, dict) and f.get("name")
+        ]
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return []
+
+
 class AssetViewSet(viewsets.ModelViewSet):
     """
     ViewSet for asset management.
@@ -247,13 +273,13 @@ class AssetViewSet(viewsets.ModelViewSet):
     serializer_class = AssetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ["name", "key", "created_at", "updated_at"]
-    ordering = ["-created_at"]  # Default ordering
-    search_fields = ["name", "key", "description"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    ordering_fields = ("name", "key", "created_at", "updated_at")
+    ordering = "-created_at"  # Default ordering
+    search_fields = ("name", "key", "description")
     # Phase 250.7.G.1 (S-8) — apply the same per-user/per-tenant
     # creation throttles to ALL asset-creation endpoints.
-    _creation_throttle_classes = [
+    _creation_throttle_classes: ClassVar[list] = [
         AssetDataFirstUserThrottle,
         AssetDataFirstTenantThrottle,
     ]
@@ -471,6 +497,9 @@ class AssetViewSet(viewsets.ModelViewSet):
                 description=description,
                 domain=domain,
                 created_by=request.user,
+                # The view emits its own ASSET_CREATED audit below with
+                # the request context; the service emission would double it.
+                emit_audit=False,
             )
         except ServiceValidationError as e:
             _emit_asset_operation("create", tenant_id_str, "validation_error")
@@ -1097,7 +1126,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         )
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """
         Update an asset with optimistic locking.
 
@@ -1273,6 +1302,9 @@ class AssetViewSet(viewsets.ModelViewSet):
                 user_id=user_id_str,
                 version=version,
                 status=status_value,
+                # The view emits its own ASSET_UPDATED audit below with
+                # the request context; the service emission would double it.
+                emit_audit=False,
                 **update_data,
             )
         except ServiceValidationError as e:
@@ -1318,12 +1350,24 @@ class AssetViewSet(viewsets.ModelViewSet):
                     exc_info=True,
                 )
 
-        transaction.on_commit(_invalidate_cache_post_update)
+        # Test-mode-safe deferral: run_after_commit runs synchronously
+        # under pytest/TESTING (the TestCase wrapper's outer transaction
+        # never commits during the test body) and defers to on_commit in
+        # production (avoids the stale-cache race condition).
+        from hub.apps.core.after_commit import run_after_commit
 
-        # Log audit event
+        run_after_commit(_invalidate_cache_post_update)
+
+        # Log audit event. The UI retires assets through THIS PATCH path
+        # (assetService.patch({status: 'RETIRED'})) — the dedicated retire
+        # action (and its ASSET_RETIRED audit) is never reached by UI-driven
+        # retirements. Emit the transition-specific action so the audit
+        # trail records the lifecycle event (E2E JOURNEY-DPO-003 pins the
+        # ASSET_RETIRED contract for the PATCH path).
+        retiring = old_status != AssetStatus.RETIRED and asset.status == AssetStatus.RETIRED
         create_audit_event(
             resource_type="ASSET",
-            action="ASSET_UPDATED",
+            action="ASSET_RETIRED" if retiring else "ASSET_UPDATED",
             actor_user=request.user,
             tenant=asset.tenant,
             resource_id=str(asset.id),
@@ -1340,7 +1384,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete an asset (soft delete: set status to RETIRED).
 
@@ -1359,6 +1403,9 @@ class AssetViewSet(viewsets.ModelViewSet):
                 asset_id=asset_id_str,
                 tenant_id=tenant_id_str,
                 user_id=str(request.user.id),
+                # The view emits its own ASSET_DELETED audit below with
+                # the request context; the service emission would double it.
+                emit_audit=False,
             )
         except ServiceValidationError as e:
             return Response(
@@ -1896,30 +1943,47 @@ class AssetViewSet(viewsets.ModelViewSet):
                 },
             }
         )
-        latest = asset.contracts.order_by("-version").first()
-        version = (latest.version + 1) if latest else 1
-
-        contract = Contract.objects.create(
-            tenant=tenant,
-            asset=asset,
-            version=version,
-            status=ContractStatus.ACTIVE,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
-            original_format=OriginalFormat.JSON,
-            original_raw=odcs_raw,
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_version="1.0.0",
-            hub_contract_json={
-                "id": f"e2e-activate-{contract_id[:8]}",
-                "name": "E2E Activation Contract",
-                "schema": {
-                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
-                },
-            },
-            created_by=request.user,
+        # W4.4 (R2-I1) — version allocation under the asset lock + the
+        # deterministic conflict translation: a concurrent activation
+        # for the same asset answers 409, never a raw 500.
+        from hub.apps.contracts.services.contract_service import (
+            contract_version_conflict_to_409,
+            locked_contract_version,
         )
+
+        try:
+            with locked_contract_version(
+                tenant_id=str(tenant.id), asset=asset
+            ) as version, contract_version_conflict_to_409():
+                contract = Contract.objects.create(
+                    tenant=tenant,
+                    asset=asset,
+                    version=version,
+                    status=ContractStatus.ACTIVE,
+                    original_spec_type=OriginalSpecType.ODCS,
+                    original_spec_version="3.0.0",
+                    original_format=OriginalFormat.JSON,
+                    original_raw=odcs_raw,
+                    validation_status=ValidationStatus.VALID,
+                    normalization_status=NormalizationStatus.NORMALIZED_OK,
+                    hub_contract_version="1.0.0",
+                    hub_contract_json={
+                        "id": f"e2e-activate-{contract_id[:8]}",
+                        "name": "E2E Activation Contract",
+                        "schema": {
+                            "fields": [
+                                {"name": "id", "type": "string"},
+                                {"name": "name", "type": "string"},
+                            ]
+                        },
+                    },
+                    created_by=request.user,
+                )
+        except ServiceConflictError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         # When asset has a dataset, activation requires dq_status and compliance_status
         # to be PASS or WARN (business_rules.can_activate). Set them for E2E flows.
@@ -1997,18 +2061,16 @@ class AssetViewSet(viewsets.ModelViewSet):
             results, total_count = cached_result
 
             # Apply pagination to cached results
-            try:
-                page = self.paginate_queryset(results)
-                if page is not None:
-                    # Use paginator's response
-                    response = self.get_paginated_response(page)
-                    # Update count in response
-                    if hasattr(response, "data") and isinstance(response.data, dict):
-                        response.data["count"] = total_count
-                    return response
-            except NotFound:
-                # Page doesn't exist - re-raise to maintain standard pagination behavior
-                raise
+            # NotFound propagates unchanged to maintain standard
+            # pagination behavior.
+            page = self.paginate_queryset(results)
+            if page is not None:
+                # Use paginator's response
+                response = self.get_paginated_response(page)
+                # Update count in response
+                if hasattr(response, "data") and isinstance(response.data, dict):
+                    response.data["count"] = total_count
+                return response
 
             # No pagination - return all results
             return Response({"results": results, "count": total_count})
@@ -2119,18 +2181,26 @@ class AssetViewSet(viewsets.ModelViewSet):
                 return Response(cached_data)
 
         # Try tenant-scoped queryset first (same-tenant access).
+        cross_tenant = False
         try:
             asset = self.get_object()
         except (Http404, NotFound):
             # Cross-tenant entitlement fallback.
             asset = self._get_via_entitlement(request, asset_id)
             if asset is None:
-                raise NotFound("Asset not found.")
+                raise NotFound("Asset not found.") from None
+            cross_tenant = True
 
         # Set resource instance on request for cache headers middleware
         request._resource_instance = asset
 
-        response = super().retrieve(request, *args, **kwargs)
+        if cross_tenant:
+            # super().retrieve() would re-run get_object() against the
+            # tenant-scoped queryset, which cannot see the cross-tenant
+            # row the entitlement just resolved — serialize directly.
+            response = Response(self.get_serializer(asset).data)
+        else:
+            response = super().retrieve(request, *args, **kwargs)
 
         # Cache the result (skip in E2E mode — fresh DB reads are preferred;
         # also skip cross-tenant hits to avoid caching under the wrong key).
@@ -2414,7 +2484,8 @@ class AssetViewSet(viewsets.ModelViewSet):
         # explicit-API activations entirely. Deferred via
         # ``transaction.on_commit`` so subscribers that GET the
         # asset on receipt always see the ACTIVE row.
-        from hub.apps.core.events.publisher import EventBusError, EventPublisher as _EventPublisher
+        from hub.apps.core.events.publisher import EventBusError
+        from hub.apps.core.events.publisher import EventPublisher as _EventPublisher
 
         _activated_publisher = _EventPublisher(
             service_name="asset_service",
@@ -2460,18 +2531,27 @@ class AssetViewSet(viewsets.ModelViewSet):
             or getattr(django_settings, "RATE_LIMIT_E2E_RELAX", False)
         )
         if not skip_semantic:
+            # IMPORT guard: both core-mode absence forms (ModuleNotFoundError
+            # public tree / RuntimeError private repo). The CALL is guarded
+            # separately so a genuine RuntimeError raised inside
+            # map_asset_to_semantic is NOT misclassified as "app absent".
             try:
                 from hub.apps.semantic.utils import map_asset_to_semantic
+            except (RuntimeError, ModuleNotFoundError):
+                map_asset_to_semantic = None
+            if map_asset_to_semantic is not None:
+                try:
+                    # In production, this should be a background job via RQ/Celery
+                    # For now, we'll do it synchronously but log it for async processing
+                    map_asset_to_semantic(asset, tenant=asset.tenant)
+                except (ConnectionError, TimeoutError, OSError) as e:
+                    import logging
 
-                # In production, this should be a background job via RQ/Celery
-                # For now, we'll do it synchronously but log it for async processing
-                map_asset_to_semantic(asset, tenant=asset.tenant)
-            except (ConnectionError, TimeoutError, OSError) as e:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Semantic mapping failed for asset {asset.id}: {e}", exc_info=True)
-                # Don't fail activation if semantic mapping fails
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Semantic mapping failed for asset {asset.id}: {e}", exc_info=True
+                    )
+                    # Don't fail activation if semantic mapping fails
 
         # Log audit event (async in production via job queue)
         from django.db import DatabaseError as _DatabaseError
@@ -2607,6 +2687,98 @@ class AssetViewSet(viewsets.ModelViewSet):
         asset.refresh_from_db()
         _emit_asset_operation("retire", str(asset.tenant_id), "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="classification")
+    def classification(self, request, id=None):
+        """
+        List data classifications for an asset.
+
+        GET /assets/{id}/classification/
+
+        Returns ``{"results": [...], "count": N}`` — a dict so SDK
+        callers can treat the payload as a structured response.
+        """
+        asset = self.get_object()
+
+        from hub.apps.governance.models import DataClassification
+
+        rows = DataClassification.objects.filter(tenant=asset.tenant, asset=asset)
+        data = [
+            {
+                "id": str(row.id),
+                "field_name": row.field_name,
+                "category": row.category,
+                "status": row.status,
+                "confidence_score": row.confidence_score,
+                "classification_rules": row.classification_rules or [],
+                "detected_patterns": row.detected_patterns or [],
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+        return Response({"results": data, "count": len(data)})
+
+    @action(detail=True, methods=["post"], url_path="classify")
+    def classify(self, request, id=None):
+        """
+        Run automatic classification for an asset.
+
+        POST /assets/{id}/classify/
+
+        Field names are derived from the asset's latest contract schema
+        (``hub_contract_json.schema.fields``); a caller-supplied body may
+        override with ``{"fields": [{"name": ..., "sample_values": [...]}]}``.
+        """
+        asset = self.get_object()
+
+        from hub.apps.governance.classification import DataClassifier
+
+        tenant_id = str(asset.tenant_id)
+        user_id = str(request.user.id) if request.user.id else None
+
+        body = request.data if isinstance(request.data, dict) else {}
+        fields = body.get("fields")
+        if not fields:
+            fields = _asset_schema_fields(asset)
+        if not fields:
+            fields = [{"name": "data"}]
+
+        created = []
+        for entry in fields:
+            if isinstance(entry, dict):
+                field_name = entry.get("name") or "data"
+                sample_values = entry.get("sample_values")
+            else:
+                field_name = str(entry)
+                sample_values = None
+            try:
+                row = DataClassifier.classify_field_level(
+                    tenant_id=tenant_id,
+                    asset_id=str(asset.id),
+                    field_name=field_name,
+                    sample_values=sample_values,
+                    user_id=user_id,
+                )
+                created.append(row)
+            except (ValueError, TypeError):
+                # A field that the classifier cannot process must not
+                # fail the whole classification run.
+                continue
+
+        results = [
+            {
+                "id": str(row.id),
+                "field_name": row.field_name,
+                "category": row.category,
+                "status": row.status,
+                "confidence_score": row.confidence_score,
+                "detected_patterns": row.detected_patterns or [],
+            }
+            for row in created
+        ]
+        return Response(
+            {"results": results, "count": len(results)}, status=status.HTTP_201_CREATED
+        )
 
     @action(
         detail=False,
@@ -2831,7 +3003,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             from django.http import Http404
 
             if isinstance(e, (Http404, ObjectDoesNotExist)):
-                raise NotFound("Asset not found")
+                raise NotFound("Asset not found") from None
             logger.error(
                 "Failed to get asset in health_score endpoint", error=str(e), exc_info=True
             )
@@ -2941,7 +3113,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="external-resources")
-    def list_external_resources(self, request, id=None):
+    def list_external_resources(self, _request, id=None):
         """
         List all external resources for an asset.
 
@@ -3394,7 +3566,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Validate request – ValidationError is a normal client error,
+        # Validate request - ValidationError is a normal client error,
         # not a server fault.  DRF's exception handler surfaces it as a
         # structured 400 without an ERROR-level log on the server side.
         # This is intentionally OUTSIDE the try/except below so the
@@ -3591,8 +3763,8 @@ class AssetViewSet(viewsets.ModelViewSet):
 
                         if os.path.exists(file_path):
                             os.remove(file_path)
-                    except Exception:
-                        pass
+                    except OSError:
+                        pass  # best-effort cleanup — removal failure must not fail the download
 
                     return {
                         "resource_id": resource_id,

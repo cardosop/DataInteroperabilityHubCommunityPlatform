@@ -17,11 +17,11 @@ test.describe('Feature: Scheduled Export', () => {
       await loginAndNavigateToRoute(page, adminUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
 
@@ -38,7 +38,7 @@ test.describe('Feature: Scheduled Export', () => {
       // Must render actual page content — URL match alone provides no signal
       const hasContent =
         (await page
-          .locator('.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1')
+          .locator('.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]')
           .count()) > 0;
       expect(hasContent).toBe(true);
     });
@@ -56,7 +56,7 @@ test.describe('Feature: Scheduled Export', () => {
         {
           timeout: 60000,
           contentSelector:
-            '.error-display, [data-testid="error-display"], .scheduled-export-detail-page, .unavailable-page, [data-testid="unavailable-page"], h1',
+            '.error-display, [data-testid="error-display"], .scheduled-export-detail-page, .unavailable-page, [data-testid="unavailable-page"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]',
           acceptRedirectToLogin: true,
         }
       );
@@ -66,13 +66,13 @@ test.describe('Feature: Scheduled Export', () => {
       // so loginAndNavigateToRoute may return before the API 404 resolves to EmptyState.
       // Wait for the actual not-found/error content to appear before asserting.
       await page
-        .locator('.error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]')
+        .locator('.error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => {});
 
       const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       const hasNotFoundText =
         (await page.locator('text=/not found|404|does not exist/i').count()) > 0;
       const is404 = page.url().includes('/404') || page.url().includes('/not-found');

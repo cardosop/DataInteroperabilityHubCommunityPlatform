@@ -14,26 +14,26 @@ Follows TDD principles and engineering best practices.
 """
 
 import asyncio
+import contextlib
 import os
 import subprocess
 import sys
 import uuid
-from typing import Optional
 
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
+    DataHubError,
     NetworkError,
     NotFoundError,
     ServerError,
     UnauthorizedError,
     ValidationError,
 )
-import contextlib
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -46,7 +46,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         key = _create_odh_tenant_and_key()
         if key:
             return key
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Method 2: Use canonical conftest helper
@@ -56,7 +56,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Fall back to env-var keys
@@ -67,7 +67,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_odh_tenant_and_key() -> Optional[str]:
+def _create_odh_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``ml_enabled=True`` and return an API key."""
     try:
         unique_id = uuid.uuid4().hex[:8]
@@ -169,8 +169,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -183,8 +183,8 @@ print('API_KEY_END')
 
             # Fallback: extract from last long line
             if not api_key:
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if (
                         (
                             line
@@ -200,22 +200,33 @@ print('API_KEY_END')
 
             if api_key:
                 return api_key
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"Error creating API key: {type(e).__name__}: {e}", file=sys.stderr)
 
     return None
 
 
-def get_api_key() -> Optional[str]:
-    """Get API key from environment or create via Docker Compose"""
-    # First try environment variables
-    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
-    if api_key:
-        return api_key
+def get_api_key() -> str | None:
+    """Get a validated API token, re-provisioning when it was invalidated.
 
-    # Try to create via Docker Compose
-    api_base_url = get_api_base_url()
-    return setup_authentication_for_sdk_tests(api_base_url)
+    Delegates to the canonical conftest helper FIRST: it validates the
+    token against ``/auth/me/`` and transparently re-provisions (refresh
+    or fresh login) when concurrent auth-lifecycle tests bump
+    ``token_version`` for the shared platform admin mid-batch — the
+    TOKEN_INVALIDATED failure mode that previously turned every ODH API
+    call into a 401 and cascaded into asset/model fixture skips.
+    A blind ``TEST_API_KEY`` / ``DATAHUB_API_KEY`` read must NOT come
+    first: those env vars always hold a token after conftest's
+    session-start auto-provision, stale or not.
+    """
+    from tests.conftest import get_api_key as canonical_get_api_key
+
+    key = canonical_get_api_key()
+    if key:
+        return key
+
+    # Last resort: dedicated ml_enabled tenant via Django shell.
+    return setup_authentication_for_sdk_tests(get_api_base_url())
 
 
 def get_api_base_url() -> str:
@@ -301,7 +312,7 @@ async def test_asset(client):
                 return
             else:
                 last_error = "Asset created but no ID returned"
-        except Exception as e:
+        except (DataHubError, ValueError, AttributeError) as e:
             last_error = f"{type(e).__name__}: {str(e)}"
             if attempt < max_retries - 1:
                 await asyncio.sleep(2)
@@ -333,7 +344,7 @@ async def test_model(odh_api, test_asset):
                 return
             else:
                 last_error = "Model created but no ID returned"
-        except Exception as e:
+        except (DataHubError, ValueError, AttributeError) as e:
             last_error = f"{type(e).__name__}: {str(e)}"
             if attempt < max_retries - 1:
                 await asyncio.sleep(2)
@@ -347,12 +358,55 @@ async def test_model(odh_api, test_asset):
 
 @pytest.fixture
 async def test_dataset(client):
-    """Create a test dataset for training"""
+    """Create a real test dataset (file + dataset) for training/linking.
+
+    A placeholder UUID made every dataset-dependent test skip with
+    ``Dataset not available`` — instead, create a tiny CSV through the
+    files API (init + complete; test/dev mode allows completion without
+    an S3 PUT) and link it to a fresh asset.
+    """
     try:
-        # Note: Dataset creation may not be available in SDK, so we'll skip if it fails
-        # For now, we'll use a placeholder UUID
-        dataset_id = str(uuid.uuid4())
+        asset = await client.post(
+            "/assets/",
+            {
+                "name": f"Dataset Asset {uuid.uuid4().hex[:8]}",
+                "key": f"dataset-asset-{uuid.uuid4().hex[:8]}",
+                "status": "DRAFT",
+                "domain": "test",
+                "visibility": "INTERNAL",
+            },
+        )
+        asset_id = asset.get("id")
+        if not asset_id:
+            pytest.skip("Could not create asset for test dataset")
+
+        import hashlib
+
+        content = b"id,name\n1,alpha\n"
+        digest = hashlib.sha256(content).hexdigest()
+        file_result = await client.files.init_upload(
+            name=f"test-dataset-{uuid.uuid4().hex[:8]}.csv",
+            content_type="text/csv",
+            size=len(content),
+        )
+        # The init response uses ``file_id`` (not ``id``).
+        file_id = file_result.get("file_id")
+        if not file_id:
+            pytest.skip("Could not create file for test dataset")
+
+        await client.files.complete_upload(file_id, content_sha256=digest)
+        dataset_result = await client.datasets.create_dataset(
+            file_id=file_id, asset_id=asset_id
+        )
+        dataset_id = dataset_result.get("id")
+        if not dataset_id:
+            pytest.skip("Could not create test dataset")
+
         yield dataset_id
+
+        # Cleanup
+        with contextlib.suppress(Exception):
+            await client.delete(f"/assets/{asset_id}/")
     except (ServerError, NetworkError, ValidationError, NotFoundError) as e:
         pytest.skip(f"Failed to create test dataset — service unavailable: {e}")
     # Unexpected exceptions propagate — they are real bugs, not service issues.
@@ -476,7 +530,7 @@ class TestODHIntegrationAPIComprehensive:
                     await client.delete(f"/assets/{new_asset_id}/")
             else:
                 pytest.skip("Failed to create new asset for linking")
-        except Exception as e:
+        except (DataHubError, ValueError, AttributeError, AssertionError) as e:
             pytest.skip(f"Assets API not available: {e}")
 
     @pytest.mark.asyncio
@@ -566,7 +620,13 @@ class TestTrainingAPIComprehensive:
             job = await training_api.submit_training_job(
                 model_id=test_model,
                 dataset_id=test_dataset,
-                config={"epochs": 10, "batch_size": 32, "learning_rate": 0.001},
+                # The server's business rules require an "algorithm" key.
+                config={
+                    "algorithm": "xgboost",
+                    "epochs": 10,
+                    "batch_size": 32,
+                    "learning_rate": 0.001,
+                },
             )
             assert isinstance(job, dict), "Should return a dictionary"
             assert "job_id" in job or "hub_job_id" in job, "Job should have job_id"
@@ -611,11 +671,9 @@ class TestTrainingAPIComprehensive:
         """Test cancel_training_job method"""
 
         fake_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
-        try:
+        # Expected if job doesn't exist
+        with contextlib.suppress(NotFoundError):
             await training_api.cancel_training_job(fake_job_id)
-        except NotFoundError:
-            # Expected if job doesn't exist
-            pass
 
     @pytest.mark.asyncio
     async def test_get_training_logs(self, training_api):

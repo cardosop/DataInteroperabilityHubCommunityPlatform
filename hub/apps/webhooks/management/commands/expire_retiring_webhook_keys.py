@@ -28,6 +28,7 @@ from __future__ import annotations
 import sys
 from datetime import timedelta
 
+import redis
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -59,7 +60,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **options) -> None:
+    def handle(self, *_args, **options) -> None:
         dry_run = bool(options.get("dry_run", False))
 
         from hub.apps.api.middleware.idempotency_utils import get_redis_client
@@ -70,7 +71,7 @@ class Command(BaseCommand):
 
         try:
             redis_client = get_redis_client()
-        except Exception as exc:
+        except (ImportError, redis.RedisError) as exc:
             self.stderr.write(self.style.ERROR(f"Redis unavailable: {exc}"))
             sys.exit(2)
 

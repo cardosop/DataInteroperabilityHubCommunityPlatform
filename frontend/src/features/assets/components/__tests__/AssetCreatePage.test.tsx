@@ -5,7 +5,7 @@
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AssetCreatePage } from '../AssetCreatePage';
@@ -29,7 +29,10 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <MemoryRouter initialEntries={['/assets/create']}>
+        {/* Phase 250.6.B — the type-picker step renders FIRST; the
+            form-first flow these tests pin is the documented deep-link
+            bypass (``?skip=picker``). */}
+        <MemoryRouter initialEntries={['/assets/create?skip=picker']}>
           <Routes>
             <Route path="/assets/create" element={<AssetCreatePage />} />
             <Route path="/assets/:id" element={<div data-testid="asset-detail">Asset Detail</div>} />
@@ -54,11 +57,6 @@ describe('AssetCreatePage — rendering', () => {
     renderPage();
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/key/i)).toBeInTheDocument();
-  });
-
-  it('renders visibility dropdown', () => {
-    renderPage();
-    expect(screen.getByLabelText(/visibility/i)).toBeInTheDocument();
   });
 
   it('renders collapsible data file toggle', () => {

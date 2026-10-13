@@ -112,9 +112,7 @@ class RetryDeliveryTest(TestCase):
 
     def test_retry_nonexistent_delivery_returns_false(self):
         """Calling retry_delivery with a nonexistent ID returns False."""
-        result = WebhookDeliveryService.retry_delivery(
-            "00000000-0000-0000-0000-000000000000"
-        )
+        result = WebhookDeliveryService.retry_delivery("00000000-0000-0000-0000-000000000000")
         self.assertFalse(result)
 
     @patch(_SERVICE_ATTEMPT)

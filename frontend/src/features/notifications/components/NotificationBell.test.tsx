@@ -4,7 +4,7 @@
  * Real hook + real React Query; only the apiClient HTTP seam is mocked.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -58,12 +58,17 @@ describe('NotificationBell', () => {
   });
 
   afterEach(() => {
-    useAuthStore.setState({
-      user: null,
-      active_tenant_id: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
+    // The bell's hooks subscribe to the auth store; the test-file
+    // afterEach runs BEFORE RTL cleanup, so the component is still
+    // mounted here — wrap the reset in act to keep its re-render legal.
+    act(() => {
+      useAuthStore.setState({
+        user: null,
+        active_tenant_id: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
     });
   });
 
@@ -73,6 +78,10 @@ describe('NotificationBell', () => {
     } as never);
     render(<NotificationBell />, { wrapper: wrap(queryClient) });
     const bell = await screen.findByTestId('notification-bell');
+    // Let the unread-count query settle inside act — the bell renders
+    // before the query resolves, so without this the resolution
+    // re-renders it after the test body ends.
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
     expect(bell).toHaveAttribute('aria-label', 'Notifications');
     expect(screen.queryByTestId('notification-bell-badge')).toBeNull();
   });
@@ -121,6 +130,9 @@ describe('NotificationBell', () => {
     });
     render(<NotificationBell />, { wrapper: wrap(queryClient) });
     await user.click(await screen.findByTestId('notification-bell'));
+    // The dropdown's list query resolves asynchronously after the click;
+    // let it settle inside act before the test body ends.
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
     expect(screen.getByTestId('notification-dropdown')).toBeInTheDocument();
   });
 });

@@ -1,14 +1,16 @@
 """
 Management command to detect and remediate stuck scheduled ingestion runs.
 
-A run is considered "stuck" if it has been in RUNNING status for longer than
-the threshold (default: 2 hours, configurable via STUCK_RUN_THRESHOLD_HOURS).
+W3.5 (R2-P4) — the lease contract: a run is stuck when it is old AND
+its last heartbeat is stale or missing (a fresh heartbeat means the
+worker is alive and the run is never touched). Detection covers
+RUNNING runs (including NULL ``started_at``) and PENDING runs the
+worker never picked up (aged by ``created_at``).
 
-This command:
-1. Finds runs in RUNNING status for > threshold
-2. Checks Prefect flow run status (if prefect_flow_run_id exists)
-3. Updates hub run status to match Prefect status (if Prefect flow is CANCELLED/FAILED)
-4. Marks hub run as FAILED if Prefect flow run not found or unreachable
+Remediation: check the Prefect flow run (when one exists) and mirror
+its terminal state; otherwise mark FAILED with the stuck message.
+Scheduled as a CronJob (helm) — see the runbook for the compose
+invocation.
 
 Usage:
     python manage.py detect_and_remediate_stuck_runs
@@ -17,14 +19,16 @@ Usage:
 """
 
 import os
-from datetime import timedelta
 
-import requests
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from hub.apps.scheduled_ingestion.dead_letter_queue import DeadLetterQueueManager
 from hub.apps.scheduled_ingestion.models import ScheduledIngestionRun, ScheduledIngestionRunStatus
+from hub.apps.scheduled_ingestion.stuck_run_detection import (
+    fetch_prefect_flow_run_status,
+    stuck_run_predicate,
+)
 
 
 class Command(BaseCommand):
@@ -43,7 +47,7 @@ class Command(BaseCommand):
             help="Dry run mode: detect stuck runs but do not remediate",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         threshold_hours = options["threshold_hours"]
         dry_run = options["dry_run"]
 
@@ -53,9 +57,8 @@ class Command(BaseCommand):
             )
         )
 
-        threshold_time = timezone.now() - timedelta(hours=threshold_hours)
         stuck_runs = ScheduledIngestionRun.objects.filter(
-            status=ScheduledIngestionRunStatus.RUNNING, started_at__lt=threshold_time
+            stuck_run_predicate(threshold_hours)
         ).order_by("started_at")
 
         if not stuck_runs.exists():
@@ -68,13 +71,16 @@ class Command(BaseCommand):
         error_count = 0
 
         for run in stuck_runs:
-            duration = timezone.now() - run.started_at
+            started = run.started_at or run.created_at
+            duration = timezone.now() - started
             self.stdout.write(
                 f"\n  Run ID: {run.id}"
+                f"\n    Status: {run.status}"
                 f"\n    Scheduled Ingestion ID: {run.scheduled_ingestion_id}"
                 f"\n    Prefect Flow Run ID: {run.prefect_flow_run_id or 'N/A'}"
-                f"\n    Started At: {run.started_at}"
-                f"\n    Running Duration: {duration}"
+                f"\n    Started At: {run.started_at or 'N/A (created ' + str(run.created_at) + ')'}"
+                f"\n    Last Heartbeat: {run.heartbeat_at or 'N/A'}"
+                f"\n    Age: {duration}"
                 f"\n    Files Found: {run.files_found}"
                 f"\n    Files Processed: {run.files_processed}"
             )
@@ -87,7 +93,12 @@ class Command(BaseCommand):
                 # Check Prefect flow run status
                 prefect_status = None
                 if run.prefect_flow_run_id:
-                    prefect_status = self._check_prefect_flow_run_status(run.prefect_flow_run_id)
+                    prefect_status = fetch_prefect_flow_run_status(
+                        run.prefect_flow_run_id,
+                        on_warning=lambda msg: self.stdout.write(
+                            self.style.WARNING(f"    ⚠️  {msg}")
+                        ),
+                    )
 
                 # Determine new status
                 if prefect_status:
@@ -169,11 +180,18 @@ class Command(BaseCommand):
                         remediated_count += 1
                 else:
                     # Prefect flow run not found or unreachable
+                    was_pending = run.status == ScheduledIngestionRunStatus.PENDING
                     run.status = ScheduledIngestionRunStatus.FAILED
-                    run.error_message = (
-                        f"Stuck run detected (RUNNING > {threshold_hours}h); "
-                        f"Prefect flow run not found or unreachable"
-                    )
+                    if was_pending:
+                        run.error_message = (
+                            f"Stuck run detected (PENDING > {threshold_hours}h); "
+                            f"the worker never picked the run up"
+                        )
+                    else:
+                        run.error_message = (
+                            f"Stuck run detected (RUNNING > {threshold_hours}h); "
+                            f"Prefect flow run not found or unreachable"
+                        )
                     run.completed_at = timezone.now()
                     run.save(
                         update_fields=[
@@ -227,28 +245,3 @@ class Command(BaseCommand):
                 self.stdout.write(f"    DLQ sync: {synced} item(s) synced")
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"    ⚠️  DLQ sync failed (non-fatal): {e}"))
-
-    def _check_prefect_flow_run_status(self, prefect_flow_run_id: str) -> dict | None:
-        """Check Prefect flow run status via Prefect API."""
-        prefect_api_url = os.getenv("PREFECT_API_URL", "http://prefect-server:4200/api")
-        prefect_api_key = os.getenv("PREFECT_API_KEY", "")
-
-        headers = {}
-        if prefect_api_key:
-            headers["Authorization"] = f"Bearer {prefect_api_key}"
-
-        try:
-            url = f"{prefect_api_url}/flow_runs/{prefect_flow_run_id}"
-            resp = requests.get(url, headers=headers, timeout=5)
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.RequestException as e:
-            self.stdout.write(
-                self.style.WARNING(f"    ⚠️  Failed to check Prefect flow run status: {e}")
-            )
-            return None
-        except Exception as e:
-            self.stdout.write(
-                self.style.WARNING(f"    ⚠️  Error checking Prefect flow run status: {e}")
-            )
-            return None

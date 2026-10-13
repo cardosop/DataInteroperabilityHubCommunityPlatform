@@ -247,7 +247,9 @@ schema:
 
     def test_validate_contract_async_success(self):
         """Test asynchronous contract validation (requires RQ worker)."""
-        self.require_service("Worker", self.worker_service_url)
+        # The worker's health endpoints are /healthz and /ready (services/worker/main.py),
+        # NOT /health — probing /health 404s and falsely skips a healthy worker.
+        self.require_service("Worker", self.worker_service_url, health_path="/healthz")
         asset_id = self.create_asset(key="validate-async-test", name="Validate Async Test")
         contract_id = self.create_contract(
             asset_id,
@@ -255,9 +257,15 @@ schema:
         )
 
         # Validate contract (async)
-        response = self.client.post(
-            f"/api/v1/contracts/{contract_id}/validate/", {"async": True}, format="json"
-        )
+        # captureOnCommitCallbacks(execute=True): under test-mode RQ
+        # (RQ_QUEUES[*]["ASYNC"]=False) the enqueue is registered via
+        # transaction.on_commit — without executing it now, the inline job
+        # would only run at the end of this test's atomic and the job row
+        # would stay PENDING for the whole 300s wait window.
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                f"/api/v1/contracts/{contract_id}/validate/", {"async": True}, format="json"
+            )
 
         # Should return job ID for async validation
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])

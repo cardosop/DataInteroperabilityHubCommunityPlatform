@@ -1,0 +1,141 @@
+{
+  "uid": "hub-data-quality-240",
+  "title": "Phase 240 — Data Quality",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["data-quality", "phase-240", "feature", "dq"],
+  "timezone": "browser",
+  "time": {"from": "now-24h", "to": "now"},
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+        "query": "label_values(dq_runs_total, tenant_id)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false
+      },
+      {
+        "name": "engine",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+        "query": "label_values(dq_runs_total, engine)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tenant DQ runs / minute by status",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(dq_runs_total{tenant_id=~\"$tenant_id\", engine=~\"$engine\"}[5m])) * 60",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 — DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    },
+    {
+      "id": 2,
+      "title": "Per-engine DQ run duration (p50 / p95 / p99)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, engine) (rate(dq_run_duration_seconds_bucket{engine=~\"$engine\"}[5m])))",
+          "legendFormat": "p50 {{engine}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, engine) (rate(dq_run_duration_seconds_bucket{engine=~\"$engine\"}[5m])))",
+          "legendFormat": "p95 {{engine}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, engine) (rate(dq_run_duration_seconds_bucket{engine=~\"$engine\"}[5m])))",
+          "legendFormat": "p99 {{engine}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 2 — per-engine duration histogram. The DQRunDurationP95Regression alert fires when p95 > 2× the 7d-rolling baseline; this panel is the visual confirmation."
+    },
+    {
+      "id": 3,
+      "title": "DQ score distribution (heat-map by tenant)",
+      "type": "heatmap",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(dq_run_quality_score_bucket{tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap"
+        }
+      ],
+      "description": "Phase 240.1.B panel 3 — quality-score distribution heat-map.  Histogram bucketed by ``dq_run_quality_score_bucket`` (the engine-side metric).  A bimodal distribution (lots of 0-0.2 scores AND lots of 0.9-1.0) indicates a tenant whose datasets fall into two distinct quality tiers — usually a sign that the profile mix is wrong for at least one of them."
+    },
+    {
+      "id": 4,
+      "title": "dq-service circuit-breaker state",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "max(circuit_breaker_state{service=\"dq-service\"})",
+          "legendFormat": "state"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "CLOSED", "color": "green"}}},
+            {"type": "value", "options": {"1": {"text": "HALF_OPEN", "color": "yellow"}}},
+            {"type": "value", "options": {"2": {"text": "OPEN", "color": "red"}}}
+          ]
+        }
+      },
+      "description": "Phase 240.1.B panel 4 — current dq-service client circuit-breaker state.  CLOSED (0) is healthy; HALF_OPEN (1) means recent failure + a probe is in flight; OPEN (2) means queries are short-circuiting to the fallback (status UNKNOWN).  The DQServiceCircuitOpen alert fires when this stays at 2 for 5+ minutes."
+    },
+    {
+      "id": 5,
+      "title": "DQ alert rule firing count by channel",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum by (channel, status) (rate(dq_alert_deliveries_total[5m])) * 60",
+          "legendFormat": "{{channel}} - {{status}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 5 — DQ alert deliveries per minute split by channel (email / slack / webhook / pagerduty) and status (SUCCESS / FAIL).  The DQAlertDeliveryFailing alert trips when FAIL/total exceeds 10% over 30m; this panel is how oncall confirms it's a real channel failure (versus a routing-config issue)."
+    },
+    {
+      "id": 6,
+      "title": "S3 payload-bucket size trend (per tenant)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus-default"},
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "dq_s3_payload_bytes_total{tenant_id=~\"$tenant_id\"}",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "description": "Phase 240.1.B panel 6 — DQ S3 payload bucket size per tenant (gauge populated daily by the ``collect_dq_s3_metrics`` CronJob, 240.1.B.5).  Step-shape is normal (one sample per day).  The DQS3PayloadGrowthAnomaly alert fires when a tenant's series exceeds 2σ above its 7d-rolling baseline — investigate via this panel + the tenant's recent DQ runs."
+    }
+  ]
+}

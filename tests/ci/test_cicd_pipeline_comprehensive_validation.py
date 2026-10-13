@@ -250,7 +250,7 @@ class CICDPipelineExecutionTest(CICDPipelineComprehensiveValidationBase):
                 continue
 
             jobs = wf_data.get("jobs", {})
-            for job_name, job_data in jobs.items():
+            for _job_name, job_data in jobs.items():
                 if self._has_timeout(job_data):
                     workflows_with_timeouts += 1
                     break
@@ -647,6 +647,12 @@ class PipelineArtifactValidationTest(CICDPipelineComprehensiveValidationBase):
             self.assertGreater(len(jobs), 0, f"Workflow {wf_name} should have at least one job")
 
             for job_name, job_data in jobs.items():
+                # Jobs that dispatch to a local reusable workflow
+                # (``uses: ./.github/workflows/_reusable.*``) legitimately
+                # carry no steps — the steps live in the reusable file.
+                uses = job_data.get("uses", "")
+                if isinstance(uses, str) and uses.startswith("./.github/workflows/"):
+                    continue
                 self.assertIn("steps", job_data, f"Job {job_name} in {wf_name} should have 'steps'")
 
     def test_workflow_reviewer_integration(self):

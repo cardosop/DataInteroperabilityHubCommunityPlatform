@@ -148,7 +148,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
             record = get_idempotency_record(redis_client, redis_key)
         except redis.RedisError as e:
             # Redis operation failed - fail open
-            logger.error(
+            logger.exception(
                 "idempotency_redis_error",
                 error=str(e),
                 redis_key=redis_key,
@@ -183,7 +183,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                     )
             except redis.RedisError as e:
                 # Redis operation failed - fail open
-                logger.error(
+                logger.exception(
                     "idempotency_redis_error",
                     error=str(e),
                     redis_key=redis_key,
@@ -325,7 +325,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                     )
                 except redis.RedisError as e:
                     # Redis storage failed - log but don't fail request
-                    logger.error(
+                    logger.exception(
                         "idempotency_storage_error",
                         error=str(e),
                         idempotency_key=idempotency_key,
@@ -337,7 +337,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
             response["Idempotency-Key"] = idempotency_key
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "idempotency_storage_error",
                 error=str(e),
                 idempotency_key=idempotency_key,
@@ -352,7 +352,9 @@ class IdempotencyMiddleware(MiddlewareMixin):
                 try:
                     release_lock(redis_client, lock_key)
                 except Exception as e:
-                    logger.error("idempotency_lock_release_error", error=str(e), lock_key=lock_key)
+                    logger.exception(
+                        "idempotency_lock_release_error", error=str(e), lock_key=lock_key
+                    )
 
         return response
 

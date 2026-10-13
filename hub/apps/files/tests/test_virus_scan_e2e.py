@@ -149,7 +149,7 @@ class FileVirusScanE2ETest(TransactionTestCase):
         deadline = time.monotonic() + 180.0
         pending.refresh_from_db()
         while pending.scan_status == FileScanStatus.PENDING_SCAN and time.monotonic() < deadline:
-            time.sleep(0.35)
+            time.sleep(0.35)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             pending.refresh_from_db()
 
         self.assertEqual(

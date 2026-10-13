@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 class Command(BaseCommand):
     help = "285.12.7.9 — Send deprecation notices for flags approaching sunset"
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         now = datetime.now(tz=UTC)
         windows = {"90-day": 90, "60-day": 60, "30-day": 30}
         notices = 0

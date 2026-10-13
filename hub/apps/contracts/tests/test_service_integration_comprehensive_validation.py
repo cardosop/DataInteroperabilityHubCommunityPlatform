@@ -39,6 +39,7 @@ import json
 import time
 import uuid
 
+import pytest
 from django.conf import settings
 from django.test import Client, TransactionTestCase
 
@@ -70,7 +71,6 @@ class ServiceIntegrationValidationTestBase(ContractsTestBase):
             name="Test Asset for Service Integration",
             description="Asset for testing service integration",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user,
         )
 
@@ -466,6 +466,10 @@ class CORSAndPreflightTest(ServiceIntegrationValidationTestBase):
 class ServiceHealthDependencyTest(ServiceIntegrationValidationTestBase):
     """Test suite for service health dependency testing (10.1.20.4)"""
 
+    # The health-check dependency tests perform live requests against
+    # the compliance service (docker-compose service name).
+    pytestmark = pytest.mark.requires_services
+
     def test_health_check_endpoints_for_all_services(self):
         """Test health check endpoints for all services"""
         # Test main health endpoint
@@ -591,7 +595,6 @@ class ServiceHealthDependencyTest(ServiceIntegrationValidationTestBase):
             key="other-asset",
             name="Other Asset",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=other_user,
         )
 

@@ -723,11 +723,6 @@ class VersionCreationWorkflow:
                 breaking_changes=diff_summary["breaking_changes_count"],
             )
 
-            return {
-                "version_diff_calculated": True,
-                "diff_summary": diff_summary,
-                "state": {"version_diff_calculated": True, "diff_summary": diff_summary},
-            }
         except Dataset.DoesNotExist:
             logger.warning(
                 "Parent version not found for diff calculation",
@@ -738,6 +733,12 @@ class VersionCreationWorkflow:
                 "version_diff_calculated": False,
                 "reason": "Parent version not found",
                 "state": {"version_diff_calculated": False},
+            }
+        else:
+            return {
+                "version_diff_calculated": True,
+                "diff_summary": diff_summary,
+                "state": {"version_diff_calculated": True, "diff_summary": diff_summary},
             }
 
     @staticmethod
@@ -887,7 +888,6 @@ class VersionCreationWorkflow:
             # 2. Sending email notifications about new version
             # 3. Sending in-app notifications
 
-            return {"notifications_sent": True, "notification_type": "logged"}
         except Exception as e:
             logger.error(
                 "Failed to log version creation notification",
@@ -898,6 +898,8 @@ class VersionCreationWorkflow:
             )
             # Don't fail workflow on notification errors
             return {"notifications_sent": False, "error": str(e)}
+        else:
+            return {"notifications_sent": True, "notification_type": "logged"}
 
     @staticmethod
     def _audit_logging_task(
@@ -1000,7 +1002,6 @@ class VersionCreationWorkflow:
                 workflow_instance_id=str(instance.id),
                 dataset_id=dataset_id,
             )
-            return {"rolled_back": True}
         except Dataset.DoesNotExist:
             logger.warning(
                 "Dataset not found for rollback",
@@ -1017,6 +1018,8 @@ class VersionCreationWorkflow:
                 exc_info=True,
             )
             return {"rolled_back": False, "error": str(e)}
+        else:
+            return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic

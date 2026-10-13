@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.virtualization.models import QueryType, VirtualDataset, VirtualDatasetStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -757,8 +757,9 @@ class VirtualDatasetViewSetTest(TestCase):
         # Verify actual descending order (B before A)
         a_idx_desc = names_desc.index("A Dataset") if "A Dataset" in names_desc else -1
         b_idx_desc = names_desc.index("B Dataset") if "B Dataset" in names_desc else -1
-        self.assertLess(b_idx_desc, a_idx_desc,
-                        f"Expected B before A in descending order; got {names_desc}")
+        self.assertLess(
+            b_idx_desc, a_idx_desc, f"Expected B before A in descending order; got {names_desc}"
+        )
 
     def test_filter_by_owner(self):
         """Test filtering virtual datasets by owner/created_by"""

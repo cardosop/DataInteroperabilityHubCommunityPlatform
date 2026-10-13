@@ -99,6 +99,11 @@ pytestmark = [
 ]
 
 
+def _raise_step_http_error(step_name: str, status_code: int, error_data) -> None:
+    """Raise AssertionError for an HTTP-error journey step result (TRY301)."""
+    raise AssertionError(f"Step '{step_name}' returned HTTP {status_code}: {error_data}")
+
+
 class NewUserJourneyTestBase(E2ETestBase):
     """Base class for new user journey tests with journey tracking."""
 
@@ -140,17 +145,16 @@ class NewUserJourneyTestBase(E2ETestBase):
             # treated as success.
             if isinstance(result, Response) and result.status_code >= 400:
                 error_data = getattr(result, "data", None) or {}
-                raise AssertionError(
-                    f"Step '{step_name}' returned HTTP {result.status_code}: {error_data}"
-                )
+                _raise_step_http_error(step_name, result.status_code, error_data)
 
             step.complete(metadata={"result_type": type(result).__name__})
-            return result
         except pytest.skip.Exception:
             raise
         except Exception as e:
             step.fail(e, metadata={"args": str(args), "kwargs": str(kwargs)})
             raise
+        else:
+            return result
 
     def _create_activated_asset(self):
         """Helper: Create and activate an asset."""
@@ -207,8 +211,8 @@ class NewUserJourneyTestBase(E2ETestBase):
         self,
         method: str,
         url: str,
-        data: dict = None,
-        expected_status: int = None,
+        data: dict | None = None,
+        expected_status: int | None = None,
         skip_on_404: bool = True,
     ):
         """Safely call API endpoint, handling missing endpoints gracefully.
@@ -218,34 +222,32 @@ class NewUserJourneyTestBase(E2ETestBase):
         """
         if os.environ.get("E2E_STRICT_JOURNEY") == "1":
             skip_on_404 = False
-        try:
-            if method.upper() == "GET":
-                response = self.client.get(url)
-            elif method.upper() == "POST":
-                response = self.client.post(url, data, format="json")
-            elif method.upper() == "PUT":
-                response = self.client.put(url, data, format="json")
-            elif method.upper() == "PATCH":
-                response = self.client.patch(url, data, format="json")
-            elif method.upper() == "DELETE":
-                response = self.client.delete(url)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
+        if method.upper() == "GET":
+            response = self.client.get(url)
+        elif method.upper() == "POST":
+            response = self.client.post(url, data, format="json")
+        elif method.upper() == "PUT":
+            response = self.client.put(url, data, format="json")
+        elif method.upper() == "PATCH":
+            response = self.client.patch(url, data, format="json")
+        elif method.upper() == "DELETE":
+            response = self.client.delete(url)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
 
-            if expected_status and response.status_code != expected_status:
-                # Only skip for 404/501 when skip_on_404=True (endpoint not implemented)
-                if skip_on_404 and response.status_code in [404, 501]:
-                    pytest.skip(
-                        f"Endpoint {url} not yet implemented (status: {response.status_code})"
-                    )
+        # Only skip for 404/501 when skip_on_404=True (endpoint not implemented)
+        if (
+            expected_status
+            and response.status_code != expected_status
+            and skip_on_404
+            and response.status_code in [404, 501]
+        ):
+            pytest.skip(
+                f"Endpoint {url} not yet implemented (status: {response.status_code}) "
+                "TICKET=PREPRO01-277 EXPIRES=2026-12-31"
+            )
 
-            return response
-        except pytest.skip.Exception:
-            raise
-        except Exception:
-            # Phase 7.2.4: For network, DB, or other exceptions, always re-raise.
-            # Do not convert to skip — that would mask real errors.
-            raise
+        return response
 
 
 # ============================================================================
@@ -407,13 +409,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
             self.assertLess(journey.duration, 180.0)  # < 3 minutes
 
         except Exception as e:
@@ -585,13 +584,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
             self.assertLess(journey.duration, 600.0)  # < 10 minutes
 
         except Exception as e:
@@ -684,13 +680,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -841,13 +834,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -923,13 +913,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1042,13 +1029,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1136,13 +1120,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1216,13 +1197,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1230,8 +1208,12 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
     def _verify_score_breakdown(self, reliability_data):
         """Verify reliability score breakdown structure."""
-        has_score = "score" in (reliability_data or {}) or "reliability_score" in (reliability_data or {})
-        has_breakdown = "breakdown" in (reliability_data or {}) or "components" in (reliability_data or {})
+        has_score = "score" in (reliability_data or {}) or "reliability_score" in (
+            reliability_data or {}
+        )
+        has_breakdown = "breakdown" in (reliability_data or {}) or "components" in (
+            reliability_data or {}
+        )
         self.assertTrue(has_score, f"Reliability data missing score: {reliability_data}")
         self.assertTrue(has_breakdown, f"Reliability data missing breakdown: {reliability_data}")
         return True
@@ -1350,13 +1332,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1372,28 +1351,25 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
         )
 
         try:
-            self.execute_journey_step("Configure AI Service", lambda: self._configure_ai_service())
+            self.execute_journey_step("Configure AI Service", self._configure_ai_service)
             self.execute_journey_step(
-                "Integrate Schema Matching API", lambda: self._integrate_schema_matching()
+                "Integrate Schema Matching API", self._integrate_schema_matching
             )
-            self.execute_journey_step("Test Schema Matching", lambda: self._test_schema_matching())
+            self.execute_journey_step("Test Schema Matching", self._test_schema_matching)
             self.execute_journey_step(
-                "Configure Acceptance Rules", lambda: self._configure_acceptance_rules()
+                "Configure Acceptance Rules", self._configure_acceptance_rules
             )
-            self.execute_journey_step("Deploy Workflow", lambda: self._deploy_workflow())
+            self.execute_journey_step("Deploy Workflow", self._deploy_workflow)
             self.execute_journey_step(
-                "Monitor Performance", lambda: self._monitor_schema_matching_performance()
+                "Monitor Performance", self._monitor_schema_matching_performance
             )
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1434,11 +1410,22 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
         return result
 
     def _configure_acceptance_rules(self):
-        """Acceptance rules endpoint does not exist on AIViewSet — skip gracefully."""
-        pytest.skip(
-            "AI acceptance-rules endpoint not implemented — "
-            "no equivalent endpoint exists on AIViewSet"
+        """Configure acceptance rules for AI schema-matching results."""
+        response = self._call_api_safe(
+            "POST",
+            "/api/v1/ai/schema-matching/acceptance-rules/",
+            {
+                "min_confidence": 0.75,
+                "auto_accept": False,
+                "rules": [{"field": "col_a", "min_confidence": 0.9}],
+            },
+            expected_status=200,
+            skip_on_404=SKIP_ON_404_OPTIONAL,
         )
+        data = get_response_data(response)
+        self.assertEqual(data.get("status"), "configured")
+        self.assertEqual(data.get("acceptance_rules", {}).get("min_confidence"), 0.75)
+        return data
 
     def _deploy_workflow(self):
         """Verify AI workflow can be deployed (proxied via schema-matching)."""
@@ -1587,13 +1574,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1669,13 +1653,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1763,13 +1744,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -1778,11 +1756,9 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
     def test_journey_de_012_create_custom_plugin(self):
         """JOURNEY-DE-012: Create Custom Plugin.
 
-        PluginViewSet is a ReadOnlyModelViewSet — only GET (list/retrieve),
-        POST install, POST execute, and GET marketplace are implemented.
-        Create, test, validate, publish, and deploy are not yet available.
-        We test all real endpoints that exist, then skip the unimplemented
-        lifecycle steps with a clear diagnostic.
+        Full lifecycle (Phase 278 completion): list/retrieve/marketplace/
+        install/execute, then create (ALPHA) -> test -> validate (BETA) ->
+        publish (AVAILABLE) -> deploy.
         """
         journey_id = f"DE-012-{uuid.uuid4().hex[:8]}"
         journey = self.tracker.start_journey(
@@ -1805,7 +1781,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             # Pick the first plugin from the list response if available;
             # stash its id for the execute step below.
             list_data = (
-                get_response_data(list_response) if hasattr(list_response, 'data') else None
+                get_response_data(list_response) if hasattr(list_response, "data") else None
             ) or {}
             results = list_data.get("results", [])
             _plugin_id = None
@@ -1868,14 +1844,73 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     lambda: {"note": "No plugin id — execute step not applicable"},
                 )
 
-            # Plugin creation (POST /plugins/) is not implemented —
-            # PluginViewSet is ReadOnlyModelViewSet.  Skip the remainder
-            # of the lifecycle (create/test/validate/publish/deploy).
-            pytest.skip(
-                "Plugin lifecycle (create/test/validate/publish/deploy) not yet "
-                "implemented — PluginViewSet is ReadOnlyModelViewSet.  "
-                "List, retrieve, marketplace, install, and execute are tested above."
+            # Plugin lifecycle (Phase 278 completion): create at ALPHA,
+            # test, validate (-> BETA), publish (-> AVAILABLE), deploy.
+            create_response = self._call_api_safe(
+                "POST",
+                "/api/v1/developer/plugins/",
+                {
+                    "name": f"journey-plugin-{uuid.uuid4().hex[:8]}",
+                    "description": "Journey DE-012 plugin",
+                    "version": "1.0.0",
+                    "author": "Journey Test",
+                    "category": "CONNECTOR",
+                    "metadata_json": {
+                        "entrypoint": "plugin.main",
+                        "dependencies": [],
+                    },
+                },
+                expected_status=201,
+                skip_on_404=SKIP_ON_404_OPTIONAL,
             )
+            plugin_data = get_response_data(create_response) or {}
+            new_plugin_id = plugin_data.get("id")
+            if new_plugin_id:
+                self.execute_journey_step(
+                    "Test Plugin",
+                    lambda _pid=new_plugin_id: self._call_api_safe(
+                        "POST",
+                        f"/api/v1/developer/plugins/{_pid}/test/",
+                        {},
+                        expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,
+                    ),
+                )
+                self.execute_journey_step(
+                    "Validate Plugin",
+                    lambda _pid=new_plugin_id: self._call_api_safe(
+                        "POST",
+                        f"/api/v1/developer/plugins/{_pid}/validate/",
+                        {},
+                        expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,
+                    ),
+                )
+                self.execute_journey_step(
+                    "Publish Plugin",
+                    lambda _pid=new_plugin_id: self._call_api_safe(
+                        "POST",
+                        f"/api/v1/developer/plugins/{_pid}/publish/",
+                        {},
+                        expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,
+                    ),
+                )
+                self.execute_journey_step(
+                    "Deploy Plugin",
+                    lambda _pid=new_plugin_id: self._call_api_safe(
+                        "POST",
+                        f"/api/v1/developer/plugins/{_pid}/deploy/",
+                        {},
+                        expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,
+                    ),
+                )
+            else:
+                self.execute_journey_step(
+                    "Plugin lifecycle (no plugin id)",
+                    lambda: {"note": "Plugin creation did not return an id"},
+                )
 
         except pytest.skip.Exception:
             raise
@@ -1958,13 +1993,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2060,13 +2092,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2150,13 +2179,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2185,7 +2211,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 self._create_activated_asset,
             )
 
-            # Step 1 – Create a consent record (access-request)
+            # Step 1 - Create a consent record (access-request)
             consent_payload = {
                 "asset_id": str(asset_id),
                 "reason": "Consent tracking E2E test",
@@ -2202,7 +2228,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 ),
             )
 
-            # Step 2 – List consent/access-request records
+            # Step 2 - List consent/access-request records
             self.execute_journey_step(
                 "View Consent Records",
                 lambda: self._call_api_safe(
@@ -2213,7 +2239,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 ),
             )
 
-            # Step 3 – View consent analytics dashboard
+            # Step 3 - View consent analytics dashboard
             self.execute_journey_step(
                 "View Consent Analytics",
                 lambda: self._call_api_safe(
@@ -2226,13 +2252,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2308,13 +2331,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2385,13 +2405,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     )
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2571,13 +2588,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2627,13 +2641,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2713,13 +2724,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2902,13 +2910,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -2985,13 +2990,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -3078,13 +3080,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -3115,7 +3114,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
         )
 
         try:
-            # Step 1 – Execute semantic search
+            # Step 1 - Execute semantic search
             self.execute_journey_step(
                 "Execute Semantic Search",
                 lambda: self._call_api_safe(
@@ -3126,7 +3125,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 ),
             )
 
-            # Step 2 – List semantic resources (ODPS)
+            # Step 2 - List semantic resources (ODPS)
             self.execute_journey_step(
                 "View ODPS Semantic Resources",
                 lambda: self._call_api_safe(
@@ -3137,7 +3136,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 ),
             )
 
-            # Step 3 – List contracts (ODPS products) via core API
+            # Step 3 - List contracts (ODPS products) via core API
             self.execute_journey_step(
                 "View ODPS Contracts",
                 lambda: self._call_api_safe(
@@ -3150,13 +3149,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -3186,13 +3182,13 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             if listings_response.status_code != 200:
                 journey.complete()
                 self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                    all(
+                        s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
+                        for s in journey.steps
+                    ),
+                    f"Some steps did not reach a terminal state: "
+                    f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+                )
                 return
 
             listings_data = get_response_data(listings_response) or {}
@@ -3238,13 +3234,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
 
         except Exception as e:
             journey.fail(e)
@@ -3305,13 +3298,10 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3391,13 +3381,10 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3462,13 +3449,10 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3561,13 +3545,10 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3644,13 +3625,10 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3703,13 +3681,10 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3746,13 +3721,10 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3830,13 +3802,10 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3883,13 +3852,10 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3919,13 +3885,10 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -3983,13 +3946,10 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4056,13 +4016,10 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4119,13 +4076,10 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                     )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4172,7 +4126,10 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 )
             usage_response = self._call_api_safe(
                 "GET",
-                "/api/v1/developer/api-usage/",
+                # Phase 313 D2 — api-usage is intentionally NOT registered
+                # under /developer/ (it shadowed the paid BaaS viewset); the
+                # real APIUsageViewSet lives at the BaaS surface.
+                "/api/v1/baas/usage/",
                 expected_status=200,
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
@@ -4182,13 +4139,10 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4236,13 +4190,10 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4292,13 +4243,10 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
 
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4352,13 +4300,10 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4388,13 +4333,10 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4418,13 +4360,10 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4471,13 +4410,10 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4525,13 +4461,10 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4558,13 +4491,10 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 )
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4617,13 +4547,10 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4649,13 +4576,10 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
                 )
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4684,13 +4608,10 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4713,13 +4634,10 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4770,13 +4688,10 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4847,13 +4762,10 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                         )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4902,13 +4814,10 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -4965,13 +4874,10 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -5000,13 +4906,10 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -5042,13 +4945,10 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -5082,13 +4982,10 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
             )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -5116,13 +5013,10 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 )
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise
@@ -5155,13 +5049,10 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 )
             journey.complete()
             self.assertTrue(
-            all(
-                s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                for s in journey.steps
-            ),
-            f"Some steps did not reach a terminal state: "
-            f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
-        )
+                all(s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED) for s in journey.steps),
+                f"Some steps did not reach a terminal state: "
+                f"{[(s.step_name, s.status.value) for s in journey.steps if s.status not in (StepStatus.COMPLETED, StepStatus.SKIPPED)]}",
+            )
         except Exception as e:
             journey.fail(e)
             raise

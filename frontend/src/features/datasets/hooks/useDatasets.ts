@@ -5,6 +5,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { datasetService } from '../services/datasetService';
 import type {
   Dataset,
@@ -13,18 +14,12 @@ import type {
   DatasetListFilters,
 } from '../../../shared/types/datasets';
 
-export function useDatasets(
-  filters: DatasetListFilters = {},
-  options?: { enabled?: boolean }
-) {
+export function useDatasets(filters: DatasetListFilters = {}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['datasets', 'list', filters],
     queryFn: async () => {
       const data = await datasetService.list(filters);
-      if (data === undefined) {
-        return emptyPaginatedResponse<Dataset>();
-      }
-      return data;
+      return normalizePaginated(data ?? emptyPaginatedResponse<Dataset>());
     },
     enabled: options?.enabled !== false,
   });
@@ -95,14 +90,33 @@ export function useDeleteDataset() {
 }
 
 /**
+ * Phase 260.4.A.1 — retire a dataset (POST /datasets/{id}/retire/).
+ * Invalidates the detail (badge/CTA re-render contract) and every list
+ * query (the "Show retired" toggle surface).
+ */
+export function useRetireDataset() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: (id: string) => datasetService.retire(id),
+    successMessage: 'Dataset retired',
+    errorMessage: 'Failed to retire dataset',
+    onSuccess: (_dataset, id) => {
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      queryClient.invalidateQueries({ queryKey: ['datasets', 'detail', id] });
+    },
+  });
+}
+
+/**
  * Fetch sample data rows from a dataset.
  * GET /api/v1/datasets/{id}/sample/?limit=50
  */
 export function useRefreshDatasetFromFile() {
   const queryClient = useQueryClient();
   return useMutationWithNotification({
-    mutationFn: ({ datasetId }: { datasetId: string }) =>
-      datasetService.refreshFromFile(datasetId),
+    mutationFn: ({ datasetId, fileId }: { datasetId: string; fileId: string }) =>
+      datasetService.refreshFromFile(datasetId, fileId),
     successMessage: 'Dataset refreshed from file',
     errorMessage: 'Failed to refresh dataset from file',
     onSuccess: (_data, variables) => {

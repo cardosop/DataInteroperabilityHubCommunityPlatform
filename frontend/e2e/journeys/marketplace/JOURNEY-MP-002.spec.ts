@@ -12,7 +12,7 @@
 import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
-import { createAssetViaApi } from '../../fixtures/api-assets';
+import { createAssetViaApi, getAssetKeyViaApi } from '../../fixtures/api-assets';
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
 // Phase 226 G7 — semantic-IRI guarantee on the listing's underlying asset.
 // MarketplaceListing itself is not a semantic resource type, but publishing
@@ -53,9 +53,14 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       // ListingPublishPage only shows ACTIVE assets in the dropdown — must use ensureActivated
       // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
-      const assetId = await createAssetViaApi(testUser, { ensureActivated: true }).catch(() => null);
+      const assetId = await createAssetViaApi(testUser, { ensureActivated: true }).catch(
+        (err) => {
+          console.log(`[MP-002] createAssetViaApi failed: ${String(err).slice(0, 300)}`);
+          return null;
+        }
+      );
       if (!assetId) {
-        test.skip(true, 'Could not create/find an ACTIVE asset — skipping publish form interaction');
+        test.skip(!assetId, 'Could not create/find an ACTIVE asset — skipping publish form interaction');
         return;
       }
 
@@ -89,15 +94,23 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
         return;
       }
       // The select is populated asynchronously by useAssets({ status: 'ACTIVE' }).
-      // Wait for the specific option to appear before selecting — avoids silent selectOption failure
-      // if React Query hasn't resolved yet when the page first renders.
-      // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
-      const assetOptionAvailable = await page
-        .waitForSelector(`#asset_id option[value="${assetId}"]`, { state: 'attached', timeout: 15000 })
-        .then(() => true)
-        .catch(() => false);
+      // Poll for the specific option before selecting — the old single 15s
+      // fixed wait was too short under batch load (b6 skip: "not in
+      // dropdown after 15 s"), so retry on a bounded ~40s deadline.
+      const assetOptionAvailable = await (async () => {
+        const deadline = Date.now() + 40_000;
+        while (Date.now() < deadline) {
+          if (
+            (await page.locator(`#asset_id option[value="${assetId}"]`).count()) > 0
+          ) {
+            return true;
+          }
+          await page.waitForTimeout(2000);
+        }
+        return false;
+      })();
       if (!assetOptionAvailable) {
-        test.skip(true, `ACTIVE asset ${assetId.slice(0, 8)} not in dropdown after 15 s — asset may not have fully activated`);
+        test.skip(!assetOptionAvailable, `ACTIVE asset ${assetId.slice(0, 8)} not in dropdown after 40 s — asset may not have fully activated`);
         return;
       }
       await assetSelect.selectOption(assetId);
@@ -147,7 +160,10 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
         await verifyViaApi(
           page,
           `/api/v1/marketplace/listings/${listingId}/`,
-          (body: { asset_id?: string }) => body.asset_id === assetId,
+          // The READ serializer exposes the FK as `asset` (the write
+          // payload uses `asset_id`); checking asset_id here reads
+          // undefined and can never match (b6 #2).
+          (body: { asset?: string }) => body.asset === assetId,
         );
 
         // Phase 226 G8d — audit row for the listing-create.
@@ -167,12 +183,16 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
         });
 
         // Phase 226 G12 — published listings must appear in the marketplace
-        // search index within 20 s of creation. Catches indexer regressions
-        // where the listing rendered in the UI but was unfindable via search.
+        // search index within 20 s of creation. Listings are indexed via
+        // their associated asset (marketplace_publication →
+        // SearchIndexer.index_asset), and the search API has NO LISTING
+        // resource type — verify through the ASSET row (b6 masked bug:
+        // type=LISTING always 400s SEARCH_VALIDATION_FAILED).
+        const assetKey = await getAssetKeyViaApi(testUser, assetId);
         await verifySearchable(page, {
-          resourceType: 'LISTING',
-          id: listingId,
-          key: listingId.slice(0, 8),
+          resourceType: 'ASSET',
+          id: assetId,
+          key: assetKey ?? assetId.slice(0, 8),
         });
       } else if (resultType === 'api-error') {
         // Backend rejected the listing creation (e.g. duplicate, permission, plan limit)

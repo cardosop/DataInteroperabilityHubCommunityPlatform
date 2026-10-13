@@ -18,6 +18,7 @@ from tests.e2e.conftest import E2ETestBase
 
 pytestmark = [pytest.mark.journey("JOURNEY-CPO-013")]
 
+
 @pytest.mark.e2e
 class RopaGenerationE2ETests(E2ETestBase):
     """E2E tests for RoPA generation + download flow (283.3.3.3)."""

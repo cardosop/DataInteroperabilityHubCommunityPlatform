@@ -9,9 +9,11 @@ ComplianceServiceClient uses real service with graceful handling when unavailabl
 
 import uuid
 
+import httpx
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from redis.exceptions import RedisError
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -31,9 +33,10 @@ def check_compliance_service_available():
     try:
         client = ComplianceServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
-    except Exception:
+    except (httpx.InvalidURL, RedisError, ValueError):
         return False
+    else:
+        return is_healthy
 
 
 # Using TestCase since _fixture_teardown is pass (no flush needed)

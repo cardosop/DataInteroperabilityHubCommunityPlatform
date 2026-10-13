@@ -47,14 +47,14 @@ def fallback(
     """
     if strategy == FallbackStrategy.RETURN_NONE:
 
-        def fallback_none(*args, **kwargs):
+        def fallback_none(*_args, **_kwargs):
             logger.warning("fallback_return_none", message="Fallback returning None")
 
         return fallback_none
 
     elif strategy == FallbackStrategy.RETURN_DEFAULT:
 
-        def fallback_default(*args, **kwargs):
+        def fallback_default(*_args, **_kwargs):
             logger.warning(
                 "fallback_return_default",
                 default_value=default_value,
@@ -66,7 +66,7 @@ def fallback(
 
     elif strategy == FallbackStrategy.RAISE_EXCEPTION:
 
-        def fallback_raise(*args, **kwargs):
+        def fallback_raise(*_args, **_kwargs):
             logger.error("fallback_raise_exception", message="Fallback raising exception")
             raise FallbackError("Fallback strategy is RAISE_EXCEPTION")
 

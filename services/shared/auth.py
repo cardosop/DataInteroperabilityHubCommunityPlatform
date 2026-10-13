@@ -133,11 +133,24 @@ _PUBLIC_PATHS: frozenset[str] = frozenset({"/health", "/metrics", "/ready"})
 # Phase 240.5.G — HMAC payload signature config
 # ---------------------------------------------------------------------------
 
+
 # The signing secret. Optional at module-import time so a service that
 # doesn't enforce signatures (rollout-soak mode OR services that aren't
 # dq-service) doesn't fail to start. When enforcement is on AND the
 # secret is empty, the middleware fails closed (rejects all requests
 # with 503 — fail-secure).
+def _payload_secret() -> str:
+    """Read ``DQ_SERVICE_INTERNAL_PAYLOAD_SECRET`` at request time.
+
+    Read-at-request (NOT cached) intentionally, mirroring
+    ``_enforcement_enabled()``: the payload-signature tests flip the
+    secret per built app (enforce-on/off modes) without a module reload,
+    and a request-time read keeps a future config-reload mechanism from
+    serving signatures verified against a stale secret.
+    """
+    return os.environ.get("DQ_SERVICE_INTERNAL_PAYLOAD_SECRET", "")
+
+
 _PAYLOAD_SECRET: str = os.environ.get("DQ_SERVICE_INTERNAL_PAYLOAD_SECRET", "")
 
 # Replay-protection window. A signed request is accepted when
@@ -265,6 +278,11 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
         self._public_paths = _PUBLIC_PATHS | frozenset(extra_public_paths)
 
     async def dispatch(self, request: StarletteRequest, call_next) -> StarletteResponse:
+        # Phase 270.C.2 — normalise X-Actor-Id onto request.state so
+        # downstream handlers and audit writers read one value instead
+        # of re-parsing the header per endpoint.
+        request.state.actor_id = request.headers.get("X-Actor-Id", "")
+
         if request.url.path in self._public_paths:
             return await call_next(request)
 
@@ -282,17 +300,20 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
             key.encode("utf-8"),
             _INTERNAL_API_KEY.encode("utf-8"),
         )
-        if not key_ok and _INTERNAL_API_KEY_PREVIOUS:
-            # Honor the overlap-window expiry if set. 0 = no expiry
-            # (rollout-compatibility sentinel — accept indefinitely).
-            if (
+        if (
+            not key_ok
+            and _INTERNAL_API_KEY_PREVIOUS
+            and (
+                # Honor the overlap-window expiry if set. 0 = no expiry
+                # (rollout-compatibility sentinel — accept indefinitely).
                 _INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT == 0
                 or time.time() < _INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT
-            ):
-                key_ok = hmac.compare_digest(
-                    key.encode("utf-8"),
-                    _INTERNAL_API_KEY_PREVIOUS.encode("utf-8"),
-                )
+            )
+        ):
+            key_ok = hmac.compare_digest(
+                key.encode("utf-8"),
+                _INTERNAL_API_KEY_PREVIOUS.encode("utf-8"),
+            )
         if not key_ok:
             return StarletteResponse(
                 content=json.dumps({"detail": "Invalid API key"}),
@@ -313,7 +334,7 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
             # accept all requests because the configured ``secret``
             # is "" (which would HMAC-match against a producer
             # that ALSO happens to use an empty secret).
-            if not _PAYLOAD_SECRET:
+            if not _payload_secret():
                 return StarletteResponse(
                     content=json.dumps(
                         {
@@ -347,7 +368,7 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
                 timestamp_header=request.headers.get(
                     _PAYLOAD_TIMESTAMP_HEADER,
                 ),
-                secret=_PAYLOAD_SECRET,
+                secret=_payload_secret(),
             )
             if not ok:
                 # Wire response carries a generic message; the

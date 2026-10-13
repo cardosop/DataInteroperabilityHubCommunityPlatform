@@ -302,7 +302,13 @@ export class ApiClient {
     // a stale stored tenant_id can cause the TenantScopingMiddleware
     // to 401 before DRF auth runs, even with a valid JWT.
     if (this._getTenantId) {
-      const skipTenantForAgnostic = url !== undefined && isTenantAgnosticEndpoint(url);
+      // Anonymous endpoints (login/register/accept-invitation/...) must
+      // not receive X-Tenant-ID either: the SPA skips the Authorization
+      // header for them, and TenantScopingMiddleware 401s any request
+      // carrying X-Tenant-ID without valid credentials — the same
+      // stale-session trap documented above for the bearer token.
+      const skipTenantForAgnostic =
+        url !== undefined && (isTenantAgnosticEndpoint(url) || isAnonymousEndpoint(url));
       if (!skipTenantForAgnostic) {
         const tenantId = this._getTenantId();
         if (tenantId) {
@@ -639,3 +645,18 @@ class InternalHttpClient implements HttpClient {
 }
 
 export const apiClient = new ApiClient();
+
+// Phase 11.1 — the access_token lives in module memory only, so E2E
+// fixtures cannot probe the live session via localStorage anymore
+// (the old probe read localStorage.getItem('access_token'), which is
+// ALWAYS null post-11.1, failed the login stabilization check, and
+// forced the fixture's API-injection fallback — which then wrote a
+// token to localStorage and broke the 11.1 security assertions).
+// This read-only getter is the sanctioned probe surface: it returns
+// the token without exposing any write path. (XSS exposure is nil —
+// an attacker who can call this can already issue authenticated
+// fetches from the page directly.)
+if (typeof window !== 'undefined') {
+  (window as unknown as { __getAccessToken?: () => string | null }).__getAccessToken = () =>
+    apiClient.getAccessToken();
+}

@@ -6,7 +6,7 @@ Fixed API paths to match ``hub/apps/dpia/urls.py`` router (``records``
 mounted at ``/api/v1/dpia/records/`` via ``hub/apps/api/urls.py:55``).
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -25,20 +25,20 @@ class DpiaAPI:
         self,
         page: int = 1,
         page_size: int = 25,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"page": page, "page_size": page_size}
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
         if status:
             params["status"] = status
         return await self.client.get(f"{DPIA_PREFIX}/", params=params)
 
-    async def create_assessment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_assessment(self, data: dict[str, Any]) -> dict[str, Any]:
         return await self.client.post(f"{DPIA_PREFIX}/", data=data)
 
-    async def get_assessment(self, dpia_id: str) -> Dict[str, Any]:
+    async def get_assessment(self, dpia_id: str) -> dict[str, Any]:
         return await self.client.get(f"{DPIA_PREFIX}/{dpia_id}/")
 
-    async def update_assessment(self, dpia_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_assessment(self, dpia_id: str, data: dict[str, Any]) -> dict[str, Any]:
         return await self.client.patch(f"{DPIA_PREFIX}/{dpia_id}/", data=data)
 
     async def delete_assessment(self, dpia_id: str) -> None:
@@ -46,19 +46,19 @@ class DpiaAPI:
 
     # ── Workflow actions ─────────────────────────────────────────────
 
-    async def submit(self, dpia_id: str) -> Dict[str, Any]:
+    async def submit(self, dpia_id: str) -> dict[str, Any]:
         return await self.client.post(f"{DPIA_PREFIX}/{dpia_id}/submit/")
 
-    async def review(self, dpia_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def review(self, dpia_id: str, data: dict[str, Any]) -> dict[str, Any]:
         return await self.client.post(f"{DPIA_PREFIX}/{dpia_id}/review/", data=data)
 
-    async def consultation_complete(self, dpia_id: str) -> Dict[str, Any]:
+    async def consultation_complete(self, dpia_id: str) -> dict[str, Any]:
         return await self.client.post(f"{DPIA_PREFIX}/{dpia_id}/consultation/complete/")
 
-    async def new_version(self, dpia_id: str) -> Dict[str, Any]:
+    async def new_version(self, dpia_id: str) -> dict[str, Any]:
         return await self.client.post(f"{DPIA_PREFIX}/{dpia_id}/new-version/")
 
-    async def diff(self, dpia_id: str, version_a: int, version_b: int) -> Dict[str, Any]:
+    async def diff(self, dpia_id: str, version_a: int, version_b: int) -> dict[str, Any]:
         return await self.client.get(
             f"{DPIA_PREFIX}/{dpia_id}/diff/",
             params={"version_a": version_a, "version_b": version_b},
@@ -72,8 +72,8 @@ class DpiaAPI:
         self,
         page: int = 1,
         page_size: int = 25,
-        review_status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        review_status: str | None = None,
+    ) -> dict[str, Any]:
         """List DPIAs filtered by status (for periodic review tracking).
 
         Wraps ``list_assessments`` with status filtering.  Use
@@ -89,7 +89,7 @@ class DpiaAPI:
         self,
         page: int = 1,
         page_size: int = 25,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get DPIAs due for periodic review (APPROVED, oldest first).
 
         Client-side wrapper — filters approved DPIAs as an ordered queue.
@@ -100,7 +100,7 @@ class DpiaAPI:
         self,
         dpia_id: str,
         reviewer_notes: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Trigger a periodic review for a completed DPIA.
 
         Submits the current DPIA for re-review via the existing submit flow.

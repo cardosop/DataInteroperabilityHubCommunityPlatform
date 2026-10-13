@@ -37,7 +37,7 @@ try:
         ["tenant_id"],
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     dpia_created_total = _MetricStub()
     dpia_completed_total = _MetricStub()
     dpia_review_overdue_total = _MetricStub()

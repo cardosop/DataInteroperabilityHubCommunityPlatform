@@ -94,21 +94,19 @@ class CredentialsEndpointTest(TestCase):
             f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/credentials/"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("scheduled_ingestion_id", response.data)
-        self.assertIn("source_type", response.data)
-        self.assertIn("masked_credentials", response.data)
-        self.assertIn("metadata", response.data)
+        assert response.status_code == status.HTTP_200_OK
+        assert "scheduled_ingestion_id" in response.data
+        assert "source_type" in response.data
+        assert "masked_credentials" in response.data
+        assert "metadata" in response.data
 
         # Verify credentials are masked
         masked_creds = response.data["masked_credentials"]
-        self.assertIn("secret_access_key", masked_creds)
-        self.assertIn("access_key_id", masked_creds)
+        assert "secret_access_key" in masked_creds
+        assert "access_key_id" in masked_creds
         # Verify actual secret is not exposed
-        self.assertNotIn(
-            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", masked_creds["secret_access_key"]
-        )
-        self.assertTrue(
+        assert "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" not in masked_creds["secret_access_key"]
+        assert (
             "***" in masked_creds["secret_access_key"]
             or "****" in masked_creds["secret_access_key"]
         )
@@ -120,7 +118,7 @@ class CredentialsEndpointTest(TestCase):
             f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/credentials/"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_get_credentials_forbidden(self):
         """Test getting credentials for another tenant's ingestion returns 404 (tenant-scoped queryset)."""
@@ -141,14 +139,14 @@ class CredentialsEndpointTest(TestCase):
         )
 
         # Cross-tenant: object not in queryset, so 404 (standard practice to avoid leaking existence)
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_get_credentials_not_found(self):
         """Test getting credentials for non-existent ingestion"""
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/scheduled-ingestions/{fake_id}/credentials/")
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_test_credentials_success(self):
         """Test successful connection test using real InMemoryConnector (no mocks)."""
@@ -161,12 +159,12 @@ class CredentialsEndpointTest(TestCase):
             response = self.client.post(
                 f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/credentials/test/"
             )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("success", response.data)
-        self.assertTrue(response.data["success"])
-        self.assertIn("message", response.data)
-        self.assertIn("tested_at", response.data)
-        self.assertIn("connection_details", response.data)
+        assert response.status_code == status.HTTP_200_OK
+        assert "success" in response.data
+        assert response.data["success"]
+        assert "message" in response.data
+        assert "tested_at" in response.data
+        assert "connection_details" in response.data
 
     def test_test_credentials_failure(self):
         """Test failed connection test using real InMemoryConnector (no mocks)."""
@@ -179,10 +177,10 @@ class CredentialsEndpointTest(TestCase):
             response = self.client.post(
                 f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/credentials/test/"
             )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("success", response.data)
-        self.assertFalse(response.data["success"])
-        self.assertIn("message", response.data)
+        assert response.status_code == status.HTTP_200_OK
+        assert "success" in response.data
+        assert not response.data["success"]
+        assert "message" in response.data
 
     def test_test_credentials_unauthorized(self):
         """Test testing credentials without authentication"""
@@ -191,7 +189,7 @@ class CredentialsEndpointTest(TestCase):
             f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/credentials/test/"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_test_credentials_forbidden(self):
         """Test testing credentials for another tenant's ingestion returns 404 (tenant-scoped queryset)."""
@@ -213,7 +211,7 @@ class CredentialsEndpointTest(TestCase):
         )
 
         # Cross-tenant: object not in queryset, so 404 (standard practice to avoid leaking existence)
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_test_credentials_connector_unavailable(self):
         """Test connection test when connector factory returns None (service unavailable)."""
@@ -224,9 +222,9 @@ class CredentialsEndpointTest(TestCase):
             response = self.client.post(
                 f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/credentials/test/"
             )
-        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
-        self.assertIn("success", response.data)
-        self.assertFalse(response.data["success"])
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "success" in response.data
+        assert not response.data["success"]
 
     def test_credentials_masking_different_source_types(self):
         """Test credential masking for different source types"""
@@ -249,10 +247,8 @@ class CredentialsEndpointTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-ingestions/{gcs_ingestion.id}/credentials/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         masked_creds = response.data["masked_credentials"]
         # Verify sensitive fields are masked
         if "private_key" in masked_creds:
-            self.assertTrue(
-                "***" in masked_creds["private_key"] or "****" in masked_creds["private_key"]
-            )
+            assert "***" in masked_creds["private_key"] or "****" in masked_creds["private_key"]

@@ -1,7 +1,7 @@
 """
 Phase 74 (74.1.3) — Auth Business Rules Tests
 
-4 tests per method × 4 methods = 16 tests.
+4 tests per method x 4 methods = 16 tests.
 """
 
 import uuid

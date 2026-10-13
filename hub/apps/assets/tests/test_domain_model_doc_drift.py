@@ -184,11 +184,15 @@ class TestDataStrategyFieldDocumented:
             or "not run" in window
             or "not required" in window
         )
-        assert has_dq_term and has_skip_term, (
-            "The activation-gate effect for METADATA_ONLY (DQ "
-            "skipped per D250.3) MUST be documented within ~800 "
-            "chars of the METADATA_ONLY mention. Got window: "
-            f"{window[:200]!r}..."
+        assert has_dq_term, (
+            "The activation-gate effect for METADATA_ONLY (DQ skipped "
+            "per D250.3) MUST mention DQ/data quality within ~800 chars "
+            f"of the METADATA_ONLY mention. Got window: {window[:200]!r}..."
+        )
+        assert has_skip_term, (
+            "The activation-gate effect for METADATA_ONLY (DQ skipped "
+            "per D250.3) MUST mention a skip qualifier within ~800 chars "
+            f"of the METADATA_ONLY mention. Got window: {window[:200]!r}..."
         )
 
     def test_compliance_mandatory_for_federated_documented(

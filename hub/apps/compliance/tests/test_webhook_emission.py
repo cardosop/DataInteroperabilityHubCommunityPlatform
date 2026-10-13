@@ -417,7 +417,8 @@ class PublishComplianceCheckCompletedDirectTest(TestCase):
             self.assertEqual(outer["data"]["run_id"], str(run.id))
             # Verify the DB re-read populated stub-null fields.
             self.assertEqual(
-                outer["data"]["risk_level"], RiskLevel.LOW.value,
+                outer["data"]["risk_level"],
+                RiskLevel.LOW.value,
             )
             self.assertEqual(
                 outer["data"]["terminal_status"],

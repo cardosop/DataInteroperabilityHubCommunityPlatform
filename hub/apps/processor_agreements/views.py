@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from rest_framework import permissions, viewsets
 
@@ -22,7 +22,9 @@ from hub.apps.processor_agreements.serializers import (
 )
 from hub.apps.processor_agreements.services import notify_subprocessor_change
 from hub.apps.processor_agreements.throttles import ProcessorAgreementUserThrottle
-from hub.apps.users.models import User
+
+if TYPE_CHECKING:
+    from hub.apps.users.models import User
 
 
 def _tenant(request):
@@ -32,11 +34,11 @@ def _tenant(request):
 class ProcessorViewSet(viewsets.ModelViewSet):
     """Manage data processors for the current tenant."""
 
-    permission_classes = [
+    permission_classes = (
         permissions.IsAuthenticated,
         IsTenantScoped,
         IsTenantAdminProcessorAgreements,
-    ]
+    )
     throttle_classes = [ProcessorAgreementUserThrottle]  # 283.3.6.4
     serializer_class = ProcessorSerializer
     lookup_field = "id"
@@ -90,11 +92,11 @@ class ProcessorViewSet(viewsets.ModelViewSet):
 class ProcessorAgreementViewSet(viewsets.ModelViewSet):
     """Manage processor agreements for the current tenant."""
 
-    permission_classes = [
+    permission_classes = (
         permissions.IsAuthenticated,
         IsTenantScoped,
         IsTenantAdminProcessorAgreements,
-    ]
+    )
     throttle_classes = [ProcessorAgreementUserThrottle]  # 283.3.6.4
     serializer_class = ProcessorAgreementSerializer
     lookup_field = "id"
@@ -160,14 +162,14 @@ class ProcessorAgreementViewSet(viewsets.ModelViewSet):
 class AssetProcessorLinkViewSet(viewsets.ModelViewSet):
     """Manage asset-to-processor links for the current tenant."""
 
-    permission_classes = [
+    permission_classes = (
         permissions.IsAuthenticated,
         IsTenantScoped,
         IsTenantAdminProcessorAgreements,
-    ]
+    )
     throttle_classes = [ProcessorAgreementUserThrottle]  # 283.3.6.4
     serializer_class = AssetProcessorLinkSerializer
-    http_method_names = ["get", "post", "delete", "head", "options"]
+    http_method_names: ClassVar[list[str]] = ["get", "post", "delete", "head", "options"]
     lookup_field = "id"
 
     def get_queryset(self):

@@ -337,19 +337,16 @@ class MarketplaceListingsE2ETest(E2ETestBase):
         # falling back to the unfiltered listing endpoint.
         if len(results) == 0:
             import time
+
             for _attempt in range(5):
-                time.sleep(1)  # Allow search index to catch up
+                time.sleep(1)  # noqa: sleep-needed  # Allow search index to catch up  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 retry_response = self.client.get(
                     "/api/v1/marketplace/listings/", {"search": "Searchable"}
                 )
                 if isinstance(retry_response.data, dict) and "results" in retry_response.data:
                     results = retry_response.data["results"]
                 else:
-                    results = (
-                        retry_response.data
-                        if isinstance(retry_response.data, list)
-                        else []
-                    )
+                    results = retry_response.data if isinstance(retry_response.data, list) else []
                 if len(results) > 0:
                     break
 
@@ -363,7 +360,11 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             all_listings = (
                 all_data.get("results", all_data) if isinstance(all_data, dict) else all_data
             )
-            listing_ids = [str(l.get("id", "")) for l in all_listings if isinstance(l, dict)]
+            listing_ids = [
+                str(all_listing.get("id", ""))
+                for all_listing in all_listings
+                if isinstance(all_listing, dict)
+            ]
             self.assertIn(
                 str(listing_id),
                 listing_ids,
@@ -372,8 +373,7 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             )
         else:
             self.assertGreaterEqual(
-                len(results), 1,
-                f"Search should find at least the published listing {listing_id}"
+                len(results), 1, f"Search should find at least the published listing {listing_id}"
             )
 
     def test_listing_with_pricing(self):

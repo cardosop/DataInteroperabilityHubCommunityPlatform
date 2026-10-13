@@ -37,7 +37,7 @@ def fix_testcase_file(file_path: Path):
             lines = content.split("\n")
             import_idx = None
             for i, line in enumerate(lines):
-                if line.startswith("import ") or line.startswith("from "):
+                if line.startswith(("import ", "from ")):
                     import_idx = i
                     break
 
@@ -77,11 +77,11 @@ def fix_testcase_file(file_path: Path):
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_content)
-
-        return True
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"Error processing {file_path}: {e}")
         return False
+    else:
+        return True
 
 
 def main():

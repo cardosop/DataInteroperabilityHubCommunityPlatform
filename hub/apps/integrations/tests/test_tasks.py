@@ -183,12 +183,11 @@ class MarketplaceSyncTaskUnitTest(TestCase):
     def tearDown(self):
         """Clean up after tests"""
         # Unregister test connector
-        try:
+        with contextlib.suppress(ValueError):
+            # Already unregistered
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
             )
-        except ValueError:
-            pass  # Already unregistered
         """Reconnect signals after test"""
         from django.db.models.signals import post_save
 
@@ -506,11 +505,9 @@ class MarketplaceSyncTaskUnitTest(TestCase):
             )
 
             # Execute sync (should raise ConnectionError for retry)
-            try:
-                execute_marketplace_sync(str(sync_job.id), retry_count=0)
-            except ConnectionError:
+            with contextlib.suppress(ConnectionError):
                 # Expected - ConnectionError should be raised for retry
-                pass
+                execute_marketplace_sync(str(sync_job.id), retry_count=0)
 
             # ConnectionError → mark_failed at tasks.py:362 → FAILED
             # (note: TRANSIENT re-raise goes to catch-all, job is already FAILED)
@@ -814,10 +811,9 @@ class MarketplaceSyncTaskErrorHandlingTest(TestCase):
         connection.set_config({"api_key": "test"})
 
         # Unregister connector if it exists
-        try:
+        with contextlib.suppress(ValueError):
+            # Already unregistered
             MarketplaceConnectorFactory.unregister_connector(MarketplaceType.AWS_DATA_EXCHANGE)
-        except ValueError:
-            pass  # Already unregistered
 
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
@@ -992,9 +988,7 @@ class MarketplaceSyncTaskBidirectionalTest(TestCase):
 
     def test_bidirectional_push_only(self):
         """BIDIRECTIONAL with only push assets → only PUSH executes."""
-        asset = Asset.objects.create(
-            tenant=self.tenant, key="bi-push-only", name="Push Only"
-        )
+        asset = Asset.objects.create(tenant=self.tenant, key="bi-push-only", name="Push Only")
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
@@ -1076,6 +1070,7 @@ class MarketplaceSyncErrorClassificationTest(TestCase):
 
     def test_permanent_error_fails_immediately(self):
         """Error classified as PERMANENT → job marked FAILED, no retry."""
+
         # Use a ValueError (not ConnectionError) — the error classifier maps
         # unknown errors to UNKNOWN, but we can verify the mark_failed path.
         class PermanentErrorConnector(TestMarketplaceConnector):
@@ -1087,9 +1082,7 @@ class MarketplaceSyncErrorClassificationTest(TestCase):
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, PermanentErrorConnector
         )
         try:
-            asset = Asset.objects.create(
-                tenant=self.tenant, key="perm-err", name="Permanent Error"
-            )
+            asset = Asset.objects.create(tenant=self.tenant, key="perm-err", name="Permanent Error")
             sync_job = MarketplaceSyncJob.objects.create(
                 tenant=self.tenant,
                 connection=self.connection,
@@ -1115,6 +1108,7 @@ class MarketplaceSyncErrorClassificationTest(TestCase):
 
     def test_connection_error_is_classified_and_records_errors(self):
         """ConnectionError during sync → job marked FAILED, errors recorded."""
+
         class ConnectionErrorConnector(TestMarketplaceConnector):
             def sync_push(self, asset_ids, options=None):
                 raise ConnectionError("Connection timeout")

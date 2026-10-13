@@ -60,7 +60,7 @@ def check_directory_exists(dirpath: Path) -> bool:
     return dirpath.exists() and dirpath.is_dir()
 
 
-def run_command(cmd: list[str], cwd: Path = None) -> tuple[int, str, str]:
+def run_command(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
     """Run a command and return exit code, stdout, stderr"""
     try:
         result = subprocess.run(
@@ -69,7 +69,7 @@ def run_command(cmd: list[str], cwd: Path = None) -> tuple[int, str, str]:
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         return -1, "", "Command timed out"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return -1, "", str(e)
 
 

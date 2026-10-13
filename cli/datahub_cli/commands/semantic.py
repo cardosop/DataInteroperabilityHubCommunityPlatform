@@ -92,7 +92,7 @@ def sparql_query(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"SPARQL query failed: {e}")
+        raise click.ClickException(f"SPARQL query failed: {e}") from e
 
 
 @sparql.command("service-description")
@@ -106,7 +106,7 @@ def service_description():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get service description: {e}")
+        raise click.ClickException(f"Failed to get service description: {e}") from e
 
 
 # ── Bulk RDF export (Phase 230.2.12 / REQ-SEM-EXPORT-001) ────
@@ -136,14 +136,8 @@ def export_rdf(fmt: str, output_path: str | None):
     stdout. The Hub throttles to 5 requests / 5 minutes / user; on
     HTTP 429 the Retry-After header is surfaced in the error.
     """
-    try:
-        # Use the streaming request path so very large bodies don't
-        # buffer in memory before reaching the file handle.
-        response = api_client.request(
-            "POST",
-            "semantic/export",
-            json_data={"format": fmt},
-        )
+
+    def _handle_response(response) -> None:
         if response.status_code == 200:
             body = response.content
             if output_path:
@@ -162,7 +156,7 @@ def export_rdf(fmt: str, output_path: str | None):
         elif response.status_code == 413:
             try:
                 detail = response.json()
-            except Exception:
+            except ValueError:
                 detail = {"raw": response.text[:500]}
             raise click.ClickException(
                 f"Export exceeds the 100M-triple cap; use SPARQL "
@@ -177,10 +171,20 @@ def export_rdf(fmt: str, output_path: str | None):
             raise click.ClickException(
                 f"Export failed: HTTP {response.status_code} {response.text[:500]}"
             )
+
+    try:
+        # Use the streaming request path so very large bodies don't
+        # buffer in memory before reaching the file handle.
+        response = api_client.request(
+            "POST",
+            "semantic/export",
+            json_data={"format": fmt},
+        )
+        _handle_response(response)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to export RDF: {e}")
+        raise click.ClickException(f"Failed to export RDF: {e}") from e
 
 
 # ── Ontology / VoID / SHACL ─────────────────────────────
@@ -195,7 +199,7 @@ def ontology():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get ontology: {e}")
+        raise click.ClickException(f"Failed to get ontology: {e}") from e
 
 
 # ── JSON-LD context (Phase 230.6 / REQ-SEM-CONTEXT-ALIAS-001) ────
@@ -222,7 +226,7 @@ def context():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get JSON-LD context: {e}")
+        raise click.ClickException(f"Failed to get JSON-LD context: {e}") from e
 
 
 # ── Custom ontology management (Phase 230.10 / REQ-SEM-ONTO-001) ───
@@ -268,6 +272,18 @@ def upload_custom_ontology(name: str, namespace_iri: str, fmt: str, rdf_file: st
     machine-readable reason."""
     with open(rdf_file, encoding="utf-8") as fh:
         rdf_content = fh.read()
+
+    def _handle_response(resp) -> None:
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            click.echo(json.dumps(data, indent=2))
+        else:
+            try:
+                detail = resp.json()
+            except ValueError:
+                detail = {"raw": resp.text[:500]}
+            raise click.ClickException(f"Upload failed: HTTP {resp.status_code} {detail}")
+
     try:
         resp = api_client.request(
             "POST",
@@ -280,19 +296,11 @@ def upload_custom_ontology(name: str, namespace_iri: str, fmt: str, rdf_file: st
             },
             timeout=60,
         )
-        if resp.status_code in (200, 201):
-            data = resp.json()
-            click.echo(json.dumps(data, indent=2))
-        else:
-            try:
-                detail = resp.json()
-            except Exception:
-                detail = {"raw": resp.text[:500]}
-            raise click.ClickException(f"Upload failed: HTTP {resp.status_code} {detail}")
+        _handle_response(resp)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to upload ontology: {e}")
+        raise click.ClickException(f"Failed to upload ontology: {e}") from e
 
 
 @custom_ontology.command("list")
@@ -304,7 +312,7 @@ def list_custom_ontologies():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list ontologies: {e}")
+        raise click.ClickException(f"Failed to list ontologies: {e}") from e
 
 
 @custom_ontology.command("activate")
@@ -323,7 +331,7 @@ def activate_custom_ontology(ontology_id: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to activate ontology: {e}")
+        raise click.ClickException(f"Failed to activate ontology: {e}") from e
 
 
 @custom_ontology.command("deactivate")
@@ -341,7 +349,7 @@ def deactivate_custom_ontology(ontology_id: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to deactivate ontology: {e}")
+        raise click.ClickException(f"Failed to deactivate ontology: {e}") from e
 
 
 # ── LDN (Phase 230.12 / REQ-SEM-LDN-001) ────────────────
@@ -362,7 +370,7 @@ def ldn_inbox_list_cmd(tenant_id: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list inbox: {e}")
+        raise click.ClickException(f"Failed to list inbox: {e}") from e
 
 
 @ldn.command("subscribe")
@@ -390,7 +398,7 @@ def ldn_subscribe(target_url: str, resource_type: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create subscription: {e}")
+        raise click.ClickException(f"Failed to create subscription: {e}") from e
 
 
 @ldn.command("unsubscribe")
@@ -408,7 +416,7 @@ def ldn_unsubscribe(subscription_id: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to deactivate subscription: {e}")
+        raise click.ClickException(f"Failed to deactivate subscription: {e}") from e
 
 
 @semantic.command("void")
@@ -420,7 +428,7 @@ def void_description():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get VoID description: {e}")
+        raise click.ClickException(f"Failed to get VoID description: {e}") from e
 
 
 @semantic.group("shacl")
@@ -480,7 +488,7 @@ def shacl_validate(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"SHACL validation failed: {e}")
+        raise click.ClickException(f"SHACL validation failed: {e}") from e
 
 
 # ── Federation allowlist (Phase 230.8 / REQ-SEM-FED-001) ────
@@ -512,24 +520,28 @@ def federation_add(tenant_id: str, name: str, endpoint_url: str):
     webhooks (loopback / link-local / RFC1918 rejected unless
     SEMANTIC_FEDERATION_ALLOW_PRIVATE is True on the deployment).
     """
+
+    def _handle_response(response) -> None:
+        if response.status_code == 201:
+            click.echo(json.dumps(response.json(), indent=2))
+        else:
+            try:
+                body = response.json()
+            except ValueError:
+                body = {"raw": response.text[:500]}
+            raise click.ClickException(f"federation add failed: HTTP {response.status_code} {body}")
+
     try:
         response = api_client.request(
             "POST",
             f"tenants/{tenant_id}/sparql-endpoints/",
             json_data={"name": name, "endpoint_url": endpoint_url},
         )
-        if response.status_code == 201:
-            click.echo(json.dumps(response.json(), indent=2))
-        else:
-            try:
-                body = response.json()
-            except Exception:
-                body = {"raw": response.text[:500]}
-            raise click.ClickException(f"federation add failed: HTTP {response.status_code} {body}")
+        _handle_response(response)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"federation add failed: {e}")
+        raise click.ClickException(f"federation add failed: {e}") from e
 
 
 @federation.command("list")
@@ -564,7 +576,7 @@ def federation_list(tenant_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"federation list failed: {e}")
+        raise click.ClickException(f"federation list failed: {e}") from e
 
 
 @federation.command("remove")
@@ -572,22 +584,26 @@ def federation_list(tenant_id: str, output_format: str):
 @click.option("--id", "endpoint_id", required=True, help="Endpoint UUID.")
 def federation_remove(tenant_id: str, endpoint_id: str):
     """Remove an endpoint from the tenant allowlist (audit-logged)."""
-    try:
-        response = api_client.request(
-            "DELETE",
-            f"tenants/{tenant_id}/sparql-endpoints/{endpoint_id}/",
-        )
+
+    def _handle_response(response) -> None:
         if response.status_code in (200, 204):
             click.echo(f"Removed {endpoint_id}.")
         else:
             try:
                 body = response.json()
-            except Exception:
+            except ValueError:
                 body = {"raw": response.text[:500]}
             raise click.ClickException(
                 f"federation remove failed: HTTP {response.status_code} {body}"
             )
+
+    try:
+        response = api_client.request(
+            "DELETE",
+            f"tenants/{tenant_id}/sparql-endpoints/{endpoint_id}/",
+        )
+        _handle_response(response)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"federation remove failed: {e}")
+        raise click.ClickException(f"federation remove failed: {e}") from e

@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -24,6 +26,7 @@ import os
 import subprocess
 import time
 import uuid
+from contextlib import suppress
 
 import pytest
 import requests
@@ -32,21 +35,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestMeshPoliciesCommandsRealAPI:
@@ -147,16 +139,16 @@ print(f"API_KEY={api_key_value}")
                 # Extract API key from output
                 # Look for line starting with "API_KEY=" first (most reliable)
                 output_lines = result.stdout.strip().split("\n")
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line.startswith("API_KEY="):
                         api_key = line.split("=", 1)[1].strip()
                         if api_key and len(api_key) > 20:
                             return api_key
 
                 # Fallback: look for lines that look like API keys (long alphanumeric with dashes/underscores)
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     # API keys are typically long (40+ characters), alphanumeric with possible dashes/underscores
                     if line and len(line) > 20:  # API keys are typically long
                         # Additional validation: check if it looks like an API key
@@ -195,7 +187,9 @@ print(f"API_KEY={api_key_value}")
             pass
         return None
 
-    def _create_test_domain(self, api_base_url: str, api_key: str | None, name: str = None) -> str:
+    def _create_test_domain(
+        self, api_base_url: str, api_key: str | None, name: str | None = None
+    ) -> str:
         """
         Create a test domain for testing.
         Returns the domain ID.
@@ -229,16 +223,21 @@ print(f"API_KEY={api_key_value}")
             assert domain_id, "Failed to get domain ID from response."
 
             # Wait a bit for domain to be fully created
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
-            return domain_id
         except Exception as e:
             # Skip test if domain creation fails
             pytest.skip(f"Failed to create test domain: {e!s}")
             return ""  # Never reached, but satisfies type checker
+        else:
+            return domain_id
 
     def _create_test_policy(
-        self, api_base_url: str, api_key: str | None, domain_id: str | None = None, name: str = None
+        self,
+        api_base_url: str,
+        api_key: str | None,
+        domain_id: str | None = None,
+        name: str | None = None,
     ) -> str:
         """
         Create a test access policy for testing via Django shell.
@@ -311,26 +310,27 @@ print(f"POLICY_ID={{policy.id}}")
             if result.returncode == 0:
                 # Extract policy ID from output
                 output_lines = result.stdout.strip().split("\n")
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line.startswith("POLICY_ID="):
                         policy_id = line.split("=", 1)[1].strip()
                         if policy_id and len(policy_id) > 20:
                             # Wait a bit for policy to be fully created
-                            time.sleep(1)  # noqa: sleep-needed — retry loop
+                            time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             return policy_id
 
                 # Fallback: look for UUID-like strings
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     # UUIDs are 36 characters with dashes
                     if line and len(line) == 36 and line.count("-") == 4:
                         try:
                             uuid.UUID(line)  # Validate it's a valid UUID
-                            time.sleep(1)  # noqa: sleep-needed — retry loop
-                            return line
+                            time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         except ValueError:
                             continue
+                        else:
+                            return line
         except Exception as e:
             pytest.skip(f"Failed to create test policy: {e!s}")
             return ""  # Never reached, but satisfies type checker
@@ -366,7 +366,8 @@ try:
 except AccessPolicy.DoesNotExist:
     print("POLICY_NOT_FOUND")
 """
-        try:
+        # Ignore errors - cleanup is best effort
+        with suppress(Exception):
             subprocess.run(
                 ["docker", "compose", "exec", "-T", "api-service", "python", "manage.py", "shell"],
                 check=False,
@@ -376,15 +377,12 @@ except AccessPolicy.DoesNotExist:
                 timeout=30,
                 cwd="/home/ph/Desktop/DataInteroperabilityHub",
             )
-            # Ignore errors - cleanup is best effort
-        except Exception:
-            pass  # Ignore cleanup errors
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_apply_policy_success_table_format(self, setup_config, api_available):
+    def test_apply_policy_success_table_format(self, setup_config, api_service_available):
         """Test applying a policy successfully in table format"""
         if not self.api_key:
             pytest.skip(
@@ -417,10 +415,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_apply_policy_success_json_format(self, setup_config, api_available):
+    def test_apply_policy_success_json_format(self, setup_config, api_service_available):
         """Test applying a policy successfully in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -448,10 +446,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_apply_policy_with_overrides(self, setup_config, api_available):
+    def test_apply_policy_with_overrides(self, setup_config, api_service_available):
         """Test applying a policy with overrides"""
         if not self.api_key:
             pytest.skip(
@@ -490,10 +488,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_apply_policy_missing_policy_id(self, setup_config, api_available):
+    def test_apply_policy_missing_policy_id(self, setup_config, api_service_available):
         """Test applying a policy without required policy ID"""
         if not self.api_key:
             pytest.skip(
@@ -518,10 +516,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_apply_policy_invalid_json_overrides(self, setup_config, api_available):
+    def test_apply_policy_invalid_json_overrides(self, setup_config, api_service_available):
         """Test applying a policy with invalid JSON in overrides"""
         if not self.api_key:
             pytest.skip(
@@ -556,10 +554,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_policies_success_table_format(self, setup_config, api_available):
+    def test_list_policies_success_table_format(self, setup_config, api_service_available):
         """Test listing policies in table format"""
         if not self.api_key:
             pytest.skip(
@@ -579,7 +577,7 @@ except AccessPolicy.DoesNotExist:
             assert apply_result.exit_code == 0, "Failed to apply policy for list test"
 
             # Wait a bit for policy to be applied
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             result = runner.invoke(cli, ["mesh", "policies", "list", domain_id])
 
@@ -592,10 +590,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_policies_success_json_format(self, setup_config, api_available):
+    def test_list_policies_success_json_format(self, setup_config, api_service_available):
         """Test listing policies in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -615,7 +613,7 @@ except AccessPolicy.DoesNotExist:
             assert apply_result.exit_code == 0, "Failed to apply policy for list test"
 
             # Wait a bit for policy to be applied
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             result = runner.invoke(cli, ["mesh", "policies", "list", domain_id, "--format", "json"])
 
@@ -628,10 +626,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_policies_with_filters(self, setup_config, api_available):
+    def test_list_policies_with_filters(self, setup_config, api_service_available):
         """Test listing policies with filters"""
         if not self.api_key:
             pytest.skip(
@@ -651,7 +649,7 @@ except AccessPolicy.DoesNotExist:
             assert apply_result.exit_code == 0, "Failed to apply policy for list test"
 
             # Wait a bit for policy to be applied
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             result = runner.invoke(
                 cli,
@@ -676,10 +674,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_policies_empty_result(self, setup_config, api_available):
+    def test_list_policies_empty_result(self, setup_config, api_service_available):
         """Test listing policies with no results"""
         if not self.api_key:
             pytest.skip(
@@ -708,10 +706,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_remove_policy_success_table_format(self, setup_config, api_available):
+    def test_remove_policy_success_table_format(self, setup_config, api_service_available):
         """Test removing a policy successfully in table format"""
         if not self.api_key:
             pytest.skip(
@@ -731,7 +729,7 @@ except AccessPolicy.DoesNotExist:
             assert apply_result.exit_code == 0, "Failed to apply policy for remove test"
 
             # Wait a bit for policy to be applied
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             result = runner.invoke(cli, ["mesh", "policies", "remove", domain_id, policy_id])
 
@@ -746,10 +744,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_remove_policy_success_json_format(self, setup_config, api_available):
+    def test_remove_policy_success_json_format(self, setup_config, api_service_available):
         """Test removing a policy successfully in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -769,7 +767,7 @@ except AccessPolicy.DoesNotExist:
             assert apply_result.exit_code == 0, "Failed to apply policy for remove test"
 
             # Wait a bit for policy to be applied
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             result = runner.invoke(
                 cli, ["mesh", "policies", "remove", domain_id, policy_id, "--format", "json"]
@@ -786,10 +784,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_remove_policy_with_reason(self, setup_config, api_available):
+    def test_remove_policy_with_reason(self, setup_config, api_service_available):
         """Test removing a policy with a reason"""
         if not self.api_key:
             pytest.skip(
@@ -809,7 +807,7 @@ except AccessPolicy.DoesNotExist:
             assert apply_result.exit_code == 0, "Failed to apply policy for remove test"
 
             # Wait a bit for policy to be applied
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             result = runner.invoke(
                 cli,
@@ -835,10 +833,10 @@ except AccessPolicy.DoesNotExist:
             self._delete_test_policy(api_base_url, self.api_key, policy_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_remove_policy_missing_arguments(self, setup_config, api_available):
+    def test_remove_policy_missing_arguments(self, setup_config, api_service_available):
         """Test removing a policy without required arguments"""
         if not self.api_key:
             pytest.skip(
@@ -852,10 +850,10 @@ except AccessPolicy.DoesNotExist:
         assert "Missing argument" in result.output or "required" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_policies_command_group_exists(self, setup_config, api_available):
+    def test_policies_command_group_exists(self, setup_config, api_service_available):
         """Test that policies command group exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "policies", "--help"])
@@ -863,30 +861,30 @@ except AccessPolicy.DoesNotExist:
         assert "Policy management commands" in result.output or "policies" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_policies_apply_command_exists(self, setup_config, api_available):
+    def test_policies_apply_command_exists(self, setup_config, api_service_available):
         """Test that policies apply command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "policies", "apply", "--help"])
         assert result.exit_code == 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_policies_list_command_exists(self, setup_config, api_available):
+    def test_policies_list_command_exists(self, setup_config, api_service_available):
         """Test that policies list command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "policies", "list", "--help"])
         assert result.exit_code == 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_policies_remove_command_exists(self, setup_config, api_available):
+    def test_policies_remove_command_exists(self, setup_config, api_service_available):
         """Test that policies remove command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "policies", "remove", "--help"])

@@ -42,6 +42,17 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 echo "✅ Dependencies installed"
 
+# Install the git hooks. Without this step .pre-commit-config.yaml is inert:
+# the hooks are declared but never execute, because nothing writes
+# .git/hooks/pre-commit. CI does not run pre-commit either, so an uninstalled
+# hook means the check does not run anywhere at all.
+echo "🪝 Installing pre-commit hooks..."
+if pre-commit install >/dev/null 2>&1; then
+    echo "✅ Pre-commit hooks installed"
+else
+    echo "⚠️  Could not install pre-commit hooks — run 'pre-commit install' manually"
+fi
+
 # Create .env file if it doesn't exist
 if [ ! -f ".env.dev" ]; then
     echo "📝 Creating .env.dev from .env.example..."

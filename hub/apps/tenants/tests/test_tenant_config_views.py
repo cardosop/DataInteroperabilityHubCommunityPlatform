@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.validators import PLATFORM_MAX_RATE_LIMITS, get_platform_defaults
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

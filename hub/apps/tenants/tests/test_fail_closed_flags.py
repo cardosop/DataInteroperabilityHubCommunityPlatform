@@ -29,6 +29,7 @@ import uuid
 
 import pytest
 from django.db import connection
+from django.test import TestCase
 
 from hub.apps.tenants.models import Tenant
 
@@ -48,7 +49,7 @@ def _make_tenant(**overrides):
     return Tenant.objects.create(**defaults)
 
 
-class TestFailClosedFlagDefaults:
+class TestFailClosedFlagDefaults(TestCase):
     """New tenants must pick up production-safe defaults."""
 
     def test_compliance_fail_closed_enabled_defaults_true_for_new_tenants(self):
@@ -67,7 +68,7 @@ class TestFailClosedFlagDefaults:
         )
 
 
-class TestFailClosedFlagRoundTrip:
+class TestFailClosedFlagRoundTrip(TestCase):
     """Both flags must round-trip through the ORM."""
 
     def test_compliance_fail_closed_enabled_persists(self):
@@ -75,36 +76,36 @@ class TestFailClosedFlagRoundTrip:
         tenant.compliance_fail_closed_enabled = False
         tenant.save(update_fields=["compliance_fail_closed_enabled"])
         tenant.refresh_from_db()
-        assert tenant.compliance_fail_closed_enabled is False
+        self.assertFalse(tenant.compliance_fail_closed_enabled)
 
     def test_allow_intake_on_compliance_degraded_persists(self):
         tenant = _make_tenant()
         tenant.allow_intake_on_compliance_degraded = True
         tenant.save(update_fields=["allow_intake_on_compliance_degraded"])
         tenant.refresh_from_db()
-        assert tenant.allow_intake_on_compliance_degraded is True
+        self.assertTrue(tenant.allow_intake_on_compliance_degraded)
 
 
-class TestFailClosedFlagFieldMetadata:
+class TestFailClosedFlagFieldMetadata(TestCase):
     """Field metadata must match the spec contract."""
 
     def test_compliance_fail_closed_enabled_is_boolean_not_null(self):
         field = Tenant._meta.get_field("compliance_fail_closed_enabled")
-        assert field.get_internal_type() == "BooleanField"
-        assert field.null is False
+        self.assertEqual(field.get_internal_type(), "BooleanField")
+        self.assertFalse(field.null)
         # New-tenant default must be True (existing rows are backfilled
         # FALSE by the migration's RunPython hook, but the column-level
         # default is what governs new INSERTs).
-        assert field.default is True
+        self.assertTrue(field.default)
 
     def test_allow_intake_on_compliance_degraded_is_boolean_not_null(self):
         field = Tenant._meta.get_field("allow_intake_on_compliance_degraded")
-        assert field.get_internal_type() == "BooleanField"
-        assert field.null is False
-        assert field.default is False
+        self.assertEqual(field.get_internal_type(), "BooleanField")
+        self.assertFalse(field.null)
+        self.assertFalse(field.default)
 
 
-class TestExistingRowBackfill:
+class TestExistingRowBackfill(TestCase):
     """The 0034 migration must backfill EXISTING rows to FALSE.
 
     A new INSERT after migration uses the column default; an EXISTING
@@ -126,5 +127,5 @@ class TestExistingRowBackfill:
             allow_intake_on_compliance_degraded=False,
         )
         tenant.refresh_from_db()
-        assert tenant.compliance_fail_closed_enabled is False
-        assert tenant.allow_intake_on_compliance_degraded is False
+        self.assertFalse(tenant.compliance_fail_closed_enabled)
+        self.assertFalse(tenant.allow_intake_on_compliance_degraded)

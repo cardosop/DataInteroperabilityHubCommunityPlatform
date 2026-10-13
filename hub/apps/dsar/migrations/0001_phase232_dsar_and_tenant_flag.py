@@ -89,7 +89,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='dsarrequest',
-            constraint=models.UniqueConstraint(condition=models.Q(('idempotency_key', ''), _negated=True), fields=('tenant', 'idempotency_key'), name='uq_dsar_tenant_idempotency'),
+            constraint=models.UniqueConstraint(condition=models.Q(('idempotency_key', ''), _negated=True), fields=['tenant', 'idempotency_key'], name='uq_dsar_tenant_idempotency'),
         ),
         migrations.AddIndex(
             model_name='backupaffectedbysubject',

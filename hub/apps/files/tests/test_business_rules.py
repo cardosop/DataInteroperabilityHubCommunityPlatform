@@ -11,7 +11,7 @@ Comprehensive tests for file business rules validation following engineering bes
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.files.business_rules import (
@@ -203,13 +203,31 @@ class FileSizeValidationTest(FileUploadValidationTest):
         self.assertGreater(len(result.errors), 0)
         self.assertFalse(result.details.get("size_valid"))
 
-    def test_validate_file_size_exceeds_browser_limit(self):
-        """Test file size validation exceeding browser limit"""
+    def test_validate_file_size_browser_multipart_exempt_from_browser_cap(self):
+        """
+        Phase 260.3.F — uploads above the multipart threshold route
+        through the resumable multipart engine, so the single-PUT-era
+        browser cap does not apply; the platform/tenant effective limit
+        governs instead.
+        """
         from django.conf import settings
 
         max_browser_size = getattr(settings, "MAX_BROWSER_UPLOAD_SIZE", 100 * 1024 * 1024)
         result = self.rules._validate_file_size(
             file_size=max_browser_size + 1, upload_method="browser", tenant=self.tenant
+        )
+        self.assertTrue(result.is_valid)
+        self.assertEqual(len(result.errors), 0)
+        self.assertTrue(result.details.get("multipart_exempt"))
+
+    @override_settings(MAX_BROWSER_UPLOAD_SIZE=50 * 1024 * 1024)
+    def test_validate_file_size_browser_below_threshold_obeys_cap(self):
+        """
+        An operator-lowered browser cap still binds for uploads BELOW
+        the multipart threshold (single-PUT path).
+        """
+        result = self.rules._validate_file_size(
+            file_size=75 * 1024 * 1024, upload_method="browser", tenant=self.tenant
         )
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -407,7 +425,7 @@ class FileContentValidationTest(FileUploadValidationTest):
         result = self.rules._validate_file_content(
             file_content=None,
             filename="data.csv",
-            content_type="text/csv",  # type: ignore[misc]  # test: edge-case type exercise
+            content_type="text/csv",  # test: edge-case type exercise
         )
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)

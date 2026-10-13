@@ -88,6 +88,37 @@ def _grant_tenant_admin(tenant: Tenant) -> User:
     return user
 
 
+
+
+def _plan_get_or_create_race_safe(**lookup_and_defaults):
+    """TenantPlan get_or_create that survives shared-DB lock contention.
+
+    Parallel sessions' TransactionTestCase flushes (TRUNCATE) race this
+    query: the SELECT can deadlock against an in-flight ACCESS EXCLUSIVE
+    (Postgres aborts one side), and the INSERT can hit the unique index
+    race or a lock timeout. Each attempt runs inside
+    ``transaction.atomic()`` (a savepoint) — a deadlock aborts only the
+    savepoint, so the outer test transaction survives and a retry is
+    possible. Anything that is NOT contention re-raises immediately.
+    """
+    import time
+
+    from django.db import IntegrityError, OperationalError, transaction
+
+    for attempt in range(3):
+        try:
+            with transaction.atomic():
+                return TenantPlan.objects.get_or_create(**lookup_and_defaults)
+        except (IntegrityError, OperationalError) as exc:
+            msg = str(exc)
+            if not (
+                "lock timeout" in msg
+                or "deadlock detected" in msg
+                or "duplicate key" in msg
+            ) or attempt == 2:
+                raise
+            time.sleep(2)  # noqa: sleep-needed  # let the competing flush finish
+
 def _grant_subscription(tenant: Tenant, *, status: str = SubscriptionStatus.ACTIVE) -> Subscription:
     """Create a real Subscription row in the requested status.
 
@@ -95,7 +126,7 @@ def _grant_subscription(tenant: Tenant, *, status: str = SubscriptionStatus.ACTI
     minimal one — keeping the test self-contained without any
     fixture dependency.
     """
-    plan, _ = TenantPlan.objects.get_or_create(
+    plan, _ = _plan_get_or_create_race_safe(
         slug="onboarding-test-free",
         defaults={
             "name": "Onboarding Test Free",

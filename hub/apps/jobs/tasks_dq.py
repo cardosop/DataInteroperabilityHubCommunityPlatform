@@ -47,9 +47,9 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
 
         dq_run = DQRun.objects.get(id=dq_run_id)
     except DQRun.DoesNotExist:
-        raise ValueError(f"DQ run {dq_run_id} not found")
+        raise ValueError(f"DQ run {dq_run_id} not found") from None
 
-    try:
+    def _run() -> dict:
         # Import here to avoid circular imports
         from hub.apps.dq.service_client import DQServiceClient
         from hub.apps.dq.views import execute_dq_run
@@ -86,6 +86,8 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
             "engine": getattr(dq_run, "engine", None) or "",
         }
 
+    try:
+        result = _run()
     except ConnectionError:
         raise  # Re-raise connection errors
     except ValueError:
@@ -93,3 +95,5 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
     except Exception as e:
         # Wrap other exceptions
         raise JobExecutionError(f"DQ run execution failed: {e!s}") from e
+    else:
+        return result

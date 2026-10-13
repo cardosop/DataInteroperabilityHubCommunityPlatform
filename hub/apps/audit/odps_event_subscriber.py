@@ -231,15 +231,13 @@ class ODPSAuditSubscriber(EventSubscriber):
                         audit_event_id=str(audit_event.id),
                     )
 
-                return  # Success
-
             except Exception as e:
                 last_error = e
                 is_transient = self._is_transient_failure(e)
 
                 if not is_transient:
                     # Non-transient error - don't retry, send to DLQ
-                    logger.error(
+                    logger.exception(
                         "odps_audit_non_transient_error",
                         event_type=event_type,
                         event_id=event.get("event_id"),
@@ -254,7 +252,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                 # Transient error - check if we should retry
                 if retry_count >= max_retries:
                     # Max retries exceeded - send to DLQ
-                    logger.error(
+                    logger.exception(
                         "odps_audit_retry_exhausted",
                         event_type=event_type,
                         event_id=event.get("event_id"),
@@ -284,6 +282,8 @@ class ODPSAuditSubscriber(EventSubscriber):
                 )
                 time.sleep(delay)
                 retry_count += 1
+            else:
+                return  # Success
 
         # Should not reach here, but handle just in case
         if last_error:
@@ -300,42 +300,44 @@ class ODPSAuditSubscriber(EventSubscriber):
             Audit action string
         """
         # Map common patterns
-        if event_type == "odps.created":
-            return "ODPS_CREATED"
-        elif event_type == "odps.updated":
-            return "ODPS_UPDATED"
-        elif event_type == "odps.deleted":
-            return "ODPS_DELETED"
-        elif event_type == "odps.normalized":
-            return "ODPS_NORMALIZED"
-        elif event_type == "odps.linked":
-            return "ODPS_LINKED"
-        elif event_type == "odps.unlinked":
-            return "ODPS_UNLINKED"
-        elif event_type.startswith("odps.workflow"):
-            if "completed" in event_type:
-                return "ODPS_WORKFLOW_COMPLETED"
-            elif "failed" in event_type:
-                return "ODPS_WORKFLOW_FAILED"
-            else:
-                return "ODPS_WORKFLOW_STARTED"
-        elif event_type.startswith("odps.export"):
-            if "completed" in event_type:
-                return "ODPS_EXPORT_COMPLETED"
-            elif "failed" in event_type:
-                return "ODPS_EXPORT_FAILED"
-            else:
-                return "ODPS_EXPORT_STARTED"
-        elif event_type.startswith("odps.ref"):
-            if "resolved" in event_type:
-                return "ODPS_REF_RESOLVED"
-            elif "failed" in event_type:
-                return "ODPS_REF_FAILED"
-            else:
-                return "ODPS_REF_PROGRESS"
-        else:
-            # Default: convert event type to action format
-            return event_type.replace(".", "_").upper()
+        exact_actions = {
+            "odps.created": "ODPS_CREATED",
+            "odps.updated": "ODPS_UPDATED",
+            "odps.deleted": "ODPS_DELETED",
+            "odps.normalized": "ODPS_NORMALIZED",
+            "odps.linked": "ODPS_LINKED",
+            "odps.unlinked": "ODPS_UNLINKED",
+        }
+        if event_type in exact_actions:
+            return exact_actions[event_type]
+
+        prefix_actions = {
+            "odps.workflow": (
+                "ODPS_WORKFLOW_COMPLETED",
+                "ODPS_WORKFLOW_FAILED",
+                "ODPS_WORKFLOW_STARTED",
+            ),
+            "odps.export": (
+                "ODPS_EXPORT_COMPLETED",
+                "ODPS_EXPORT_FAILED",
+                "ODPS_EXPORT_STARTED",
+            ),
+            "odps.ref": (
+                "ODPS_REF_RESOLVED",
+                "ODPS_REF_FAILED",
+                "ODPS_REF_PROGRESS",
+            ),
+        }
+        for prefix, (completed_action, failed_action, started_action) in prefix_actions.items():
+            if event_type.startswith(prefix):
+                if "completed" in event_type:
+                    return completed_action
+                if "failed" in event_type:
+                    return failed_action
+                return started_action
+
+        # Default: convert event type to action format
+        return event_type.replace(".", "_").upper()
 
     def _is_transient_failure(self, error: Exception) -> bool:
         """

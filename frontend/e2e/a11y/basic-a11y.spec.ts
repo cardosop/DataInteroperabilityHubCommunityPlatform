@@ -46,7 +46,7 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
     // Allow redirect to /unavailable when registration is feature-flagged off
     // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
-      .locator('h1, .register-page, .unavailable-page, [data-testid="unavailable-page"]')
+      .locator('h1, .register-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 20000 })
       .catch(() => null);
@@ -57,7 +57,7 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
     await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
     // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
-      .locator('h1, .password-reset-page, .unavailable-page, [data-testid="unavailable-page"]')
+      .locator('h1, .password-reset-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 20000 })
       .catch(() => null);

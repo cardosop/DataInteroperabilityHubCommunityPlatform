@@ -94,8 +94,11 @@ class ProcessDLQCommandTests(TestCase):
         output = out.getvalue()
         self.assertIn("Found", output, "Should report entries found")
         # --max-entries=1 limits processing, but "Found" reports total before limiting
-        self.assertIn("Entries processed: 0", output,
-            "Should show entries were processed (skipped due to retry delay)")
+        self.assertIn(
+            "Entries processed: 0",
+            output,
+            "Should show entries were processed (skipped due to retry delay)",
+        )
 
     def test_subscriber_filter(self):
         """--subscriber=X filters to entries for that subscriber only."""
@@ -108,8 +111,7 @@ class ProcessDLQCommandTests(TestCase):
             stderr=StringIO(),
         )
         output = out.getvalue()
-        self.assertIn("Found 1", output,
-            "Should find exactly 1 entry for asset_handler subscriber")
+        self.assertIn("Found 1", output, "Should find exactly 1 entry for asset_handler subscriber")
 
     def test_event_type_filter(self):
         """--event-type=X filters to entries of that event type."""
@@ -122,5 +124,4 @@ class ProcessDLQCommandTests(TestCase):
             stderr=StringIO(),
         )
         output = out.getvalue()
-        self.assertIn("Found 2", output,
-            "Should find exactly 2 asset.created entries")
+        self.assertIn("Found 2", output, "Should find exactly 2 asset.created entries")

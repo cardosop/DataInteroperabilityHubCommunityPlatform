@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from django.db import DatabaseError, InterfaceError
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -41,7 +42,7 @@ class DpiaViewSet(viewsets.ModelViewSet):
     """CRUD + workflow actions for DPIA rows."""
 
     permission_classes = (IsAuthenticated, IsDpiaParticipant)
-    throttle_classes = [DpiaTenantRateThrottle]
+    throttle_classes = (DpiaTenantRateThrottle,)
     serializer_class = DpiaSerializer
     http_method_names = ("get", "post", "put", "patch", "delete", "head", "options")
     lookup_field = "pk"
@@ -137,10 +138,11 @@ class DpiaViewSet(viewsets.ModelViewSet):
                     jurisdictions.append(r)
         except ImportError:
             pass  # compliance module not installed — expected in some deployments
-        except Exception:
+        except (DatabaseError, InterfaceError):
             logger.warning(
                 "Failed to resolve tenant compliance regimes for DPIA %s",
-                dpia.id, exc_info=True,
+                dpia.id,
+                exc_info=True,
             )
 
         # Extract risk_level from latest compliance run
@@ -158,10 +160,11 @@ class DpiaViewSet(viewsets.ModelViewSet):
                 risk_level = latest.risk_level
         except ImportError:
             pass  # compliance module not installed
-        except Exception:
+        except (DatabaseError, InterfaceError):
             logger.warning(
                 "Failed to query ComplianceRun for DPIA %s",
-                dpia.id, exc_info=True,
+                dpia.id,
+                exc_info=True,
             )
 
         payload.update(
@@ -232,7 +235,7 @@ class DpiaViewSet(viewsets.ModelViewSet):
         return Response(DpiaSerializer(clone).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="diff")
-    def diff(self, request, pk=None):
+    def diff(self, _request, pk=None):
         dpia = self.get_object()
         prev = dpia.previous_version
         if prev is None:

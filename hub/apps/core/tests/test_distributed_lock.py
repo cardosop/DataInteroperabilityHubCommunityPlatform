@@ -37,9 +37,10 @@ def _get_cache_redis_or_none():
             socket_timeout=2,
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis_lib.RedisError):
         return None
+    else:
+        return client
 
 
 @pytest.mark.integration
@@ -56,7 +57,7 @@ class DistributedLockRedisTests(TestCase):
             keys = self.redis.keys(f"{_LOCK_KEY_PREFIX}:*")
             if keys:
                 self.redis.delete(*keys)
-        except Exception:
+        except redis_lib.RedisError:
             pass
 
     def tearDown(self) -> None:
@@ -64,7 +65,7 @@ class DistributedLockRedisTests(TestCase):
             keys = self.redis.keys(f"{_LOCK_KEY_PREFIX}:*")
             if keys:
                 self.redis.delete(*keys)
-        except Exception:
+        except redis_lib.RedisError:
             pass
 
     @pytest.mark.integration

@@ -9,6 +9,8 @@ Run with (no Django settings load — these tests are pure Python):
     pytest -p no:django hub/tests/test_production_guards.py -v
 """
 
+from typing import ClassVar
+
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
@@ -138,13 +140,13 @@ class TestEncryptionKeyGuard:
     def test_valid_key_passes_in_production(self):
         env = _safe_env()
         env["ENCRYPTION_KEY"] = "c2FmZS1lbmNyeXB0aW9uLWtleS1mb3ItdGVzdC0xMjM="
-        _run_guard_code(env)  # should not raise
+        assert _run_guard_code(env) is None  # runs to completion
 
     def test_dev_default_allowed_outside_production(self):
         env = _safe_env()
         env["ENVIRONMENT"] = "development"
         env["ENCRYPTION_KEY"] = "dev-encryption-key-not-for-production"
-        _run_guard_code(env)  # guard only triggers in production
+        assert _run_guard_code(env) is None  # runs to completion
 
     def test_error_message_mentions_base64(self):
         env = _safe_env()
@@ -170,7 +172,7 @@ class TestSecretKeyGuard:
     def test_valid_key_passes(self):
         env = _safe_env()
         env["SECRET_KEY"] = "production-safe-secret-key-long-enough-yes"
-        _run_guard_code(env)
+        assert _run_guard_code(env) is None  # runs to completion
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +192,7 @@ class TestJwtSecretKeyGuard:
     def test_valid_key_passes(self):
         env = _safe_env()
         env["JWT_SECRET_KEY"] = "production-safe-jwt-key-long-enough-yes-x"
-        _run_guard_code(env)
+        assert _run_guard_code(env) is None  # runs to completion
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +232,7 @@ class TestRedisUrlGuard:
     def test_authenticated_url_passes(self, redis_var: str):
         env = _safe_env()
         env[redis_var] = "redis://:strongpassword@redis:6379/0"
-        _run_guard_code(env)
+        assert _run_guard_code(env) is None  # runs to completion
 
     @pytest.mark.parametrize(
         "redis_var",
@@ -267,13 +269,13 @@ class TestRedisUrlGuard:
         """BAAS_REDIS_URL with a real password should not raise."""
         env = _safe_env()
         env["BAAS_REDIS_URL"] = "redis://:strongpw@baas-redis:6379/0"
-        _run_guard_code(env)
+        assert _run_guard_code(env) is None  # runs to completion
 
     def test_baas_redis_absent_passes(self):
         """Omitting BAAS_REDIS_URL entirely is allowed."""
         env = _safe_env()
         env.pop("BAAS_REDIS_URL", None)
-        _run_guard_code(env)
+        assert _run_guard_code(env) is None  # runs to completion
 
     def test_error_message_mentions_format(self):
         env = _safe_env()
@@ -285,7 +287,7 @@ class TestRedisUrlGuard:
         env = _safe_env()
         env["ENVIRONMENT"] = "development"
         env["REDIS_URL"] = "redis://localhost:6379/0"
-        _run_guard_code(env)
+        assert _run_guard_code(env) is None  # runs to completion
 
     def test_all_urls_authenticated_passes(self):
         """Happy path: all Redis URLs have credentials in production."""
@@ -638,7 +640,7 @@ class TestMiddlewareOrdering:
                     if stripped == "]":
                         break
                     # Extract quoted middleware path strings
-                    if stripped.startswith('"') or stripped.startswith("'"):
+                    if stripped.startswith(('"', "'")):
                         entry = (
                             stripped.split('"')[1] if '"' in stripped else stripped.split("'")[1]
                         )
@@ -695,31 +697,40 @@ class TestStaticUrlNotOverridden:
 
         source = self._settings_source()
 
-        # Find every occurrence of the bare assignment.
-        # We look for lines that assign "/static/" unconditionally — i.e. NOT
-        # preceded by an indented ``else`` block from the ``if USE_S3:`` branch.
         matches = list(
             re.finditer(
-                r'^\s*STATIC_URL\s*=\s*["\']\/static\/["\']',
+                r'^(\s*)STATIC_URL\s*=\s*["\']\/static\/["\']',
                 source,
                 re.MULTILINE,
             )
         )
-        assert len(matches) == 1, (
-            f"Expected exactly 1 occurrence of STATIC_URL = '/static/' "
-            f"(inside the non-S3 else branch), found {len(matches)}.  "
-            "A duplicate unconditional assignment would overwrite the "
+        top_level = [m for m in matches if not m.group(1)]
+        indented = [m for m in matches if m.group(1)]
+
+        # Django 6 + LiveServerTestCase require STATIC_URL to always be
+        # set (a None default dies in urlparse and every live-server
+        # request 500s), so settings.py carries exactly ONE unconditional
+        # top-level default.  The S3 branch's storage backend governs its
+        # own URL (django-storages reads STATIC_URL, never writes it), so
+        # the guard protects against a SECOND top-level assignment — that
+        # would overwrite the S3 URL when USE_S3=True.
+        assert len(top_level) == 1, (
+            f"Expected exactly 1 top-level STATIC_URL = '/static/' default "
+            f"(the Django 6 live-server fix), found {len(top_level)}. "
+            "An extra unconditional assignment would overwrite the "
             "django-storages S3 URL when USE_S3=True."
         )
 
-        # Verify that single occurrence is inside the else branch by checking
-        # that the line is indented (i.e. inside a conditional block).
-        match = matches[0]
-        line_start = source.rfind("\n", 0, match.start()) + 1
-        line_text = source[line_start : match.end()]
-        assert line_text.startswith("    "), (
-            "STATIC_URL = '/static/' must be inside an indented (else) block, "
-            f"but found it at the top level: {line_text!r}"
+        # The local-storage branch keeps its own assignment inside the
+        # non-S3 else block.
+        assert len(indented) == 1, (
+            "The local-storage STATIC_URL assignment must remain inside the "
+            f"indented non-S3 else block, found {len(indented)} indented "
+            "occurrence(s)."
+        )
+        assert indented[0].group(1).startswith("    "), (
+            "The local-storage STATIC_URL assignment must be inside an "
+            f"indented (else) block, got indent: {indented[0].group(1)!r}"
         )
 
     def test_static_url_count_in_settings(self):
@@ -899,6 +910,18 @@ class TestSessionCookieSameSiteStrict:
 # ---------------------------------------------------------------------------
 
 
+def _bandit_root():
+    import os
+
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _bandit_file_exists(relpath: str) -> bool:
+    import os
+
+    return os.path.exists(os.path.join(_bandit_root(), relpath))
+
+
 class TestBanditConfigNoB601Skip:
     """Phase 221.6: B601 (paramiko_calls) must NOT be globally skipped.
 
@@ -910,11 +933,9 @@ class TestBanditConfigNoB601Skip:
 
     @staticmethod
     def _repo_root():
-        import os
+        return _bandit_root()
 
-        return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-
-@pytest.mark.skipif(not os.path.exists(path), reason=".bandit.yaml not found")
+    @pytest.mark.skipif(not _bandit_file_exists(".bandit.yaml"), reason=".bandit.yaml not found")
     def test_bandit_yaml_does_not_skip_b601(self):
         """`.bandit.yaml` must not list B601 in skips."""
         import os
@@ -927,21 +948,22 @@ class TestBanditConfigNoB601Skip:
         skips = cfg.get("skips", [])
         assert "B601" not in skips, f"B601 must not be in .bandit.yaml skips: {skips}"
 
-@pytest.mark.skipif(not os.path.exists(path), reason=".bandit not found")
+    @pytest.mark.skipif(not _bandit_file_exists(".bandit"), reason=".bandit not found")
     def test_bandit_ini_does_not_skip_b601(self):
-        """`.bandit` INI config must not list B601 in skips."""
-        import configparser
+        """`.bandit` must not list B601 in skips.
+
+        The file is YAML (bandit 1.8+ — the INI form silently failed to
+        parse and masked a dead scan; see the file's own header comment),
+        so it is parsed as YAML here.
+        """
         import os
 
+        import yaml
+
         path = os.path.join(self._repo_root(), ".bandit")
-        cp = configparser.ConfigParser()
-        read_files = cp.read(path)
-        assert read_files, (
-            f"Failed to read .bandit config file at {path} — "
-            f"ConfigParser.read() returned empty list"
-        )
-        raw = cp.get("bandit", "skips", fallback="")
-        skips = [s.strip().strip('"').strip("'") for s in raw.strip("[]").split(",") if s.strip()]
+        with open(path) as f:
+            cfg = yaml.safe_load(f)
+        skips = cfg.get("skips", []) if isinstance(cfg, dict) else []
         assert "B601" not in skips, f"B601 must not be in .bandit skips: {skips}"
 
 
@@ -962,7 +984,7 @@ class TestApiDocsUrlGate:
     capability discovery.
     """
 
-    _API_DOCS_ROUTES = {"api-docs/openapi.json", "api-docs/", "api-docs/redoc/"}
+    _API_DOCS_ROUTES: ClassVar[set[str]] = {"api-docs/openapi.json", "api-docs/", "api-docs/redoc/"}
 
     @staticmethod
     def _api_docs_patterns(patterns):

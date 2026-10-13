@@ -1,0 +1,106 @@
+groups:
+  - name: transformation_removal_monitoring
+    interval: 30s
+    rules:
+      # Import Error Alerts
+      - alert: TransformationImportError
+        expr: |
+          increase(
+            python_exceptions_total{
+              exception_type="ModuleNotFoundError",
+              exception_message=~".*transformation.*"
+            }[5m]
+          ) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: transformation_removal
+          alert_type: import_error
+        annotations:
+          summary: "Transformation import error detected"
+          description: "ModuleNotFoundError for transformation module detected. This indicates code is still trying to import the removed transformation feature. Error count: {{ $value }}"
+
+      # 404 Spike Alert for Transformation Endpoints
+      - alert: TransformationEndpoint404Spike
+        expr: |
+          rate(
+            http_requests_total{
+              path=~"/api/v1/transformation/.*",
+              status="404"
+            }[5m]
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: transformation_removal
+          alert_type: api_404_spike
+        annotations:
+          summary: "High 404 rate for transformation endpoints"
+          description: "404 responses for transformation endpoints are occurring at {{ $value }} requests/second. This may indicate external API consumers are still trying to access removed endpoints."
+
+      # Database Query Errors for Removed Tables
+      - alert: TransformationTableQueryError
+        expr: |
+          increase(
+            database_query_errors_total{
+              error_message=~".*transformation.*|.*preview_results.*|.*wrangling.*"
+            }[5m]
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: transformation_removal
+          alert_type: database_error
+        annotations:
+          summary: "Database query error for removed transformation tables"
+          description: "Database queries are attempting to access removed transformation tables. This indicates code or external systems are still referencing removed tables. Error count: {{ $value }}"
+
+      # External API Consumer Detection
+      - alert: TransformationExternalConsumerDetected
+        expr: |
+          rate(
+            http_requests_total{
+              path=~"/api/v1/transformation/.*",
+              status!="404"
+            }[5m]
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: transformation_removal
+          alert_type: external_consumer
+        annotations:
+          summary: "External API consumer detected for transformation endpoints"
+          description: "Non-404 responses for transformation endpoints detected. This indicates external systems are successfully accessing removed endpoints (should not be possible). Rate: {{ $value }} requests/second"
+
+      # Migration Failure Alert
+      - alert: TransformationMigrationFailure
+        expr: |
+          increase(
+            django_migration_errors_total{
+              migration_name=~".*transformation.*|.*remove_transformation.*"
+            }[5m]
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: transformation_removal
+          alert_type: migration_error
+        annotations:
+          summary: "Transformation removal migration failure"
+          description: "Migration related to transformation removal has failed. Error count: {{ $value }}"
+
+      # Cache Key Detection (if Redis monitoring available)
+      - alert: TransformationCacheKeysDetected
+        expr: |
+          redis_keys_total{
+            pattern="transformation:*"
+          } > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: transformation_removal
+          alert_type: cache_cleanup
+        annotations:
+          summary: "Transformation cache keys still present"
+          description: "Redis cache keys matching 'transformation:*' pattern are still present. Count: {{ $value }}"

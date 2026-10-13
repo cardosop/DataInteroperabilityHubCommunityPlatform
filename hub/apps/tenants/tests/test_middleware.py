@@ -186,9 +186,9 @@ class TenantSuspensionMiddlewareTest(TestCase):
         from hub.apps.billing.models import Subscription, SubscriptionStatus
 
         sub = Subscription.objects.filter(tenant=self.tenant).first()
-        if sub:
-            sub.status = SubscriptionStatus.PAST_DUE
-            sub.save()
+        self.assertIsNotNone(sub, "subscription must exist for this test — setUp should create one")
+        sub.status = SubscriptionStatus.PAST_DUE
+        sub.save()
 
         request = self.factory.post("/api/v1/assets/")
         request.tenant = self.tenant
@@ -355,3 +355,83 @@ class TenantSuspensionMiddlewareExtendedTests(TestCase):
         request.tenant_id = str(self.tenant.id)
         response = self.middleware.process_request(request)
         self.assertIsNone(response)
+
+
+class TestSubscriptionEnforcementLiveness(TestCase):
+    """P.2c — the FULL-mode subscription paywall must be LIVE, not vacuum.
+
+    The enforcement sits in CORE code (``tenants/middleware.py``) and
+    resolves the PAID billing models lazily. The pre-P.2c guard was
+    ``except Exception: pass`` — correct for core-only (no billing app),
+    but it also swallowed a full-mode query/programming regression and
+    silently reopened every write. These tests pin the narrow guard:
+
+    - enforcement outcome in full mode (403 without subscription, allow
+      with an ACTIVE one) — skipped in core-only, so no vacuous pass;
+    - a ``DatabaseError`` inside the paywall now PROPAGATES instead of
+      silently allowing the request.
+    """
+
+    def setUp(self):
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest("billing paywall exists only in full mode")
+        super().setUp()
+        self.factory = RequestFactory()
+        self.middleware = TenantSuspensionMiddleware(Mock(return_value=HttpResponse()))
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status=TenantStatus.ACTIVE
+        )
+
+    def _write_request(self):
+        request = self.factory.post("/api/v1/assets/")
+        request.tenant = self.tenant
+        return request
+
+    def test_full_mode_write_without_subscription_is_blocked(self):
+        """The outcome the core-default (allow) can never produce."""
+        import importlib
+
+        Subscription = importlib.import_module("hub.apps.billing.models").Subscription
+
+        Subscription.objects.filter(tenant=self.tenant).delete()
+
+        response = self.middleware.process_request(self._write_request())
+
+        assert response is not None
+        assert response.status_code == 403
+
+    def test_full_mode_write_with_active_subscription_proceeds(self):
+        from hub.apps.tenants.tests.factories import SubscriptionFactory
+
+        SubscriptionFactory.create_subscription(tenant=self.tenant)
+        # Clear the 30s middleware cache so the new subscription is seen.
+        from django.core.cache import cache
+
+        cache.delete(f"tenant_sub_check:{self.tenant.id}")
+
+        response = self.middleware.process_request(self._write_request())
+
+        assert response is None
+
+    def test_full_mode_database_error_propagates_instead_of_silently_allowing(self):
+        """RED guard for the narrowed handler: a paywall regression must
+        surface as an error, not silently reopen every write."""
+        import importlib
+
+        from django.db import DatabaseError
+
+        Subscription = importlib.import_module("hub.apps.billing.models").Subscription
+
+        def _broken_filter(*args, **kwargs):
+            raise DatabaseError("simulated paywall regression")
+
+        original = Subscription.objects.filter
+        Subscription.objects.filter = _broken_filter
+        try:
+            with pytest.raises(DatabaseError):
+                self.middleware.process_request(self._write_request())
+        finally:
+            Subscription.objects.filter = original

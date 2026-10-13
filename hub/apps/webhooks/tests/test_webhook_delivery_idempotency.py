@@ -17,7 +17,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -118,7 +118,8 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
         }
         missing = required_keys - payload.keys()
         self.assertEqual(
-            len(missing), 0,
+            len(missing),
+            0,
             f"Missing required payload keys: {missing}",
         )
         self.assertEqual(
@@ -581,3 +582,63 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
             payload__event_id=str(uuid.uuid4()),
         ).exists()
         self.assertFalse(exists_other)
+
+
+class TestAttemptCounterAtomicity(TransactionTestCase):
+    """W1.17 — concurrent _schedule_retry calls cannot lose updates.
+
+    Both threads hold the SAME pre-barrier delivery object
+    (attempt_number=0); the row lock + F() increment must land BOTH
+    increments (final attempt_number == 2).  The pre-fix
+    read-modify-write lost one (both wrote 1).  TransactionTestCase:
+    rows must be REALLY committed for the sibling threads to see them.
+    """
+
+    def test_concurrent_schedule_retry_counts_both_attempts(self):
+        from threading import Barrier, Thread
+
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(
+            name=f"T {uid}",
+            slug=f"t-{uid}",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.UNVERIFIED,
+        )
+        ensure_tenant_has_active_subscription(tenant)
+        user = User.objects.create_user(
+            email=f"u-{uid}@test.com",
+            password="pass",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
+        )
+        webhook = Webhook.objects.create(
+            tenant=tenant,
+            name=f"WH {uid}",
+            url="https://example.com/hook",
+            secret="test-secret",
+            event_types=[WebhookEventType.ASSET_CREATED],
+            status=WebhookStatus.ACTIVE,
+            created_by=user,
+        )
+        delivery = WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type="asset.created",
+            payload={"resource_id": str(uuid.uuid4())},
+            status=DeliveryStatus.FAILED,
+            attempt_number=0,
+        )
+        # BOTH threads act on this same stale object (attempt=0).
+        stale_delivery = WebhookDelivery.objects.get(pk=delivery.pk)
+        barrier = Barrier(2)
+
+        def worker():
+            barrier.wait()
+            WebhookDeliveryService._schedule_retry(stale_delivery)
+
+        threads = [Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.attempt_number, 2)

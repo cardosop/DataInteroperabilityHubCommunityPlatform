@@ -1,10 +1,19 @@
 """
-Phase 273.7.1 — management command that AST-walks search / semantic /
-marketplace views.py and asserts every View / ViewSet has a
-``throttle_classes`` attribute.
+Phase 273.7.1 / Phase P.9 — management command that AST-walks the scoped
+view modules and asserts every DRF view — ViewSet/View classes AND
+``@api_view``-decorated function views — carries ``throttle_classes``.
+
+Phase P.9 widening: the scan set is no longer three hardcoded
+``views.py`` paths. ``_SCOPED_VIEW_MODULES`` is the single source of truth
+for the documented scope: the Phase 273 contract apps (search / semantic /
+marketplace, per CLAUDE.md) plus billing and baas, whose throttles module
+documents this checker as the enforcement point. Function-based views were
+invisible to the old checker (it only saw classes named *View/ViewSet) —
+they are now detected by their ``@api_view`` decorator and counted as
+covered only when ``@throttle_classes`` is present.
 
 Exit code 0 when all views are covered; non-zero when a view lacks
-coverage. Designed for CI (piggybacks on the django tests job).
+coverage. Designed for CI (pure AST, no DB).
 """
 
 import ast
@@ -14,11 +23,15 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
-# Modules to scan, keyed by app name relative to hub/apps/.
-_MODULES: dict[str, str] = {
-    "search": "hub/apps/search/views.py",
-    "semantic": "hub/apps/semantic/views.py",
-    "marketplace": "hub/apps/marketplace/views.py",
+# Scan scope: app name (relative to hub/apps/) → view-bearing modules.
+# Keep this list in sync with the claim in hub/apps/billing/throttles.py
+# and with the CI step name in .github/workflows/ci.yml.
+_SCOPED_VIEW_MODULES: dict[str, tuple[str, ...]] = {
+    "search": ("views.py",),
+    "semantic": ("views.py",),
+    "marketplace": ("views.py", "saved_search_views.py"),
+    "billing": ("views.py", "connect_views.py"),
+    "baas": ("views.py", "developer_portal.py", "customer_billing_views.py"),
 }
 
 
@@ -41,8 +54,24 @@ def _has_throttle_classes(node: ast.ClassDef) -> bool:
     return False
 
 
+def _has_decorator(node: ast.FunctionDef, name: str) -> bool:
+    return any(
+        isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and dec.func.id == name
+        for dec in node.decorator_list
+    )
+
+
+def _is_api_view_function(node: ast.FunctionDef) -> bool:
+    """True if the function is a DRF function-based view (@api_view)."""
+    return _has_decorator(node, "api_view")
+
+
+def _function_has_throttle_classes(node: ast.FunctionDef) -> bool:
+    return _has_decorator(node, "throttle_classes")
+
+
 def _check_module(filepath: str) -> list[str]:
-    """Return a list of uncovered view class names in the given module."""
+    """Return uncovered view class/function names in the given module."""
     if not os.path.isfile(filepath):
         return []
 
@@ -57,21 +86,31 @@ def _check_module(filepath: str) -> list[str]:
         if isinstance(node, ast.ClassDef) and _is_view_class(node):
             if not _has_throttle_classes(node):
                 uncovered.append(f"{filepath}:{node.name}")
+        elif (
+            isinstance(node, ast.FunctionDef)
+            and _is_api_view_function(node)
+            and not _function_has_throttle_classes(node)
+        ):
+            uncovered.append(f"{filepath}:{node.name}")
     return uncovered
 
 
 class Command(BaseCommand):
-    help = "Phase 273.7.1 — check that every search/semantic/marketplace view has throttle_classes."
+    help = (
+        "Phase 273.7.1 / P.9 — check that every scoped view (class AND "
+        "function-based) has throttle_classes."
+    )
 
-    def handle(self, **options):
+    def handle(self, **_options):
         base = Path(__file__).resolve().parents[5]  # hub/apps/../.. = repo root
         all_uncovered: list[str] = []
 
-        for _module_name, relative_path in _MODULES.items():
-            full_path = base / relative_path
-            uncovered = _check_module(str(full_path))
-            if uncovered:
-                all_uncovered.extend(uncovered)
+        for app_name, modules in _SCOPED_VIEW_MODULES.items():
+            for module_name in modules:
+                full_path = base / "hub" / "apps" / app_name / module_name
+                uncovered = _check_module(str(full_path))
+                if uncovered:
+                    all_uncovered.extend(uncovered)
 
         if all_uncovered:
             self.stderr.write(

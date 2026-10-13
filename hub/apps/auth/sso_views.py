@@ -1,10 +1,16 @@
 """
 SSO Views
 
-REST API views for SSO authentication.
+REST API views for SSO authentication (OIDC only — the SAML endpoints
+are DELETED, oss-release-remediation W1.5/D4).
+
+The OIDC callback verifies the ID token via JWKS (signature + iss + aud
++ exp) before any user lookup — see ``hub.apps.auth.oidc_verifier``.
+Tenant resolution trusts ONLY the signed one-time ``state`` payload
+(``hub.apps.auth.sso_state``): a missing/invalid state fails closed with
+SSO_STATE_* — there is no unverified-claims fallback path.
 """
 
-import ipaddress
 import os
 import sys
 
@@ -17,22 +23,25 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
-from hub.apps.users.models import UserTenantMembership
 
 from . import sso_state
 from .jwt_utils import JWTTokenGenerator
 from .sso import SSOService
+from .throttles import SSOThrottle
 
 
 class SSOViewSet(viewsets.ViewSet):
     """
-    ViewSet for SSO authentication.
+    ViewSet for SSO authentication (OIDC).
     """
 
     permission_classes = [AllowAny]  # SSO endpoints are public
+    throttle_classes = (SSOThrottle,)  # W1.5 — SSO endpoints throttled per IP
 
     @staticmethod
     def _ip_class(request) -> str:
+        import ipaddress
+
         forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
         remote_addr = forwarded or (request.META.get("REMOTE_ADDR") or "")
         try:
@@ -41,37 +50,20 @@ class SSOViewSet(viewsets.ViewSet):
             return "unknown"
         return "private" if ip.is_private else "public"
 
-    @staticmethod
-    def _single_membership_tenant_id(email: str | None) -> str | None:
-        if not email:
-            return None
-        memberships = (
-            UserTenantMembership.objects.filter(user__email=email)
-            .values_list("tenant_id", flat=True)
-            .distinct()
-        )
-        tenant_ids = [str(tid) for tid in memberships]
-        if len(tenant_ids) == 1:
-            return tenant_ids[0]
-        if len(tenant_ids) > 1:
-            raise ValidationError({"error": "SSO_TENANT_AMBIGUOUS"})
-        return None
-
     def _resolve_callback_tenant_id(
         self,
         *,
         request,
         state_param: str | None,
-        asserted_email: str | None,
     ) -> str:
+        # D4/W1.5: the tenant comes ONLY from the signed one-time state.
+        # A missing state fails closed (SSO_STATE_MISSING) — the old
+        # single-membership email fallback relied on UNVERIFIED claims
+        # and is deleted. Every SSOStateError maps to a 400 ValidationError.
         request_ip_class = self._ip_class(request)
         try:
             state_tenant_id = sso_state.consume_state(state_param, request_ip_class)
         except sso_state.SSOStateError as exc:
-            if exc.code == "SSO_STATE_MISSING":
-                fallback_tenant_id = self._single_membership_tenant_id(asserted_email)
-                if fallback_tenant_id:
-                    return fallback_tenant_id
             raise ValidationError({"error": exc.code}) from exc
 
         body_tenant_id = request.data.get("tenant_id")
@@ -103,122 +95,6 @@ class SSOViewSet(viewsets.ViewSet):
             return str(tenant.id)
 
         return None
-
-    @extend_schema(
-        summary="Get SAML login URL",
-        description="Get SAML SSO login URL for redirect",
-        parameters=[
-            OpenApiParameter(
-                name="tenant_id",
-                type=OpenApiTypes.UUID,
-                location=OpenApiParameter.QUERY,
-                description="Tenant UUID",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="redirect_uri",
-                type=OpenApiTypes.URI,
-                location=OpenApiParameter.QUERY,
-                description="Redirect URI after authentication",
-                required=True,
-            ),
-        ],
-        responses={
-            200: OpenApiResponse(description="SAML login URL"),
-            400: OpenApiResponse(description="Invalid request or SSO not configured"),
-        },
-        tags=["SSO"],
-    )
-    @action(detail=False, methods=["get"], url_path="saml/login-url")
-    def saml_login_url(self, request):
-        """
-        Get SAML login URL.
-
-        GET /api/v1/auth/sso/saml/login-url/
-        """
-        tenant_id = self._get_tenant_id(request)
-        redirect_uri = request.query_params.get("redirect_uri")
-
-        if not tenant_id:
-            raise ValidationError("tenant_id is required")
-
-        if not redirect_uri:
-            raise ValidationError("redirect_uri is required")
-
-        relay_state = sso_state.issue_state(tenant_id, self._ip_class(request))
-        login_url = SSOService.get_sso_login_url(
-            tenant_id,
-            "SAML",
-            redirect_uri,
-            state=relay_state,
-        )
-
-        if not login_url:
-            return Response(
-                {"error": "SAML SSO not configured for this tenant"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return Response({"login_url": login_url}, status=status.HTTP_200_OK)
-
-    @extend_schema(
-        summary="SAML authentication callback",
-        description="Handle SAML authentication callback",
-        request={
-            "application/x-www-form-urlencoded": {
-                "type": "object",
-                "properties": {
-                    "SAMLResponse": {"type": "string"},
-                    "RelayState": {"type": "string"},
-                },
-            }
-        },
-        responses={
-            200: OpenApiResponse(description="Authentication successful"),
-            400: OpenApiResponse(description="Authentication failed"),
-        },
-        tags=["SSO"],
-    )
-    @action(detail=False, methods=["post"], url_path="saml/callback")
-    def saml_callback(self, request):
-        """
-        Handle SAML callback.
-
-        POST /api/v1/auth/sso/saml/callback/
-        """
-        saml_response = request.data.get("SAMLResponse")
-
-        if not saml_response:
-            raise ValidationError("SAMLResponse is required")
-
-        asserted_identity = SSOService._extract_unverified_saml_identity(saml_response)
-        tenant_id = self._resolve_callback_tenant_id(
-            request=request,
-            state_param=request.data.get("RelayState"),
-            asserted_email=asserted_identity,
-        )
-
-        user, _attributes = SSOService.authenticate_saml(tenant_id, saml_response)
-
-        if user is None:
-            return Response(
-                {"error": "SAML authentication failed"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Generate JWT token
-        access_token = JWTTokenGenerator.generate_access_token(user)
-
-        return Response(
-            {
-                "access_token": access_token,
-                "token_type": "Bearer",
-                "user": {
-                    "id": str(getattr(user, "id", "")),
-                    "email": getattr(user, "email", ""),
-                },
-            },
-            status=status.HTTP_200_OK,
-        )
 
     @extend_schema(
         summary="Get OIDC login URL",
@@ -280,9 +156,11 @@ class SSOViewSet(viewsets.ViewSet):
     @extend_schema(
         summary="OIDC authentication callback",
         description=(
-            "Handle OIDC authentication callback. Tenant is resolved from "
-            "signed `state` payload; request-body `tenant_id` is deprecated "
-            "and ignored when matching state (mismatch is rejected)."
+            "Handle OIDC authentication callback. The ID token is verified "
+            "via the tenant IdP's JWKS (signature, issuer, audience, "
+            "expiry) before any user lookup; the tenant is resolved from "
+            "the signed one-time `state` payload. A missing/invalid state "
+            "or an invalid token fails closed with 400."
         ),
         request={
             "application/json": {
@@ -298,6 +176,7 @@ class SSOViewSet(viewsets.ViewSet):
         responses={
             200: OpenApiResponse(description="Authentication successful"),
             400: OpenApiResponse(description="Authentication failed"),
+            429: OpenApiResponse(description="Rate limit exceeded"),
         },
         tags=["SSO"],
     )
@@ -314,18 +193,21 @@ class SSOViewSet(viewsets.ViewSet):
         if not id_token:
             raise ValidationError("id_token is required")
 
-        claims = SSOService._extract_unverified_oidc_claims(id_token)
+        # D4/W1.5: tenant from the signed one-time state ONLY — no
+        # unverified-claims fallback (a forged token cannot pick its
+        # tenant either).
         tenant_id = self._resolve_callback_tenant_id(
             request=request,
             state_param=request.data.get("state"),
-            asserted_email=(claims.get("email") if isinstance(claims, dict) else None),
         )
 
-        user, claims = SSOService.authenticate_oidc(tenant_id, id_token, access_token)
+        user, attributes = SSOService.authenticate_oidc(tenant_id, id_token, access_token)
 
         if user is None:
+            verification_error = (attributes or {}).get("verification_error")
             return Response(
-                {"error": "OIDC authentication failed"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": verification_error or "OIDC authentication failed"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Generate JWT token
@@ -363,7 +245,7 @@ class SSOViewSet(viewsets.ViewSet):
                 # Start background thread for cache warming
                 thread = threading.Thread(target=warm_cache_async, daemon=True)
                 thread.start()
-            except Exception as e:
+            except (ImportError, RuntimeError) as e:
                 # Log error but don't fail login
                 import logging
 

@@ -4,6 +4,7 @@
  */
 
 import { Page, expect, test } from '@playwright/test';
+import { environmentSkipGuard } from './envPolicy.cjs';
 import { getTestUser, gotoWithRetry, loginUser, loginViaApi, type TestUser } from './auth';
 
 export { isBenignConsoleError } from './console-utils';
@@ -231,29 +232,29 @@ export async function fillField(
 }
 
 /**
- * Click element with retry logic
+ * Click element with retry logic.
+ *
+ * Phase T.1 — the `force` option was removed: no caller used it, and
+ * `force: true` hides real accessibility bugs (playwright/no-force-option
+ * is zero-tolerance). A click that needs force should wait for the
+ * obscuring overlay to disappear instead.
  */
 export async function clickElement(
   page: Page,
   selector: string,
   options: {
     timeout?: number;
-    force?: boolean;
     retries?: number;
   } = {}
 ): Promise<void> {
-  const { timeout = 10000, force = false, retries = 3 } = options;
+  const { timeout = 10000, retries = 3 } = options;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       await waitForElement(page, selector, { timeout, state: 'visible' });
       const element = page.locator(selector);
 
-      if (force) {
-        await element.click({ force: true });
-      } else {
-        await element.click();
-      }
+      await element.click();
 
       return;
     } catch (error) {
@@ -332,6 +333,12 @@ export function isRemoteApiTarget(): boolean {
  * docker exec / kubectl exec (e.g. role assignment, DB seeding).
  */
 export function skipIfRemoteApi(test: { skip(condition: boolean, reason: string): void }, reason: string): void {
+  // W16 — a remote-API skip in CI is an environment failure (the test's
+  // dependency on docker exec is unavailable); announce it instead of
+  // skipping silently.
+  if (isRemoteApiTarget()) {
+    environmentSkipGuard(`remote API target — cannot run: ${reason}`);
+  }
   test.skip(
     isRemoteApiTarget(),
     `Skipped on remote API: ${reason}. Run locally with docker-compose for full coverage.`
@@ -349,9 +356,18 @@ export function skipIfRemoteApi(test: { skip(condition: boolean, reason: string)
  */
 export async function waitForAppMainReady(
   page: Page,
-  options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean } = {}
+  options: {
+    timeout?: number;
+    contentSelector?: string;
+    acceptRedirectToLogin?: boolean;
+    /** Route to re-navigate to when the page lands on Chromium's static
+     *  chrome-error page (app hard-redirect + mid-run dev-server outage).
+     *  Without this the poll loop can only time out — the error page is
+     *  static and never becomes ready. */
+    recoveryUrl?: string;
+  } = {}
 ): Promise<void> {
-  const { timeout = 30000, contentSelector, acceptRedirectToLogin = false } = options;
+  const { timeout = 30000, contentSelector, acceptRedirectToLogin = false, recoveryUrl } = options;
   await page.waitForLoadState('domcontentloaded');
 
   // Grace period: auth may still be initializing; avoid false failure on slow fetchUser/capabilities.
@@ -362,6 +378,7 @@ export async function waitForAppMainReady(
   // Poll: if we end up on login after grace period, fail (or accept if acceptRedirectToLogin)
   const checkInterval = 500;
   const start = Date.now();
+  let recoveryAttempts = 0;
 
   const safeWait = async (ms: number): Promise<void> => {
     try {
@@ -377,18 +394,53 @@ export async function waitForAppMainReady(
     }
   };
 
-  while (Date.now() - start < timeout) {
-    let url: string;
+  let lastUrl = '';
+
+  // locator.count() throws the raw "Target page, context or browser has been
+  // closed" when the test budget expires mid-poll — convert it to the same
+  // actionable message safeWait produces so a timeout isn't masked by an
+  // opaque locator stack trace.
+  const safeCount = async (selector: string): Promise<number> => {
     try {
-      url = page.url();
+      return await page.locator(selector).count();
     } catch (e) {
       const msg = String(e);
       if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
         throw new Error(
-          'waitForAppMainReady: Test timed out (page closed). Increase test.setTimeout.'
+          `waitForAppMainReady: Test timed out during poll (page closed). Increase test.setTimeout. URL: ${lastUrl}`
         );
       }
       throw e;
+    }
+  };
+
+  while (Date.now() - start < timeout) {
+    let url: string;
+    try {
+      url = page.url();
+      lastUrl = url;
+    } catch (e) {
+      const msg = String(e);
+      if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
+        throw new Error(
+          `waitForAppMainReady: Test timed out (page closed). Increase test.setTimeout. URL: ${lastUrl}`
+        );
+      }
+      throw e;
+    }
+    if (url.startsWith('chrome-error://')) {
+      // The app hard-redirects via window.location on auth-refresh failure
+      // (client.ts 401 handler). When that full load hits a mid-run
+      // dev-server outage, Chromium commits its STATIC error page — the
+      // poll below can never succeed, only time out. Re-navigate to the
+      // recovery URL (gotoWithRetry re-attempts while the server is down
+      // and the watchdog restarts it) and keep polling. Bounded: a
+      // permanently broken server still fails with the ready-timeout error.
+      if (recoveryUrl && recoveryAttempts < 2) {
+        recoveryAttempts += 1;
+        await gotoWithRetry(page, recoveryUrl);
+        continue;
+      }
     }
     if (url.includes('/login')) {
       if (Date.now() < graceDeadline) {
@@ -408,9 +460,11 @@ export async function waitForAppMainReady(
       await safeWait(500);
       return;
     }
-    // CapabilityRoute renders .unavailable-page, [data-testid="unavailable-page"] in-place (at the current URL, not /unavailable)
+    // Capability-disabled outcome: /unavailable renders DisabledCapabilityPage
+    // (Phase 250.6.A.5); the legacy .unavailable-page markers are kept for
+    // /feature-unavailable direct callers. Both sets are matched defensively.
     // when the capability is disabled. This is a terminal state — no .app-main, [data-testid="app-main"] will ever appear.
-    const hasUnavailablePage = await page.locator('.unavailable-page, [data-testid="unavailable-page"]').count();
+    const hasUnavailablePage = await safeCount('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]');
     if (hasUnavailablePage > 0) {
       await safeWait(500);
       return;
@@ -418,7 +472,7 @@ export async function waitForAppMainReady(
     // SPA catch-all NotFoundPage renders with .not-found-page class and role="alert".
     // This is a terminal state for routes that don't exist in the router.
     // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
-    const has404Page = (await page.locator('.not-found-page').count().catch(() => 0)) > 0;
+    const has404Page = (await safeCount('.not-found-page')) > 0;
     if (has404Page) {
       await safeWait(500);
       return;
@@ -446,7 +500,19 @@ export async function waitForAppMainReady(
         if (loading) return false;
         return true;
       }, contentSelector)
-      .catch(() => false);
+      .catch((e: unknown) => {
+        // Page closed = test budget expired mid-poll. Don't swallow it as
+        // "not ready" — the loop can only spin until the next raw locator
+        // call throws the opaque closed-page error. Surface the actionable
+        // message immediately (matches safeWait / safeCount).
+        const msg = String(e);
+        if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
+          throw new Error(
+            `waitForAppMainReady: Test timed out during poll (page closed). Increase test.setTimeout. URL: ${lastUrl}`
+          );
+        }
+        return false;
+      });
     if (ready) {
       await safeWait(1000);
       return;
@@ -458,11 +524,33 @@ export async function waitForAppMainReady(
   // When both are ~60s, the auth store may resolve (redirect to /login or show .app-main, [data-testid="app-main"])
   // in the same frame our loop ends. Wait up to 20s more for the page to reach a terminal
   // state — this covers the auth safety timeout race condition without blindly increasing
-  // the main loop timeout.
-  const POST_TIMEOUT_GRACE_MS = 5000;
+  // the main loop timeout. (Under heavy churn — token-refresh storms mid-batch — the
+  // auth-store resolution itself can stall past the 60s mark; 5s was too tight and
+  // surfaced as "not ready within 65000ms" with the shell still pending, e.g.
+  // features/warehouse-connectivity b7. 20s covers the resolution tail while keeping
+  // the total budget bounded.)
+  const POST_TIMEOUT_GRACE_MS = 20000;
   const graceStart = Date.now();
   while (Date.now() - graceStart < POST_TIMEOUT_GRACE_MS) {
-    const currentUrl = page.url();
+    let currentUrl: string;
+    try {
+      currentUrl = page.url();
+      lastUrl = currentUrl;
+    } catch (e) {
+      const msg = String(e);
+      if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
+        throw new Error(
+          `waitForAppMainReady: Test timed out during grace poll (page closed). Increase test.setTimeout. URL: ${lastUrl}`
+        );
+      }
+      throw e;
+    }
+    if (currentUrl.startsWith('chrome-error://') && recoveryUrl && recoveryAttempts < 2) {
+      // Same mid-run outage recovery as the main loop (see above).
+      recoveryAttempts += 1;
+      await gotoWithRetry(page, recoveryUrl);
+      continue;
+    }
     if (currentUrl.includes('/login')) {
       if (acceptRedirectToLogin) return;
       throw new Error(
@@ -475,15 +563,15 @@ export async function waitForAppMainReady(
       currentUrl.includes('/coming-soon')
     )
       return;
-    if ((await page.locator('.app-main, [data-testid="app-main"]').count()) > 0) return;
-    if ((await page.locator('.unavailable-page, [data-testid="unavailable-page"]').count()) > 0) return;
+    if ((await safeCount('.app-main, [data-testid="app-main"]')) > 0) return;
+    if ((await safeCount('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')) > 0) return;
     // Still in auth loading state — keep waiting
     await safeWait(500);
   }
 
   throw new Error(
     `waitForAppMainReady: .app-main, [data-testid="app-main"] not ready within ${timeout + POST_TIMEOUT_GRACE_MS}ms. ` +
-      `URL: ${page.url()}`
+      `URL: ${lastUrl}`
   );
 }
 
@@ -594,31 +682,34 @@ const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
   '/mesh/create': '.mesh-domain-create-page, .error-display, [data-testid="error-display"]',
   '/mesh/topology': '.topology-visualization, .error-display, [data-testid="error-display"]',
   '/contracts': '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
-  '/odps': '.odps-list-page, .odps-empty-state, .error-display, [data-testid="error-display"], #email',
+  // Phase 211.A6 — /odps redirects to /contracts?spec_type=ODPS, so the
+  // ready-markers are the contracts list ones; the legacy odps markers
+  // stay in the union for any straggler UI.
+  '/odps': '.contract-list-page, [data-testid="contract-list-page"], .odps-list-page, .odps-empty-state, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
   // No .loading-spinner-container: CommunitiesTab shows LoadingSpinner until API returns; matching it
   // would signal "ready" before .communities-tab renders.
   '/communities':
-    '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]',
+    '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]',
   '/compliance':
-    '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], #email',
+    '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], #email',
   '/assets': '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
   '/dq': '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], #email',
   '/webhooks':
     '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
   '/search': '.search-page, .loading-spinner-container, .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/ai/search':
-    '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
+    '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .loading-spinner-container, .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/settings/sessions':
     '.session-list-page, .session-list-table, .session-list-empty, .error-display, [data-testid="error-display"], h1',
   '/settings/api-keys':
-    '.auth-api-key-list-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1',
+    '.auth-api-key-list-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], h1',
   '/observability':
-    '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
-  '/developer': '.developer-portal-page, .developer-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
+    '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
+  '/developer': '.developer-portal-page, .developer-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
   '/virtualization':
     '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .virtual-dataset-list-header, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
-  '/baas': '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
-  '/ml': '.ml-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
+  '/baas': '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
+  '/ml': '.ml-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
   '/integrations/connections':
     '.connection-list-page, .marketplace-connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/jobs':
@@ -626,7 +717,7 @@ const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
   '/scheduled-ingestions':
     '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/ai/schema-matching':
-    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], h1',
+    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], h1',
   '/files':
     '.file-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/datasets/create':
@@ -646,9 +737,9 @@ const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
   '/governance':
     '.governance-access-request-list-page, .governance-create-page, .error-display, [data-testid="error-display"], h1',
   '/semantic':
-    '[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
+    '[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/transformation':
-    '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
+    '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/integrations/connections/create':
     '.marketplace-connection-create-page, .connection-create-page, .error-display, [data-testid="error-display"], .loading-spinner-container, form',
 };
@@ -679,7 +770,7 @@ function resolveRouteContentSelector(route: string, override?: string): string |
     return '.mesh-domain-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/transformation\/pipelines\/[^/]+$/.test(route)) {
-    return '.transformation-detail-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]';
+    return '.transformation-detail-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]';
   }
   if (/^\/jobs\/[^/]+$/.test(route)) {
     return '.job-detail-page, .error-display, [data-testid="error-display"]';
@@ -786,14 +877,16 @@ export async function navigateOrSkip(
     });
   } catch (_err) {
     if (page.url().includes('/login')) {
-      test.skip(true, `Redirected to login navigating to ${route} — auth may have expired`);
+      environmentSkipGuard(`Redirected to login navigating to ${route} — auth may have expired`);
+      test.skip(page.url().includes('/login'), `Redirected to login navigating to ${route} — auth may have expired`);
       return { ok: false };
     }
     throw _err;
   }
 
   if (page.url().includes('/login')) {
-    test.skip(true, `Redirected to login after loading ${route} — auth may have expired`);
+    environmentSkipGuard(`Redirected to login after loading ${route} — auth may have expired`);
+    test.skip(page.url().includes('/login'), `Redirected to login after loading ${route} — auth may have expired`);
     return { ok: false };
   }
 
@@ -880,6 +973,9 @@ async function runNavToRoute(
     ...options,
     contentSelector,
     acceptRedirectToLogin: acceptRedirectToLoginResolved,
+    // Re-navigate to the requested route if an app hard-redirect (auth-refresh
+    // failure) lands on chrome-error during a dev-server outage.
+    recoveryUrl: route,
   };
   // /odps/upload: go to odps first, wait for list API, then click Create/Upload button
   if (route === '/odps/upload') {
@@ -1356,7 +1452,10 @@ export async function navigateToRouteFromApp(
     try {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(500);
-      const navOptions = { ...options };
+      // recoveryUrl: same chrome-error recovery as runNavToRoute — lets
+      // waitForAppMainReady re-navigate when an app hard-redirect races a
+      // mid-run dev-server outage (the error page never becomes ready).
+      const navOptions = { ...options, recoveryUrl: route };
 
       // If already on target route, skip navigation to avoid redundant remount (can trigger 401 under load)
       const currentPath = normalizePath(page.url());
@@ -1637,7 +1736,7 @@ export async function navigateToRouteFromApp(
     const apiWait = startRouteDataApiWait(page, route, fallbackTimeout);
     // Inject fresh auth tokens before page.goto — full-page navigation resets JS context
     await injectTokensBeforeGotoForUser(page, options.user);
-    await page.goto(route, { waitUntil: 'domcontentloaded' });
+    await gotoWithRetry(page, route);
     if (apiWait) await apiWait;
     await waitForAppMainReady(page, navOptions);
     return;
@@ -1648,13 +1747,41 @@ export async function navigateToRouteFromApp(
     const link = page.locator('.app-sidebar .nav-link').filter({ hasText: label }).first();
     if ((await link.count()) > 0) {
       const timeout = navOptions.timeout ?? 30000;
-      const apiWait = startRouteDataApiWait(page, route, timeout);
-      await link.click();
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000);
-      if (apiWait) await apiWait;
-      await waitForAppMainReady(page, navOptions);
-      return;
+      // Sidebar groups render as <details> closed by default — the nav-link
+      // exists in the DOM but stays invisible until the group opens, and a
+      // click on a hidden link spins until the test budget dies (observed:
+      // the Jobs link in phase8-hardening's critical-routes walk). Open the
+      // enclosing group first, same as runNavToRoute; if the link is STILL
+      // invisible (RBAC/persona filter), fall through to the goto below.
+      // intentional: visibility probes on a transiently-hidden nav link —
+      // a false (not visible) is a legitimate outcome that selects the
+      // group-open / fallback branches below, not a test failure.
+      if (!(await link.isVisible().catch(() => false))) {
+        const parentDetails = link.locator('xpath=ancestor::details[1]');
+        if ((await parentDetails.count()) > 0) {
+          // intentional: opening the group is best-effort — when no
+          // <details> ancestor exists (unexpected markup), the fallback
+          // goto below still navigates correctly.
+          await parentDetails
+            .evaluate((el: Element) => {
+              (el as HTMLDetailsElement).open = true;
+            })
+            .catch(() => {});
+        }
+      }
+      // intentional: second visibility probe after the group-open — still
+      // hidden means an RBAC/persona filter; the direct goto below is the
+      // deliberate fallback, not a swallowed failure.
+      if (await link.isVisible().catch(() => false)) {
+        const apiWait = startRouteDataApiWait(page, route, timeout);
+        await link.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        if (apiWait) await apiWait;
+        await waitForAppMainReady(page, navOptions);
+        return;
+      }
+      // Link still hidden (RBAC/persona filter) — fall through to direct goto.
     }
   }
 
@@ -1662,7 +1789,7 @@ export async function navigateToRouteFromApp(
   const fallbackTimeout = navOptions.timeout ?? 30000;
   const fallbackApiWait = startRouteDataApiWait(page, route, fallbackTimeout);
   await injectTokensBeforeGotoForUser(page, options.user);
-  await page.goto(route, { waitUntil: 'domcontentloaded' });
+  await gotoWithRetry(page, route);
   if (fallbackApiWait) await fallbackApiWait;
   await waitForAppMainReady(page, navOptions);
   return;
@@ -1808,6 +1935,30 @@ export async function assertNotVisible(
 /**
  * Take screenshot for debugging
  */
+/**
+ * Resolve the live access token for API calls made from Node-side
+ * (page.request / fetch) after a login.
+ *
+ * Phase 11.1: after a UI login the access_token lives in apiClient
+ * MODULE MEMORY only — localStorage is empty BY DESIGN. The sanctioned
+ * probe is the read-only getter the apiClient module exports on the
+ * window (`__getAccessToken`); fall back to localStorage for flows
+ * that still inject the token (loginUser's API fast-path via
+ * syncPageWithApiAuth, loginViaApiAndInject).
+ */
+export async function getAccessTokenFromPage(
+  page: import('@playwright/test').Page,
+): Promise<string | null> {
+  return page.evaluate(() => {
+    const getter = (window as unknown as { __getAccessToken?: () => string | null })
+      .__getAccessToken;
+    if (typeof getter === 'function') {
+      return getter();
+    }
+    return localStorage.getItem('access_token');
+  });
+}
+
 export async function takeDebugScreenshot(page: Page, name: string): Promise<void> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `debug-${name}-${timestamp}.png`;
@@ -1861,7 +2012,7 @@ export async function cleanupTestData(
 
   for (const id of resourceIds) {
     try {
-      const token = await page.evaluate(() => localStorage.getItem('access_token'));
+      const token = await getAccessTokenFromPage(page);
       if (!token) {
         console.warn(`No access token found, skipping cleanup for ${resourceType} ${id}`);
         continue;
@@ -2084,6 +2235,120 @@ export async function verifyFailureScenario(
  * Polls until options appear or timeout. Use after createAssetViaApi + navigate to publish page.
  * Returns true if assets found; false if timeout (caller may skip).
  */
+/**
+ * Recover from the transient capability fail-closed gate.
+ *
+ * CapabilityRoute redirects to /unavailable when the browser-side
+ * capabilities fetch fails or times out under load (the runtime snapshot
+ * falls through to a fail-closed ``?? false`` default). One re-navigation
+ * gives the app a fresh fetch; when the gate persists, the caller should
+ * skip with a reason rather than assert against a page that can never
+ * render. Returns true when the route is (now) reachable.
+ */
+export async function retryPastTransientCapabilityGate(
+  page: import('@playwright/test').Page,
+  route: string,
+): Promise<boolean> {
+  const isBlocked = async (): Promise<boolean> =>
+    page.url().includes('/unavailable') ||
+    (await page
+      .locator('.disabled-capability-page, [data-testid="disabled-capability-page"]')
+      .count()) > 0;
+
+  // CapabilityRoute renders a LoadingSpinner until the capabilities
+  // fetch resolves; the previous instant check RACED that fetch — the
+  // page was still "not blocked" at check time, the helper returned
+  // true, and moments later the fetch fail-closed to the disabled
+  // page (observed: DPO-001 burned its whole 30s create-form wait on
+  // a page that had since rendered "Asset creation is currently
+  // disabled"). Settle until the gate decision is on screen — either
+  // blocked, or the deciding spinner is gone.
+  const settleMs = 8000;
+  const settleStart = Date.now();
+  while (Date.now() - settleStart < settleMs) {
+    if (await isBlocked()) break;
+    const stillDeciding =
+      (await page
+        .locator(
+          '.loading-spinner, .loading-spinner-container, [data-testid="loading-spinner"]',
+        )
+        .count()) > 0;
+    if (!stillDeciding) break;
+    await page.waitForTimeout(500);
+  }
+  if (!(await isBlocked())) return true;
+  await gotoWithRetry(page, route);
+  // intentional: best-effort readiness wait — the blocked check below is the
+  // actual decision; a timeout here just falls through to it.
+  await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true }).catch(
+    () => null,
+  );
+  return !(await isBlocked());
+}
+
+/**
+ * Create a metadata-only asset through the UI Create Asset form and land
+ * on the asset's detail page.
+ *
+ * Precondition: the page is authenticated and on the /assets list — the
+ * helper clicks the list's "Create Asset" button so the real entry
+ * navigation is exercised.
+ *
+ * * Phase 250.6.B — ``/assets/create`` opens on the type-picker step;
+ *   the helper re-enters through the ``?skip=picker`` deep-link bypass
+ *   so the form renders without a pick/skip round-trip (picker and
+ *   skip-CTA coverage lives in journeys/dpo/asset-type-picker.spec.ts).
+ * * Phase 250.3.B.5 (D250.4) — the legacy visibility select no longer
+ *   exists on the form; the server derives visibility from ``status``
+ *   (DRAFT-on-create → INTERNAL), so no visibility step is filled.
+ *
+ * Skips the test when the asset_creation capability gate persists after
+ * one recovery re-navigation (transient capabilities-fetch hiccup under
+ * batch load).
+ */
+export async function createAssetViaForm(
+  page: Page,
+  assetKey: string,
+  name: string,
+): Promise<void> {
+  const createBtn = page
+    .locator('button:has-text("Create Asset")')
+    .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
+  await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
+  await createBtn.first().click();
+  await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
+
+  // Phase 250.6.B — the create route opens on the type-picker step;
+  // re-enter via the deep-link bypass to drive the form directly.
+  await page.goto('/assets/create?skip=picker', { waitUntil: 'domcontentloaded' });
+  await waitForLoadingComplete(page);
+  // CapabilityRoute fails closed on a transient capabilities-fetch hiccup
+  // (batch load / API restart window) — one re-navigation recovers it;
+  // skip with a reason when the gate persists.
+  const gateRecovered = await retryPastTransientCapabilityGate(
+    page,
+    '/assets/create?skip=picker',
+  );
+  test.skip(
+    gateRecovered === false,
+    'asset_creation capability transiently unavailable (batch load)',
+  );
+
+  // Capability loading gates the form: the SPA's openapi-derived snapshot
+  // can take up to its 30s fail-open on a loaded host. Bound wait instead
+  // of racing the fetch.
+  await expect(page.locator('input[id="asset-key"]')).toBeVisible({ timeout: 35_000 });
+  await page.fill('input[id="asset-key"]', assetKey);
+  await page.fill('input[id="asset-name"]', name);
+  await page.locator('[data-testid="asset-create-submit"]').click();
+
+  // UUID-shaped detail segment only — the old [^/]+ pattern also matched
+  // the un-navigated create URL (/assets/create?skip=picker) and let a
+  // failed create pass silently (odps-asset-link batch-8 failure).
+  await expect(page).toHaveURL(/\/assets\/[0-9a-f-]{36}(\/|$)/, { timeout: 15000 });
+  await waitForLoadingComplete(page, { timeout: 45000 });
+}
+
 export async function waitForAssetDropdownOptions(
   page: Page,
   options: { timeout?: number; pollInterval?: number } = {}
@@ -2100,6 +2365,46 @@ export async function waitForAssetDropdownOptions(
   }
   return false;
 }
+
+/**
+ * Poll the API health endpoint via the page context's request context (shares
+ * the context baseURL + vite proxy, not CORS-bound — mirrors loginViaApiAndInject's
+ * fast probe in auth.ts) until it answers with a non-5xx, or `timeoutMs` elapses.
+ * Never throws: the caller's reload attempt decides what a still-down API means.
+ * Used to gate server-error retries so they wait for the API to recover from
+ * mid-run restarts (operator `docker restart` / gunicorn HUP windows are
+ * 20-40s — an immediate reload lands inside the same outage).
+ */
+async function waitForApiHealthy(page: Page, timeoutMs = 20000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    // intentional: probe failure (connection refused / timeout) = API still
+    // down — poll again until the deadline; the caller's retry attempt
+    // decides what a still-down API means.
+    const res = await page.request
+      .get('/api/v1/health/live/', { timeout: 10000 })
+      .catch(() => null);
+    if (res && res.status() < 500) {
+      // Liveness goes green while gunicorn workers are still importing
+      // Django (~30s on this host's HDD) — a reload gated only on
+      // liveness lands on booting workers and fails again, exhausting the
+      // retry budget (batch-7 nil-UUID NETWORK_ERROR storms). Gate the
+      // retry on a worker-backed endpoint, mirroring the
+      // e2e-detect-api.sh WARM_READY probe: openapi.json needs a
+      // fully-booted worker + DB.
+      // intentional: warm-probe failure = workers still booting — keep
+      // polling until the deadline; the caller decides what a cold API means.
+      const warm = await page.request
+        .get('/api/v1/openapi.json', { timeout: 10000 })
+        .catch(() => null);
+      if (warm && warm.status() < 500) return;
+    }
+    await page.waitForTimeout(2000);
+  }
+}
+
+/** Server-error retries before assertNonExistentIdShowsError fails loudly. */
+const MAX_SERVER_ERROR_RETRIES = 2;
 
 /**
  * Assert that navigating to a detail page with a non-existent ID shows a 404-style error.
@@ -2133,9 +2438,10 @@ export async function assertNonExistentIdShowsError(
     waitAfterLoad?: number;
     selectorTimeout?: number;
     apiUrlPattern?: string;
+    _serverErrorRetries?: number;
   } = {}
 ): Promise<void> {
-  const { detailContentSelector, waitAfterLoad = 5000, selectorTimeout = 30000, apiUrlPattern } = options;
+  const { detailContentSelector, waitAfterLoad = 5000, selectorTimeout = 30000, apiUrlPattern, _serverErrorRetries = 0 } = options;
 
   // If the caller provided the API URL pattern, intercept responses so we can verify
   // the HTTP status at the network layer — not just by looking at DOM text.
@@ -2152,7 +2458,7 @@ export async function assertNonExistentIdShowsError(
   // The detail content selector is included only to avoid a blank-page timeout situation —
   // if the page somehow rendered the content we do NOT accept it as passing (see below).
   const waitSelector =
-    '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], #email, [data-testid="forbidden-page"]' +
+    '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], #email, [data-testid="forbidden-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]' +
     (detailContentSelector ? `, ${detailContentSelector}` : '');
 
   await page.waitForSelector(waitSelector, { timeout: selectorTimeout }).catch(() => {
@@ -2174,6 +2480,17 @@ export async function assertNonExistentIdShowsError(
 
   // Login and 403/forbidden redirects are acceptable outcomes for role-gated access.
   if (onLogin || on403 || onForbidden) return;
+
+  // A capability-gated route (CapabilityRoute bounce to /unavailable,
+  // DisabledCapabilityPage) is also an acceptable terminal state: when
+  // the whole surface is disabled there is no resource lookup and thus
+  // no 404 boundary to assert. The waitSelector above must include the
+  // disabled-page markers or the wait below times out on /unavailable
+  // (JOURNEY-DEV-007 nil-UUID detail, batch b5).
+  const onCapabilityGate =
+    page.url().includes('/unavailable') ||
+    (await page.locator('.disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
+  if (onCapabilityGate) return;
 
   // ── Check what the page actually rendered ────────────────────────────────
 
@@ -2245,6 +2562,34 @@ export async function assertNonExistentIdShowsError(
       .first()
       .textContent()
       .catch(() => '');
+    // Transient server-error recovery: under parallel E2E load (or a
+    // saturated DB) a nil-UUID detail fetch can 500 (INTERNAL_ERROR /
+    // SERVICE_UNAVAILABLE) or die at the network layer (NETWORK_ERROR /
+    // "Failed to fetch" during an API restart window) instead of returning
+    // the 404 boundary. Health-gated retry: mid-run API restarts (operator
+    // `docker restart` / gunicorn HUP during a batch) drop in-flight
+    // connections for 20-40s. The single immediate reload this code used to
+    // do landed inside the SAME outage window and hard-failed 4 nil-UUID
+    // probes in b7 (assets, compliance, contracts, data-mesh — all
+    // NETWORK_ERROR'd on both attempts). Wait for the health endpoint
+    // before reloading: a healthy API that still errors passes the gate
+    // instantly and the retry renders the real boundary — a true 404
+    // regression still fails below because EVERY attempt re-asserts the
+    // not-found text (retries cannot mask it). A PERSISTENT outage still
+    // fails after the retry budget. Auth errors are deliberately NOT
+    // retried (the regex above doesn't match 401/unauthorized copy, and a
+    // reload can't fix a revoked token family).
+    const isServerError = /INTERNAL_ERROR|internal server error|SERVICE_UNAVAILABLE|service unavailable|SERVER_ERROR|NETWORK_ERROR|Failed to fetch|network error|connection/i.test(errorText ?? '');
+    if (isServerError && (_serverErrorRetries ?? 0) < MAX_SERVER_ERROR_RETRIES) {
+      await waitForApiHealthy(page);
+      const { gotoWithRetry } = await import('./auth');
+      await gotoWithRetry(page, page.url());
+      await page.waitForLoadState('domcontentloaded');
+      return assertNonExistentIdShowsError(page, {
+        ...options,
+        _serverErrorRetries: (_serverErrorRetries ?? 0) + 1,
+      });
+    }
     throw new Error(
       `assertNonExistentIdShowsError: .error-display, [data-testid="error-display"] is visible but the error text does NOT indicate "not found".\n` +
         `Actual error: "${errorText?.slice(0, 300) ?? 'N/A'}"\n` +
@@ -2281,7 +2626,11 @@ export async function ensureAssetActivationPrerequisites(
 ): Promise<{ success: boolean; error?: string }> {
   const result = await page.evaluate(
     async (aid: string) => {
-      const token = localStorage.getItem('access_token');
+      const getter = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      const token =
+        (typeof getter === 'function' ? getter() : null) ??
+        localStorage.getItem('access_token');
       if (!token) return { success: false, error: 'No access token' };
       const base = `${window.location.origin}/api/v1`;
 
@@ -2505,9 +2854,13 @@ export async function ensureAssetActivationPrerequisites(
 export async function assertListPageLoads(
   page: Page,
   listPageSelector: string,
-  options: { timeout?: number } = {}
+  options: {
+    timeout?: number;
+    _retriedDynamicImport?: boolean;
+    _retriedNetworkError?: boolean;
+  } = {}
 ): Promise<void> {
-  const { timeout = 30000 } = options;
+  const { timeout = 30000, _retriedDynamicImport = false, _retriedNetworkError = false } = options;
 
   // Fail immediately if we're on /login — this means auth is broken, not that
   // the page hasn't loaded yet. Success tests must NOT accept login redirect as
@@ -2550,8 +2903,22 @@ export async function assertListPageLoads(
     // Neither success content nor error appeared within the timeout.
     // Check if the page is actively loading (skeleton/spinner visible) — if so, the
     // backend is slow but the app is working. Wait for the loading state to resolve.
-    const hasLoading =
-      (await page.locator('.loading-spinner, .loading-spinner-container, [data-testid="skeleton-row"], .skeleton').count()) > 0;
+    // (count() throws the raw "Target page closed" when the test budget
+    // expires here — convert it to the actionable message, same convention
+    // as waitForAppMainReady.)
+    let hasLoading = false;
+    try {
+      hasLoading =
+        (await page.locator('.loading-spinner, .loading-spinner-container, [data-testid="skeleton-row"], .skeleton').count()) > 0;
+    } catch (e) {
+      const msg = String(e);
+      if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
+        throw new Error(
+          'assertListPageLoads: Test timed out during poll (page closed). Increase test.setTimeout.'
+        );
+      }
+      throw e;
+    }
     if (hasLoading) {
       // Page is actively loading — wait for content or error to appear after loading
       try {
@@ -2588,6 +2955,34 @@ export async function assertListPageLoads(
       .first()
       .textContent()
       .catch(() => '')) ?? '';
+    // Transient lazy-chunk fetch failure: the browser's dynamic import() of the
+    // route module failed while the dev-server module graph was cold (HDD jbd2
+    // stall after file edits, or dev-server overload from parallel test sessions).
+    // One fresh navigation hits the now-warm module cache (Batch-5 flake-fix
+    // pattern). Retry exactly once before judging it a real error.
+    if (!_retriedDynamicImport && /Failed to fetch dynamically imported module/i.test(errText)) {
+      const { gotoWithRetry } = await import('./auth');
+      await gotoWithRetry(page, page.url());
+      await page.waitForLoadState('domcontentloaded');
+      return assertListPageLoads(page, listPageSelector, {
+        ...options,
+        _retriedDynamicImport: true,
+      });
+    }
+    // Transient network failure: the list fetch can die at the network layer
+    // during an API restart window (ErrorDisplay "Failed to fetch /
+    // NETWORK_ERROR"). One fresh navigation re-issues the fetch against the
+    // now-settled backend (same one-shot shape as the dynamic-import retry
+    // above); a PERSISTENT error still throws below.
+    if (!_retriedNetworkError && /NETWORK_ERROR|Failed to fetch|network error|connection/i.test(errText)) {
+      const { gotoWithRetry } = await import('./auth');
+      await gotoWithRetry(page, page.url());
+      await page.waitForLoadState('domcontentloaded');
+      return assertListPageLoads(page, listPageSelector, {
+        ...options,
+        _retriedNetworkError: true,
+      });
+    }
     // Backend timeout under parallel E2E load is transient — the app correctly shows the
     // error, but the backend couldn't respond in time. Distinguish from real errors so
     // callers can decide whether to skip or fail.
@@ -2610,7 +3005,7 @@ export async function assertListPageLoads(
  *
  * Valid outcomes:
  *   1. The specific feature page rendered (capability enabled, user has role)
- *   2. `.unavailable-page, [data-testid="unavailable-page"]` rendered (capability disabled)
+ *   2. `.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]` rendered (capability disabled)
  *   3. URL redirected to `/403` or `/login`
  *
  * Invalid outcomes (will throw):
@@ -2619,7 +3014,8 @@ export async function assertListPageLoads(
  *
  * @param featurePageSelector Comma-separated selectors for the feature page component.
  *   Do NOT include `.app-main, [data-testid="app-main"]` or `.error-display, [data-testid="error-display"]`.
- *   Example: '.developer-page, .unavailable-page, [data-testid="unavailable-page"]'
+ *   The capability-OFF markers (.disabled-capability-page / .unavailable-page)
+ *   are appended automatically — callers only need the feature-page selectors.
  */
 export async function assertCapabilityGatedPageLoads(
   page: Page,
@@ -2636,10 +3032,14 @@ export async function assertCapabilityGatedPageLoads(
   // Eliminates the previous static 800ms window that missed slow-responding API errors and
   // produced misleading "element not found" timeouts instead of actionable error messages.
   //
-  // The featurePageSelector passed by callers must include '.unavailable-page, [data-testid="unavailable-page"]' so that
-  // capability-disabled redirects (CapabilityRoute → /unavailable) are also captured.
+  // The capability-OFF terminal markers are ALWAYS appended: CapabilityRoute's
+  // /unavailable redirect renders DisabledCapabilityPage (250.6.A.5), and
+  // callers kept omitting the markers from featurePageSelector (b7 ai.spec:
+  // URL /unavailable but the legacy-only selector list matched nothing for
+  // 30s). Appending here removes the footgun for every caller.
   const errorSelector = '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]';
-  const combinedSelector = `${featurePageSelector}, ${errorSelector}`;
+  const gateOffSelector = '.disabled-capability-page, [data-testid="disabled-capability-page"], .unavailable-page, [data-testid="unavailable-page"]';
+  const combinedSelector = `${featurePageSelector}, ${gateOffSelector}, ${errorSelector}`;
 
   await page
     .locator(combinedSelector)
@@ -2655,16 +3055,14 @@ export async function assertCapabilityGatedPageLoads(
     });
 
   // Check which branch won the race: crash/error state or valid feature/gating state?
-  const errorCount =
-    (await page.locator('.error-display, [data-testid="error-display"]').count()) +
-    (await page.locator('.error-display-title, [data-testid="error-display-title"]').count());
+  // Visibility-scoped to match the race semantics above: an error element that
+  // merely EXISTS in the DOM (e.g. a hidden error-boundary shell next to a
+  // fully-rendered feature page) is not a crash — only a VISIBLE one is.
+  const errorLocator = page.locator(errorSelector).filter({ visible: true });
+  const errorCount = await errorLocator.count();
   if (errorCount > 0) {
     // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
-    const errText = await page
-      .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
-      .first()
-      .textContent()
-      .catch(() => '');
+    const errText = await errorLocator.first().textContent().catch(() => '');
     throw new Error(
       `assertCapabilityGatedPageLoads: page shows error state (service crash, NOT a gating outcome).\n` +
         `Error content: "${errText?.slice(0, 300) ?? 'N/A'}"\n` +
@@ -2672,9 +3070,17 @@ export async function assertCapabilityGatedPageLoads(
     );
   }
 
-  // Success branch: the feature page or unavailable page is already visible.
+  // Success branch: the feature page or capability-OFF page is already visible.
   // Final explicit assertion for a clean pass record in the Playwright report.
-  await expect(page.locator(featurePageSelector).first()).toBeVisible({ timeout: 3000 });
+  // MUST use the same terminal-state-inclusive union as the waitFor above:
+  // CapabilityRoute's /unavailable redirect renders DisabledCapabilityPage
+  // (250.6.A.5), whose markers are only in gateOffSelector — asserting on
+  // featurePageSelector alone re-introduces the "legacy .unavailable-page
+  // only" footgun the appended markers were added to remove (b7 ai.spec:
+  // waitFor passed on .disabled-capability-page, then this line failed on
+  // the caller's selector that lacked it).
+  const successSelector = `${featurePageSelector}, ${gateOffSelector}`;
+  await expect(page.locator(successSelector).first()).toBeVisible({ timeout: 3000 });
 }
 
 export async function verifyEdgeCase(
@@ -2908,6 +3314,18 @@ export async function triggerDQRunViaUI(
   // A newly created asset may not be visible immediately; retry up to 3 times.
   const assetPickerInput = assetPickerContainer.locator('input').first();
   if ((await assetPickerInput.count()) > 0) {
+    // Churn resilience: the picker's asset-list fetch can fail during an
+    // API restart window — the picker then renders its own error state
+    // ("Failed to load assets") with a Retry affordance. Use the app's
+    // recovery ONCE before walking the attempts; a persistent failure
+    // still surfaces as "could not select any asset".
+    const pickerError = assetPickerContainer
+      .locator('.error-display, [data-testid="error-display"]')
+      .first();
+    if ((await pickerError.count()) > 0) {
+      await pickerError.locator('button:has-text("Retry")').first().click();
+      await page.waitForTimeout(2000);
+    }
     let pickerOptionSelected = false;
     for (let pickerAttempt = 0; pickerAttempt < 3; pickerAttempt++) {
       if (pickerAttempt > 0) {
@@ -3058,6 +3476,18 @@ export async function triggerComplianceScanViaUI(
   // Otherwise fall back to empty-query (first by -created_at).
   const assetPickerInput = assetPickerContainer.locator('input').first();
   if ((await assetPickerInput.count()) > 0) {
+    // Churn resilience: the picker's asset-list fetch can fail during an
+    // API restart window — the picker then renders its own error state
+    // ("Failed to load assets") with a Retry affordance. Use the app's
+    // recovery ONCE before walking the search terms; a persistent failure
+    // still surfaces as "could not select any asset" below.
+    const pickerError = assetPickerContainer
+      .locator('.error-display, [data-testid="error-display"]')
+      .first();
+    if ((await pickerError.count()) > 0) {
+      await pickerError.locator('button:has-text("Retry")').first().click();
+      await page.waitForTimeout(2000);
+    }
     let pickerOptionSelected = false;
     const searchTerms = options?.assetName
       ? [options.assetName, options.assetName.split(' ')[0], 'e2e']
@@ -3168,7 +3598,7 @@ export async function uploadODPSContractViaUI(
     // the JS context and loses in-memory tokens, causing redirect to /login.
     await injectTokensBeforeGotoForUser(page);
 
-    await page.goto(route, { waitUntil: 'domcontentloaded' });
+    await gotoWithRetry(page, route);
     await page.waitForTimeout(1500);
 
     if (page.url().includes('/403') || page.url().includes('/login')) {
@@ -3402,7 +3832,20 @@ export async function changeUserRolesViaAdminUI(
     throw new Error('changeUserRolesViaAdminUI: permission denied');
   }
 
-  await page.waitForSelector('.user-edit-page, .user-edit-form, form', { timeout: 15000 });
+  await page.waitForSelector(
+    '.user-edit-page, [data-testid="admin-user-edit-page"]',
+    { timeout: 15000 }
+  );
+  // Wait for the role checkbox list (or its explicit empty hint) before
+  // touching anything: the page loads the role catalog async after the
+  // full-reload goto, and the old `form`-only wait could resolve against
+  // the LOGIN form (reload re-hydration race) or mid-load — the add loop
+  // then found zero checkboxes, silently no-op'd, and the save persisted
+  // the unchanged role set (JOURNEY-TA-002 re-fetch showed the invite
+  // role only).
+  await page.waitForSelector('.user-edit-role-checkbox, .user-edit-hint', {
+    timeout: 15000,
+  });
 
   // Add roles — checkboxes are inside <label class="user-edit-role-checkbox"> with a role name span;
   // no value/id/name on the <input> itself, so we locate by label text.
@@ -3415,7 +3858,17 @@ export async function changeUserRolesViaAdminUI(
       `input[type="checkbox"][value="${role}"], input[type="checkbox"][name*="${role}"]`
     );
     const cb = (await checkbox.count()) > 0 ? checkbox : fallback;
-    if ((await cb.count()) > 0 && !(await cb.first().isChecked())) {
+    if ((await cb.count()) === 0) {
+      // Loud failure: an ADD request with no matching checkbox means the
+      // role isn't offered for this tenant — saving would silently persist
+      // the unchanged set and the caller's re-fetch assertion would fail
+      // with a misleading "roles not updated" (JOURNEY-TA-002).
+      throw new Error(
+        `changeUserRolesViaAdminUI: role checkbox for "${role}" not found on the user edit page ` +
+          '(the role catalog may not offer it for this tenant)'
+      );
+    }
+    if (!(await cb.first().isChecked())) {
       await cb.first().check();
     }
   }
@@ -3514,4 +3967,62 @@ export async function approveAccessRequestViaUI(
 
   const resp = await responsePromise;
   return { requestId, httpStatus: resp.status() };
+}
+
+/**
+ * Wait for the marketplace listings request to settle, then return the
+ * number of rendered listing cards. Returns 0 when the page legitimately
+ * shows no listings (unseeded/empty marketplace) — callers use the 0 to
+ * skip, so this must NOT throw in that case. Real backend only.
+ */
+export async function waitForMarketplaceListings(
+  page: Page,
+  selector: string,
+  minCount = 1
+): Promise<number> {
+  // Bounded settle for the listings fetch. The old waitForApiResponse call
+  // hung forever in two churn cases: (1) the marketplace gate bounces to
+  // /unavailable — the listings fetch never fires, so no response ever
+  // matches; (2) the fetch 5xx's — the old predicate ignored >=500 and kept
+  // waiting. Both burned the caller's full test budget (observed: 120s
+  // timeout inside this helper). Poll a terminal-state-aware bounded loop
+  // instead and return 0 on gate bounces / page errors — callers treat 0
+  // as "skip" by contract.
+  const deadline = Date.now() + 45_000;
+  let sawListingsResponse = false;
+  // intentional: a missed response is not an error — the bounded loop below
+  // already returns 0 on terminal states (gate bounce / page error) and
+  // callers treat 0 as "skip" by contract.
+  const responsePromise = page
+    .waitForResponse(
+      (resp) =>
+        resp.url().includes('/api/v1/marketplace/listings') && resp.status() < 500,
+      { timeout: 45_000 }
+    )
+    .then(() => {
+      sawListingsResponse = true;
+    })
+    .catch(() => null);
+  while (Date.now() < deadline && !sawListingsResponse) {
+    const terminal =
+      page.url().includes('/unavailable') ||
+      page.url().includes('/coming-soon') ||
+      page.url().includes('/login') ||
+      (await page
+        .locator('.error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
+        .first()
+        .count()) > 0;
+    if (terminal) break;
+    await page.waitForTimeout(1000);
+  }
+  await responsePromise;
+  await page.waitForTimeout(500);
+
+  let count = await page.locator(selector).count();
+  if (count < minCount) {
+    // One settle retry — render may lag the fetch response on slow runners.
+    await page.waitForTimeout(2000);
+    count = await page.locator(selector).count();
+  }
+  return count;
 }

@@ -116,6 +116,14 @@ code `MVP_FEATURE_GATED` plus structured fields (`feature`, `prefix`,
 | `developer/`           | Developer Portal                 | MVP_MODE  |
 | `dpia/`                | Data Protection Impact Assessments | MVP_MODE  |
 | `ropa/`                | Record of Processing Activities  | MVP_MODE  |
+| `breach/`              | Breach Notification              | MVP_MODE  |
+| `consent/`             | Consent Management               | MVP_MODE  |
+| `data-movement/`       | Data Movement Records            | MVP_MODE  |
+| `databricks/`          | Databricks Control Plane         | MVP_MODE  |
+| `dsar/`                | Data Subject Access Requests     | MVP_MODE  |
+| `gdpr/`                | GDPR Compliance                  | MVP_MODE  |
+| `processor-agreements/`| Processor Agreements             | MVP_MODE  |
+| `warehouses/`          | Warehouse Connections            | MVP_MODE  |
 
 ### Programmatic detection
 

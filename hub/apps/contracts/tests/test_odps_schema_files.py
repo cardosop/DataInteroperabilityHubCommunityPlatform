@@ -22,7 +22,6 @@ from pathlib import Path
 from django.test import TestCase
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
@@ -48,7 +47,7 @@ class ODPSSchemaFilesTest(TestCase):
         # Get the base directory for contracts app
         self.base_dir = Path(__file__).parent.parent
         self.schemas_dir = self.base_dir / "schemas" / "odps"
-        self.required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+        self.required_versions = ["v4.2", "v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
         self.schema_filename = "odps-schema.json"
 
     def test_all_schema_files_exist(self):
@@ -167,6 +166,19 @@ class ODPSSchemaFilesTest(TestCase):
 
         # Create minimal valid ODPS documents for each version
         sample_documents = {
+            "v4.2": {
+                "schema": "https://opendataproducts.org/schema/v4.2",
+                "version": "4.2",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product-1",
+                            "name": "Test Product",
+                            "description": "A test product",
+                        }
+                    }
+                },
+            },
             "v4.1": {
                 "schema": "https://opendataproducts.org/schema/v4.1",
                 "version": "4.1",

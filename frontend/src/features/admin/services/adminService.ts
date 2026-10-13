@@ -54,10 +54,9 @@ export const adminService = {
    * POST /api/v1/tenants/{id}/suspend/
    */
   async suspendTenant(id: string, reason?: string): Promise<Tenant> {
-    const response = await apiClient.getClient().post<Tenant>(
-      `${TENANTS_BASE_PATH}/${id}/suspend/`,
-      reason != null ? { reason } : {}
-    );
+    const response = await apiClient
+      .getClient()
+      .post<Tenant>(`${TENANTS_BASE_PATH}/${id}/suspend/`, reason != null ? { reason } : {});
     return response.data;
   },
 
@@ -66,10 +65,9 @@ export const adminService = {
    * POST /api/v1/tenants/{id}/reactivate/
    */
   async resumeTenant(id: string): Promise<Tenant> {
-    const response = await apiClient.getClient().post<Tenant>(
-      `${TENANTS_BASE_PATH}/${id}/reactivate/`,
-      {}
-    );
+    const response = await apiClient
+      .getClient()
+      .post<Tenant>(`${TENANTS_BASE_PATH}/${id}/reactivate/`, {});
     return response.data;
   },
 
@@ -133,39 +131,48 @@ export const adminService = {
   async listRoles(): Promise<{ id: string; tenant: string; name: string; description?: string }[]> {
     const response = await apiClient
       .getClient()
-      .get<PaginatedResponse<{ id: string; tenant: string; name: string; description?: string }>>(
-        `${USERS_BASE_PATH}/roles/?page_size=100`
-      );
+      .get<
+        PaginatedResponse<{ id: string; tenant: string; name: string; description?: string }>
+      >(`${USERS_BASE_PATH}/roles/?page_size=100`);
     return response.data.results ?? [];
   },
 
   // ── Feature flags ──────────────────────────────────────────
+  // The cross-tenant ADMIN surface (close-test-coverage-gaps 4.1):
+  // /api/v1/admin/tenants/{uuid}/feature-flags/ (admin_urls.py
+  // admin-tenant-feature-flags) + /api/v1/admin/feature-flag-approvals/
+  // {uuid}/approve/ (admin-feature-flag-approval-approve). The old paths
+  // addressed the SELF-SERVICE family (/tenants/{id}/feature-flags/) —
+  // only me/feature-flags/ exists there, so every live call 404'd.
   async getTenantFeatureFlags(tenantId: string): Promise<AdminFeatureFlagListResponse> {
     const response = await apiClient
       .getClient()
-      .get<AdminFeatureFlagListResponse>(`/tenants/${tenantId}/feature-flags/`);
+      .get<AdminFeatureFlagListResponse>(`/admin/tenants/${tenantId}/feature-flags/`);
     return response.data;
   },
 
-  async updateTenantFeatureFlags(tenantId: string, flags: Record<string, boolean>, reason?: string) {
-    const response = await apiClient
-      .getClient()
-      .patch<{ flags: AdminFeatureFlagRow[] }>(`/tenants/${tenantId}/feature-flags/`, { flags, reason });
+  async updateTenantFeatureFlags(
+    tenantId: string,
+    flags: Record<string, boolean>,
+    reason?: string
+  ) {
+    // PUT is the admin view's method (no PATCH on the admin surface).
+    const response = await apiClient.getClient().put<{
+      flags: AdminFeatureFlagRow[];
+    }>(`/admin/tenants/${tenantId}/feature-flags/`, { flags, reason });
     return response.data;
   },
 
-  async approveFeatureFlagFlip(tenantId: string, flagId: string) {
+  async approveFeatureFlagFlip(approvalId: string) {
     const response = await apiClient
       .getClient()
-      .post<{ flag: AdminFeatureFlagRow }>(`/tenants/${tenantId}/feature-flags/${flagId}/approve/`);
+      .post<{ flag: AdminFeatureFlagRow }>(`/admin/feature-flag-approvals/${approvalId}/approve/`);
     return response.data;
   },
 
   // ── Dashboard ───────────────────────────────────────────────
   async getDashboardSummary() {
-    const response = await apiClient
-      .getClient()
-      .get<AdminDashboardResponse>('/admin/dashboard/');
+    const response = await apiClient.getClient().get<AdminDashboardResponse>('/admin/dashboard/');
     return response.data;
   },
 
@@ -180,7 +187,10 @@ export const adminService = {
   async startImpersonation(tenantId: string, userId: string) {
     const response = await apiClient
       .getClient()
-      .post<AdminImpersonateSession>('/admin/impersonate/start/', { tenant_id: tenantId, user_id: userId });
+      .post<AdminImpersonateSession>('/admin/impersonate/start/', {
+        tenant_id: tenantId,
+        user_id: userId,
+      });
     return response.data;
   },
 
@@ -324,8 +334,18 @@ export interface AdminDashboardWidgetError {
   code?: string;
 }
 
-export function isWidgetError(widget: { error?: AdminDashboardWidgetError } | AdminDashboardWidgetError): boolean {
+export function isWidgetError(
+  widget: { error?: AdminDashboardWidgetError } | AdminDashboardWidgetError
+): boolean {
   const obj = widget as Record<string, unknown>;
+  // THE backend contract (admin_dashboard_summary.py): a failed widget is
+  // replaced by the sentinel payload ``{"widget_error": true}`` — the SPA
+  // must recognise it or the failed widget renders its normal layout
+  // (Phase 235.5 Gap 2 drift: this check previously only knew the
+  // ``error``/message shapes).
+  if (obj['widget_error'] === true) {
+    return true;
+  }
   // Direct error object from backend: has 'message', no 'status' (widget envelopes always have status)
   if (!('status' in obj) && 'message' in obj) {
     return true;

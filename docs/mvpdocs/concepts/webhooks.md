@@ -16,20 +16,174 @@ An `active` webhook transitions to `disabled` after 10 consecutive delivery fail
 
 ## Supported Events
 
+> Generated from `WebhookEventType` by `scripts/sync_webhook_events_doc.py` — run it when the enum changes; the drift gate (tests/docs/test_webhook_doc_drift.py) enforces the sync at CI time.
+
 | Event | Trigger |
 |---|---|
+| `asset.activated` | An asset activated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `asset.created` | An asset created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `asset.updated` | An asset updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `billing.dq.run.completed` | A billing completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `billing.report.generated` | A billing generated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `billing.report.sent` | A billing sent event occurs. (auto-generated — edit the doc row for a curated description) |
+| `breach.incident.opened` | A breach opened event occurs. (auto-generated — edit the doc row for a curated description) |
+| `breach.notification.sent` | A breach sent event occurs. (auto-generated — edit the doc row for a curated description) |
+| `compliance.check.completed` | A compliance completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `compliance.completed` | A compliance completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `consent.granted` | A consent granted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `consent.revoked` | A consent revoked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.batch_renormalized` | A contract batch renormalized event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.created` | A contract created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.deleted` | A contract deleted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.updated` | A contract updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.budget.exceeded` | A databricks exceeded event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.dlt.update.failed` | A databricks failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.job.run.failed` | A databricks failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.uc_change.approved` | A databricks approved event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.uc_change.executed` | A databricks executed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.uc_change.failed` | A databricks failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.uc_change.rejected` | A databricks rejected event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.uc_change.rolled_back` | A databricks rolled back event occurs. (auto-generated — edit the doc row for a curated description) |
+| `databricks.uc_change.submitted` | A databricks submitted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dpia.created` | A dpia created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dpia.review.decision` | A dpia decision event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dpia.status.changed` | A dpia changed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.fulfilled` | A dsar fulfilled event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.rejected` | A dsar rejected event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.critical` | A dsar critical event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.escalated` | A dsar escalated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.suspended` | A dsar suspended event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.warning` | A dsar warning event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.status.changed` | A dsar changed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.submitted` | A dsar submitted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `file.purged` | A file purged event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ingestion.completed` | An ingestion completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ingestion.failed` | An ingestion failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.compliance.checked` | A mesh checked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.domain.created` | A mesh created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.domain.updated` | A mesh updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.health.status_changed` | A mesh status changed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.policy.applied` | A mesh applied event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.topology.updated` | A mesh updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.inference.executed` | A ml executed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.model.archived` | A ml archived event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.model.deployed` | A ml deployed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.model.registered` | A ml registered event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.training.completed` | A ml completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.training.failed` | A ml failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.training.started` | A ml started event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.created` | An odps created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.deleted` | An odps deleted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.export.completed` | An odps completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.export.failed` | An odps failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.export.started` | An odps started event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.linked` | An odps linked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.normalized` | An odps normalized event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.unlinked` | An odps unlinked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.updated` | An odps updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `processor_agreement.expired` | A processor_agreement expired event occurs. (auto-generated — edit the doc row for a curated description) |
+| `processor_agreement.expiring` | A processor_agreement expiring event occurs. (auto-generated — edit the doc row for a curated description) |
+| `quality.check.completed` | A quality completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ropa.generated` | A ropa generated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `transformation.completed` | A transformation completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `transformation.failed` | A transformation failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `version.created` | A version created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `version.updated` | A version updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.dataset.created` | A virtualization created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.completed` | A virtualization completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.failed` | A virtualization failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.progress` | A virtualization progress event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.started` | A virtualization started event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.created` | A warehouse created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.deleted` | A warehouse deleted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.test_failed` | A warehouse test failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.updated` | A warehouse updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.export.completed` | A warehouse completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.export.failed` | A warehouse failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.schema.drift_detected` | A warehouse drift detected event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.share.accessed` | A warehouse accessed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `webhook.test` | A webhook test event occurs. (auto-generated — edit the doc row for a curated description) |
+
+## Supported Events
+
+> Generated from `WebhookEventType` by `scripts/sync_webhook_events_doc.py` — run it when the enum changes; the drift gate (tests/docs/test_webhook_doc_drift.py) enforces the sync at CI time.
+
+| Event | Trigger |
+|---|---|
+| `asset.activated` | A asset activated event occurs. (auto-generated — edit the doc row for a curated description) |
 | `asset.created` | A new asset is registered. |
-| `asset.published` | An asset transitions to the `published` state. |
-| `asset.unpublished` | A published asset is pulled back to `active`. |
-| `asset.archived` | An asset is archived. |
-| `dq.completed` | A DQ run finishes (succeeded or failed). |
+| `asset.updated` | A asset updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `billing.dq.run.completed` | A billing completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `billing.report.generated` | A billing generated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `billing.report.sent` | A billing sent event occurs. (auto-generated — edit the doc row for a curated description) |
+| `breach.incident.opened` | A breach opened event occurs. (auto-generated — edit the doc row for a curated description) |
+| `breach.notification.sent` | A breach sent event occurs. (auto-generated — edit the doc row for a curated description) |
+| `compliance.check.completed` | A compliance completed event occurs. (auto-generated — edit the doc row for a curated description) |
 | `compliance.completed` | A compliance run finishes. |
-| `contract.activated` | A contract version becomes active. |
-| `contract.superseded` | A contract version is superseded by a newer version. |
-| `order.placed` | A marketplace listing is purchased. |
-| `job.completed` | A generic job finishes execution. |
-| `user.invited` | A user invitation is sent. |
-| `tenant.suspended` | A tenant is suspended. |
+| `consent.granted` | A consent granted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `consent.revoked` | A consent revoked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.batch_renormalized` | A contract batch renormalized event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.created` | A contract created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.deleted` | A contract deleted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `contract.updated` | A contract updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dpia.created` | A dpia created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dpia.review.decision` | A dpia decision event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dpia.status.changed` | A dpia changed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.fulfilled` | A dsar fulfilled event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.rejected` | A dsar rejected event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.critical` | A dsar critical event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.escalated` | A dsar escalated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.suspended` | A dsar suspended event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.sla.warning` | A dsar warning event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.status.changed` | A dsar changed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `dsar.submitted` | A dsar submitted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `file.purged` | A file purged event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ingestion.completed` | A ingestion completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ingestion.failed` | A ingestion failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.compliance.checked` | A mesh checked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.domain.created` | A mesh created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.domain.updated` | A mesh updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.health.status_changed` | A mesh status changed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.policy.applied` | A mesh applied event occurs. (auto-generated — edit the doc row for a curated description) |
+| `mesh.topology.updated` | A mesh updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.inference.executed` | A ml executed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.model.archived` | A ml archived event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.model.deployed` | A ml deployed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.model.registered` | A ml registered event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.training.completed` | A ml completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.training.failed` | A ml failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ml.training.started` | A ml started event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.created` | A odps created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.deleted` | A odps deleted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.export.completed` | A odps completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.export.failed` | A odps failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.export.started` | A odps started event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.linked` | A odps linked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.normalized` | A odps normalized event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.unlinked` | A odps unlinked event occurs. (auto-generated — edit the doc row for a curated description) |
+| `odps.updated` | A odps updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `processor_agreement.expired` | A processor_agreement expired event occurs. (auto-generated — edit the doc row for a curated description) |
+| `processor_agreement.expiring` | A processor_agreement expiring event occurs. (auto-generated — edit the doc row for a curated description) |
+| `quality.check.completed` | A quality completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `ropa.generated` | A ropa generated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `transformation.completed` | A transformation completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `transformation.failed` | A transformation failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `version.created` | A version created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `version.updated` | A version updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.dataset.created` | A virtualization created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.completed` | A virtualization completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.failed` | A virtualization failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.progress` | A virtualization progress event occurs. (auto-generated — edit the doc row for a curated description) |
+| `virtualization.query.execution.started` | A virtualization started event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.created` | A warehouse created event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.deleted` | A warehouse deleted event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.test_failed` | A warehouse test failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.connection.updated` | A warehouse updated event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.export.completed` | A warehouse completed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.export.failed` | A warehouse failed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.schema.drift_detected` | A warehouse drift detected event occurs. (auto-generated — edit the doc row for a curated description) |
+| `warehouse.share.accessed` | A warehouse accessed event occurs. (auto-generated — edit the doc row for a curated description) |
+| `webhook.test` | A webhook test event occurs. (auto-generated — edit the doc row for a curated description) |
 
 ## Payload Format
 

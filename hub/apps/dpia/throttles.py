@@ -8,7 +8,7 @@ class DpiaTenantRateThrottle(SimpleRateThrottle):
 
     scope = "dpia_tenant"
 
-    def get_cache_key(self, request, view):
+    def get_cache_key(self, request, _view):
         tenant = getattr(request, "tenant", None)
         if tenant is None:
             tenant = getattr(getattr(request, "user", None), "tenant", None)

@@ -903,6 +903,7 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
         out = StringIO()
         # Invalid UUID format should cause the command to raise an error.
         from django.core.management import CommandError
+
         try:
             call_command(
                 "rollback_odps_migration",
@@ -922,6 +923,7 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
         except Exception as e:
             # conftest wraps ValueError as django.core.exceptions.ValidationError
             from django.core.exceptions import ValidationError as _DJV
+
             if not isinstance(e, _DJV):
                 raise
 

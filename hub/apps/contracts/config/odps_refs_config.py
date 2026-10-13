@@ -86,7 +86,7 @@ class ODPSRefsConfig:
                 logger.debug(
                     "Loaded ODPS refs configuration from file", config_file=str(self._config_file)
                 )
-            except Exception as e:
+            except (yaml.YAMLError, OSError) as e:
                 logger.warning(
                     "Failed to load ODPS refs configuration from file, using defaults",
                     config_file=str(self._config_file),
@@ -265,9 +265,10 @@ class ODPSRefsConfig:
                 # is_relative_to() is available in Python 3.9+, use alternative for compatibility
                 try:
                     # Python 3.9+ method
-                    if hasattr(resolved_file_path, "is_relative_to"):
-                        if resolved_file_path.is_relative_to(resolved_allowed_dir):
-                            return True
+                    if hasattr(resolved_file_path, "is_relative_to") and (
+                        resolved_file_path.is_relative_to(resolved_allowed_dir)
+                    ):
+                        return True
                 except (AttributeError, ValueError):
                     pass
 
@@ -387,7 +388,7 @@ class ODPSRefsConfig:
 
         try:
             parsed_url = urlparse(url)
-        except Exception as e:
+        except ValueError as e:
             logger.warning("Failed to parse URL for allowlist check", url=url, error=str(e))
             return False
 
@@ -456,7 +457,7 @@ class ODPSRefsConfig:
         # Parse pattern to extract components
         try:
             pattern_parsed = urlparse(pattern)
-        except Exception:
+        except ValueError:
             # If pattern can't be parsed as URL, try as hostname
             if "*" in pattern:
                 # Wildcard hostname pattern
@@ -493,9 +494,10 @@ class ODPSRefsConfig:
                 elif "*" in pattern_host:
                     # Wildcard hostname with path
                     pattern_regex = pattern_host.replace(".", r"\.").replace("*", ".*")
-                    if re.match(f"^{pattern_regex}$", parsed_url.netloc):
-                        if pattern_path == url_path:
-                            return True
+                    if re.match(f"^{pattern_regex}$", parsed_url.netloc) and (
+                        pattern_path == url_path
+                    ):
+                        return True
             # Pattern has no path - match host only (any path allowed)
             elif "*" in pattern_host:
                 # Wildcard hostname pattern

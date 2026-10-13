@@ -90,165 +90,295 @@ const FORMATS: FormatFixture[] = [
     exportFormat: 'odcs',
     originalSpecType: 'ODCS',
     originalSpecVersion: '3.0.2',
-    build: () => ({
+    build: () => {
+      const payload = {
       name: `RT ODCS 3.0 ${Date.now()}`,
-      original_spec_type: 'ODCS',
-      original_spec_version: '3.0.2',
-      version: '1.0.0',
-      spec: {
-        apiVersion: 'odcs.io/v3.0.2',
-        kind: 'DataContract',
-        id: `rt-odcs-30-${Date.now()}`,
-        name: `RT ODCS 3.0 ${Date.now()}`,
-        version: '1.0.0',
-        schema: {
-          fields: [
-            { name: 'id', type: 'string', nullable: false, description: 'ID' },
-            { name: 'amount', type: 'number', nullable: false, description: 'Amount' },
-          ],
-        },
-      },
-    }),
+            original_spec_type: 'ODCS',
+            original_spec_version: '3.0.2',
+            version: '1.0.0',
+            spec: {
+              apiVersion: 'odcs.io/v3.0.2',
+              kind: 'DataContract',
+              id: `rt-odcs-30-${Date.now()}`,
+              name: `RT ODCS 3.0 ${Date.now()}`,
+              version: '1.0.0',
+              schema: {
+                fields: [
+                  { name: 'id', type: 'string', nullable: false, description: 'ID' },
+                  { name: 'amount', type: 'number', nullable: false, description: 'Amount' },
+                ],
+              },
+            },
+      };
+      // ContractCreateSerializer (POST /contracts/) and the ODPS
+      // products path both require the raw content + format. The
+      // structured fields stay so the round-trip comparison below
+      // keeps reading original.spec / original.product unchanged.
+      return {
+        ...payload,
+        // The create path parses original_raw — the raw must be the
+        // ODCS DOCUMENT (payload.spec), not the API wrapper, or the
+        // normalizer sees no schema fields (STRUCTURELESS_ODCS_NO_SCHEMA).
+        original_raw: JSON.stringify(payload.spec),
+        original_format: 'JSON',
+      };
+    },
   },
   {
     name: 'ODCS v3.1',
     exportFormat: 'odcs',
     originalSpecType: 'ODCS',
     originalSpecVersion: '3.1.0',
-    build: () => ({
+    build: () => {
+      const payload = {
       name: `RT ODCS 3.1 ${Date.now()}`,
-      original_spec_type: 'ODCS',
-      original_spec_version: '3.1.0',
-      version: '1.0.0',
-      spec: {
-        apiVersion: 'odcs.io/v3.1.0',
-        kind: 'DataContract',
-        id: `rt-odcs-31-${Date.now()}`,
-        name: `RT ODCS 3.1 ${Date.now()}`,
-        version: '1.0.0',
-        schema: {
-          fields: [
-            { name: 'id', type: 'string', nullable: false, description: 'ID' },
-            { name: 'created_at', type: 'datetime', nullable: false, description: 'When' },
-          ],
-        },
-      },
-    }),
+            original_spec_type: 'ODCS',
+            original_spec_version: '3.1.0',
+            version: '1.0.0',
+            spec: {
+              apiVersion: 'odcs.io/v3.1.0',
+              kind: 'DataContract',
+              id: `rt-odcs-31-${Date.now()}`,
+              name: `RT ODCS 3.1 ${Date.now()}`,
+              version: '1.0.0',
+              schema: {
+                fields: [
+                  { name: 'id', type: 'string', nullable: false, description: 'ID' },
+                  { name: 'created_at', type: 'datetime', nullable: false, description: 'When' },
+                ],
+              },
+            },
+      };
+      // ContractCreateSerializer (POST /contracts/) and the ODPS
+      // products path both require the raw content + format. The
+      // structured fields stay so the round-trip comparison below
+      // keeps reading original.spec / original.product unchanged.
+      return {
+        ...payload,
+        // Raw = the ODCS document itself (see ODCS v3.0 fixture).
+        original_raw: JSON.stringify(payload.spec),
+        original_format: 'JSON',
+      };
+    },
   },
   {
     name: 'ODPS v1.0',
     exportFormat: 'odps',
     originalSpecType: 'ODPS',
     originalSpecVersion: '1.0',
-    build: () => ({
+    build: () => {
+      const payload = {
       schema: 'https://opendataproducts.org/schema/v1.0',
-      version: '1.0',
-      product: {
-        details: {
-          en: {
-            productID: `rt-odps-10-${Date.now()}`,
-            name: `RT ODPS 1.0 ${Date.now()}`,
-            description: 'Round-trip ODPS v1.0',
-            productVersion: '1.0.0',
-          },
-        },
-        dataSchema: {
-          fields: [
-            { name: 'id', type: 'string' },
-            { name: 'name', type: 'string' },
-          ],
-        },
-      },
-    }),
+            version: '1.0',
+            product: {
+              details: {
+                en: {
+                  productID: `rt-odps-10-${Date.now()}`,
+                  name: `RT ODPS 1.0 ${Date.now()}`,
+                  description: 'Round-trip ODPS v1.0',
+                  productVersion: '1.0.0',
+                },
+              },
+              dataSchema: {
+                fields: [
+                  { name: 'id', type: 'string' },
+                  { name: 'name', type: 'string' },
+                ],
+              },
+              // The products workflow's extract_contract step requires an
+              // inline ODCS contract on EVERY ODPS product (same shape as the
+              // v4.2 fixture) — a v1.0 doc without product.contract fails
+              // with REQUIRED_FIELD_MISSING before normalization (b7 #8).
+              contract: {
+                spec: {
+                  apiVersion: 'odcs.io/v3.0.2',
+                  kind: 'DataContract',
+                  id: `rt-odps-10-c-${Date.now()}`,
+                  name: `RT ODPS 1.0 ODCS ${Date.now()}`,
+                  version: '1.0.0',
+                  schema: {
+                    fields: [
+                      { name: 'id', type: 'string', nullable: false, description: 'ID' },
+                      { name: 'name', type: 'string', nullable: false, description: 'Name' },
+                    ],
+                  },
+                },
+              },
+            },
+      };
+      // ContractCreateSerializer (POST /contracts/) and the ODPS
+      // products path both require the raw content + format. The
+      // structured fields stay so the round-trip comparison below
+      // keeps reading original.spec / original.product unchanged.
+      return {
+        ...payload,
+        original_raw: JSON.stringify(payload),
+        original_format: 'JSON',
+      };
+    },
   },
   {
     name: 'ODPS v4.2',
     exportFormat: 'odps',
     originalSpecType: 'ODPS',
     originalSpecVersion: '4.2',
-    build: () => ({
+    build: () => {
+      const payload = {
       schema: 'https://opendataproducts.org/schema/v4.2',
-      version: '4.2',
-      product: {
-        details: {
-          en: {
-            productID: `rt-odps-42-${Date.now()}`,
-            name: `RT ODPS 4.2 ${Date.now()}`,
-            description: 'Round-trip ODPS v4.2',
-            productVersion: '1.0.0',
-          },
-        },
-        dataSchema: {
-          fields: [
-            { name: 'id', type: 'string' },
-            { name: 'price', type: 'number' },
-          ],
-        },
-        contract: {
-          spec: {
-            apiVersion: 'odcs.io/v3.0.2',
-            kind: 'DataContract',
-            id: `rt-odps-42-c-${Date.now()}`,
-            name: `RT ODPS 4.2 ODCS ${Date.now()}`,
-            version: '1.0.0',
-            schema: {
-              fields: [
-                { name: 'id', type: 'string', nullable: false, description: 'ID' },
-                { name: 'price', type: 'number', nullable: false, description: 'Price' },
-              ],
+            version: '4.2',
+            product: {
+              details: {
+                en: {
+                  productID: `rt-odps-42-${Date.now()}`,
+                  name: `RT ODPS 4.2 ${Date.now()}`,
+                  description: 'Round-trip ODPS v4.2',
+                  productVersion: '1.0.0',
+                },
+              },
+              dataSchema: {
+                fields: [
+                  { name: 'id', type: 'string' },
+                  { name: 'price', type: 'number' },
+                ],
+              },
+              contract: {
+                spec: {
+                  apiVersion: 'odcs.io/v3.0.2',
+                  kind: 'DataContract',
+                  id: `rt-odps-42-c-${Date.now()}`,
+                  name: `RT ODPS 4.2 ODCS ${Date.now()}`,
+                  version: '1.0.0',
+                  schema: {
+                    fields: [
+                      { name: 'id', type: 'string', nullable: false, description: 'ID' },
+                      { name: 'price', type: 'number', nullable: false, description: 'Price' },
+                    ],
+                  },
+                },
+              },
             },
-          },
-        },
-      },
-    }),
+      };
+      // ContractCreateSerializer (POST /contracts/) and the ODPS
+      // products path both require the raw content + format. The
+      // structured fields stay so the round-trip comparison below
+      // keeps reading original.spec / original.product unchanged.
+      return {
+        ...payload,
+        original_raw: JSON.stringify(payload),
+        original_format: 'JSON',
+      };
+    },
   },
   {
     name: 'Bitol ODPS 1.0.0',
     exportFormat: 'odps',
     originalSpecType: 'ODPS',
     originalSpecVersion: 'bitol-1.0.0',
-    build: () => ({
-      schema: 'https://opendataproducts.bitol.io/schema/v1.0.0',
-      version: '1.0.0',
-      product: {
-        details: {
-          en: {
-            productID: `rt-bitol-100-${Date.now()}`,
-            name: `RT Bitol ODPS ${Date.now()}`,
-            description: 'Round-trip Bitol ODPS 1.0.0',
-            productVersion: '1.0.0',
-          },
-        },
-        dataSchema: {
-          fields: [
-            { name: 'id', type: 'string' },
-            { name: 'event_type', type: 'string' },
-          ],
-        },
-      },
-    }),
+    build: () => {
+      const payload = {
+      // Canonical Bitol ODPS discriminators (see odps_version_detection.py
+      // _BITOL_VERSION_PATTERN): the bitol-io.github.io schema URL + kind
+      // DataProduct + apiVersion v1.0.0 route the doc to the bitol
+      // normalizer. The non-canonical opendataproducts.bitol.io URL fell
+      // through to the pre-Bitol v1.x JSON schema and died on PATTERN_MISMATCH
+      // (b7 #10). Like every products-workflow doc, product.contract.spec
+      // carries the inline ODCS contract for extract_contract.
+      schema: 'https://bitol-io.github.io/open-data-product-standard/v1.0.0/schema.json',
+            kind: 'DataProduct',
+            apiVersion: 'v1.0.0',
+            version: '1.0.0',
+            product: {
+              details: {
+                en: {
+                  productID: `rt-bitol-100-${Date.now()}`,
+                  name: `RT Bitol ODPS ${Date.now()}`,
+                  description: 'Round-trip Bitol ODPS 1.0.0',
+                  productVersion: '1.0.0',
+                },
+              },
+              dataSchema: {
+                fields: [
+                  { name: 'id', type: 'string' },
+                  { name: 'event_type', type: 'string' },
+                ],
+              },
+              contract: {
+                spec: {
+                  apiVersion: 'odcs.io/v3.0.2',
+                  kind: 'DataContract',
+                  id: `rt-bitol-100-c-${Date.now()}`,
+                  name: `RT Bitol ODCS ${Date.now()}`,
+                  version: '1.0.0',
+                  schema: {
+                    fields: [
+                      { name: 'id', type: 'string', nullable: false, description: 'ID' },
+                      { name: 'event_type', type: 'string', nullable: false, description: 'Event type' },
+                    ],
+                  },
+                },
+              },
+            },
+      };
+      // ContractCreateSerializer (POST /contracts/) and the ODPS
+      // products path both require the raw content + format. The
+      // structured fields stay so the round-trip comparison below
+      // keeps reading original.spec / original.product unchanged.
+      return {
+        ...payload,
+        original_raw: JSON.stringify(payload),
+        original_format: 'JSON',
+      };
+    },
   },
   {
     name: 'Hub-YAML',
     exportFormat: 'hubcontract',
     originalSpecType: 'HUB_YAML',
-    build: () => ({
+    build: () => {
+      // OriginalSpecType no longer has a HUB_YAML choice (enum is ODCS |
+      // ODPS) — the Hub document is ODCS-shaped (kind DataContract,
+      // schema.fields) and the normalizer extracts the version from any
+      // apiVersion, so it uploads as ODCS. The fixture keeps
+      // originalSpecType: 'HUB_YAML' for the round-trip branch +
+      // exportFormat=hubcontract below (b7 #14: "\"HUB_YAML\" is not a
+      // valid choice.").
+      const payload = {
       name: `RT HubYAML ${Date.now()}`,
-      original_spec_type: 'HUB_YAML',
-      version: '1.0.0',
-      spec: {
-        apiVersion: 'meshant-internal.example.com/v1',
-        kind: 'DataContract',
-        name: `RT HubYAML ${Date.now()}`,
-        version: '1.0.0',
-        schema: {
-          fields: [
-            { name: 'id', type: 'string', nullable: false },
-            { name: 'value', type: 'number', nullable: false },
-          ],
-        },
-      },
-    }),
+            original_spec_type: 'ODCS',
+            version: '1.0.0',
+            spec: {
+              apiVersion: 'meshant-internal.example.com/v1',
+              kind: 'DataContract',
+              // The ODCS normalizer maps doc.id → hub_contract.id; a doc
+              // without it normalizes to an empty id and the HubContract
+              // typed-model validator rejects it ("hub_contract_version and
+              // id must be provided") (b7 #11). hub_contract_version is
+              // defaulted by the normalizer.
+              id: `rt-hubyaml-${Date.now()}`,
+              name: `RT HubYAML ${Date.now()}`,
+              version: '1.0.0',
+              schema: {
+                fields: [
+                  { name: 'id', type: 'string', nullable: false },
+                  { name: 'value', type: 'number', nullable: false },
+                ],
+              },
+            },
+      };
+      // ContractCreateSerializer (POST /contracts/) and the ODPS
+      // products path both require the raw content + format. The
+      // structured fields stay so the round-trip comparison below
+      // keeps reading original.spec / original.product unchanged.
+      return {
+        ...payload,
+        // Raw = the hub document itself (payload.spec) — the create path
+        // parses original_raw and the normalizer reads schema.fields from
+        // it (b3's run: wrapper-wrapped raw → STRUCTURELESS_ODCS_NO_SCHEMA).
+        // JSON text is valid YAML, so the YAML format label parses cleanly.
+        original_raw: JSON.stringify(payload.spec),
+        original_format: 'YAML',
+      };
+    },
   },
 ];
 
@@ -289,12 +419,10 @@ test.describe('Feature: Contract round-trip preservation', () => {
         // Capability gating (404 / 503 / 501) on a specific format is an
         // environment posture, not a regression — skip cleanly so the rest
         // of the matrix still runs.
-        if ([404, 501, 503].includes(createRes.status())) {
-          test.skip(
-            true,
-            `${fixture.name} create returned ${createRes.status()} — capability not enabled in this env: ${text}`,
-          );
-        }
+        test.skip(
+          [404, 501, 503].includes(createRes.status()),
+          `${fixture.name} create returned ${createRes.status()} — capability not enabled in this env: ${text}`,
+        );
         throw new Error(
           `${fixture.name} contract create returned ${createRes.status()}: ${text}`,
         );
@@ -302,31 +430,43 @@ test.describe('Feature: Contract round-trip preservation', () => {
       const created = (await createRes.json()) as {
         id?: string;
         contract?: { id?: string };
+        odps_contract?: { id?: string };
+        odcs_contract?: { id?: string };
         workflow_instance_id?: string;
       };
-      let contractId = created.id ?? created.contract?.id;
-      // ODPS workflow path returns a workflow_instance_id; poll for the
-      // workflow to finish and extract the resulting contract id.
+      // Sync-mode (ENVIRONMENT=test) executes the product workflow inline
+      // and returns the persisted contracts under odps_contract /
+      // odcs_contract — there is no top-level id. Async-mode returns only
+      // workflow_instance_id; poll the status endpoint then. (b7: the spec
+      // read neither shape — the three ODPS fixtures timed out polling a
+      // route that 404'd and skipped "did not resolve contract id".)
+      let contractId =
+        created.id ?? created.contract?.id ?? created.odps_contract?.id ?? created.odcs_contract?.id;
       if (!contractId && created.workflow_instance_id) {
         const deadline = Date.now() + 60_000;
         while (Date.now() < deadline) {
           const wRes = await page.request.get(
-            `${API_BASE}/contracts/products/workflow/${created.workflow_instance_id}/`,
+            `${API_BASE}/contracts/products/workflows/${created.workflow_instance_id}/status/`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
           if (wRes.ok()) {
             const wBody = (await wRes.json()) as {
               status?: string;
               contract_id?: string;
+              odps_contract?: { id?: string } | null;
+              odcs_contract?: { id?: string } | null;
               result?: { contract_id?: string };
             };
             const status = (wBody.status ?? '').toUpperCase();
-            const resolvedId = wBody.contract_id ?? wBody.result?.contract_id;
+            const resolvedId =
+              wBody.contract_id ??
+              wBody.result?.contract_id ??
+              wBody.odps_contract?.id ??
+              wBody.odcs_contract?.id;
             if (resolvedId) {
               contractId = resolvedId;
               break;
             }
-            if (['SUCCEEDED', 'COMPLETED'].includes(status) && resolvedId) break;
             if (['FAILED', 'CANCELLED'].includes(status)) {
               throw new Error(`${fixture.name} workflow ${status}: ${JSON.stringify(wBody).slice(0, 300)}`);
             }
@@ -334,9 +474,7 @@ test.describe('Feature: Contract round-trip preservation', () => {
           await page.waitForTimeout(2000);
         }
       }
-      if (!contractId) {
-        test.skip(true, `${fixture.name} did not resolve contract id within budget`);
-      }
+      test.skip(!contractId, `${fixture.name} did not resolve contract id within budget`);
 
       // Export — GET /api/v1/contracts/{id}/export/?format=<fmt>.
       const exportRes = await page.request.get(
@@ -344,15 +482,24 @@ test.describe('Feature: Contract round-trip preservation', () => {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!exportRes.ok()) {
-        if ([404, 501].includes(exportRes.status())) {
-          test.skip(true, `${fixture.name} export not available: ${exportRes.status()}`);
-        }
+        test.skip(
+          [404, 501].includes(exportRes.status()),
+          `${fixture.name} export not available: ${exportRes.status()}`,
+        );
         const text = (await exportRes.text()).slice(0, 400);
         throw new Error(
           `${fixture.name} export returned ${exportRes.status()}: ${text}`,
         );
       }
-      const exported = (await exportRes.json()) as Record<string, unknown>;
+      // The odps+json export returns the document as a JSON-ENCODED STRING
+      // (the download path consumes it verbatim); hubcontract/odcs return
+      // a plain object. Unwrap both shapes before comparing.
+      const exportedRaw = (await exportRes.json()) as unknown;
+      const exported = (
+        typeof exportedRaw === 'string'
+          ? JSON.parse(exportedRaw)
+          : exportedRaw
+      ) as Record<string, unknown>;
 
       const stripExp = stripVolatileFields(exported) as Record<string, unknown>;
 
@@ -447,7 +594,7 @@ test.describe('Feature: Contract round-trip preservation', () => {
         const origInner = innerOdcsDoc(original as Record<string, unknown>);
         const origFields =
           (origInner as { schema?: { fields?: Array<{ name: string; type: string }> } } | null)?.schema?.fields ?? [];
-        const expSchema = (stripExp as { schema?: { fields?: Array<{ name?: string; type?: string }> } }).schema;
+        const expSchema = (stripExp as { schema?: { fields?: Array<{ name?: string; type?: string; data_type?: string }> } }).schema;
         const expFields = expSchema?.fields ?? [];
         expect(
           expFields.length,
@@ -456,7 +603,14 @@ test.describe('Feature: Contract round-trip preservation', () => {
         for (const f of origFields) {
           const found = expFields.find((g) => g.name === f.name);
           expect(found, `${fixture.name}: field ${f.name} missing after export`).toBeTruthy();
-          expect(found?.type, `${fixture.name}: field ${f.name}.type changed`).toBe(f.type);
+          // The hubcontract export emits the CANONICAL HubContract field
+          // names — ``data_type`` — not the ODCS alias ``type``
+          // (odcs_normalizer_base dumps with by_alias=False precisely to
+          // preserve data_type / min_length / max_length). Reading only
+          // ``type`` finds undefined on a perfectly round-tripped field
+          // (b6 verification: id.type Expected "string" Received undefined).
+          const exportedType = found?.data_type ?? found?.type;
+          expect(exportedType, `${fixture.name}: field ${f.name}.type changed`).toBe(f.type);
         }
       }
     });
@@ -473,6 +627,14 @@ test.describe('Feature: Contract round-trip preservation', () => {
         name: 'Missing-Required',
         version: '1.0.0',
       },
+      // Serializer contract requires the raw content — supply it so the
+      // SPEC validator (missing apiVersion/kind/id) is what rejects the
+      // request, not the required-field check.
+      original_raw: JSON.stringify({
+        name: 'Missing-Required',
+        version: '1.0.0',
+      }),
+      original_format: 'JSON',
     };
     const res = await page.request.post(`${API_BASE}/contracts/`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -496,6 +658,17 @@ test.describe('Feature: Contract round-trip preservation', () => {
         // missing details.en.productID and missing dataSchema entirely
         details: { en: { name: 'No ID' } },
       },
+      // Serializer contract requires the raw content — supply it so the
+      // ODPS validator (missing productID/dataSchema) is what rejects the
+      // request, not the required-field check.
+      original_raw: JSON.stringify({
+        schema: 'https://opendataproducts.org/schema/v4.2',
+        version: '4.2',
+        product: {
+          details: { en: { name: 'No ID' } },
+        },
+      }),
+      original_format: 'JSON',
     };
     const res = await page.request.post(`${API_BASE}/contracts/products/`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

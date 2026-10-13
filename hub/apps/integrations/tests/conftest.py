@@ -27,9 +27,7 @@ from __future__ import annotations
 
 import copy
 import os
-import unittest
 from unittest.mock import MagicMock, patch
-
 
 # ---------------------------------------------------------------------------
 # Factory state save / restore — prevents cross-test contamination
@@ -49,21 +47,16 @@ def capture_factory_state():
     from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
     if _ORIGINAL_FACTORY_CONNECTORS is None:
-        _ORIGINAL_FACTORY_CONNECTORS = copy.deepcopy(
-            MarketplaceConnectorFactory._connectors
-        )
+        _ORIGINAL_FACTORY_CONNECTORS = copy.deepcopy(MarketplaceConnectorFactory._connectors)
 
 
 def restore_factory_state():
     """Restore the factory connector registry to its captured state."""
-    global _ORIGINAL_FACTORY_CONNECTORS
     from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
     if _ORIGINAL_FACTORY_CONNECTORS is not None:
         MarketplaceConnectorFactory._connectors.clear()
-        MarketplaceConnectorFactory._connectors.update(
-            copy.deepcopy(_ORIGINAL_FACTORY_CONNECTORS)
-        )
+        MarketplaceConnectorFactory._connectors.update(copy.deepcopy(_ORIGINAL_FACTORY_CONNECTORS))
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +418,8 @@ def ensure_aws_credentials_or_mock(*, force_mock: bool = False):
             except ClientError:
                 if attempt < 2:
                     import time
-                    time.sleep(2)
+
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
 
     _USING_MOCK = True
@@ -454,14 +448,13 @@ def get_aws_credentials_or_mock() -> dict:
     """
     if is_aws_credentials_available():
         return {
-            "aws_access_key_id": os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv(
-                "AWS_ACCESS_KEY_ID"
-            ),
-            "aws_secret_access_key": os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv(
-                "AWS_SECRET_ACCESS_KEY"
-            ),
+            "aws_access_key_id": os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID")
+            or os.getenv("AWS_ACCESS_KEY_ID"),
+            "aws_secret_access_key": os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY")
+            or os.getenv("AWS_SECRET_ACCESS_KEY"),
             "aws_session_token": os.getenv("AWS_SESSION_TOKEN") or "mock-session-token",
-            "role_arn": os.getenv("AWS_ROLE_ARN") or "arn:aws:iam::123456789012:role/mock-data-exchange-role",
+            "role_arn": os.getenv("AWS_ROLE_ARN")
+            or "arn:aws:iam::123456789012:role/mock-data-exchange-role",
             "region_name": os.getenv("AWS_REGION", "us-east-1"),
         }
     return dict(_MOCK_AWS_CREDENTIALS)

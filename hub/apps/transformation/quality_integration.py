@@ -125,8 +125,6 @@ class TransformationQualityIntegration:
                 overall_status=dq_result.get("overall_status"),
             )
 
-            return dq_result
-
         except Exception as e:
             logger.error(
                 "Failed to run input quality check",
@@ -143,6 +141,8 @@ class TransformationQualityIntegration:
                 "engine_version": None,
                 "metadata": {"error": str(e)},
             }
+        else:
+            return dq_result
 
     def run_output_quality_check(
         self, result_asset: Asset, profile_key: str = "intake_basic_gx"
@@ -225,8 +225,6 @@ class TransformationQualityIntegration:
                 overall_status=dq_result.get("overall_status"),
             )
 
-            return dq_result
-
         except Exception as e:
             logger.error(
                 "Failed to run output quality check",
@@ -243,6 +241,8 @@ class TransformationQualityIntegration:
                 "engine_version": None,
                 "metadata": {"error": str(e)},
             }
+        else:
+            return dq_result
 
     def compare_quality_metrics(
         self, input_metrics: dict[str, Any], output_metrics: dict[str, Any]

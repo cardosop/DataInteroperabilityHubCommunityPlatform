@@ -68,10 +68,11 @@ class OpenAPIInventoryExtractor:
                 self.schema = json.loads(content)
 
             self._extract_base_info()
-            return True
         except Exception as e:
             print(f"Error loading schema from file: {e}")
             return False
+        else:
+            return True
 
     def _load_from_url(self) -> bool:
         """Load schema from URL"""
@@ -88,7 +89,6 @@ class OpenAPIInventoryExtractor:
                 self.schema = json.loads(content)
 
             self._extract_base_info()
-            return True
         except requests.exceptions.RequestException as e:
             print(f"Error fetching schema from URL: {e}")
             print("Attempting to use local file or generate from codebase...")
@@ -96,6 +96,8 @@ class OpenAPIInventoryExtractor:
         except Exception as e:
             print(f"Error parsing schema: {e}")
             return False
+        else:
+            return True
 
     def _try_common_locations(self) -> bool:
         """Try to find schema in common locations"""
@@ -143,7 +145,7 @@ class OpenAPIInventoryExtractor:
                 if schema_path.exists():
                     self.schema_file = schema_path
                     return self._load_from_file()
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             print(f"Could not generate schema from Django: {e}")
 
         # Fallback: Create a basic schema structure from URL patterns
@@ -461,10 +463,7 @@ def main():
     output_dir = repo_root / "docs" / "api-audit"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.output:
-        output_path = args.output
-    else:
-        output_path = output_dir / "current-api-inventory.md"
+    output_path = args.output or output_dir / "current-api-inventory.md"
 
     # Create extractor
     extractor = OpenAPIInventoryExtractor(schema_url=args.url, schema_file=args.file)

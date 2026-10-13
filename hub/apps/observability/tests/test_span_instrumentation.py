@@ -85,14 +85,15 @@ class SpanInstrumentationTest(TestCase):
         else:
             # When OTEL is available, get_current_span may return a Span or None
             # (None when no active span context exists)
-            self.assertTrue(span is None or hasattr(span, "get_span_context"),
-                          f"Expected span or None, got {type(span).__name__}")
+            self.assertTrue(
+                span is None or hasattr(span, "get_span_context"),
+                f"Expected span or None, got {type(span).__name__}",
+            )
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_add_span_attributes(self):
         """Test adding attributes to span with real implementation."""
         from hub.apps.observability.span_instrumentation import (
-            OPENTELEMETRY_AVAILABLE,
             add_span_attributes,
         )
 
@@ -113,7 +114,7 @@ class SpanInstrumentationTest(TestCase):
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_create_span_context_manager(self):
         """Test span context manager with real implementation."""
-        from hub.apps.observability.span_instrumentation import OPENTELEMETRY_AVAILABLE, create_span
+        from hub.apps.observability.span_instrumentation import create_span
 
         # create_span handles OTEL unavailability by yielding None.
         # It must never raise, regardless of OTEL availability.

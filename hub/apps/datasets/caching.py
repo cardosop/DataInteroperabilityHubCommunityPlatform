@@ -272,16 +272,13 @@ def invalidate_dataset_list_cache(tenant_id: str | None = None) -> None:
                         tenant_id=tenant_id,
                         keys_invalidated=len(tag_set),
                     )
-                else:
-                    # Fallback: use pattern-based invalidation if Redis supports it
-                    # Pattern: dataset:list:{tenant_id}:*
-                    # Note: Django cache doesn't support pattern deletion natively
-                    # In production, use Redis directly or maintain a key registry
-                    logger.debug(
-                        "dataset_list_cache_invalidation_skipped",
-                        tenant_id=tenant_id,
-                        reason="No tag set found",
-                    )
+                # Deterministic deletion: the tag registry is best-effort
+                # (entries cached without a tag write survived invalidation
+                # until TTL), so also delete by key pattern — django_redis
+                # supports delete_pattern natively.
+                pattern = f"{CACHE_PREFIX_DATASET_LIST}:{tenant_id}:*"
+                if hasattr(cache, "delete_pattern"):
+                    cache.delete_pattern(pattern)
             else:
                 # Standard Django cache - can't invalidate by pattern
                 # In production, maintain a registry of cache keys
@@ -298,7 +295,7 @@ def invalidate_dataset_list_cache(tenant_id: str | None = None) -> None:
                 message="Invalidating all dataset list caches - this may be expensive",
             )
     except Exception as e:
-        logger.error(
+        logger.exception(
             "dataset_list_cache_invalidation_error",
             error=str(e),
             tenant_id=tenant_id,
@@ -319,7 +316,7 @@ def invalidate_dataset_detail_cache(dataset_id: str) -> None:
 
         logger.debug("dataset_detail_cache_invalidated", dataset_id=dataset_id)
     except Exception as e:
-        logger.error(
+        logger.exception(
             "dataset_detail_cache_invalidation_error",
             error=str(e),
             dataset_id=dataset_id,

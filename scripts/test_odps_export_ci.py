@@ -106,10 +106,11 @@ def test_odps_generation_from_hubcontract():
         )
 
         print("   ✅ ODPS generation from HubContract works correctly")
-        return True, odps_doc
     except Exception as e:
         print(f"   ❌ ODPS generation failed: {e}")
         return False, None
+    else:
+        return True, odps_doc
 
 
 def test_json_export(odps_doc):
@@ -140,10 +141,11 @@ def test_json_export(odps_doc):
         assert json_output.strip().endswith("}"), "JSON should end with }"
 
         print("   ✅ JSON export works correctly")
-        return True, json_output
     except Exception as e:
         print(f"   ❌ JSON export failed: {e}")
         return False, None
+    else:
+        return True, json_output
 
 
 def test_yaml_export(odps_doc):
@@ -179,7 +181,6 @@ def test_yaml_export(odps_doc):
         )
 
         print("   ✅ YAML export works correctly")
-        return True, yaml_output
     except ODPSExportError as e:
         if "PyYAML" in str(e):
             print("   ⚠️  Skipping YAML export test (PyYAML not available)")
@@ -189,6 +190,8 @@ def test_yaml_export(odps_doc):
     except Exception as e:
         print(f"   ❌ YAML export failed: {e}")
         return False, None
+    else:
+        return True, yaml_output
 
 
 def test_round_trip_consistency(odps_doc):
@@ -233,10 +236,11 @@ def test_round_trip_consistency(odps_doc):
                     )
 
         print("   ✅ Round-trip consistency verified")
-        return True
     except Exception as e:
         print(f"   ❌ Round-trip consistency test failed: {e}")
         return False
+    else:
+        return True
 
 
 def test_error_handling():

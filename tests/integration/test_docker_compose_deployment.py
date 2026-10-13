@@ -24,6 +24,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class DockerComposeManager:
         self, command: list[str], check: bool = True, timeout: int = 300
     ) -> subprocess.CompletedProcess:
         """Run docker compose command."""
-        cmd = ["docker", "compose", "-f", str(self.compose_file), "-p", self.project_name] + command
+        cmd = ["docker", "compose", "-f", str(self.compose_file), "-p", self.project_name, *command]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=check)
         if result.returncode != 0 and check:
             # Print error for debugging
@@ -87,7 +88,7 @@ class DockerComposeManager:
         if no_deps:
             if not services:
                 raise ValueError("services required when no_deps=True")
-            cmd = ["up", "-d", "--no-deps", "--remove-orphans"] + services
+            cmd = ["up", "-d", "--no-deps", "--remove-orphans", *services]
             result = self._run_command(cmd, check=False)
             if result.returncode != 0:
                 print(f"Docker Compose command failed: {' '.join(cmd)}")
@@ -123,9 +124,9 @@ class DockerComposeManager:
                 import re
 
                 container_names = re.findall(r'container name "([^"]+)"', result.stderr)
-                for container_name in container_names:
+                for raw_container_name in container_names:
                     # Remove the leading slash if present
-                    container_name = container_name.lstrip("/")
+                    container_name = raw_container_name.lstrip("/")
                     try:
                         subprocess.run(
                             ["docker", "rm", "-f", container_name],
@@ -242,13 +243,13 @@ def _docker_available() -> bool:
         return False
     # Verify the daemon is actually running and accessible
     import subprocess
+
     try:
-        result = subprocess.run(
-            ["docker", "info"], capture_output=True, text=True, timeout=10
-        )
-        return result.returncode == 0
+        result = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=10)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
+    else:
+        return result.returncode == 0
 
 
 @pytest.fixture(scope="module")
@@ -318,9 +319,7 @@ class TestDockerComposeDeployment:
 
     def test_docker_compose_file_exists(self, compose_file_path):
         """Test that docker-compose.yml exists."""
-        assert compose_file_path.exists(), (
-            f"docker-compose.yml not found at {compose_file_path}"
-        )
+        assert compose_file_path.exists(), f"docker-compose.yml not found at {compose_file_path}"
 
     def test_docker_compose_valid_yaml(self, docker_compose_config):
         """Test that docker-compose.yml is valid YAML."""
@@ -402,14 +401,13 @@ class TestDockerComposeServiceStartup:
         workflow_engine = services.get("workflow-engine-service", {})
         depends_on = workflow_engine.get("depends_on", {})
 
-        if isinstance(depends_on, dict):
+        if isinstance(depends_on, dict) and "postgres" in depends_on:
             # Check condition: service_healthy
-            if "postgres" in depends_on:
-                postgres_dep = depends_on["postgres"]
-                if isinstance(postgres_dep, dict):
-                    assert postgres_dep.get("condition") == "service_healthy", (
-                        "workflow-engine-service should wait for postgres to be healthy"
-                    )
+            postgres_dep = depends_on["postgres"]
+            if isinstance(postgres_dep, dict):
+                assert postgres_dep.get("condition") == "service_healthy", (
+                    "workflow-engine-service should wait for postgres to be healthy"
+                )
 
         # Verify postgres is healthy before workflow-engine starts
         postgres_status = docker_compose_manager.get_service_status("postgres")
@@ -442,7 +440,7 @@ class TestDockerComposeHealthChecks:
 
     # Health endpoint mappings: (service_name, host_port, endpoint_path)
     # Host ports from docker-compose.yml: workflow-engine 8098, workflow-registry 8089, api 8000
-    HEALTH_ENDPOINTS = [
+    HEALTH_ENDPOINTS: ClassVar[list] = [
         ("workflow-engine-service", 8098, "/healthz"),
         ("workflow-engine-service", 8098, "/ready"),
         ("workflow-registry-service", 8089, "/health"),
@@ -450,13 +448,13 @@ class TestDockerComposeHealthChecks:
     ]
 
     @pytest.fixture(scope="class")
+    @classmethod
     def started_services(
-        self, docker_compose_manager, infrastructure_services, application_services
+        cls, docker_compose_manager, infrastructure_services, application_services
     ):
         """Start all services for health check tests."""
         docker_compose_manager.start_services(infrastructure_services, wait=True)
         docker_compose_manager.start_services(application_services, wait=True)
-        yield
         # Cleanup handled by docker_compose_manager fixture
 
     def test_health_endpoints_accessible(self, docker_compose_manager, started_services):
@@ -564,13 +562,13 @@ class TestDockerComposeServiceCommunication:
     """Integration tests for service-to-service communication."""
 
     @pytest.fixture(scope="class")
+    @classmethod
     def started_services(
-        self, docker_compose_manager, infrastructure_services, application_services
+        cls, docker_compose_manager, infrastructure_services, application_services
     ):
         """Start all services for communication tests."""
         docker_compose_manager.start_services(infrastructure_services, wait=True)
         docker_compose_manager.start_services(application_services, wait=True)
-        yield
         # Cleanup handled by docker_compose_manager fixture
 
     def test_services_can_reach_each_other(
@@ -624,9 +622,7 @@ class TestDockerComposeServiceCommunication:
         api_status = docker_compose_manager.get_service_status("api-service")
 
         if not api_status or api_status.get("State") != "running":
-            pytest.fail(
-                f"API service not running: status={'found' if api_status else 'missing'}"
-            )
+            pytest.fail(f"API service not running: status={'found' if api_status else 'missing'}")
         api_health = requests.get("http://localhost:8000/health", timeout=5)
         assert api_health.status_code == 200, (
             "API service should be healthy and able to reach backend services"
@@ -639,10 +635,10 @@ class TestDockerComposeServiceDependencies:
     """Integration tests for service dependencies."""
 
     @pytest.fixture(scope="class")
-    def started_services(self, docker_compose_manager, infrastructure_services):
+    @classmethod
+    def started_services(cls, docker_compose_manager, infrastructure_services):
         """Start infrastructure services for dependency tests."""
         docker_compose_manager.start_services(infrastructure_services, wait=True)
-        yield
         # Cleanup handled by docker_compose_manager fixture
 
     def test_workflow_engine_depends_on_postgres(

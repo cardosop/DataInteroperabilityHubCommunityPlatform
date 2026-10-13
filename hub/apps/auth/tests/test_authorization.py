@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from hub.apps.auth.permissions import HasAnyRole, HasRole
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -36,7 +36,7 @@ class RequestUserAuth:
 class _StubView(APIView):
     """Stub view for authorization testing (uses get_permissions for param-based permissions)."""
 
-    authentication_classes = [RequestUserAuth]
+    authentication_classes = (RequestUserAuth,)
 
     def get_permissions(self):
         from rest_framework.permissions import IsAuthenticated
@@ -104,7 +104,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [IsAuthenticated(), HasRole("TENANT_ADMIN")]
@@ -129,7 +129,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [IsAuthenticated(), HasRole("TENANT_ADMIN")]
@@ -153,7 +153,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [IsAuthenticated(), HasRole("TENANT_ADMIN")]
@@ -177,7 +177,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [
@@ -205,7 +205,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [
@@ -233,7 +233,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [
@@ -267,7 +267,7 @@ class AuthorizationTest(TestCase):
         from rest_framework.views import APIView
 
         class TestView(APIView):
-            authentication_classes = [RequestUserAuth]
+            authentication_classes = (RequestUserAuth,)
 
             def get_permissions(self):
                 return [IsAuthenticated(), HasRole("TENANT_ADMIN")]

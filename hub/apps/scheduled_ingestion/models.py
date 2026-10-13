@@ -6,13 +6,15 @@ Models for managing scheduled/recurring data ingestion from external sources.
 
 import re
 import uuid
+from typing import ClassVar
 
-from croniter import croniter
+from croniter import croniter  # type: ignore[import-untyped]
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from hub.apps.core.state_machine import GuardedStateMachine
 from hub.apps.integrations.encryption import EncryptionError, decrypt_json_field, encrypt_json_field
 
 
@@ -68,6 +70,46 @@ class ScheduledIngestionRunStatus(models.TextChoices):
     COMPLETED = "COMPLETED", "Completed"
     FAILED = "FAILED", "Failed"
     CANCELLED = "CANCELLED", "Cancelled"
+
+
+class IngestionRunStateMachine(GuardedStateMachine):
+    """
+    W3.1 (R2-P1) — the scheduled-ingestion run lifecycle matrix.
+
+    PENDING → RUNNING | COMPLETED | FAILED | CANCELLED
+    RUNNING → COMPLETED | FAILED | CANCELLED
+    COMPLETED / FAILED / CANCELLED are terminal.
+
+    A run is created PENDING (dlt spine / manual trigger) or RUNNING (the
+    internal worker create). PENDING→COMPLETED/FAILED stays legal because
+    the legacy Prefect full-flow PATCHes the trigger-created run straight
+    to its terminal state (a first-class producer; same precedent as the
+    payment matrix's PENDING→SUCCEEDED webhook hop). The guarded spine +
+    RQ worker still walk PENDING→RUNNING→terminal explicitly. Every
+    status write on an existing row is validated against this matrix in
+    ``ScheduledIngestionRun.clean()``.
+    """
+
+    TRANSITIONS: ClassVar[dict] = {
+        ScheduledIngestionRunStatus.PENDING: frozenset(
+            {
+                ScheduledIngestionRunStatus.RUNNING,
+                ScheduledIngestionRunStatus.COMPLETED,
+                ScheduledIngestionRunStatus.FAILED,
+                ScheduledIngestionRunStatus.CANCELLED,
+            }
+        ),
+        ScheduledIngestionRunStatus.RUNNING: frozenset(
+            {
+                ScheduledIngestionRunStatus.COMPLETED,
+                ScheduledIngestionRunStatus.FAILED,
+                ScheduledIngestionRunStatus.CANCELLED,
+            }
+        ),
+        ScheduledIngestionRunStatus.COMPLETED: frozenset(),
+        ScheduledIngestionRunStatus.FAILED: frozenset(),
+        ScheduledIngestionRunStatus.CANCELLED: frozenset(),
+    }
 
 
 class ScheduledIngestion(models.Model):
@@ -220,7 +262,7 @@ class ScheduledIngestion(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "name"], name="unique_scheduled_ingestion_name_per_tenant"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -233,7 +275,7 @@ class ScheduledIngestion(models.Model):
             try:
                 re.compile(self.file_pattern)
             except re.error as e:
-                raise ValidationError(f"Invalid file pattern regex: {e!s}")
+                raise ValidationError(f"Invalid file pattern regex: {e!s}") from e
 
         # Validate cron expression if schedule_type is CUSTOM_CRON
         if self.schedule_type == ScheduleType.CUSTOM_CRON:
@@ -244,7 +286,7 @@ class ScheduledIngestion(models.Model):
             try:
                 croniter(cron_expr)
             except Exception as e:
-                raise ValidationError(f"Invalid cron expression: {e!s}")
+                raise ValidationError(f"Invalid cron expression: {e!s}") from e
 
     def save(self, *args, **kwargs):
         """Override save to validate, encrypt source_config, and calculate next_run_at"""
@@ -307,15 +349,19 @@ class ScheduledIngestion(models.Model):
             hour, minute = map(int, time_str.split(":"))
 
             # Find next matching day
+            next_run: datetime | None = None
             for i in range(7):
                 candidate = now + timedelta(days=i)
                 if candidate.weekday() in days_of_week:
                     next_run = candidate.replace(hour=hour, minute=minute, second=0, microsecond=0)
                     if next_run > now:
-                        return next_run
+                        break
 
             # If no match found in next 7 days, use first day of next week
-            next_run = now + timedelta(days=7)
+            if next_run is None:
+                next_run = now + timedelta(days=7)
+            # The replace is idempotent for the matched candidate (same
+            # hour/minute/second/microsecond) — one return for both paths.
             return next_run.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         elif self.schedule_type == ScheduleType.MONTHLY:
@@ -343,7 +389,7 @@ class ScheduledIngestion(models.Model):
 
             try:
                 from croniter import croniter as _croniter
-                from pytz import timezone as pytz_timezone
+                from pytz import timezone as pytz_timezone  # type: ignore[import-untyped]
 
                 tz = pytz_timezone(timezone_str)
                 cron = _croniter(cron_expr, now.astimezone(tz))
@@ -388,6 +434,15 @@ class ScheduledIngestionRun(models.Model):
         help_text="Run status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED",
     )
     started_at = models.DateTimeField(null=True, blank=True, help_text="When run started")
+    heartbeat_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "W3.5 (R2-P4) — the worker's last liveness claim. The stuck-run "
+            "detector only recovers runs whose lease expired: a fresh "
+            "heartbeat means the worker is alive and the run is left alone."
+        ),
+    )
     completed_at = models.DateTimeField(
         null=True, blank=True, help_text="When run completed (success or failure)"
     )
@@ -429,9 +484,39 @@ class ScheduledIngestionRun(models.Model):
             models.Index(fields=["prefect_flow_run_id"]),
             models.Index(fields=["job_id"]),
         ]
+        constraints = [
+            # W3.1 (R2-P1) — DB-level domain guard for the run status
+            # (defense in depth under the app-level transition matrix;
+            # out-of-band SQL writes cannot land a garbage status).
+            models.CheckConstraint(
+                condition=models.Q(status__in=ScheduledIngestionRunStatus.values),
+                name="scheduled_ingestion_runs_status_valid",
+            ),
+        ]
 
     def __str__(self):
         return f"Run {self.id} for {self.scheduled_ingestion.name}"
+
+    def clean(self):
+        """W3.1 (R2-P1) — every status write on an existing row is validated
+        against the shared guarded-transition matrix. Creation sets the
+        initial status; same-status saves (metadata-only writes) are
+        no-ops by design — the matrix is strict, identity is not a
+        transition."""
+        if self.pk:
+            old_status = (
+                type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            )
+            if old_status is not None and old_status != self.status:
+                IngestionRunStateMachine.validate_transition(old_status, self.status)
+
+    def save(self, *args, **kwargs):
+        # W3.1 — the guard runs the transition matrix ONLY, deliberately
+        # not full_clean(): field validators are serializer/service
+        # concerns and this model never ran them on save before. The DB
+        # CHECK constraint is the status-domain backstop.
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class DeadLetterQueueItem(models.Model):
@@ -492,7 +577,7 @@ class DeadLetterQueueItem(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["scheduled_ingestion", "file_path"], name="unique_dlq_item_per_file"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -563,9 +648,10 @@ class IngestionCost(models.Model):
 # this import Django's autodetector concludes the model was deleted and
 # `makemigrations` keeps generating a spurious DeleteModel migration for
 # it — the drift PR 1's advisory check surfaced on 2026-04-23.
-#
+from hub.apps.scheduled_ingestion.templates import (
+    IngestionTemplate,  # noqa: F401 — model registration re-export
+)
 # Placed at end-of-file so templates.py's own `from .models import ...`
 # sees all the dependencies it needs fully bound before templates.py
 # itself starts executing (standard circular-import dance; works because
 # templates.py only imports names that are defined above this point).
-from .templates import IngestionTemplate  # noqa: F401

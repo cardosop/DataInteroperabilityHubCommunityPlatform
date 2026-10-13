@@ -163,7 +163,7 @@ class OpenAPISpecValidator:
             errors.append(f"Spectral validation error: {e!s}")
             return False, errors, warnings
 
-    def validate_structure(self, spec: dict[str, Any], file_path: Path) -> tuple[bool, list[str]]:
+    def validate_structure(self, spec: dict[str, Any], _file_path: Path) -> tuple[bool, list[str]]:
         """Validate OpenAPI spec structure and required fields."""
         errors = []
 
@@ -280,7 +280,7 @@ class OpenAPISpecValidator:
         except json.JSONDecodeError as e:
             errors.append(f"JSON parsing error: {e!s}")
             return False, errors, warnings
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             errors.append(f"Error reading file: {e!s}")
             return False, errors, warnings
 

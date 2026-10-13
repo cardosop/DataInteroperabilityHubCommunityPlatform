@@ -5,6 +5,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { virtualizationService } from '../services/virtualizationService';
 import type {
   VirtualDatasetCreateRequest,
@@ -30,7 +31,7 @@ const QUERY_KEYS = {
 export function useVirtualDatasets(filters: VirtualDatasetListFilters = {}) {
   return useQuery({
     queryKey: [...QUERY_KEYS.datasets, filters],
-    queryFn: () => virtualizationService.listDatasets(filters),
+    queryFn: async () => normalizePaginated(await virtualizationService.listDatasets(filters)),
   });
 }
 
@@ -159,7 +160,8 @@ export function useExecuteQuery() {
 export function useQueryExecutions(filters: QueryExecutionListFilters = {}) {
   return useQuery({
     queryKey: [...QUERY_KEYS.queryExecutions, filters],
-    queryFn: () => virtualizationService.listQueryExecutions(filters),
+    queryFn: async () =>
+      normalizePaginated(await virtualizationService.listQueryExecutions(filters)),
   });
 }
 

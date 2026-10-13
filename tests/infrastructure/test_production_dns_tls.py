@@ -48,7 +48,8 @@ class TestHttpToHttpsRedirect:
     """Validate that all HTTP traffic is redirected to HTTPS."""
 
     @pytest.fixture(scope="class")
-    def traefik_config(self):
+    @classmethod
+    def traefik_config(cls):
         assert os.path.exists(TRAEFIK_MAIN), f"Missing {TRAEFIK_MAIN}"
         return _load_yaml(TRAEFIK_MAIN)
 
@@ -93,7 +94,8 @@ class TestTlsCertificateResolver:
     """Validate Let's Encrypt ACME configuration."""
 
     @pytest.fixture(scope="class")
-    def traefik_config(self):
+    @classmethod
+    def traefik_config(cls):
         return _load_yaml(TRAEFIK_MAIN)
 
     def test_letsencrypt_resolver_exists(self, traefik_config):
@@ -274,7 +276,8 @@ class TestTlsBestPractices:
     """Validate TLS configuration follows security best practices."""
 
     @pytest.fixture(scope="class")
-    def traefik_config(self):
+    @classmethod
+    def traefik_config(cls):
         return _load_yaml(TRAEFIK_MAIN)
 
     def test_traefik_api_not_insecure(self, traefik_config):

@@ -162,9 +162,7 @@ class TestPollComplianceJobSafetyNet(TestCase):
         deleted), the function returns without side effects."""
         from hub.apps.compliance.tasks import poll_compliance_job
 
-        mock_qs.select_related.return_value.get.side_effect = (
-            ComplianceRun.DoesNotExist
-        )
+        mock_qs.select_related.return_value.get.side_effect = ComplianceRun.DoesNotExist
         # Must not raise — exits via the ``if run is None: return`` guard.
         poll_compliance_job(str(uuid.uuid4()))
         # No exception = passes.

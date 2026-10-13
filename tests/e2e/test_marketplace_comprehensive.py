@@ -45,7 +45,7 @@ class MarketplacePublishTests(E2ETestBase):
             slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         ensure_e2e_tenant_ready(self.provider_tenant)
 
@@ -214,7 +214,7 @@ class MarketplaceBrowseTests(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer"""
         super().setUp()
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Provider setup (subscription required for writes)
         self.provider_tenant = Tenant.objects.create(
@@ -309,7 +309,7 @@ class MarketplacePurchaseTests(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer"""
         super().setUp()
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         # Provider setup (subscription required for writes)
         self.provider_tenant = Tenant.objects.create(
@@ -518,7 +518,7 @@ class MarketplaceEdgeCasesTests(E2ETestBase):
 
     def test_listing_with_multiple_assets(self):
         """Test that each listing is associated with exactly one asset"""
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         provider_tenant = Tenant.objects.create(
             name="Multi-Asset Provider", slug="multi-asset-provider", kyc_status=KYCStatus.VERIFIED
@@ -583,7 +583,7 @@ class MarketplaceEdgeCasesTests(E2ETestBase):
 
     def test_listing_price_validation(self):
         """Test listing price validation"""
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         provider_tenant = Tenant.objects.create(
             name="Provider", slug="provider", kyc_status=KYCStatus.VERIFIED
@@ -640,7 +640,7 @@ class MarketplaceEdgeCasesE2ETest(E2ETestBase):
     def setUp(self):
         super().setUp()
         # Ensure tenant has an active subscription for marketplace operations
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         ensure_e2e_tenant_ready(self.tenant)
 

@@ -1,0 +1,30 @@
+# Phase 277.B.045 — Security credential rotation alert rules.
+groups:
+  - name: security_credentials
+    rules:
+      - alert: InternalApiKeyNearExpiry
+        expr: internal_api_key_age_days > 80
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: "INTERNAL_API_KEY approaching rotation window"
+          description: >
+            The INTERNAL_API_KEY is {{ $value }} days old. Rotation is
+            required every 90 days per Phase 270.C.3. Run the AWS Secrets
+            Manager rotation Lambda immediately. New + previous key must
+            coexist for 24h overlap window.
+          runbook_url: "https://github.com/cardosop/DataInteroperabilityHub/blob/main/docs/runbooks/RB-SEC-001-credential-rotation.md"
+
+      - alert: WarehouseCredentialExpired
+        expr: warehouse_credential_age_days > 90
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Warehouse credentials EXPIRED for {{ $labels.tenant }}"
+          description: >
+            Warehouse credentials for {{ $labels.warehouse }} on tenant
+            {{ $labels.tenant }} are {{ $value }} days old (90-day limit
+            exceeded). Rotate immediately and verify connector health.
+          runbook_url: "https://github.com/cardosop/DataInteroperabilityHub/blob/main/docs/runbooks/RB-SEC-001-credential-rotation.md"

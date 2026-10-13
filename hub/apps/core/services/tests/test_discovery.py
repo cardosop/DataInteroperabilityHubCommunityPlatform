@@ -108,9 +108,11 @@ class ServiceDiscoveryTest(TestCase):
     def test_get_service_url_from_settings(self):
         """Test getting service URL from Django settings."""
         # Clear environment to force settings lookup
-        with patch.dict(os.environ, {}, clear=True):
-            with patch.object(ServiceRegistry, "_detect_environment", return_value="local"):
-                # This will check settings
-                url = get_service_url("api-service")
-                # Should fall back to Docker Compose format if settings not found
-                self.assertIsNotNone(url)
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(ServiceRegistry, "_detect_environment", return_value="local"),
+        ):
+            # This will check settings
+            url = get_service_url("api-service")
+            # Should fall back to Docker Compose format if settings not found
+            self.assertIsNotNone(url)

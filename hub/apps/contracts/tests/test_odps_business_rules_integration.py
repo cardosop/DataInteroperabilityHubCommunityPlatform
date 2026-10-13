@@ -428,7 +428,7 @@ class ODPSBusinessRulesRegistryIntegrationTest(ContractsTestBase):
 
         from hub.apps.core.business_rules.base import RuleExecutionContext
 
-        context = RuleExecutionContext(
+        _context = RuleExecutionContext(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             metadata={"odps_doc": odps_doc},
@@ -607,7 +607,9 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(ContractsTestBase):
         # Execute rule directly (Phase 274.6: execute_rules removed, use direct rule API)
         rule = ODPSNormalizationRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         result = rule.validate_normalization_eligibility(contract)
-        self.assertTrue(result.is_valid, f"Normalization eligibility validation failed: {result.errors}")
+        self.assertTrue(
+            result.is_valid, f"Normalization eligibility validation failed: {result.errors}"
+        )
 
     def test_business_rules_handle_unicode_characters(self):
         """Test that business rules handle unicode characters correctly."""

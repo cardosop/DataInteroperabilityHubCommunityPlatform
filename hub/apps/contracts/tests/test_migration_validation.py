@@ -64,7 +64,7 @@ class MigrationValidationTestBase(ContractsTestBase):
         )
 
     def _create_odcs_contract_with_marketplace(
-        self, marketplace_data: dict = None, hub_contract_data: dict = None
+        self, marketplace_data: dict | None = None, hub_contract_data: dict | None = None
     ) -> Contract:
         """Create an ODCS contract with marketplace metadata and HubContract."""
         # self.contract_service is available from ContractsTestBase
@@ -341,8 +341,11 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         ]
         # Note: Some fields might be transformed during ODPS generation/normalization,
         # so we check that there are no critical marketplace issues
-        self.assertEqual(len(marketplace_issues), 0,
-            f"Should have no marketplace issues when metadata preserved; got {marketplace_issues}")
+        self.assertEqual(
+            len(marketplace_issues),
+            0,
+            f"Should have no marketplace issues when metadata preserved; got {marketplace_issues}",
+        )
         self.assertTrue(result.is_migrated)
 
     def test_compare_marketplace_metadata_missing(self):
@@ -419,8 +422,9 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
             issue for issue in result.issues if "marketplace" in issue.issue_type.lower()
         ]
         # The validation should detect missing marketplace fields
-        self.assertGreater(len(marketplace_issues), 0,
-            "Validation must detect marketplace data loss")
+        self.assertGreater(
+            len(marketplace_issues), 0, "Validation must detect marketplace data loss"
+        )
 
     def test_compare_hubcontract_data_preserved(self):
         """Test HubContract data comparison when preserved."""

@@ -40,7 +40,7 @@ class PerformanceComparator:
         self,
         baseline_metrics: dict[str, float],
         current_metrics: dict[str, float],
-        category: str,
+        _category: str,
         threshold: float = 0.1,
     ) -> dict[str, Any]:
         """Compare metrics and identify changes"""

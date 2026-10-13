@@ -33,7 +33,7 @@ export function InferenceMetricsPage() {
   const isDeployed = deployment.status === InferenceDeploymentStatus.DEPLOYED;
 
   const handleUndeploy = async () => {
-    await undeployMutation.mutateAsync(deployment.id);
+    await undeployMutation.mutateAsync(deployment.deployment_id);
     refetch();
   };
 
@@ -50,7 +50,7 @@ export function InferenceMetricsPage() {
             {deployment.status}
           </span>
         </div>
-        <p className="ml-detail-subtitle">Deployment {deployment.id}</p>
+        <p className="ml-detail-subtitle">Deployment {deployment.deployment_id}</p>
       </div>
 
       <div className="ml-detail-grid">
@@ -58,7 +58,7 @@ export function InferenceMetricsPage() {
           <h2>Deployment Info</h2>
           <dl className="ml-detail-dl">
             <dt>Deployment ID</dt>
-            <dd className="monospace">{deployment.id}</dd>
+            <dd className="monospace">{deployment.deployment_id}</dd>
             <dt>Model ID</dt>
             <dd className="monospace">{deployment.model_id}</dd>
             <dt>Status</dt>

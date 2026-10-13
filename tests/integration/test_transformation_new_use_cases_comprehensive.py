@@ -116,9 +116,8 @@ class TransformationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
         except Exception as exc:
             # MinIO may not be available in all envs — log but don't block
             import logging
-            logging.getLogger(__name__).warning(
-                "S3/MinIO upload failed in setUp: %s", exc
-            )
+
+            logging.getLogger(__name__).warning("S3/MinIO upload failed in setUp: %s", exc)
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,

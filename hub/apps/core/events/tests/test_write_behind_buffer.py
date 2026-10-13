@@ -29,9 +29,11 @@ class TestWriteBehindBufferRetention(TestCase):
         buf._buffer.append({"event": "C"})
 
         # Mock _flush_events to raise
-        with patch.object(buf, "_flush_events", side_effect=Exception("DB down")):
-            with self.assertRaises(Exception):
-                buf.flush()
+        with (
+            patch.object(buf, "_flush_events", side_effect=Exception("DB down")),
+            self.assertRaises(Exception),
+        ):
+            buf.flush()
 
         # Events must still be in the buffer
         self.assertEqual(len(buf._buffer), 3)
@@ -75,9 +77,11 @@ class TestWriteBehindBufferRetention(TestCase):
         buf._buffer.append({"event": "B"})
 
         # First flush fails
-        with patch.object(buf, "_flush_events", side_effect=Exception("fail")):
-            with self.assertRaises(Exception):
-                buf.flush()
+        with (
+            patch.object(buf, "_flush_events", side_effect=Exception("fail")),
+            self.assertRaises(Exception),
+        ):
+            buf.flush()
 
         # Buffer still has events
         self.assertEqual(len(buf._buffer), 2)

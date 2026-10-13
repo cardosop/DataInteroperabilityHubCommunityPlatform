@@ -14,7 +14,6 @@ import uuid
 import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.business_rules import StructuralFloorRule
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -71,9 +70,8 @@ class TestSchemaEditorRuleInvocation(TestCase):
     def test_structural_floor_rejection_propagates(self):
         """A structureless payload (models=[], no schema fields) raises
         ValidationError from the real enforce_structural_floor."""
-        from hub.apps.core.services.base import ValidationError
-
         from hub.apps.contracts.structural_floor import enforce_structural_floor
+        from hub.apps.core.services.base import ValidationError
 
         with self.assertRaises(ValidationError):
             enforce_structural_floor(

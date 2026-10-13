@@ -14,7 +14,7 @@ def fix(path):
     with open(path) as fh:
         lines = fh.readlines()
     fixed = []
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         stripped = line.rstrip("\n")
         # (1) self.assertEqual(x, y))  →  self.assertEqual(x, y)
         if re.search(r"self\.assert\w+\([^)]+\)\s*\)", stripped):
@@ -77,10 +77,11 @@ def fix(path):
     try:
         compile(content, path, "exec")
         print(f"  ✓ {path}")
-        return True
     except SyntaxError as e:
         print(f"  ✗ {path} — {e}")
         return False
+    else:
+        return True
 
 
 for path in sys.argv[1:]:

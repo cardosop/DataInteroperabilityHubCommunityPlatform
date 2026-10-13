@@ -13,7 +13,6 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from hub.apps.api.middleware.idempotency_utils import get_redis_client
 from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.files.models import File, FileScanStatus, FileStatus

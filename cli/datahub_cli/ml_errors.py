@@ -137,6 +137,18 @@ def validate_model_status(status: str) -> None:
         )
 
 
+_ML_STATUS_ERROR_DISPATCH: dict[int, tuple[type[ODHMLModelError], str]] = {
+    404: (ODHMLModelNotFoundError, "MODEL_NOT_FOUND"),
+    409: (ODHMLModelConflictError, "MODEL_CONFLICT"),
+    422: (ODHMLModelValidationError, "MODEL_VALIDATION_ERROR"),
+}
+_ML_STATUS_SUGGESTION_DEFAULTS: dict[int, str] = {
+    404: "Check that the model ID is correct",
+    409: "Model may already exist or be in an invalid state",
+    422: "Check your input data",
+}
+
+
 def handle_ml_api_error(
     response_text: str, status_code: int, endpoint: str | None = None
 ) -> ODHMLModelError:
@@ -163,40 +175,6 @@ def handle_ml_api_error(
     # Try to parse as ODPS error first (for consistency)
     try:
         odps_error = handle_api_error(response_text, status_code, endpoint)
-        # Convert to ODH ML Model error
-        if status_code == 404:
-            return ODHMLModelNotFoundError(
-                message=odps_error.message,
-                error_code=odps_error.error_code or "MODEL_NOT_FOUND",
-                context=odps_error.context,
-                suggestion=odps_error.suggestion or "Check that the model ID is correct",
-                original_error=odps_error.original_error,
-            )
-        elif status_code == 409:
-            return ODHMLModelConflictError(
-                message=odps_error.message,
-                error_code=odps_error.error_code or "MODEL_CONFLICT",
-                context=odps_error.context,
-                suggestion=odps_error.suggestion
-                or "Model may already exist or be in an invalid state",
-                original_error=odps_error.original_error,
-            )
-        elif status_code == 422:
-            return ODHMLModelValidationError(
-                message=odps_error.message,
-                error_code=odps_error.error_code or "MODEL_VALIDATION_ERROR",
-                context=odps_error.context,
-                suggestion=odps_error.suggestion or "Check your input data",
-                original_error=odps_error.original_error,
-            )
-        else:
-            return ODHMLModelError(
-                message=odps_error.message,
-                error_code=odps_error.error_code or "ML_MODEL_ERROR",
-                context=odps_error.context,
-                suggestion=odps_error.suggestion,
-                original_error=odps_error.original_error,
-            )
     except Exception:
         # Fallback to generic error
         error_info = error_data.get("error", {})
@@ -213,22 +191,24 @@ def handle_ml_api_error(
 
         suggestion = _get_ml_error_suggestion(status_code, endpoint)
 
-        if status_code == 404:
-            return ODHMLModelNotFoundError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-        elif status_code == 409:
-            return ODHMLModelConflictError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-        elif status_code == 422:
-            return ODHMLModelValidationError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-        else:
-            return ODHMLModelError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
+        error_cls, _default_code = _ML_STATUS_ERROR_DISPATCH.get(
+            status_code, (ODHMLModelError, "ML_MODEL_ERROR")
+        )
+        return error_cls(
+            message=error_message, error_code=error_code, context=context, suggestion=suggestion
+        )
+
+    # Convert to ODH ML Model error
+    error_cls, default_code = _ML_STATUS_ERROR_DISPATCH.get(
+        status_code, (ODHMLModelError, "ML_MODEL_ERROR")
+    )
+    return error_cls(
+        message=odps_error.message,
+        error_code=odps_error.error_code or default_code,
+        context=odps_error.context,
+        suggestion=odps_error.suggestion or _ML_STATUS_SUGGESTION_DEFAULTS.get(status_code),
+        original_error=odps_error.original_error,
+    )
 
 
 def validate_json(json_string: str, field_name: str = "JSON") -> dict:
@@ -263,27 +243,25 @@ def validate_json(json_string: str, field_name: str = "JSON") -> dict:
             error_code="INVALID_JSON_FORMAT",
             context={"field_name": field_name, "json_string": json_string[:100]},
             suggestion=f"{field_name} must be valid JSON. Check syntax and formatting.",
-        )
+        ) from e
+
+
+_ML_ERROR_SUGGESTIONS: dict[int, str] = {
+    400: "Check your request parameters and ensure they are valid",
+    401: "Authentication failed. Run 'datahub login' to authenticate",
+    403: "You don't have permission to perform this operation",
+    409: "Conflict: The model may already exist or be in an invalid state",
+    422: "Validation failed. Check your input data (ODH model ID, version, model type, etc.)",
+    429: "Rate limit exceeded. Wait before retrying",
+}
 
 
 def _get_ml_error_suggestion(status_code: int, endpoint: str | None = None) -> str:
     """Get suggestion for ML model registry errors"""
-    if status_code == 400:
-        return "Check your request parameters and ensure they are valid"
-    elif status_code == 401:
-        return "Authentication failed. Run 'datahub login' to authenticate"
-    elif status_code == 403:
-        return "You don't have permission to perform this operation"
-    elif status_code == 404:
+    if status_code == 404:
         if endpoint and "model" in endpoint.lower():
             return "Model not found. Check that the model ID is correct"
         return "Resource not found. Check that the ID is correct"
-    elif status_code == 409:
-        return "Conflict: The model may already exist or be in an invalid state"
-    elif status_code == 422:
-        return "Validation failed. Check your input data (ODH model ID, version, model type, etc.)"
-    elif status_code == 429:
-        return "Rate limit exceeded. Wait before retrying"
-    elif status_code >= 500:
+    if status_code >= 500:
         return "Server error. Please try again later or contact support"
-    return "Check your request and try again"
+    return _ML_ERROR_SUGGESTIONS.get(status_code, "Check your request and try again")

@@ -2,63 +2,27 @@
 Phase 279.H.cm_social — Community Manager persona journey tests (CLI).
 
 Tests the Community Manager end-to-end workflow through the CLI.
-Uses ``datahub`` CLI subprocess.  Requires ``DATAHUB_BASE_URL``
-and ``DATAHUB_API_TOKEN`` env vars.  All tests skip when no
-backend is detected.
 
-Usage:
-  DATAHUB_BASE_URL=http://localhost:8000/api/v1 \
-  DATAHUB_API_TOKEN=<token> \
-  pytest cli/tests/use_cases/test_cm_social_journey.py -v
+CLI subprocesses authenticate through the shared journey helpers, which
+provision a persona token (self-healing disk cache + /auth/me/
+validation) rather than trusting a host-shell ``DATAHUB_API_TOKEN`` —
+a stale exported token previously made every API command 401 and the
+tests silently skipped (measured 2026-09-20).  All tests skip when no
+backend is detected.
 """
 
-import json
-import os
 import subprocess
 
 import pytest
+from tests.use_cases._journey_helpers import (
+    DATAHUB_CLI_CMD,
+    _cli,
+    requires_backend,
+)
 
 pytestmark = [
     pytest.mark.journey("JOURNEY-CM-001"),
 ]
-
-DATAHUB_BASE_URL = os.environ.get("DATAHUB_BASE_URL", "")
-DATAHUB_CLI = os.environ.get("DATAHUB_CLI", "datahub")
-API_TOKEN = os.environ.get("DATAHUB_API_TOKEN", "")
-
-
-def _backend_available():
-    if not DATAHUB_BASE_URL:
-        return False
-    import urllib.request
-
-    try:
-        req = urllib.request.Request(
-            f"{DATAHUB_BASE_URL.rstrip('/')}/health/",
-            headers={"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {},
-        )
-        resp = urllib.request.urlopen(req, timeout=5)
-        return resp.status == 200
-    except Exception:
-        return False
-
-
-BACKEND_AVAILABLE = _backend_available()
-requires_backend = pytest.mark.skipif(
-    not BACKEND_AVAILABLE,
-    reason="No backend detected — set DATAHUB_BASE_URL + DATAHUB_API_TOKEN",
-)
-
-
-def _cli(*args):
-    cmd = [DATAHUB_CLI] + list(args) + ["--format", "json"]
-    env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
-    if API_TOKEN:
-        env["DATAHUB_API_TOKEN"] = API_TOKEN
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60, env=env)
-    if result.returncode != 0:
-        pytest.skip(f"CLI command failed (rc={result.returncode}): {result.stderr[:200]}")
-    return json.loads(result.stdout)
 
 
 @pytest.mark.integration
@@ -69,7 +33,11 @@ class TestCMJourney:
     def test_cli_is_installed(self):
         """Verify datahub CLI is callable."""
         result = subprocess.run(
-            [DATAHUB_CLI, "--help"], check=False, capture_output=True, text=True, timeout=10
+            [*DATAHUB_CLI_CMD, "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode == 0
 

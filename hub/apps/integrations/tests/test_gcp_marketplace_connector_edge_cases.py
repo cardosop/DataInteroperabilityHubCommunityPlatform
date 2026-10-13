@@ -43,7 +43,7 @@ def get_test_credentials():
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping") from None
 
 
 class TestGCPMarketplaceConnectorEdgeCases(TestCase):

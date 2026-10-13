@@ -22,15 +22,12 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
-      if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
-        return;
-      }
+      test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
       expect(onDeveloper).toBe(true);
       const hasContent =
         (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
@@ -45,7 +42,7 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const url = page.url();
       const isGated = url.includes('/403') || url.includes('/login');

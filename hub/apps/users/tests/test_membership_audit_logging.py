@@ -80,12 +80,8 @@ class MembershipAuditLoggingTest(TestCase):
     @pytest.mark.integration
     def test_idempotent_add_does_not_emit_second_grant_audit(self):
         svc = UserTenantMembershipService()
-        svc.add_membership(
-            self.subject_user, self.tenant_b, actor_user=self.admin_user
-        )
-        svc.add_membership(
-            self.subject_user, self.tenant_b, actor_user=self.admin_user
-        )
+        svc.add_membership(self.subject_user, self.tenant_b, actor_user=self.admin_user)
+        svc.add_membership(self.subject_user, self.tenant_b, actor_user=self.admin_user)
         count = AuditEvent.objects.filter(
             action=event_types.MEMBERSHIP_GRANTED,
             tenant_id=self.tenant_b.id,

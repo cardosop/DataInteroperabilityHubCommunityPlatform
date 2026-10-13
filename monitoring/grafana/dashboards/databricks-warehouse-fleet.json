@@ -1,0 +1,190 @@
+{
+  "title": "Databricks \u2014 Warehouse Fleet",
+  "uid": "databricks-warehouse-fleet",
+  "description": "Phase 3 (add-databricks-sql-warehouses 3.8) \u2014 SQL warehouse fleet observability: mirror staleness, per-state fleet size, long-STARTING warehouses, and per-tenant connection-pool pressure. Metrics from hub/apps/databricks_admin/metrics.py.",
+  "tags": [
+    "databricks",
+    "warehouses",
+    "compute",
+    "production"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Stale Mirrors \u2014 Max Age (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(time() - databricks_warehouse_mirror_last_success_timestamp)",
+          "legendFormat": "max mirror age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 43200,
+                "color": "yellow"
+              },
+              {
+                "value": 86400,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Warehouses per State",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (databricks_warehouse_state_count)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Long-STARTING \u2014 Max Age",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max((time() - databricks_warehouse_starting_since_timestamp) * (databricks_warehouse_starting_since_timestamp > 0))",
+          "legendFormat": "max STARTING age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 300,
+                "color": "yellow"
+              },
+              {
+                "value": 600,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Pool In-Use (per tenant)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 6,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (databricks_warehouse_pool_in_use)",
+          "legendFormat": "tenant {{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Pool Exhaustions (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 6,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_warehouse_pool_exhausted_total[24h]))",
+          "legendFormat": "exhaustions"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Pool Borrows (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_warehouse_pool_borrows_total[24h]))",
+          "legendFormat": "borrows"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      }
+    }
+  ]
+}

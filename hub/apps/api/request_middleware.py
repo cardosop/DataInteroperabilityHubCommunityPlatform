@@ -146,7 +146,7 @@ class SecurityHeadersMiddleware:
         response = self.get_response(request)
         return self.process_response(request, response)
 
-    def process_response(self, request, response):
+    def process_response(self, _request, response):
         """Add security headers to response."""
         from django.conf import settings
 

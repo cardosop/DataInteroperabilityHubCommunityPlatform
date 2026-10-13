@@ -25,12 +25,15 @@ from hub.apps.core.business_rules.base import (
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import register_rule
+from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.encryption import EncryptionError
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceMapping,
     MarketplaceSyncJob,
 )
+from hub.apps.integrations.utils import MarketplaceError
 
 if TYPE_CHECKING:
     from hub.apps.integrations.base import (
@@ -107,7 +110,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
         return "MarketplaceIntegrationBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -310,7 +313,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                 decrypted_config = connection.get_config()
                 details["config_decryptable"] = True
                 details["config_keys"] = list(decrypted_config.keys()) if decrypted_config else []
-            except Exception as e:
+            except EncryptionError as e:
                 warnings.append(f"Could not decrypt connection config: {e!s}")
                 details["config_decryptable"] = False
 
@@ -762,7 +765,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
         except ValueError as e:
             errors.append(f"Invalid marketplace type {connection.marketplace_type}: {e!s}")
             details["marketplace_type_valid"] = False
-        except Exception as e:
+        except ImportError as e:
             errors.append(f"Error validating sync direction: {e!s}")
             details["validation_error"] = str(e)
 
@@ -854,7 +857,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                 details["marketplace_supported"] = False
                 details["connection_tested"] = None
 
-        except Exception as e:
+        except (EncryptionError, ImportError, ValueError) as e:
             errors.append(f"Failed to decrypt connection config or create connector: {e!s}")
             details["config_error"] = str(e)
             details["connection_tested"] = False
@@ -999,7 +1002,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                                 accessible_assets.append(asset_id)
                         else:
                             accessible_assets.append(asset_id)
-                    except Exception as e:
+                    except (ImportError, NotFoundError, ValidationError) as e:
                         inaccessible_assets.append(
                             {
                                 "asset_id": asset_id,
@@ -1124,7 +1127,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                                 )
                         else:
                             accessible_assets.append(asset_id)
-                    except Exception as e:
+                    except (ImportError, NotFoundError, ValidationError) as e:
                         errors.append(f"Asset {asset_id} is not accessible: {e!s}")
 
                 details["accessible_assets_count"] = len(accessible_assets)
@@ -1244,7 +1247,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                 else:
                     details["asset_accessible"] = True
 
-            except Exception as e:
+            except (ImportError, NotFoundError, ValidationError) as e:
                 errors.append(f"Asset {mapping.hub_asset.id} is not accessible: {e!s}")
                 details["asset_accessible"] = False
                 details["asset_error"] = str(e)
@@ -1640,12 +1643,12 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                         odps_json = json.dumps(odps_metadata)
                         details["odps_parseable"] = True
                         details["odps_metadata_size"] = len(odps_json)
-                    except Exception as e:
+                    except (TypeError, ValueError) as e:
                         errors.append(f"ODPS metadata is not valid JSON structure: {e!s}")
                         details["odps_parseable"] = False
                         details["odps_parse_error"] = str(e)
 
-                except Exception as e:
+                except ImportError as e:
                     warnings.append(f"Could not validate ODPS metadata structure: {e!s}")
                     details["odps_validation_error"] = str(e)
 
@@ -1685,7 +1688,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                         odcs_json = json.dumps(odcs_metadata)
                         details["odcs_parseable"] = True
                         details["odcs_metadata_size"] = len(odcs_json)
-                    except Exception as e:
+                    except (TypeError, ValueError) as e:
                         errors.append(f"ODCS metadata is not valid JSON structure: {e!s}")
                         details["odcs_parseable"] = False
                         details["odcs_parse_error"] = str(e)
@@ -1729,7 +1732,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
 
                 details["linking_validation_attempted"] = True
 
-            except Exception as e:
+            except (KeyError, AttributeError, TypeError) as e:
                 warnings.append(f"Could not validate contract linking compatibility: {e!s}")
                 details["linking_validation_error"] = str(e)
                 details["linking_validation_attempted"] = False
@@ -1973,7 +1976,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
 
             if hasattr(django_settings, "MAX_FILE_SIZE"):
                 return django_settings.MAX_FILE_SIZE
-        except Exception:
+        except AttributeError:
             pass
 
         return default_max
@@ -2090,7 +2093,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                     # Try validation without marketplace_type
                     validate_marketplace_config(config)
                     details["config_structure_valid"] = True
-            except Exception as e:
+            except (ImportError, MarketplaceError) as e:
                 # MarketplaceError or other validation errors
                 # Try to get message attribute if it exists (for MarketplaceError)
                 error_msg = getattr(e, "message", str(e))
@@ -2414,7 +2417,7 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
                         decrypted_config, marketplace_type=marketplace_type_enum
                     )
                     details["config_structure_valid"] = True
-                except Exception as e:
+                except (ImportError, ValueError, MarketplaceError) as e:
                     # Try to get message attribute if it exists (for MarketplaceError)
                     error_msg = getattr(e, "message", str(e))
                     warnings.append(f"Connection config structure validation warning: {error_msg}")

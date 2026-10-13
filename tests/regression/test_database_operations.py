@@ -16,14 +16,14 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -55,14 +55,13 @@ class ModelCRUDTest(DatabaseOperationsRegressionTest):
     def test_tenant_crud(self):
         """Test Tenant CRUD operations"""
         # Create
-        tenant = Tenant.objects.create(
-            name=f"CRUD Tenant {uuid.uuid4().hex[:8]}", slug=f"crud-tenant-{uuid.uuid4().hex[:8]}"
-        )
+        tenant_name = f"CRUD Tenant {uuid.uuid4().hex[:8]}"
+        tenant = Tenant.objects.create(name=tenant_name, slug=f"crud-tenant-{uuid.uuid4().hex[:8]}")
         self.assertIsNotNone(tenant.id)
 
         # Read
         retrieved = Tenant.objects.get(id=tenant.id)
-        self.assertEqual(retrieved.name, "CRUD Tenant")
+        self.assertEqual(retrieved.name, tenant_name)
 
         # Update
         retrieved.name = "Updated CRUD Tenant"
@@ -255,13 +254,16 @@ class DatabaseTransactionTest(DatabaseOperationsRegressionTest):
         """Test transaction rollback"""
         initial_count = Asset.objects.filter(tenant=self.tenant).count()
 
+        def _raise_test_rollback():
+            raise ValueError("Test rollback")
+
         try:
             with transaction.atomic():
                 Asset.objects.create(
                     tenant=self.tenant, key="transaction-asset", name="Transaction Asset"
                 )
                 # Force an error
-                raise ValueError("Test rollback")
+                _raise_test_rollback()
         except ValueError:
             pass
 
@@ -349,7 +351,7 @@ class DatabaseIndexesTest(DatabaseOperationsRegressionTest):
         Asset.objects.create(tenant=self.tenant, key="unique-asset", name="Unique Asset")
 
         # Try to create another asset with same key (should fail)
-        with self.assertRaises(Exception):  # IntegrityError or ValidationError
+        with self.assertRaises(IntegrityError):  # UniqueConstraint(tenant, key)
             Asset.objects.create(tenant=self.tenant, key="unique-asset", name="Duplicate Asset")
 
     def test_indexed_queries(self):

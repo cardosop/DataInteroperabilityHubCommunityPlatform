@@ -51,19 +51,31 @@ SCAN_DIRS = [
 
 
 def _extract_doc_journey_ids(doc_path: Path) -> set[str]:
-    """Extract all JOURNEY-XXX-NNN from the canonical journeys doc."""
+    """Extract all journey IDs from the canonical journeys doc.
+
+    close-test-coverage-gaps 6.1 — the ID shape was widened from
+    ``JOURNEY-XXX-NNN`` (single letter segment + required numeric suffix)
+    to ``JOURNEY-XXX[-YYY...][-NNN]`` (multi-segment letters, OPTIONAL
+    numeric suffix): JOURNEY-ERROR-BOUNDARY, JOURNEY-TA-SUBSCRIPTION,
+    JOURNEY-TA-BILLING-UPGRADE and friends were invisible to the old
+    pattern. ``JOURNEY-XXX`` (the docs' own "how to add" template token)
+    is excluded — it is not a real journey ID.
+    """
     if not doc_path.exists():
         return set()
     content = doc_path.read_text()
-    return set(re.findall(r"JOURNEY-[A-Z]+-\d+", content))
+    ids = set(re.findall(r"JOURNEY-[A-Z]+(?:-[A-Z]+)*(?:-\d+)?", content))
+    return {jid for jid in ids if jid != "JOURNEY-XXX"}
 
 
 def _extract_critical_journey_ids(yaml_path: Path) -> set[str]:
-    """Extract JOURNEY-XXX-NNN from the critical YAML registry."""
+    """Extract journey IDs from the critical YAML registry (same widened
+    shape as the doc extractor — see close-test-coverage-gaps 6.1)."""
     if not yaml_path.exists():
         return set()
     content = yaml_path.read_text()
-    return set(re.findall(r"JOURNEY-[A-Z]+-\d+", content))
+    ids = set(re.findall(r"JOURNEY-[A-Z]+(?:-[A-Z]+)*(?:-\d+)?", content))
+    return {jid for jid in ids if jid != "JOURNEY-XXX"}
 
 
 def _extract_marked_journey_ids(scan_dirs: list[Path]) -> set[str]:
@@ -85,10 +97,10 @@ def _extract_marked_journey_ids(scan_dirs: list[Path]) -> set[str]:
                 try:
                     with open(filepath, encoding="utf-8", errors="ignore") as fh:
                         content = fh.read()
-                except Exception:
+                except OSError:
                     continue
                 for match in re.finditer(
-                    r'(?:pytest\.mark\.journey|@pytest\.mark\.journey)\s*\(\s*["\'](JOURNEY-[A-Z]+-\d+)["\']',
+                    r'(?:pytest\.mark\.journey|@pytest\.mark\.journey)\s*\(\s*["\'](JOURNEY-[A-Z]+(?:-[A-Z]+)*(?:-\d+)?)["\']',
                     content,
                 ):
                     marked.add(match.group(1))
@@ -96,13 +108,15 @@ def _extract_marked_journey_ids(scan_dirs: list[Path]) -> set[str]:
 
 
 def _extract_frontend_journey_ids(journeys_dir: Path) -> set[str]:
-    """Extract JOURNEY-XXX-NNN from frontend spec filenames."""
+    """Extract journey IDs from frontend spec filenames (close-test-
+    coverage-gaps 6.1 — widened shape, e.g. JOURNEY-ERROR-BOUNDARY and
+    JOURNEY-TA-BILLING-UPGRADE)."""
     ids: set[str] = set()
     if not journeys_dir.is_dir():
         return ids
     for _root, _dirs, files in os.walk(journeys_dir):
         for f in files:
-            match = re.match(r"(JOURNEY-[A-Z]+-\d+)\.spec\.ts$", f)
+            match = re.match(r"(JOURNEY-[A-Z]+(?:-[A-Z]+)*(?:-\d+)?)\.spec\.ts$", f)
             if match:
                 ids.add(match.group(1))
     return ids

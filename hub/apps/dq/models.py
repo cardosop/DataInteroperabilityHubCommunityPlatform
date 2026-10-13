@@ -171,6 +171,10 @@ class DQRun(models.Model):
     details_json = models.JSONField(
         null=True, blank=True, help_text="Detailed DQ results and metadata"
     )
+    sampled = models.BooleanField(
+        default=False,
+        help_text="True when this run sampled the live data with LIMIT N instead of a full scan (Phase 275.E.1)",
+    )
     started_at = models.DateTimeField(null=True, blank=True, help_text="When DQ run started")
     completed_at = models.DateTimeField(null=True, blank=True, help_text="When DQ run completed")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -614,8 +618,16 @@ class DQAlertingRule(models.Model):
             for channel in self.alert_channels:
                 if channel == "EMAIL" and "emails" not in self.channel_config:
                     raise ValidationError("EMAIL channel requires 'emails' in channel_config")
+                elif channel == "SLACK" and "webhook_url" not in self.channel_config:
+                    raise ValidationError("SLACK channel requires 'webhook_url' in channel_config")
                 elif channel == "WEBHOOK" and "url" not in self.channel_config:
                     raise ValidationError("WEBHOOK channel requires 'url' in channel_config")
+                elif channel == "PAGERDUTY" and not (
+                    "integration_key" in self.channel_config or "routing_key" in self.channel_config
+                ):
+                    raise ValidationError(
+                        "PAGERDUTY channel requires 'integration_key' in channel_config"
+                    )
 
     def save(self, *args, **kwargs):
         """Override save to validate and encrypt channel_config."""

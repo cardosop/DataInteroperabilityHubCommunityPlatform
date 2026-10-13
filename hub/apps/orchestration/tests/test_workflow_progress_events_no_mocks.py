@@ -19,6 +19,7 @@ except ImportError:
     pytest = None
     pytestmark = None
 
+import contextlib
 import json
 import uuid
 
@@ -68,7 +69,9 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
 
         self.engine.register_task("test_task", test_task)
 
-    def _get_step_events_from_events(self, workflow_instance_id: str, event_type: str = None):
+    def _get_step_events_from_events(
+        self, workflow_instance_id: str, event_type: str | None = None
+    ):
         """Helper to get step events from Event model (sync persistence)."""
         events = Event.objects.filter(
             event_type__in=[
@@ -232,10 +235,8 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
 
         # Execute workflow (will fail at step2 due to invalid state transition).
         # Exception is expected; the test verifies resulting state/events below.
-        try:
+        with contextlib.suppress(Exception):
             self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected failure on invalid state transition
 
         # Get step.failed events from outbox
         step_failed_events = self._get_step_events_from_events(

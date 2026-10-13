@@ -74,9 +74,10 @@ def _semantic_service_available() -> bool:
 
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 def _get_postgres_source_config() -> dict | None:
@@ -255,7 +256,7 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
                 execution_mode=QueryExecutionMode.SYNC,
                 parameters={},
             )
-        except (ValidationError, Exception) as e:
+        except Exception as e:
             err = str(e).lower()
             if any(
                 kw in err
@@ -344,7 +345,7 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
                 execution_mode=QueryExecutionMode.SYNC,
                 parameters={},
             )
-        except (ValidationError, Exception) as e:
+        except Exception as e:
             err = str(e).lower()
             if any(
                 kw in err
@@ -426,7 +427,7 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
                 execution_mode=QueryExecutionMode.SYNC,
                 parameters={},
             )
-        except (ValidationError, Exception) as e:
+        except Exception as e:
             err = str(e).lower()
             if any(
                 kw in err
@@ -574,14 +575,19 @@ class RealRESTSourceIntegrationTest(TestCase):
         """
         Execute REST query against real HTTP endpoint (jsonplaceholder.typicode.com).
         """
+
         # Guard: skip if jsonplaceholder is unreachable
-        try:
+        def _probe() -> None:
             import httpx
+
             r = httpx.head("https://jsonplaceholder.typicode.com/posts", timeout=10)
             if r.status_code >= 500:
                 raise unittest.SkipTest("jsonplaceholder.typicode.com returned 5xx")
+
+        try:
+            _probe()
         except Exception as e:
-            raise unittest.SkipTest(f"jsonplaceholder.typicode.com unreachable: {e}")
+            raise unittest.SkipTest(f"jsonplaceholder.typicode.com unreachable: {e}") from e
 
         vd = VirtualDataset.objects.create(
             tenant=self.tenant,

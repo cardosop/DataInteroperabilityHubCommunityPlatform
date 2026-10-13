@@ -1,9 +1,11 @@
 name: Release (SDK packages)
 
+# Publishing SDK packages needs the npm/PyPI credentials secrets.
+# Until they are configured, the workflow is manual-only — the
+# tag push happens on every publish, and an unconfigured release
+# job failing on each sync is noise (0.4 review round).
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 jobs:
   sdk-js:

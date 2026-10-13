@@ -41,7 +41,7 @@ class Command(BaseCommand):
             help="Output report as JSON.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         window = options["window"]
         as_json = options["json"]
 

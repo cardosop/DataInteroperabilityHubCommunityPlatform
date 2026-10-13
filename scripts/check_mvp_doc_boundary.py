@@ -132,7 +132,9 @@ EXTERNAL_DOC_PATTERNS = [
     re.compile(r"\]\([^)]*SECURITY_AND_COMPLIANCE\.md"),
     re.compile(r"\]\([^)]*DEVELOPER_GUIDE\.md"),
     re.compile(r"\]\([^)]*DEPLOYMENT_AND_OPERATIONS\.md"),
-    re.compile(r"\]\([^)]*OPERATIONS\.md"),
+    # Slash-anchored so "DEPLOYMENT_AND_OPERATIONS.md" (its own pattern
+    # above) does not double-match the OPERATIONS stub pattern.
+    re.compile(r"\]\([^)]*/OPERATIONS\.md"),
     re.compile(r"\]\([^)]*API_ENDPOINTS_REFERENCE\.md"),
 ]
 

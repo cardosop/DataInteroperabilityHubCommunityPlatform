@@ -1,6 +1,9 @@
 # Meshant — Documentation
 
 Complete documentation for the Meshant (Data Interoperability Hub) platform.
+This repository contains the **core** platform only — the Marketplace,
+Billing, ML/AI, and other hosted-SaaS capability docs below describe
+features that live outside this repository.
 
 ## Core Documentation
 

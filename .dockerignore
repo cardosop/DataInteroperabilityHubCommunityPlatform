@@ -87,6 +87,16 @@ coverage.xml
 # Local AWS CLI bundle / artifacts — not COPY'd into images
 aws/
 
+# Generated MkDocs output (also in .gitignore) and the standalone Astro
+# marketing site, which builds from its own context: product-site/Dockerfile.
+# Neither is COPY'd into the backend images, but `context: .` still sent both
+# to the daemon. Measured with `COPY . /x` from scratch: 675MB -> 510MB.
+# Effectively all of that is site/; product-site/ is 270MB on disk but 269MB
+# of it is node_modules/ (already caught above), so it contributes ~1MB —
+# listed anyway so a built product-site/dist/ can't silently creep back in.
+site/
+product-site/
+
 # Terraform — provider/plugin cache under each module (often 500MB+ each). .tf files stay; tests
 # e.g. hub/apps/search/tests/test_fts_search.py read infrastructure/terraform/s3/main.tf.
 **/.terraform/

@@ -61,12 +61,20 @@ class FileStorageQuota(TypedDict):
 def _tenant_file_storage_used_bytes(tenant_id: str) -> int:
     """Sum of ``File.size`` for the tenant's storage-consuming rows.
 
-    Filter set matches ``billing.limit_registry["max_storage_gb"]`` so
-    the meter and the limit-gate cannot disagree on what counts.
+    R2-B3 (W2.7) — PENDING-aware: PENDING + UPLOADING rows RESERVE
+    their declared bytes (in-flight uploads consume quota at init
+    time), ACTIVE rows consume committed bytes, FAILED releases the
+    reservation.  Filter set matches the ``max_storage_gb`` resource
+    counter in ``core/limit_registry`` so the meter and the
+    limit-gate cannot disagree on what counts.
     """
     aggregate = File.objects.filter(
         tenant_id=tenant_id,
-        status=FileStatus.ACTIVE,
+        status__in=[
+            FileStatus.PENDING,
+            FileStatus.UPLOADING,
+            FileStatus.ACTIVE,
+        ],
     ).aggregate(total=Sum("size"))
     return int(aggregate.get("total") or 0)
 

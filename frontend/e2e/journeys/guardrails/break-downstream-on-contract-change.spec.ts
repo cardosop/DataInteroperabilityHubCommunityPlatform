@@ -79,7 +79,7 @@ test.describe('226.G4 — Break-downstream warning @critical @guardrail', () => 
       data: { original_raw: odcsA, original_format: 'JSON', original_spec_type: 'ODCS' },
     });
     if (!aRes.ok()) {
-      test.skip(true, `Could not create contract A (${aRes.status()})`);
+      test.skip(!aRes.ok(), `Could not create contract A (${aRes.status()})`);
       return;
     }
     const a = (await aRes.json()) as { id: string };
@@ -92,7 +92,7 @@ test.describe('226.G4 — Break-downstream warning @critical @guardrail', () => 
     );
     if (impactRes.status() === 404) {
       test.skip(
-        true,
+        impactRes.status() === 404,
         'Impact-analysis endpoint not enabled in this environment (404). Likely a feature-flag gate.',
       );
       return;

@@ -119,11 +119,15 @@ class SearchPerformanceTest(TestCase):
 
         # Log results via logging instead of print for clean CI output.
         import logging
+
         _log = logging.getLogger(__name__)
         _log.debug(
             "Search performance: P50=%.2fms P95=%.2fms P99=%.2fms avg_queries=%.2f max_queries=%d",
-            results["p50"], results["p95"], results["p99"],
-            results["avg_queries"], results["max_queries"],
+            results["p50"],
+            results["p95"],
+            results["p99"],
+            results["avg_queries"],
+            results["max_queries"],
         )
 
     def test_search_query_count(self):

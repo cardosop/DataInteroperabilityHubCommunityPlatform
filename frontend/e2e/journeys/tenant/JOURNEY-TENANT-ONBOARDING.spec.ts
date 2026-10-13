@@ -22,13 +22,13 @@ test.describe('Organization Creation (Platform Admin)', () => {
       contentSelector: '.admin-page, [data-testid="admin-page"], .admin-page, [data-testid="admin-page"]',
     });
     if (page.url().includes('/login')) {
-      test.skip(true, 'Auth redirect — could not login as platform admin');
+      test.skip(page.url().includes('/login'), 'Auth redirect — could not login as platform admin');
       return;
     }
 
     const tenantsTab = page.locator('button:has-text("Tenants")');
     if ((await tenantsTab.count()) === 0) {
-      test.skip(true, 'Tenants tab not visible — user may not have PLATFORM_ADMIN role');
+      test.skip((await tenantsTab.count()) === 0, 'Tenants tab not visible — user may not have PLATFORM_ADMIN role');
       return;
     }
     await tenantsTab.click();
@@ -45,13 +45,13 @@ test.describe('Organization Creation (Platform Admin)', () => {
       contentSelector: '.admin-page, [data-testid="admin-page"], .admin-page, [data-testid="admin-page"]',
     });
     if (page.url().includes('/login')) {
-      test.skip(true, 'Auth redirect — could not login as platform admin');
+      test.skip(page.url().includes('/login'), 'Auth redirect — could not login as platform admin');
       return;
     }
 
     const tenantsTab = page.locator('button:has-text("Tenants")');
     if ((await tenantsTab.count()) === 0) {
-      test.skip(true, 'Tenants tab not visible — user may not have PLATFORM_ADMIN role');
+      test.skip((await tenantsTab.count()) === 0, 'Tenants tab not visible — user may not have PLATFORM_ADMIN role');
       return;
     }
     await tenantsTab.click();
@@ -81,7 +81,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
     if (result === 'error') {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
       const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
-      test.skip(true, `Create org API failed: ${(errText ?? '').slice(0, 150)}`);
+      test.skip(result === 'error', `Create org API failed: ${(errText ?? '').slice(0, 150)}`);
       return;
     }
     // Form closed = mutation resolved without error = tenant created successfully.

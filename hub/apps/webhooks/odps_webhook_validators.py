@@ -94,7 +94,7 @@ def validate_odps_webhook_payload(
             webhook_id=webhook_id,
             event_type=event_type,
             cause=e,
-        )
+        ) from e
 
     # Validate required base fields
     required_fields = ["event_type", "resource_type", "resource_id", "timestamp", "data"]
@@ -384,16 +384,19 @@ def _validate_odps_export_data(
         )
 
     # For failed events, error information may be present
-    if event_type == WebhookEventType.ODPS_EXPORT_FAILED:
-        if "error" in event_data and not isinstance(event_data["error"], (str, dict)):
-            raise ODPSWebhookPayloadError(
-                message="error must be a string or dictionary",
-                error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_FIELD_TYPE,
-                user_message="ODPS export failed event data: error must be a string or JSON object",
-                tenant_id=tenant_id,
-                webhook_id=webhook_id,
-                event_type=event_type,
-                field_path="data.error",
-                expected="str or dict",
-                actual=type(event_data["error"]).__name__,
-            )
+    if (
+        event_type == WebhookEventType.ODPS_EXPORT_FAILED
+        and "error" in event_data
+        and not isinstance(event_data["error"], (str, dict))
+    ):
+        raise ODPSWebhookPayloadError(
+            message="error must be a string or dictionary",
+            error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_FIELD_TYPE,
+            user_message="ODPS export failed event data: error must be a string or JSON object",
+            tenant_id=tenant_id,
+            webhook_id=webhook_id,
+            event_type=event_type,
+            field_path="data.error",
+            expected="str or dict",
+            actual=type(event_data["error"]).__name__,
+        )

@@ -27,6 +27,23 @@ export const NON_MVP_PATHS: ReadonlySet<string> = new Set([
   // MVP_GATED_RELATIVE_PREFIXES additions in PR 1.
   '/developer',
   '/observability',
+  // openspec add-databricks-control-plane task 0.15 — mirrors the backend
+  // `databricks/` entry in MVP_GATED_RELATIVE_PREFIXES (task 0.13).
+  '/databricks',
+]);
+
+/**
+ * 313.H.4 — deliberate pass-through <MvpGatedRoute> wrappers (Phase
+ * 260.3.B datasets/files, Phase 240.4.B.3 dq). The backend MVP gate
+ * (hub/apps/api/mvp_mode.py) does NOT include these core prefixes, so
+ * the wrapper renders children unchanged. Kept for the CapabilityRoute
+ * pairing + future gating; the drift test's inverse rule accepts them
+ * via this explicit list so NEW accidental gates stay caught.
+ */
+export const MVP_GATE_PASS_THROUGH_PATHS: ReadonlySet<string> = new Set([
+  '/datasets',
+  '/files',
+  '/dq',
 ]);
 
 const MVP_PREFIX_PATHS = ['/ai/'];

@@ -5,6 +5,7 @@ REST API views for tenant management.
 """
 
 import logging
+from typing import Any
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -17,13 +18,13 @@ from rest_framework.response import Response
 from hub.apps.api.e2e_gating import is_e2e_environment, verify_e2e_token
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event, log_tenant_operation
-from .plan_serializers import TenantPlanAdminSerializer
 from hub.apps.compliance.models import RiskLevel
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ServiceError
 
 from .models import PlanCategory, Tenant, TenantConfig, TenantPlan, TenantStatus
 from .permissions import IsPlatformAdmin
+from .plan_serializers import TenantPlanAdminSerializer
 from .request_tenant import get_request_tenant_id
 from .serializers import (
     TenantConfigSerializer,
@@ -36,7 +37,12 @@ from .serializers import (
     TenantUpdateSerializer,
     TenantUsageSerializer,
 )
-from .services import TenantOnboardingService, TenantService, TenantUsageService, get_tenant_config
+from .services import (
+    TenantOnboardingService,
+    TenantService,
+    TenantUsageService,
+    get_tenant_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +56,7 @@ class TenantViewSet(viewsets.ModelViewSet):
 
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
-    permission_classes = [IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (IsAuthenticated, IsPlatformAdmin)
     lookup_field = "id"
 
     def get_serializer_class(self):
@@ -80,7 +86,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new tenant.
 
@@ -116,13 +122,13 @@ class TenantViewSet(viewsets.ModelViewSet):
 
         return Response(TenantSerializer(tenant).data, status=status.HTTP_201_CREATED)
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, _request, *_args, **_kwargs):
         """Retrieve tenant by ID"""
         tenant = self.get_object()
         return Response(TenantSerializer(tenant).data)
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """
         Update tenant (full update).
 
@@ -154,7 +160,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         return Response(TenantSerializer(tenant).data)
 
     @transaction.atomic
-    def partial_update(self, request, *args, **kwargs):
+    def partial_update(self, request, *_args, **_kwargs):
         """
         Update tenant (partial update).
 
@@ -201,7 +207,8 @@ class TenantViewSet(viewsets.ModelViewSet):
 
         if tenant.status == TenantStatus.DELETED:
             return Response(
-                {"error": "Cannot suspend a deleted tenant"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Cannot suspend a deleted tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         serializer = TenantSuspendSerializer(data=request.data)
@@ -211,7 +218,9 @@ class TenantViewSet(viewsets.ModelViewSet):
         tenant.suspend()
 
         # Send notification to tenant admins
-        self._send_suspension_notification(tenant, serializer.validated_data.get("reason"))
+        self._send_suspension_notification(
+            tenant, serializer.validated_data.get("reason")
+        )
 
         # Log audit event
         log_tenant_operation(
@@ -262,7 +271,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         return Response(TenantSerializer(tenant).data, status=status.HTTP_200_OK)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete a tenant (soft delete).
 
@@ -284,7 +293,9 @@ class TenantViewSet(viewsets.ModelViewSet):
         if cascade_hard:
             if not is_e2e_environment():
                 return Response(
-                    {"detail": "Tenant hard-delete cascade is not enabled in this environment."},
+                    {
+                        "detail": "Tenant hard-delete cascade is not enabled in this environment."
+                    },
                     status=status.HTTP_403_FORBIDDEN,
                 )
             if not verify_e2e_token(request):
@@ -315,12 +326,17 @@ class TenantViewSet(viewsets.ModelViewSet):
     def _hard_delete_tenant_cascade(self, request, tenant: Tenant):
         """E2E / operator hard-delete — DB CASCADE + storage purge callbacks (Phase 260.1.F).
 
+        W4.3 (R2-B6/E1–E3) — runs the same itemized pre-sweep as the
+        90-day cron (provider estate sweepers, PROTECT user referrers,
+        users, bare-UUID tenant refs) before the cascade, so this path
+        can never be doomed by a delta-share PROTECT FK or a
+        user RESTRICT row either.
+
         Audit placement: per-file ``FILE_TENANT_OFFBOARD_PURGE_SCHEDULED`` audit
         events are emitted BEFORE ``tenant.delete()`` so the Tenant FK is still valid;
         the operator summary row is appended after the row hard-delete completes.
         """
         from hub.apps.files.models import File
-        from hub.apps.users.models import User
 
         tid = tenant.pk
         slug = getattr(tenant, "slug", None)
@@ -347,7 +363,9 @@ class TenantViewSet(viewsets.ModelViewSet):
                 request=request,
             )
 
-        User.objects.filter(tenant_id=tid).delete()
+        from hub.apps.tenants.tenant_hard_delete_sweep import _pre_sweep_tenant
+
+        _pre_sweep_tenant(tenant_id_str)
         tenant.delete()
         create_audit_event(
             resource_type="TENANT",
@@ -394,16 +412,29 @@ class TenantConfigViewSet(viewsets.ViewSet):
     to get and update tenant configuration.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "tenant_id"
 
     def get_permissions(self):
-        """Return appropriate permissions based on action"""
+        """Per-action permission resolution.
+
+        DRF 3.16 trap (close-test-coverage-gaps 3.0): ``ViewSetMixin.as_view``
+        on this DRF does NOT apply ``@action(..., permission_classes=...)``
+        kwargs to the view instance (the old ``setattr`` loop is gone — same
+        family as the retired ``throttled()`` hook). Branching on
+        ``self.action`` here is the supported per-action mechanism.
+
+        The previous version of this method returned ``AllowAny`` for
+        ``onboarding`` while the view body hand-rolled a PLATFORM_ADMIN
+        check — anonymous requests reached the view and got a non-DRF
+        403. The checkpoint verified org creation is PLATFORM_ADMIN-only
+        on every surface; the pairing below matches
+        ``AdminTenantCreateView`` (IsAuthenticated + IsPlatformAdmin):
+        unauthenticated → 401, authenticated non-platform-admin → 403.
+        """
         if self.action == "onboarding":
-            # Onboarding endpoint allows unauthenticated access
-            return [permissions.AllowAny()]
-        # Other actions require authentication
-        return [IsAuthenticated()]
+            return [permissions.IsAuthenticated(), IsPlatformAdmin()]
+        return [permissions.IsAuthenticated()]
 
     def get_tenant(self, tenant_id: str) -> Tenant:
         """Get tenant by ID with permission check"""
@@ -414,7 +445,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
             not_found = NotFound("Tenant not found")
             not_found.code = "TENANT_NOT_FOUND"  # Set specific error code per API spec
-            raise not_found
+            raise not_found from None
 
         # Check permissions: Platform Admin can access any tenant,
         # TENANT_ADMIN can only access own tenant
@@ -425,17 +456,22 @@ class TenantConfigViewSet(viewsets.ViewSet):
             return tenant
 
         # TENANT_ADMIN can only access own tenant
-        if hasattr(user, "tenant") and user.tenant.id == tenant.id:
+        if (
+            hasattr(user, "tenant")
+            and user.tenant.id == tenant.id
+            and hasattr(user, "user_roles")
+        ):
             # Check if user has TENANT_ADMIN role
-            if hasattr(user, "user_roles"):
-                role_names = [ur.role.name for ur in user.user_roles.all()]
-                if "TENANT_ADMIN" in role_names:
-                    return tenant
+            role_names = [ur.role.name for ur in user.user_roles.all()]
+            if "TENANT_ADMIN" in role_names:
+                return tenant
 
         # No permission
         from rest_framework.exceptions import PermissionDenied
 
-        raise PermissionDenied("You do not have permission to access this tenant configuration.")
+        raise PermissionDenied(
+            "You do not have permission to access this tenant configuration."
+        )
 
     @extend_schema(
         operation_id="get_tenant_config",
@@ -443,7 +479,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
         description="Get tenant configuration with platform defaults for any unset values. Returns configuration matching API spec §13.1.",
         responses={
             200: TenantConfigSerializer,
-            401: OpenApiResponse(description="Unauthorized - missing or invalid bearer token"),
+            401: OpenApiResponse(
+                description="Unauthorized - missing or invalid bearer token"
+            ),
             403: OpenApiResponse(
                 description="Forbidden - user lacks TENANT_ADMIN role or Platform Admin privileges"
             ),
@@ -451,7 +489,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         },
         tags=["Tenants"],
     )
-    def retrieve(self, request, tenant_id=None, **kwargs):
+    def retrieve(self, _request, tenant_id=None, **kwargs):
         """
         Get tenant configuration.
 
@@ -472,8 +510,12 @@ class TenantConfigViewSet(viewsets.ViewSet):
         request=TenantConfigUpdateSerializer,
         responses={
             200: TenantConfigSerializer,
-            400: OpenApiResponse(description="Validation error - invalid configuration values"),
-            401: OpenApiResponse(description="Unauthorized - missing or invalid bearer token"),
+            400: OpenApiResponse(
+                description="Validation error - invalid configuration values"
+            ),
+            401: OpenApiResponse(
+                description="Unauthorized - missing or invalid bearer token"
+            ),
             403: OpenApiResponse(
                 description="Forbidden - user lacks TENANT_ADMIN role or Platform Admin privileges"
             ),
@@ -501,7 +543,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
             getattr(config, "compliance_risk_threshold", RiskLevel.HIGH.value)
         )
 
-        serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
+        serializer = TenantConfigUpdateSerializer(
+            config, data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
 
         # Use TenantService to update config (publishes quota change events automatically).
@@ -517,7 +561,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
                 setattr(config, field_name, None)
                 null_fields.append(field_name)
         if null_fields:
-            config.save(update_fields=null_fields + ["updated_at"])
+            config.save(update_fields=[*null_fields, "updated_at"])
 
         # Pass non-None values through the service for event publishing
         service_kwargs = {k: v for k, v in vd.items() if v is not None}
@@ -535,7 +579,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
         if "compliance_risk_threshold" in vd:
             cfg_fresh = TenantConfig.objects.get(pk=config.pk)
-            new_thr = str(getattr(cfg_fresh, "compliance_risk_threshold", RiskLevel.HIGH.value))
+            new_thr = str(
+                getattr(cfg_fresh, "compliance_risk_threshold", RiskLevel.HIGH.value)
+            )
             if new_thr != prev_compliance_thr:
                 try:
                     create_audit_event(
@@ -569,7 +615,10 @@ class TenantConfigViewSet(viewsets.ViewSet):
         detail=False,
         methods=["post"],
         url_path="onboarding",
-        permission_classes=[permissions.IsAuthenticated],
+        # NOTE: no permission_classes kwarg here — on DRF 3.16 the
+        # ViewSetMixin.as_view closure does NOT apply action kwargs to
+        # the view; per-action permissions resolve via get_permissions()
+        # above (close-test-coverage-gaps 3.0).
     )
     @transaction.atomic
     def onboarding(self, request):
@@ -577,7 +626,10 @@ class TenantConfigViewSet(viewsets.ViewSet):
         Tenant creation with first user (Platform Admin only).
 
         POST /api/v1/tenants/onboarding/
-        Requires: IsAuthenticated + PLATFORM_ADMIN role.
+        Requires: IsAuthenticated + the User.is_platform_admin FLAG
+        (IsPlatformAdmin — resolved in get_permissions(); unauthenticated
+        → 401, authenticated non-platform-admin → 403). A PLATFORM_ADMIN
+        role or is_superuser alone is NOT sufficient.
         Body: {
             "name": "My Company",
             "slug": "my-company",
@@ -596,21 +648,6 @@ class TenantConfigViewSet(viewsets.ViewSet):
         - TenantConfig with platform defaults
         - Stripe customer and subscription (if not FREE plan)
         """
-        # Only Platform Admins can create organizations.
-        # Checks is_platform_admin (project-specific field), is_superuser
-        # (Django PermissionsMixin), and PLATFORM_ADMIN role assignment.
-        if not (
-            getattr(request.user, "is_platform_admin", False)
-            or request.user.is_superuser
-            or (
-                hasattr(request.user, "user_roles")
-                and request.user.user_roles.filter(role__name="PLATFORM_ADMIN").exists()
-            )
-        ):
-            return Response(
-                {"error": "Organization creation requires PLATFORM_ADMIN role."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         serializer = TenantOnboardingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -637,7 +674,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
                     "tenant": TenantSerializer(result["tenant"]).data,
                     "user": UserSerializer(result["user"]).data,
                     "subscription_id": (
-                        str(result["subscription"].id) if result["subscription"] else None
+                        str(result["subscription"].id)
+                        if result["subscription"]
+                        else None
                     ),
                     "plan": {
                         "slug": result["plan"].slug,
@@ -650,7 +689,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
         except Exception as e:
             from hub.apps.core.responses import handle_service_exception
             from hub.apps.core.services.base import NotFoundError
-            from hub.apps.core.services.base import ValidationError as ServiceValidationError
+            from hub.apps.core.services.base import (
+                ValidationError as ServiceValidationError,
+            )
 
             if isinstance(e, (ServiceValidationError, NotFoundError)):
                 return handle_service_exception(e)
@@ -664,7 +705,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
             200: TenantConfigSerializer,
             400: OpenApiResponse(description="Tenant context required"),
             401: OpenApiResponse(description="Unauthorized"),
-            403: OpenApiResponse(description="Forbidden - TENANT_ADMIN or Platform Admin required"),
+            403: OpenApiResponse(
+                description="Forbidden - TENANT_ADMIN or Platform Admin required"
+            ),
         },
         tags=["Tenants"],
     )
@@ -677,7 +720,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
             200: TenantConfigSerializer,
             400: OpenApiResponse(description="Validation error"),
             401: OpenApiResponse(description="Unauthorized"),
-            403: OpenApiResponse(description="Forbidden - TENANT_ADMIN or Platform Admin required"),
+            403: OpenApiResponse(
+                description="Forbidden - TENANT_ADMIN or Platform Admin required"
+            ),
         },
         tags=["Tenants"],
         methods=["PATCH"],
@@ -704,21 +749,29 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
         # PATCH
         config, _ = TenantConfig.objects.get_or_create(tenant=tenant)
-        serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
+        serializer = TenantConfigUpdateSerializer(
+            config, data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
 
         service = TenantService(tenant_id=str(tenant.id), user_id=str(request.user.id))
         service.update_tenant_config(
             tenant_id=str(tenant.id),
             default_dq_profile=serializer.validated_data.get("default_dq_profile"),
-            allowed_compliance_regimes=serializer.validated_data.get("allowed_compliance_regimes"),
-            default_compliance_regimes=serializer.validated_data.get("default_compliance_regimes"),
+            allowed_compliance_regimes=serializer.validated_data.get(
+                "allowed_compliance_regimes"
+            ),
+            default_compliance_regimes=serializer.validated_data.get(
+                "default_compliance_regimes"
+            ),
             data_retention_days=serializer.validated_data.get("data_retention_days"),
             rate_limits=serializer.validated_data.get("rate_limits"),
             max_file_size_bytes=serializer.validated_data.get("max_file_size_bytes"),
             max_job_concurrency=serializer.validated_data.get("max_job_concurrency"),
             max_queued_jobs=serializer.validated_data.get("max_queued_jobs"),
-            trust_signals_enabled=serializer.validated_data.get("trust_signals_enabled"),
+            trust_signals_enabled=serializer.validated_data.get(
+                "trust_signals_enabled"
+            ),
             versioning_enabled=serializer.validated_data.get("versioning_enabled"),
             workflows_enabled=serializer.validated_data.get("workflows_enabled"),
         )
@@ -747,6 +800,25 @@ class TenantConfigViewSet(viewsets.ViewSet):
     #: validates incoming flag names against it, and the audit-log
     #: query relies on it to filter the resource_type='TENANT' rows.
     _TENANT_FEATURE_FLAGS: tuple = (
+        (
+            "databricks_sso_enabled",
+            "When True, this tenant may sign in with Databricks (U2M OAuth SSO). "
+            "When False, SSO attempts return 403 DATABRICKS_SSO_DISABLED. "
+            "openspec add-databricks-control-plane P0b.",
+        ),
+        (
+            "databricks_obo_enabled",
+            "When True, interactive Databricks execution carries the user's "
+            "On-Behalf-Of token. When False, interactive paths return 403 "
+            "DATABRICKS_OBO_DISABLED. openspec add-databricks-control-plane P0b.",
+        ),
+        (
+            "databricks_s3_external_location_enabled",
+            "When True, dlt staging may use the S3 external-location path. "
+            "When False (default), an S3 staging request fails closed and "
+            "the managed volume is the only staging surface. "
+            "openspec wire-databricks-dlt-movement P6.",
+        ),
         (
             "asset_creation_enabled",
             "When True (default), this tenant may create assets via "
@@ -827,7 +899,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         ),
         (
             "compliance_processor_agreements_enabled",
-            "When True, Article 28 processor register, agreements, and asset–processor links "
+            "When True, Article 28 processor register, agreements, and asset-processor links "
             "are enabled (Phase 232.6). Default False — explicit opt-in.",
         ),
         (
@@ -848,8 +920,12 @@ class TenantConfigViewSet(viewsets.ViewSet):
         otherwise. Mirrors the gate-helper pattern from
         ``hub/apps/assets/views.py::_check_asset_creation_kill_switch``."""
         user = request.user
-        is_tenant_admin = user.has_role("TENANT_ADMIN") if hasattr(user, "has_role") else False
-        is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
+        is_tenant_admin = (
+            user.has_role("TENANT_ADMIN") if hasattr(user, "has_role") else False
+        )
+        is_platform_admin = (
+            hasattr(user, "is_platform_admin") and user.is_platform_admin
+        )
         if is_tenant_admin or is_platform_admin:
             return None
         return Response(
@@ -923,11 +999,14 @@ class TenantConfigViewSet(viewsets.ViewSet):
         body = request.data or {}
         if not isinstance(body, dict):
             return Response(
-                {"error": "Request body must be a JSON object", "code": "INVALID_REQUEST"},
+                {
+                    "error": "Request body must be a JSON object",
+                    "code": "INVALID_REQUEST",
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         known_flag_names = {n for n, _ in self._TENANT_FEATURE_FLAGS}
-        unknown = [k for k in body.keys() if k not in known_flag_names]
+        unknown = [k for k in body if k not in known_flag_names]
         if unknown:
             return Response(
                 {
@@ -945,13 +1024,13 @@ class TenantConfigViewSet(viewsets.ViewSet):
             )
 
         # Capture before-values for audit before mutating.
-        before_values = {name: bool(getattr(tenant, name, False)) for name in body.keys()}
+        before_values = {name: bool(getattr(tenant, name, False)) for name in body}
         # Apply each flag.
         update_fields = []
         for name, value in body.items():
             setattr(tenant, name, bool(value))
             update_fields.append(name)
-        tenant.save(update_fields=update_fields + ["updated_at"])
+        tenant.save(update_fields=[*update_fields, "updated_at"])
 
         # Audit one row per flipped flag for forensic granularity.
         from hub.apps.audit import event_types as _audit_event_types
@@ -1195,7 +1274,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
         request=None,
         responses={
             201: OpenApiResponse(description="Sample data seeded."),
-            200: OpenApiResponse(description="Sample data already exists (idempotent)."),
+            200: OpenApiResponse(
+                description="Sample data already exists (idempotent)."
+            ),
             401: OpenApiResponse(description="Unauthorized."),
         },
         tags=["Tenants"],
@@ -1203,9 +1284,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="me/seed-sample")
     def seed_sample(self, request):
         """Idempotently seed one sample asset, contract, and listing."""
-        from hub.apps.assets.models import Asset
+        from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.audit.utils import create_audit_event
-        from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+        from hub.apps.core.commercial_hooks import seed_sample_listing
 
         tenant_id = get_request_tenant_id(request)
         if not tenant_id:
@@ -1226,18 +1307,18 @@ class TenantConfigViewSet(viewsets.ViewSet):
                 "name": "Sample Customer Database",
                 "description": "Auto-generated sample asset to explore the platform.",
                 "data_strategy": "METADATA_ONLY",
+                # The sample asset must be ACTIVE: marketplace only lists
+                # ACTIVE assets (Listing.full_clean), and the endpoint
+                # promises "explore your assets".
+                "status": AssetStatus.ACTIVE,
             },
         )
         created_any = created_any or asset_created
 
-        listing, listing_created = Listing.objects.get_or_create(
-            tenant_id=tenant_id,
-            asset=asset,
-            defaults={
-                "pricing_model": PricingModel.FREE,
-                "status": ListingStatus.DRAFT,
-            },
-        )
+        # The sample LISTING is marketplace (paid layer) — seeded through
+        # the commercial hook; core deployments seed the asset alone.
+        seeded = seed_sample_listing(tenant_id=tenant_id, asset=asset)
+        listing, listing_created = seeded if seeded is not None else (None, False)
         created_any = created_any or listing_created
 
         create_audit_event(
@@ -1257,12 +1338,14 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
         return Response(
             {
-                "message": "Sample data ready — explore your assets!"
-                if created_any
-                else "Sample data already exists.",
+                "message": (
+                    "Sample data ready — explore your assets!"
+                    if created_any
+                    else "Sample data already exists."
+                ),
                 "asset_id": str(asset.id),
                 "asset_key": asset.key,
-                "listing_id": str(listing.id),
+                "listing_id": str(listing.id) if listing is not None else None,
             },
             status=status.HTTP_201_CREATED if created_any else status.HTTP_200_OK,
         )
@@ -1367,7 +1450,10 @@ class TenantConfigViewSet(viewsets.ViewSet):
             actor_user=request.user,
             tenant=tenant,
             resource_id=str(tenant.id),
-            details={"from_slug": getattr(current, "slug", None), "to_slug": target.slug},
+            details={
+                "from_slug": getattr(current, "slug", None),
+                "to_slug": target.slug,
+            },
             request=request,
         )
         return Response({"plan_slug": target.slug, "message": "Plan upgraded"})
@@ -1385,16 +1471,21 @@ class TenantConfigViewSet(viewsets.ViewSet):
             return Response({"error": f"Plan '{target_slug}' not found"}, status=404)
 
         tenant = Tenant.objects.get(id=tenant_id)
-        # Validate downgrade
-        from hub.apps.billing.services import PlanLimitService as BillingPlanLimitService
+        # Validate downgrade. Core-only deployments enforce no billing
+        # limits (check_limit no-ops to unlimited) — the hook returns
+        # None (valid) without the paid layer.
+        from hub.apps.core.commercial_hooks import validate_plan_downgrade
 
-        result = BillingPlanLimitService.validate_downgrade(str(tenant.id), target)
-        if not result.is_valid:
+        result = validate_plan_downgrade(
+            tenant_id=str(tenant.id),
+            new_plan=target,
+        )
+        if result is not None and not result.is_valid:
             return Response(
                 {"error": "Downgrade validation failed", "details": result.errors},
                 status=400,
             )
-        if result.details:
+        if result is not None and result.details:
             # Include warnings in response
             pass  # warnings are advisory
 
@@ -1417,13 +1508,23 @@ class TenantConfigViewSet(viewsets.ViewSet):
             {
                 "plan_slug": target.slug,
                 "message": "Plan downgraded",
-                "warnings": list(result.details.keys()) if result.details else [],
+                "warnings": (
+                    list(result.details.keys())
+                    if result is not None and result.details
+                    else []
+                ),
             }
         )
 
     def me_plan_available_ml_addons(self, request):
         """GET /api/v1/tenants/me/plan/available-ml-addons/ — ML add-on plans."""
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            # ML add-ons are paid-layer — none exist in core deployments.
+            return Response({"addons": []})
+        else:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
 
         tenant_id = get_request_tenant_id(request)
         if not tenant_id:
@@ -1580,7 +1681,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         # Audit row carries the MASKED tax_id only — the
         # encrypted Tenant.tax_id column is the system-of-record
         # for the unmasked value.
-        from hub.apps.billing.views import _mask_tax_id  # local import
+        from hub.apps.security.tax_id import mask_tax_id
 
         create_audit_event(
             resource_type="TENANT",
@@ -1590,7 +1691,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
             resource_id=str(tenant.id),
             details={
                 "tax_id_type": tax_id_type,
-                "tax_id_masked": _mask_tax_id(tax_id_value),
+                "tax_id_masked": mask_tax_id(tax_id_value),
                 "country": (tax_address or {}).get("country") if tax_address else "",
                 "stripe_tax_id_id": result.get("stripe_tax_id_id"),
             },
@@ -1643,7 +1744,7 @@ class RateLimitConfigView(viewsets.ViewSet):
         except Tenant.DoesNotExist:
             from rest_framework.exceptions import NotFound
 
-            raise NotFound("Tenant not found")
+            raise NotFound("Tenant not found") from None
 
     def _get_config_or_create(self, tenant: Tenant) -> TenantConfig:
         config, _created = TenantConfig.objects.get_or_create(
@@ -1668,7 +1769,7 @@ class RateLimitConfigView(viewsets.ViewSet):
         },
         tags=["Tenants"],
     )
-    def retrieve(self, request, tenant_id=None):
+    def retrieve(self, _request, tenant_id=None):
         tenant = self._get_tenant_or_404(tenant_id)
         config = self._get_config_or_create(tenant)
 
@@ -1693,11 +1794,15 @@ class RateLimitConfigView(viewsets.ViewSet):
             from hub.apps.core.rate_limiting.utils import TimeWindow
 
             effective_limits[category] = {
-                "burst_per_10s": get_tenant_rate_limit(tenant_id, category, TimeWindow.BURST),
+                "burst_per_10s": get_tenant_rate_limit(
+                    tenant_id, category, TimeWindow.BURST
+                ),
                 "sustained_per_min": get_tenant_rate_limit(
                     tenant_id, category, TimeWindow.SUSTAINED
                 ),
-                "daily_cap": get_tenant_rate_limit(tenant_id, category, TimeWindow.DAILY),
+                "daily_cap": get_tenant_rate_limit(
+                    tenant_id, category, TimeWindow.DAILY
+                ),
             }
 
         return Response(

@@ -31,6 +31,7 @@ from django.db import transaction
 from hub.apps.contracts.migration_validation import MigrationValidator
 from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.normalization import parse_contract
+from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 from hub.apps.contracts.services import ContractService
 from hub.apps.core.services.base import NotFoundError, ValidationError
@@ -94,7 +95,7 @@ class Command(BaseCommand):
             help="Path to save validation report (JSON format). If not specified, report is printed to stdout.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         contract_id = options.get("contract_id")
         options["batch_size"]
@@ -250,10 +251,7 @@ class Command(BaseCommand):
             return False
 
         # Must have hub_contract_json
-        if not contract.hub_contract_json:
-            return False
-
-        return True
+        return contract.hub_contract_json
 
     def _has_odps_link(self, contract: Contract) -> bool:
         """Check if ODCS contract already has an ODPS link."""
@@ -272,10 +270,11 @@ class Command(BaseCommand):
                     original_spec_type=OriginalSpecType.ODPS,
                     tenant_id=contract.tenant_id,
                 )
-                return True
             except Contract.DoesNotExist:
                 # Link exists but contract not found, consider as not linked
                 return False
+            else:
+                return True
 
         return False
 
@@ -346,7 +345,7 @@ class Command(BaseCommand):
                             f"Parsed ODCS contract {contract.id} is not a dict, cannot embed"
                         )
                         original_odcs_contract = None
-                except Exception as e:
+                except (ValueError, TypeError, AttributeError) as e:
                     logger.warning(f"Failed to parse original ODCS contract {contract.id}: {e}")
                     # Cannot continue without original ODCS for linking
                     return {
@@ -368,7 +367,7 @@ class Command(BaseCommand):
                     original_odcs_contract=original_odcs_contract,
                     original_odcs_url=None,
                 )
-            except Exception as e:
+            except ODPSExportError as e:
                 return {"status": "failed", "error": f"Failed to generate ODPS: {e!s}"}
 
             if dry_run:

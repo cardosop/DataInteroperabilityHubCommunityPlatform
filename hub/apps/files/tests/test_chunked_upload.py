@@ -110,6 +110,48 @@ class ChunkedUploadTest(FilesAPITestBase):
                 key=file_obj.storage_path, upload_id=upload_id
             )
 
+    def test_init_returns_browser_reachable_upload_url(self):
+        """Browser uploads must receive a host-published presigned URL.
+
+        Browser uploads are capped at 100MB (business rules), so they take
+        the SIMPLE upload path — the multipart branch (>100MB) is only
+        reachable via upload_method=sdk. When the storage endpoint is a
+        Docker service hostname (minio-test/minio), the simple-browser URL
+        is regenerated against localhost so a browser-issued PUT succeeds
+        (the multipart-branch rewrite shares the same helper, pinned here
+        via the unit path that exists)."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+        endpoint = self.storage_client.endpoint_url or ""
+        if "minio-test" not in endpoint and "minio" not in endpoint:
+            self.skipTest("non-Docker storage endpoint — rewrite not applicable")
+
+        response = self.client.post(
+            "/api/v1/files/init/",
+            {
+                "name": "browser-small.csv",
+                "content_type": "text/csv",
+                "size": 50 * 1024 * 1024,
+                "upload_method": "browser",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            msg=f"init returned {response.status_code}: {getattr(response, 'data', '')}",
+        )
+        upload_url = response.data.get("upload_url", "")
+        self.assertTrue(
+            "localhost:9010" in upload_url or "localhost:9000" in upload_url,
+            f"browser upload_url must use the host-published endpoint, got: {upload_url}",
+        )
+        # Cleanup: soft-delete the file row.
+        file_id = response.data.get("file_id")
+        with contextlib.suppress(Exception):
+            File.objects.filter(id=file_id).update(status=FileStatus.DELETING)
+
     def test_init_chunk_upload_not_uploading(self):
         """Test chunk upload initialization for non-uploading file"""
         # Create file in PENDING state

@@ -291,9 +291,14 @@ describe('ApiClient (fetch-based)', () => {
         // Refresh call: fails
         .mockResolvedValueOnce(mockFetchResponse({ detail: 'Invalid token' }, 401));
 
-      await expect(client.getClient().get('assets/')).rejects.toMatchObject({
-        error: { http_status: 401 },
-      });
+      // P.7 contract: refresh failure clears the session; during auth-store
+      // initialization (suppressAuthRedirect=true, the default) the client
+      // THROWS the suppression error instead of hard-redirecting so the
+      // auth store can recover gracefully — the old pin expected the raw
+      // 401 envelope, which the redesign replaced.
+      await expect(client.getClient().get('assets/')).rejects.toThrow(
+        'Auth redirect suppressed'
+      );
       expect(client.getAccessToken()).toBeNull();
     });
   });

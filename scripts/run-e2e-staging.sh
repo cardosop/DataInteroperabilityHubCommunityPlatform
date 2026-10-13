@@ -73,13 +73,15 @@ run_batch() {
     export COMPLIANCE_SERVICE_URL="${COMPLIANCE_SERVICE_URL:-http://localhost:8083}"
     export SEMANTIC_SERVICE_URL="${SEMANTIC_SERVICE_URL:-http://localhost:8082}"
     
-    # Prefer .venv (Python 3.12 — the supported runtime) over the
-    # legacy venv (which on some hosts was created against
-    # Python 3.14 and breaks on dependency version skew).
-    if [ -f ".venv/bin/pytest" ]; then
-        .venv/bin/pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
-    elif [ -f "venv/bin/pytest" ]; then
+    # `venv/` FIRST: it is the canonical host-side interpreter
+    # (docs/test-infrastructure/host-env-matrix.md; W4.3 standardisation,
+    # 2026-08-22). Preferring `.venv/` here used to pick the
+    # less-provisioned env on machines carrying both — the exact
+    # half-provisioned-venv failure class the env contract exists to kill.
+    if [ -f "venv/bin/pytest" ]; then
         venv/bin/pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
+    elif [ -f ".venv/bin/pytest" ]; then
+        .venv/bin/pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
     elif command -v pytest &> /dev/null; then
         pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
     else
@@ -105,12 +107,11 @@ run_all_batches() {
     export COMPLIANCE_SERVICE_URL="${COMPLIANCE_SERVICE_URL:-http://localhost:8083}"
     export SEMANTIC_SERVICE_URL="${SEMANTIC_SERVICE_URL:-http://localhost:8082}"
     
-    # Prefer .venv (Python 3.12) over the legacy venv (see batch
-    # function above for rationale).
-    if [ -f ".venv/bin/pytest" ]; then
-        .venv/bin/pytest tests/e2e/ -m e2e -v --tb=short
-    elif [ -f "venv/bin/pytest" ]; then
+    # `venv/` FIRST — canonical host-side interpreter (see batch function).
+    if [ -f "venv/bin/pytest" ]; then
         venv/bin/pytest tests/e2e/ -m e2e -v --tb=short
+    elif [ -f ".venv/bin/pytest" ]; then
+        .venv/bin/pytest tests/e2e/ -m e2e -v --tb=short
     elif command -v pytest &> /dev/null; then
         pytest tests/e2e/ -m e2e -v --tb=short
     else

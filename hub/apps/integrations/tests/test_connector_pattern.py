@@ -22,7 +22,6 @@ run without external service dependencies.
 
 import logging
 import os
-import unittest
 import uuid
 from unittest.mock import Mock, patch
 
@@ -130,15 +129,20 @@ class TestSyncPullDoesNotCreateAssets(TestConnectorPatternBase):
 
         # Mock list_listings to return sample listing (avoiding actual API call)
         # We use patching here only to avoid external API calls, not to mock behavior
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                # Execute sync_pull
-                result = connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            # Execute sync_pull
+            result = connector.sync_pull()
 
         # Verify sync_pull returned SyncResult
         self.assertIsInstance(result, SyncResult)
-        self.assertIn("mappings", result.metadata,
-            "sync_pull() result must contain 'mappings' key in metadata")
+        self.assertIn(
+            "mappings",
+            result.metadata,
+            "sync_pull() result must contain 'mappings' key in metadata",
+        )
         self.assertIsInstance(result.metadata["mappings"], list)
 
         # Verify no assets were created
@@ -173,10 +177,12 @@ class TestSyncPullDoesNotCreateAssets(TestConnectorPatternBase):
         initial_counts = self.get_initial_counts()
 
         # Mock list_listings to return empty list (avoiding actual API call)
-        with patch.object(connector, "list_listings", return_value=[]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                # Execute sync_pull
-                result = connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            # Execute sync_pull
+            result = connector.sync_pull()
 
         # Verify sync_pull returned SyncResult
         self.assertIsInstance(result, SyncResult)
@@ -214,10 +220,12 @@ class TestSyncPullDoesNotCreateAssets(TestConnectorPatternBase):
         initial_counts = self.get_initial_counts()
 
         # Mock list_listings to return empty list (avoiding actual Snowflake connection)
-        with patch.object(connector, "list_listings", return_value=[]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                # Execute sync_pull
-                result = connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            # Execute sync_pull
+            result = connector.sync_pull()
 
         # Verify sync_pull returned SyncResult
         self.assertIsInstance(result, SyncResult)
@@ -262,9 +270,11 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
             description="Test description",
         )
 
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                result = connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            result = connector.sync_pull()
 
         # Verify SyncResult structure
         self.assertIsInstance(result, SyncResult)
@@ -272,8 +282,9 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
         # A zero here means the connector silently skipped the listing —
         # that's a regression, not a valid skip.
         self.assertGreater(
-            result.successful_items, 0,
-            "Expected at least one successful item from sync_pull with a sample listing"
+            result.successful_items,
+            0,
+            "Expected at least one successful item from sync_pull with a sample listing",
         )
         self.assertIn("mappings", result.metadata)
         mappings = result.metadata["mappings"]
@@ -301,10 +312,16 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
 
         # Verify no asset or contract creation in the SyncResult metadata.
         # Check the actual data structure, not the string representation.
-        self.assertNotIn("asset_id", result.metadata,
-            "sync_pull() metadata must not contain asset_id (would indicate asset creation)")
-        self.assertNotIn("contract_id", result.metadata,
-            "sync_pull() metadata must not contain contract_id (would indicate contract creation)")
+        self.assertNotIn(
+            "asset_id",
+            result.metadata,
+            "sync_pull() metadata must not contain asset_id (would indicate asset creation)",
+        )
+        self.assertNotIn(
+            "contract_id",
+            result.metadata,
+            "sync_pull() metadata must not contain contract_id (would indicate contract creation)",
+        )
 
     def test_dados_gov_br_sync_pull_returns_mappings_only(self):
         """Test DadosGovBr connector sync_pull() returns mappings only"""
@@ -319,14 +336,17 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
             description="Test description",
         )
 
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                result = connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            result = connector.sync_pull()
 
         # Verify SyncResult structure
         self.assertIsInstance(result, SyncResult)
-        self.assertGreater(result.successful_items, 0,
-            "Expected at least one successful item from sync_pull")
+        self.assertGreater(
+            result.successful_items, 0, "Expected at least one successful item from sync_pull"
+        )
         self.assertIn("mappings", result.metadata)
         mappings = result.metadata["mappings"]
         self.assertIsInstance(mappings, list)
@@ -356,9 +376,11 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
             description="Test description",
         )
 
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                result = connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            result = connector.sync_pull()
 
         # Verify SyncResult structure
         self.assertIsInstance(result, SyncResult)
@@ -403,9 +425,11 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
         # no files/datasets were created during the pull operation.
         initial_counts = self.get_initial_counts()
 
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            connector.sync_pull()
 
         # Verify download_resource was NOT called
         self.assertFalse(
@@ -448,9 +472,11 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
             title="Test Dataset",
         )
 
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            connector.sync_pull()
 
         # Verify download_resource was NOT called
         self.assertFalse(
@@ -479,9 +505,11 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
             title="Test Listing",
         )
 
-        with patch.object(connector, "list_listings", return_value=[sample_listing]):
-            with patch.object(connector, "list_resources", return_value=[]):
-                connector.sync_pull()
+        with (
+            patch.object(connector, "list_listings", return_value=[sample_listing]),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            connector.sync_pull()
 
         # Verify download_resource was NOT called
         self.assertFalse(
@@ -554,9 +582,11 @@ class TestMapToHubAssetReturnsMarketplaceAssetMapping(TestConnectorPatternBase):
 
         # Mock client.get_dataset AND list_resources to prevent any
         # accidental outbound API calls (defence in depth).
-        with patch.object(connector.client, "get_dataset", return_value={}):
-            with patch.object(connector, "list_resources", return_value=[]):
-                mapping = connector.map_to_hub_asset(listing)
+        with (
+            patch.object(connector.client, "get_dataset", return_value={}),
+            patch.object(connector, "list_resources", return_value=[]),
+        ):
+            mapping = connector.map_to_hub_asset(listing)
 
         # Verify mapping is MarketplaceAssetMapping
         self.assertIsInstance(mapping, MarketplaceAssetMapping)
@@ -663,9 +693,11 @@ class TestMapToHubAssetIncludesExternalResources(TestConnectorPatternBase):
         # Mock client.get_dataset AND list_resources (defence in depth —
         # even though listing.resources is non-empty, a future refactor
         # could bypass the early return and hit the real API).
-        with patch.object(connector.client, "get_dataset", return_value={}):
-            with patch.object(connector, "list_resources", return_value=[resource]):
-                mapping = connector.map_to_hub_asset(listing)
+        with (
+            patch.object(connector.client, "get_dataset", return_value={}),
+            patch.object(connector, "list_resources", return_value=[resource]),
+        ):
+            mapping = connector.map_to_hub_asset(listing)
 
         # Verify resources are included
         self.assertIsNotNone(mapping.resources)
@@ -749,24 +781,26 @@ class TestDownloadResourceHandlesOnDemandDownloads(TestConnectorPatternBase):
             mock_response.raise_for_status = Mock()
             return mock_response
 
-        with patch.object(connector, "_request_with_retry", side_effect=mock_request):
-            with patch("httpx.get", side_effect=mock_httpx_get):
-                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                    destination_path = tmp_file.name
+        with (
+            patch.object(connector, "_request_with_retry", side_effect=mock_request),
+            patch("httpx.get", side_effect=mock_httpx_get),
+            tempfile.NamedTemporaryFile(delete=False) as tmp_file,
+        ):
+            destination_path = tmp_file.name
 
-                try:
-                    # Execute download_resource
-                    result_path = connector.download_resource(
-                        resource_id="test-resource", destination_path=destination_path
-                    )
+            try:
+                # Execute download_resource
+                result_path = connector.download_resource(
+                    resource_id="test-resource", destination_path=destination_path
+                )
 
-                    # Verify download_resource returns path
-                    self.assertIsNotNone(result_path)
-                    self.assertEqual(result_path, destination_path)
-                finally:
-                    # Cleanup
-                    if os.path.exists(destination_path):
-                        os.unlink(destination_path)
+                # Verify download_resource returns path
+                self.assertIsNotNone(result_path)
+                self.assertEqual(result_path, destination_path)
+            finally:
+                # Cleanup
+                if os.path.exists(destination_path):
+                    os.unlink(destination_path)
 
     def test_dados_gov_br_download_resource_handles_on_demand_downloads(self):
         """Test DadosGovBr connector download_resource() handles on-demand downloads"""
@@ -810,24 +844,26 @@ class TestDownloadResourceHandlesOnDemandDownloads(TestConnectorPatternBase):
         def mock_httpx_stream(method, url, **kwargs):
             return MockStreamResponse()
 
-        with patch.object(connector.client, "get_resource", side_effect=mock_get_resource):
-            with patch("httpx.stream", side_effect=mock_httpx_stream):
-                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                    destination_path = tmp_file.name
+        with (
+            patch.object(connector.client, "get_resource", side_effect=mock_get_resource),
+            patch("httpx.stream", side_effect=mock_httpx_stream),
+            tempfile.NamedTemporaryFile(delete=False) as tmp_file,
+        ):
+            destination_path = tmp_file.name
 
-                try:
-                    # Execute download_resource
-                    result_path = connector.download_resource(
-                        resource_id="test-resource", destination_path=destination_path
-                    )
+            try:
+                # Execute download_resource
+                result_path = connector.download_resource(
+                    resource_id="test-resource", destination_path=destination_path
+                )
 
-                    # Verify download_resource returns path
-                    self.assertIsNotNone(result_path)
-                    self.assertEqual(result_path, destination_path)
-                finally:
-                    # Cleanup
-                    if os.path.exists(destination_path):
-                        os.unlink(destination_path)
+                # Verify download_resource returns path
+                self.assertIsNotNone(result_path)
+                self.assertEqual(result_path, destination_path)
+            finally:
+                # Cleanup
+                if os.path.exists(destination_path):
+                    os.unlink(destination_path)
 
     def test_snowflake_download_resource_handles_on_demand_downloads(self):
         """Test Snowflake connector download_resource() handles on-demand downloads"""
@@ -846,22 +882,24 @@ class TestDownloadResourceHandlesOnDemandDownloads(TestConnectorPatternBase):
         # download_resource will parse "TEST_DB.TEST_SCHEMA.TEST_TABLE" as 3 parts and call _download_table
         # _download_table calls _execute_sql to verify table exists, then downloads it
         # We mock _execute_sql and _download_table directly to avoid connection setup
-        with patch.object(connector, "_execute_sql", return_value=[{"TABLE_NAME": "TEST_TABLE"}]):
-            with patch.object(connector, "_download_table", return_value=destination_path):
-                try:
-                    # Execute download_resource with table identifier
-                    result_path = connector.download_resource(
-                        resource_id="TEST_DB.TEST_SCHEMA.TEST_TABLE",
-                        destination_path=destination_path,
-                    )
+        with (
+            patch.object(connector, "_execute_sql", return_value=[{"TABLE_NAME": "TEST_TABLE"}]),
+            patch.object(connector, "_download_table", return_value=destination_path),
+        ):
+            try:
+                # Execute download_resource with table identifier
+                result_path = connector.download_resource(
+                    resource_id="TEST_DB.TEST_SCHEMA.TEST_TABLE",
+                    destination_path=destination_path,
+                )
 
-                    # Verify download_resource returns path
-                    self.assertIsNotNone(result_path)
-                    self.assertEqual(result_path, destination_path)
-                finally:
-                    # Cleanup
-                    if os.path.exists(destination_path):
-                        os.unlink(destination_path)
+                # Verify download_resource returns path
+                self.assertIsNotNone(result_path)
+                self.assertEqual(result_path, destination_path)
+            finally:
+                # Cleanup
+                if os.path.exists(destination_path):
+                    os.unlink(destination_path)
 
 
 class TestConnectorWorkflowIntegration(TestConnectorPatternBase):

@@ -12,6 +12,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { clearAuthStorage, getAuditorUser } from '../../fixtures/auth';
 import { assertListPageLoads, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -25,10 +26,17 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
         timeout: 60000,
         contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auditor lacks audit role on this environment');
-        return;
+      if (page.url().includes('/login')) {
+        environmentSkipGuard(
+          'Redirected to login on /audit — token family revoked under parallel E2E load'
+        );
       }
+      test.skip(
+        page.url().includes('/login'),
+        'Redirected to login on /audit — auth rotated under load'
+      );
+      test.skip(page.url().includes('/403'), 'Auditor lacks audit role on this environment');
+      if (page.url().includes('/login') || page.url().includes('/403')) return;
       await assertListPageLoads(page, '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]', {
         timeout: 60000,
       });
@@ -53,10 +61,17 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
         timeout: 60000,
         contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auditor lacks audit role');
-        return;
+      if (page.url().includes('/login')) {
+        environmentSkipGuard(
+          'Redirected to login on /audit — token family revoked under parallel E2E load'
+        );
       }
+      test.skip(
+        page.url().includes('/login'),
+        'Redirected to login on /audit — auth rotated under load'
+      );
+      test.skip(page.url().includes('/403'), 'Auditor lacks audit role on this environment');
+      if (page.url().includes('/login') || page.url().includes('/403')) return;
       await assertListPageLoads(page, '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]', {
         timeout: 60000,
       });
@@ -95,10 +110,17 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
         timeout: 60000,
         contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auditor lacks role');
-        return;
+      if (page.url().includes('/login')) {
+        environmentSkipGuard(
+          'Redirected to login on /audit — token family revoked under parallel E2E load'
+        );
       }
+      test.skip(
+        page.url().includes('/login'),
+        'Redirected to login on /audit — auth rotated under load'
+      );
+      test.skip(page.url().includes('/403'), 'Auditor lacks audit role on this environment');
+      if (page.url().includes('/login') || page.url().includes('/403')) return;
       // Must render without 500 errors
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;
       expect(has500).toBe(false);

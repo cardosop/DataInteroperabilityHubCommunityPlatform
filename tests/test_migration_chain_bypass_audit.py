@@ -82,12 +82,15 @@ class TestMigrationChainBypassAudit(TestCase):
 
                     if is_runsql and node.args:
                         sql_arg = node.args[0]
-                        if isinstance(sql_arg, ast.Constant) and isinstance(sql_arg.value, str):
-                            if _MUTATION_PATTERNS.search(sql_arg.value):
-                                violations.append(
-                                    f"{mig_path}:{node.lineno} — "
-                                    f"RunSQL with mutation without # chain-bypass: comment"
-                                )
+                        if (
+                            isinstance(sql_arg, ast.Constant)
+                            and isinstance(sql_arg.value, str)
+                            and _MUTATION_PATTERNS.search(sql_arg.value)
+                        ):
+                            violations.append(
+                                f"{mig_path}:{node.lineno} — "
+                                f"RunSQL with mutation without # chain-bypass: comment"
+                            )
 
         if violations:
             msg = (

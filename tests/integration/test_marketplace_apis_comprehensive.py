@@ -119,9 +119,13 @@ class TestMarketplaceListListingsAPI(TestCase):
         # listings, so the total count may be >0. Only assert about
         # the current tenant's own listings.
         own_listings = [
-            l for l in listings_list
-            if l.get("tenant") == str(self.tenant.id)
-            or (isinstance(l.get("tenant"), dict) and l["tenant"].get("id") == str(self.tenant.id))
+            listing
+            for listing in listings_list
+            if listing.get("tenant") == str(self.tenant.id)
+            or (
+                isinstance(listing.get("tenant"), dict)
+                and listing["tenant"].get("id") == str(self.tenant.id)
+            )
         ]
         self.assertEqual(len(own_listings), 0, f"Expected 0 own listings, got {len(own_listings)}")
 
@@ -191,13 +195,13 @@ class TestMarketplaceListListingsAPI(TestCase):
         self.assertIsInstance(listings_list, list)
         # Should find listing1
         titles = [
-            l.get("title")
+            listing.get("title")
             or (
-                l.get("metadata_json", {}).get("title")
-                if isinstance(l.get("metadata_json"), dict)
+                listing.get("metadata_json", {}).get("title")
+                if isinstance(listing.get("metadata_json"), dict)
                 else None
             )
-            for l in listings_list
+            for listing in listings_list
         ]
         self.assertTrue(any("Listing 1" in str(t) for t in titles if t))
 
@@ -234,14 +238,15 @@ class TestMarketplaceListListingsAPI(TestCase):
         # Verify results are returned (listings may not have sortable fields
         # depending on serializer implementation; at minimum verify the endpoint
         # returns a valid list with the sort parameter accepted)
-        self.assertGreater(len(listings_list), 0,
-                           "Expected at least one listing when sorting by recency")
+        self.assertGreater(
+            len(listings_list), 0, "Expected at least one listing when sorting by recency"
+        )
         # If multiple listings, verify they are ordered by recency (newest first)
         if len(listings_list) > 1:
             # Attempt to verify ordering by created_at or id (descending for recency)
             created_values = []
-            for l in listings_list:
-                created = l.get("created_at") or l.get("created")
+            for listings_list_item in listings_list:
+                created = listings_list_item.get("created_at") or listings_list_item.get("created")
                 if created:
                     created_values.append(created)
             if len(created_values) >= 2:
@@ -1011,11 +1016,8 @@ class TestMarketplacePurchaseListingAPI(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Response may have "order" key or order data directly
-        if "order" in response.data:
-            order_data = response.data["order"]
-        else:
-            # Order data is returned directly (DRF ModelViewSet default behavior)
-            order_data = response.data
+        # (DRF ModelViewSet default behavior returns order data directly)
+        order_data = response.data.get("order", response.data)
         # REQUEST_APPROVAL orders start as REQUESTED (not auto-approved)
         self.assertEqual(order_data["status"], OrderStatus.REQUESTED.value)
 

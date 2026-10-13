@@ -133,10 +133,10 @@ class TestCleanupUnverifiedUsersCommand:
             unverified_users_with_activity,
         )
 
-        deleted_gauge = unverified_users_deleted_total.labels(  # type: ignore[attr-defined]  # test: edge-case type exercise
+        deleted_gauge = unverified_users_deleted_total.labels(  # test: edge-case type exercise
             service="hub"
         )
-        skipped_gauge = unverified_users_with_activity.labels(  # type: ignore[attr-defined]  # test: edge-case type exercise
+        skipped_gauge = unverified_users_with_activity.labels(  # test: edge-case type exercise
             service="hub"
         )
         # _set_cleanup_metrics uses gauge.set(count) — absolute per-run
@@ -202,7 +202,7 @@ class TestCleanupUnverifiedUsersCommand:
         assert Tenant.objects.filter(pk=org.pk).exists()
         assert not AuditEvent.objects.filter(
             action="USER_DELETED_UNVERIFIED",
-            resource_id=user.id,  # type: ignore[attr-defined]  # test: edge-case type exercise
+            resource_id=user.id,  # test: edge-case type exercise
         ).exists()
 
     @pytest.mark.integration

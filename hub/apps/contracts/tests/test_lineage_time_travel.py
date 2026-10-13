@@ -49,9 +49,7 @@ def _create_contract(tenant, *, lineage_refs=None):
     }
     if lineage_refs:
         hub_json["lineage"] = {
-            "contracts": [
-                {"namespace": ns, "name": nm} for ns, nm in lineage_refs
-            ]
+            "contracts": [{"namespace": ns, "name": nm} for ns, nm in lineage_refs]
         }
     return Contract.objects.create(
         tenant=tenant,
@@ -209,7 +207,11 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 
     def test_as_of_filters_get_lineage_visualization(self):
         """GAP-1 regression: ``get_lineage_visualization(as_of=...)``
-        returns nodes+edges shape from the relational index."""
+        returns the SAME ``{nodes, links}`` shape as the current-state
+        branch — the earlier implementation emitted ``edges`` with
+        ``source_contract``/``target_contract`` keys, which crashed the
+        frontend's ``lineage.links.length`` read
+        (UC-LIN-TIME-TRAVEL-001 a11y run)."""
         from hub.apps.contracts.lineage_service import LineageService
         from hub.apps.contracts.models import LineageEdge
 
@@ -228,11 +230,24 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
             str(target.id),
             as_of=timezone.now() + timedelta(seconds=1),
         )
-        assert "nodes" in result and "edges" in result
-        # Two nodes (upstream + target), one edge.
+        assert "nodes" in result
+        assert "links" in result
+        assert "edges" not in result
+        # Two nodes (upstream + target), one link.
         node_ids = {n["id"] for n in result["nodes"]}
         assert node_ids == {str(upstream.id), str(target.id)}
-        assert len(result["edges"]) == 1
+        assert len(result["links"]) == 1
+        link = result["links"][0]
+        assert link["source"] == str(upstream.id)
+        assert link["target"] == str(target.id)
+        assert link["type"] == "reference"
+        assert link["direction"] in ("incoming", "outgoing")
+        # Node entries carry the same minimal contract-node keys the
+        # current-state branch emits.
+        for node in result["nodes"]:
+            assert node["type"] == "contract"
+            assert "name" in node
+            assert "label" in node
 
     def test_query_metric_emitted_per_read(self):
         """GAP-3 regression: every read-method invocation increments
@@ -409,7 +424,7 @@ class TestVisualizationViewAsOf(TransactionTestCase):
         resp = client.get(url, {"as_of": cutoff})
         assert resp.status_code == 200, resp.content
         data = resp.json()
-        edge_types = {e.get("edge_type") for e in data.get("edges", [])}
+        edge_types = {e.get("type") for e in data.get("links", [])}
         # Only the historical "derivation" edge should appear.
         assert "derivation" in edge_types
         assert "reference" not in edge_types
@@ -540,7 +555,7 @@ class TestVisualizationViewSpecScenarios(TransactionTestCase):
         # Edge is still open (valid_to NULL) → present at any future
         # cutoff per the SCD-2 predicate
         # `valid_from <= as_of AND (valid_to IS NULL OR valid_to > as_of)`.
-        edge_types = {e.get("edge_type") for e in data.get("edges", [])}
+        edge_types = {e.get("type") for e in data.get("links", [])}
         assert "reference" in edge_types
 
     def test_both_as_of_and_version_returns_400(self):

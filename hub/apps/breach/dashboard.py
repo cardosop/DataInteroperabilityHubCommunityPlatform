@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
 
@@ -11,8 +11,10 @@ from hub.apps.breach.models import (
     BreachNotification,
     BreachNotificationStatus,
 )
-from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import tenant_context
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
 
 
 def _hours_remaining(deadline) -> float | None:

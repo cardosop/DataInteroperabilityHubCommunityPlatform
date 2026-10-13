@@ -10,7 +10,6 @@ in-process testing against real views.
 import re
 
 import pytest
-from rest_framework.test import APIClient
 
 # Endpoints to test for response consistency (top 30+ by usage)
 _LIST_ENDPOINTS = [
@@ -18,7 +17,7 @@ _LIST_ENDPOINTS = [
     "/api/v1/contracts/",
     "/api/v1/datasets/",
     "/api/v1/files/",
-    "/api/v1/audit/events/",
+    "/api/v1/audit/audit-events/",
     "/api/v1/jobs/",
     "/api/v1/search/?q=test",
     "/api/v1/governance/access-requests/",
@@ -35,8 +34,8 @@ class TestPaginationEnvelope:
 
     @pytest.mark.django_db
     @pytest.mark.parametrize("endpoint", _LIST_ENDPOINTS)
-    def test_list_endpoint_returns_pagination_envelope(self, endpoint):
-        client = APIClient()
+    def test_list_endpoint_returns_pagination_envelope(self, authenticated_client, endpoint):
+        client = authenticated_client
         response = client.get(endpoint)
         if response.status_code >= 500:
             pytest.skip(f"Backend unavailable for {endpoint}")  # noqa: skip-in-body — runtime service dependency
@@ -51,8 +50,14 @@ class TestPaginationEnvelope:
         if isinstance(data, dict) and "results" in data:
             # Paginated response
             assert "count" in data, f"Missing 'count' in paginated response for {endpoint}"
-            assert "next" in data, f"Missing 'next' in paginated response for {endpoint}"
-            assert "previous" in data, f"Missing 'previous' in paginated response for {endpoint}"
+            # Standard envelope carries next/previous; the contracts list
+            # (views_crud.list) documents a custom envelope with
+            # has_next/has_previous/next_page instead.
+            has_standard_links = "next" in data and "previous" in data
+            has_contract_links = "has_next" in data and "has_previous" in data
+            assert has_standard_links or has_contract_links, (
+                f"Missing pagination links ('next'/'previous' or 'has_next'/'has_previous') for {endpoint}"
+            )
             assert isinstance(data["results"], list), (
                 f"'results' must be list, got {type(data['results'])} for {endpoint}"
             )
@@ -88,8 +93,8 @@ class TestFieldNaming:
 
     @pytest.mark.django_db
     @pytest.mark.parametrize("endpoint", _LIST_ENDPOINTS[:5])
-    def test_response_fields_are_snake_case(self, endpoint):
-        client = APIClient()
+    def test_response_fields_are_snake_case(self, authenticated_client, endpoint):
+        client = authenticated_client
         response = client.get(endpoint)
         if response.status_code >= 400:
             pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")  # noqa: skip-in-body — runtime service dependency
@@ -113,15 +118,14 @@ class TestDateTimeFormat:
         elif isinstance(data, list):
             for i, item in enumerate(data):
                 datetimes.extend(self._find_datetime_fields(item, f"{path}[{i}]"))
-        elif isinstance(data, str):
-            if _ISO8601_RE.match(data) and ("T" in data or "-" in data):
-                datetimes.append((path, data))
+        elif isinstance(data, str) and _ISO8601_RE.match(data) and ("T" in data or "-" in data):
+            datetimes.append((path, data))
         return datetimes
 
     @pytest.mark.django_db
     @pytest.mark.parametrize("endpoint", _LIST_ENDPOINTS[:5])
-    def test_datetime_fields_use_iso8601(self, endpoint):
-        client = APIClient()
+    def test_datetime_fields_use_iso8601(self, authenticated_client, endpoint):
+        client = authenticated_client
         response = client.get(endpoint)
         if response.status_code >= 400:
             pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")  # noqa: skip-in-body — runtime service dependency
@@ -141,9 +145,9 @@ class TestNullAndEmptyRepresentation:
 
     @pytest.mark.django_db
     @pytest.mark.parametrize("endpoint", _LIST_ENDPOINTS[:5])
-    def test_empty_collections_are_empty_arrays(self, endpoint):
+    def test_empty_collections_are_empty_arrays(self, authenticated_client, endpoint):
         """Results arrays are never null and are always JSON arrays."""
-        client = APIClient()
+        client = authenticated_client
         response = client.get(endpoint)
         if response.status_code >= 400:
             pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")  # noqa: skip-in-body — runtime service dependency

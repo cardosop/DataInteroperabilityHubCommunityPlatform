@@ -25,11 +25,11 @@ def _read(rel: str) -> str:
 class TestV31VersionMatching:
     """The v3.1.0 normalizer must accept 3.1.x semver."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def src(self):
         return _read("hub/apps/contracts/normalization/odcs_normalizer_v3_1_0.py")
 
-    @pytest.fixture()
+    @pytest.fixture
     def pattern(self, src):
         """Extract the compiled regex from source."""
         m = re.search(
@@ -85,7 +85,7 @@ class TestV302VersionMatching:
 class TestGeneratorRegistryVersions:
     """All expected versions are registered."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def src(self):
         return _read("hub/apps/contracts/odcs_generator.py")
 
@@ -111,7 +111,7 @@ class TestGeneratorRegistryVersions:
 class TestNormalizerBaseVersionDetection:
     """_detect_odcs_version handles all apiVersion formats."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def src(self):
         return _read("hub/apps/contracts/normalization/odcs_normalizer_base.py")
 

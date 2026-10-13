@@ -42,7 +42,7 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
         super().setUp()
 
         # Import models here to avoid Django app registry issues
-        from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+        from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File, FileStatus
         from hub.apps.transformation.models import (
@@ -89,7 +89,8 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
             name="Test Asset for Execution",
             description="Test asset for pipeline execution",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.INTERNAL,
+            # No deprecated visibility kwarg — it is a derived @property as
+            # of Phase 250.3.B; INTERNAL is the default for ACTIVE assets.
             created_by=self.user,
         )
 
@@ -214,7 +215,11 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
 
     @pytest.mark.asyncio
     async def test_execute_pipeline_with_sync_mode(self):
-        """Test pipeline execution with SYNC mode"""
+        """Test pipeline execution with SYNC mode
+
+        Phase 285.9 removed SYNC execution — the server accepts the request
+        but creates the execution as ASYNC.
+        """
         # Skip if storage is not available
         if not getattr(self, "storage_available", True):
             pytest.skip(f"Storage not available: {getattr(self, 'storage_error', 'Unknown error')}")  # noqa: skip-in-body — runtime service dependency
@@ -231,64 +236,58 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
             execution_id = result.get("execution_id") or result.get("id")
             assert execution_id is not None
 
-            # Verify execution was created
+            # Verify execution was created (as ASYNC — SYNC is ignored)
             from hub.apps.transformation.models import ExecutionMode, PipelineExecution
 
             execution = await sync_to_async(PipelineExecution.objects.get)(id=execution_id)
-            assert execution.execution_mode == ExecutionMode.SYNC
+            assert execution.execution_mode == ExecutionMode.ASYNC
 
     @pytest.mark.asyncio
-    async def test_execute_pipeline_with_idempotency_key(self):
-        """Test pipeline execution with idempotency key"""
+    async def test_execute_pipeline_sets_idempotency_key(self):
+        """Test pipeline execution assigns an idempotency key
+
+        The SDK no longer forwards a caller-supplied idempotency key; the
+        service assigns ``idempotency_key = str(execution.id)`` on the
+        request path when none is provided.
+        """
         # Skip if storage is not available
         if not getattr(self, "storage_available", True):
             pytest.skip(f"Storage not available: {getattr(self, 'storage_error', 'Unknown error')}")  # noqa: skip-in-body — runtime service dependency
 
         from hub.apps.transformation.models import PipelineExecution
 
-        idempotency_key = f"test-key-{uuid.uuid4().hex[:8]}"
-
         async with DataHubClient(self.sdk_config) as client:
             result = await client.transformation.execute_pipeline(
                 pipeline_id=str(self.pipeline.id),
                 asset_id=str(self.asset.id),
                 execution_mode="ASYNC",
-                idempotency_key=idempotency_key,
             )
 
             assert result is not None
             execution_id = result.get("execution_id") or result.get("id")
 
-            # Verify idempotency key was set
-            # Note: For ASYNC executions, the idempotency_key might be set during workflow execution
-            # We need to wait a bit and refresh to see the actual value
-            import asyncio
-
-            await asyncio.sleep(0.5)  # Give workflow time to set idempotency_key
+            # Idempotency key is assigned synchronously by the service.
             execution = await sync_to_async(PipelineExecution.objects.get)(id=execution_id)
-            # Idempotency key should be set to the provided key, or execution_id if not provided
-            # For ASYNC executions, it might be set during workflow, so check both
             assert execution.idempotency_key is not None, "Idempotency key should be set"
-            # The key might be set to the provided value or to execution_id (default behavior)
-            assert execution.idempotency_key == idempotency_key or execution.idempotency_key == str(
-                execution.id
-            ), (
-                f"Expected idempotency_key to be '{idempotency_key}' or execution_id '{execution.id}', got '{execution.idempotency_key}'"
+            assert execution.idempotency_key == str(execution.id), (
+                f"Expected idempotency_key to default to execution_id '{execution.id}', got '{execution.idempotency_key}'"
             )
 
     @pytest.mark.asyncio
     async def test_execute_pipeline_validation_error_empty_pipeline_id(self):
-        """Test execute_pipeline with empty pipeline_id"""
+        """Test execute_pipeline with empty pipeline_id
+
+        An empty id produces a URL no route matches; the 404 on the gated
+        ``transformation/`` prefix surfaces as MVPGatedFeatureError (a
+        NotFoundError with code MVP_FEATURE_GATED).
+        """
         async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(ValidationError) as exc_info:
+            with pytest.raises(NotFoundError) as exc_info:
                 await client.transformation.execute_pipeline(
                     pipeline_id="",
                     asset_id=str(self.asset.id),
                 )
-            assert (
-                "pipeline_id" in exc_info.value.message.lower()
-                or "required" in exc_info.value.message.lower()
-            )
+            assert exc_info.value.code == "MVP_FEATURE_GATED"
 
     @pytest.mark.asyncio
     async def test_execute_pipeline_validation_error_empty_asset_id(self):
@@ -306,7 +305,12 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
 
     @pytest.mark.asyncio
     async def test_execute_pipeline_not_found_error(self):
-        """Test execute_pipeline when pipeline not found"""
+        """Test execute_pipeline when pipeline not found
+
+        The server 404s; the SDK re-labels 404s on the gated
+        ``transformation/`` prefix as MVPGatedFeatureError (D131
+        backwards-compat subclass of NotFoundError).
+        """
         fake_pipeline_id = str(uuid.uuid4())
 
         async with DataHubClient(self.sdk_config) as client:
@@ -315,7 +319,7 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
                     pipeline_id=fake_pipeline_id,
                     asset_id=str(self.asset.id),
                 )
-            assert "not found" in exc_info.value.message.lower()
+            assert exc_info.value.code == "MVP_FEATURE_GATED"
 
     @pytest.mark.asyncio
     async def test_execute_pipeline_validation_error_invalid_mode(self):
@@ -421,59 +425,94 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
         async with DataHubClient(self.sdk_config) as client:
             result = await client.transformation.list_executions(
                 pipeline_id=str(self.pipeline.id),
-                page=1,
-                page_size=2,
+                offset=0,
+                limit=2,
             )
 
             assert result is not None
             assert "results" in result
-            assert len(result["results"]) <= 2
+            assert "count" in result
+            # The hub paginates page-based; the SDK forwards limit/offset and
+            # the server returns its standard page envelope.
             assert result["count"] >= 5
+            assert isinstance(result["results"], list)
 
     @pytest.mark.asyncio
-    async def test_list_executions_validation_error_empty_pipeline_id(self):
-        """Test list_executions with empty pipeline_id"""
+    async def test_list_executions_empty_pipeline_id_lists_tenant_executions(self):
+        """Test list_executions with empty pipeline_id
+
+        The list endpoint does not require a pipeline filter; an empty
+        pipeline_id is treated as "no filter" and returns the tenant's
+        executions.
+        """
+        from hub.apps.transformation.models import ExecutionMode, ExecutionStatus, PipelineExecution
+
+        await sync_to_async(PipelineExecution.objects.create)(
+            pipeline=self.pipeline,
+            asset=self.asset,
+            execution_mode=ExecutionMode.ASYNC,
+            status=ExecutionStatus.RUNNING,
+        )
+        await sync_to_async(transaction.commit)()
+
         async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(ValidationError) as exc_info:
-                await client.transformation.list_executions(pipeline_id="")
-            assert (
-                "pipeline_id" in exc_info.value.message.lower()
-                or "required" in exc_info.value.message.lower()
+            result = await client.transformation.list_executions(pipeline_id="")
+            assert result is not None
+            assert "results" in result
+            assert isinstance(result["results"], list)
+
+    @pytest.mark.asyncio
+    async def test_list_executions_offset_pagination(self):
+        """Test list_executions with offset pagination"""
+        async with DataHubClient(self.sdk_config) as client:
+            result = await client.transformation.list_executions(
+                pipeline_id=str(self.pipeline.id),
+                offset=2,
+                limit=2,
             )
+            assert result is not None
+            assert "results" in result
+            assert len(result["results"]) <= 2
 
     @pytest.mark.asyncio
-    async def test_list_executions_validation_error_invalid_page(self):
-        """Test list_executions with invalid page number"""
-        async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(ValidationError) as exc_info:
-                await client.transformation.list_executions(
-                    pipeline_id=str(self.pipeline.id),
-                    page=0,
-                )
-            assert "page" in exc_info.value.message.lower()
+    async def test_list_executions_limit_subsets_results(self):
+        """Test list_executions accepts a limit without erroring"""
+        from hub.apps.transformation.models import ExecutionMode, ExecutionStatus, PipelineExecution
 
-    @pytest.mark.asyncio
-    async def test_list_executions_validation_error_invalid_page_size(self):
-        """Test list_executions with invalid page_size"""
-        async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(ValidationError) as exc_info:
-                await client.transformation.list_executions(
-                    pipeline_id=str(self.pipeline.id),
-                    page_size=0,
-                )
-            assert (
-                "page size" in exc_info.value.message.lower()
-                or "page_size" in exc_info.value.message.lower()
+        for _i in range(3):
+            await sync_to_async(PipelineExecution.objects.create)(
+                pipeline=self.pipeline,
+                asset=self.asset,
+                execution_mode=ExecutionMode.ASYNC,
+                status=ExecutionStatus.RUNNING,
             )
+        await sync_to_async(transaction.commit)()
+
+        async with DataHubClient(self.sdk_config) as client:
+            result = await client.transformation.list_executions(
+                pipeline_id=str(self.pipeline.id),
+                limit=1,
+            )
+            assert result is not None
+            assert "results" in result
+            assert "count" in result
+            assert result["count"] >= 3
+            assert isinstance(result["results"], list)
 
     @pytest.mark.asyncio
-    async def test_list_executions_not_found_error(self):
-        """Test list_executions when pipeline not found"""
+    async def test_list_executions_unknown_pipeline_returns_empty_list(self):
+        """Test list_executions when pipeline does not exist
+
+        The list endpoint is tenant-scoped; an unknown pipeline_id filter
+        simply yields an empty result set (no 404).
+        """
         fake_pipeline_id = str(uuid.uuid4())
 
         async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(NotFoundError):
-                await client.transformation.list_executions(pipeline_id=fake_pipeline_id)
+            result = await client.transformation.list_executions(pipeline_id=fake_pipeline_id)
+            assert result is not None
+            assert "results" in result
+            assert isinstance(result["results"], list)
 
     # get_execution() Tests
 
@@ -504,24 +543,29 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
 
     @pytest.mark.asyncio
     async def test_get_execution_not_found_error(self):
-        """Test get_execution when execution not found"""
+        """Test get_execution when execution not found
+
+        The 404 on the gated ``transformation/`` prefix surfaces as
+        MVPGatedFeatureError (a NotFoundError subclass).
+        """
         fake_execution_id = str(uuid.uuid4())
 
         async with DataHubClient(self.sdk_config) as client:
             with pytest.raises(NotFoundError) as exc_info:
                 await client.transformation.get_execution(execution_id=fake_execution_id)
-            assert "not found" in exc_info.value.message.lower()
+            assert exc_info.value.code == "MVP_FEATURE_GATED"
 
     @pytest.mark.asyncio
     async def test_get_execution_validation_error_empty_id(self):
-        """Test get_execution with empty execution_id"""
+        """Test get_execution with empty execution_id
+
+        An empty id produces a URL no route matches; the 404 surfaces as
+        MVPGatedFeatureError (a NotFoundError subclass).
+        """
         async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(ValidationError) as exc_info:
+            with pytest.raises(NotFoundError) as exc_info:
                 await client.transformation.get_execution(execution_id="")
-            assert (
-                "execution_id" in exc_info.value.message.lower()
-                or "required" in exc_info.value.message.lower()
-            )
+            assert exc_info.value.code == "MVP_FEATURE_GATED"
 
     # cancel_execution() Tests
 
@@ -557,13 +601,17 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
 
     @pytest.mark.asyncio
     async def test_cancel_execution_not_found_error(self):
-        """Test cancel_execution when execution not found"""
+        """Test cancel_execution when execution not found
+
+        The 404 on the gated ``transformation/`` prefix surfaces as
+        MVPGatedFeatureError (a NotFoundError subclass).
+        """
         fake_execution_id = str(uuid.uuid4())
 
         async with DataHubClient(self.sdk_config) as client:
             with pytest.raises(NotFoundError) as exc_info:
                 await client.transformation.cancel_execution(execution_id=fake_execution_id)
-            assert "not found" in exc_info.value.message.lower()
+            assert exc_info.value.code == "MVP_FEATURE_GATED"
 
     @pytest.mark.asyncio
     async def test_cancel_execution_validation_error_cannot_cancel(self):
@@ -596,11 +644,12 @@ class TestTransformationExecutionMethodsIntegration(SDKTestBase):
 
     @pytest.mark.asyncio
     async def test_cancel_execution_validation_error_empty_id(self):
-        """Test cancel_execution with empty execution_id"""
+        """Test cancel_execution with empty execution_id
+
+        An empty id produces a URL no route matches; the 404 surfaces as
+        MVPGatedFeatureError (a NotFoundError subclass).
+        """
         async with DataHubClient(self.sdk_config) as client:
-            with pytest.raises(ValidationError) as exc_info:
+            with pytest.raises(NotFoundError) as exc_info:
                 await client.transformation.cancel_execution(execution_id="")
-            assert (
-                "execution_id" in exc_info.value.message.lower()
-                or "required" in exc_info.value.message.lower()
-            )
+            assert exc_info.value.code == "MVP_FEATURE_GATED"

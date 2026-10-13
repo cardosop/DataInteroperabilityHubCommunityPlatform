@@ -6,6 +6,7 @@ This script tests all JSONField operations to ensure they work correctly
 with Django 6, including queries, updates, and migrations.
 """
 
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -119,14 +120,11 @@ def test_jsonfield_operations():
     print_success("JSONField nested data works")
 
     # Cleanup - handle cascade deletes
-    try:
+    # Best-effort cleanup: ignore failure if related objects exist
+    with contextlib.suppress(Exception):
         contract.delete()
-    except Exception:
-        pass  # May fail if related objects exist
-    try:
+    with contextlib.suppress(Exception):
         tenant.delete()
-    except Exception:
-        pass  # May fail if related objects exist
 
     return True
 
@@ -174,15 +172,12 @@ def test_jsonfield_queries():
     print_success("JSON contains query works")
 
     # Cleanup - handle cascade deletes
+    # Best-effort cleanup: ignore failure if related objects exist
     for contract in contracts:
-        try:
+        with contextlib.suppress(Exception):
             contract.delete()
-        except Exception:
-            pass  # May fail if related objects exist
-    try:
+    with contextlib.suppress(Exception):
         tenant.delete()
-    except Exception:
-        pass  # May fail if related objects exist
 
     return True
 
@@ -197,9 +192,9 @@ def test_jsonfield_migrations():
     with connection.cursor() as cursor:
         # Check if JSONB columns exist
         cursor.execute("""
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_schema = 'public' 
+            SELECT column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
             AND data_type = 'jsonb'
             LIMIT 10;
         """)
@@ -231,7 +226,6 @@ def main():
 
         print_header("Test Summary")
         print_success("All JSONField functionality tests passed")
-        return 0
 
     except Exception as e:
         print_error(f"Test failed: {e}")
@@ -239,6 +233,8 @@ def main():
 
         traceback.print_exc()
         return 1
+    else:
+        return 0
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ from hub.apps.governance.models import (
     DataClassification,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -45,6 +46,7 @@ class GovernanceBusinessRulesInitializationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
     def test_governance_business_rules_initialization(self):
@@ -109,6 +111,7 @@ class AccessRequestEligibilityValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -174,6 +177,7 @@ class AccessRequestEligibilityValidationTest(TestCase):
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
+            status=UserStatus.ACTIVE,
         )
 
         access_request = AccessRequest.objects.create(
@@ -207,6 +211,7 @@ class ResourceAccessValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -358,6 +363,7 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -486,11 +492,13 @@ class AccessRequestApprovalValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.approver = User.objects.create_user(
             email=f"approver-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -530,6 +538,7 @@ class AccessRequestApprovalValidationTest(TestCase):
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         access_request = AccessRequest.objects.create(
@@ -605,6 +614,7 @@ class AccessRequestApprovalValidationTest(TestCase):
             email=f"other-approver-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
+            status=UserStatus.ACTIVE,
         )
 
         access_request = AccessRequest.objects.create(
@@ -640,6 +650,7 @@ class AccessRequestValidationIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -723,6 +734,7 @@ class ClassificationLevelValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -828,6 +840,7 @@ class ClassificationConsistencyValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -960,6 +973,7 @@ class ClassificationChangeValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -1099,6 +1113,7 @@ class ClassificationInheritanceValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -1271,6 +1286,7 @@ class ClassificationValidationIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -1385,6 +1401,7 @@ class ABACPolicyValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -1847,6 +1864,7 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -1898,6 +1916,7 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
+            status=UserStatus.ACTIVE,
         )
 
         result = self.rules._validate_compliance_report_generation_eligibility(
@@ -1923,6 +1942,7 @@ class ComplianceReportScopeValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -2060,6 +2080,7 @@ class ComplianceReportFormatValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -2175,6 +2196,7 @@ class ComplianceReportAccessValidationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -2256,6 +2278,7 @@ class ComplianceReportAccessValidationTest(TestCase):
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
+            status=UserStatus.ACTIVE,
         )
 
         report = ComplianceReport.objects.create(
@@ -2326,6 +2349,7 @@ class ComplianceReportValidationIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)

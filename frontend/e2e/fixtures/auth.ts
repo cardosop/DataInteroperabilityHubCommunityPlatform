@@ -4,6 +4,7 @@
  */
 
 import { Page, expect } from '@playwright/test';
+import { environmentSkipGuard } from './envPolicy.cjs';
 import { E2E_APP_NAME } from './brand';
 import {
   ensureAuditorUser,
@@ -20,18 +21,13 @@ import {
 
 export type { TestUser };
 
-// Node fetch needs absolute URL; VITE_API_BASE_URL can be relative (/api/v1)
-// Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
-const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
-const API_BASE =
-  process.env.E2E_API_BASE_URL ||
-  (process.env.VITE_PROXY_TARGET
-    ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1`
-    : null) ||
-  (process.env.VITE_API_BASE_URL?.startsWith('http')
-    ? process.env.VITE_API_BASE_URL
-    : null) ||
-  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
+export { getApiBaseUrl } from './api-base';
+import { getApiBaseUrl } from './api-base';
+
+// Re-exported above for specs (infrastructure-canary, security-headers);
+// the canonical implementation lives in fixtures/api-base.ts so every
+// Node-side helper resolves the SAME backend as the login flow.
+const API_BASE = getApiBaseUrl();
 
 /** True when error is ECONNREFUSED (wrong port or backend not running). */
 function isConnectionRefused(err: unknown): boolean {
@@ -151,6 +147,14 @@ export function classifyClearAuthStorageError(err: unknown): ClearAuthStorageErr
   if (isPageClosedError(err)) return 'page-closed';
   if (isChromeErrorPageStorageAccessError(err)) return 'chrome-error-page';
   if (isConnectionError(err)) return 'transient-network';
+  // net::ERR_ABORTED / "frame was detached" — the reload was SUPERSEDED by
+  // a concurrent navigation (typically the app's own post-clear redirect to
+  // /login). The storage was already cleared by the page.evaluate step, so
+  // this is semantically the transient bucket: one retry reload after the
+  // racing navigation settles, then benign (JOURNEY-DE-006 jobs-list load
+  // hit this and the old 'fatal' rethrow killed the test).
+  if (/ERR_ABORTED|frame was detached/i.test(String((err as Error)?.message ?? '')))
+    return 'transient-network';
   if (isNavigationTimeout(err)) return 'timeout';
   return 'fatal';
 }
@@ -160,19 +164,31 @@ export async function gotoWithRetry(
   page: Page,
   url: string,
   options: { waitUntil?: 'commit' | 'domcontentloaded' | 'load' } = {},
-  maxRetries = 4
+  maxRetries = 5
 ): Promise<void> {
   // Use a per-attempt timeout (30s) so a single hung navigation doesn't consume the entire test budget
   const perAttemptTimeout = 30_000;
   // Default 'commit': completes when the navigation response is committed. Under parallel E2E
   // against Vite dev, waiting for domcontentloaded can stall while the transform graph is busy;
   // callers already use waitForLoadState / waitForAppMainReady / locators for real readiness.
+  // Exponential backoff (1/2/4/8/16s ≈ 30s total window): connection-refused failures are
+  // instant, so the window exists to outlast a mid-run dev-server restart (vite
+  // dependency re-optimization or the e2e-detect-api.sh watchdog bringing the server
+  // back) — a cold vite start on a slow disk fits inside it.
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       await page.goto(url, {
         waitUntil: options.waitUntil ?? 'commit',
         timeout: perAttemptTimeout,
       });
+      // waitUntil 'commit' can COMMIT Chromium's internal error page when the
+      // network layer dies mid-navigation (ERR_CONNECTION_REFUSED resolves the
+      // error page instead of rejecting the goto). The page is static and never
+      // self-recovers, so throw a classified connection error to re-navigate via
+      // the retry loop once the dev server is back.
+      if (page.url().startsWith('chrome-error://')) {
+        throw new Error('net::ERR_CONNECTION_REFUSED (chrome-error page committed)');
+      }
       return;
     } catch (err) {
       if (isPageClosedError(err)) {
@@ -182,7 +198,7 @@ export async function gotoWithRetry(
       }
       const isRetryable = isConnectionError(err) || isNavigationTimeout(err);
       if (isRetryable && attempt < maxRetries - 1) {
-        const delay = 2000 * (attempt + 1);
+        const delay = 1000 * 2 ** attempt;
         const reason = isConnectionError(err) ? 'connection error' : 'navigation timeout';
         console.log(
           `page.goto(${url}) failed (${reason}), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`
@@ -704,11 +720,19 @@ export async function getTenantAdminUser(): Promise<TestUser> {
 /**
  * Get tenant admin or fall back to test user when tenant admin is unavailable (e.g. transient setup race).
  * Use for ODPS/DE-014 when tenant admin may not be ready; test user may have access in default tenant.
+ *
+ * W16 (Phase T.4): in CI the fallback RAISES — a persona downgrade is a
+ * "not authenticated" environment failure that silently changes which
+ * user the spec runs as; local runs keep the fallback.
  */
 export async function getTenantAdminUserOrTestUser(): Promise<TestUser> {
   try {
     return await ensureTenantAdminUser();
-  } catch {
+  } catch (err) {
+    environmentSkipGuard(
+      `tenant-admin user unavailable (fallback to test user would change the ` +
+        `spec's persona) — ${String(err)}`,
+    );
     return await ensureTestUser();
   }
 }
@@ -773,11 +797,19 @@ export interface LoginUserOptions {
   /** When true, skip early-exit and always do full UI login. Use when protected routes redirect to login. */
   forceFreshLogin?: boolean;
   /**
+   * Internal: marks the ONE recovery retry when the session was
+   * invalidated after the app shell appeared (shared-user token-family
+   * revocation). Never set from specs.
+   */
+  _retriedOnce?: boolean;
+  /**
    * When true, throw instead of falling back to loginViaApiAndInject.
    * Use in token-storage security tests where the fallback path would
    * write access_token to localStorage and invalidate the assertion.
    */
-  failOnFallback?: boolean;
+  // W16 (Phase T.4) — `failOnFallback` retired: the environment policy
+  // decides. In CI every fallback RAISES (environment failure announces
+  // itself); local runs keep the API-injection fallback.
 }
 
 /**
@@ -789,22 +821,21 @@ export async function loginUser(
   user: TestUser,
   options: LoginUserOptions = {}
 ): Promise<void> {
-  const { forceFreshLogin = false, failOnFallback = false } = options;
+  const { forceFreshLogin = false } = options;
 
   /**
-   * Internal helper: either throws (when failOnFallback=true) or falls back to
-   * API token injection. Security tests must pass failOnFallback=true so a
-   * rate-limited or slow UI login doesn't silently corrupt auth storage state.
+   * Internal helper: raises in CI via the W16 environment policy (a UI-login
+   * failure in CI is an environment failure, never a silent API-injection
+   * fallback); local runs fall back to API token injection.
    */
   async function fallbackOrThrow(reason: string): Promise<void> {
-    if (failOnFallback) {
-      throw new Error(
-        `[loginUser] UI login failed and failOnFallback=true — cannot fall back to ` +
-        `API injection for this test (doing so would write access_token to localStorage ` +
-        `and invalidate the auth-security assertion). Reason: ${reason}. ` +
-        `Check backend rate limits or server health.`
-      );
-    }
+    // W16 — the flipped default: in CI the UI-login fallback RAISES (a
+    // failing login in CI is an environment failure, never a silent
+    // API-injection fallback); local runs keep the injection fallback.
+    environmentSkipGuard(
+      `[loginUser] UI login failed — reason: ${reason}. Check backend rate ` +
+        `limits or server health.`
+    );
     await loginViaApiAndInject(page, user);
   }
   // Performance optimization: when storageState has user profile for this user,
@@ -914,8 +945,16 @@ export async function loginUser(
         // h1 wait runs against the real login page after the network
         // recovers. The original sleep is preserved for the non-chrome-
         // error case (page IS on /login, h1 just not yet hydrated).
+        //
+        // Batch-5 flake fix — JOURNEY-TA-002 surfaced the OTHER blank
+        // case: the URL is /login but the body is empty because the
+        // FIRST document load's on-demand vite transform stalled (HDD
+        // jbd2 stalls after file edits invalidate the module cache).
+        // Re-polling the same stalled document can never recover, but
+        // a FRESH navigation hits the now-warm module cache. So: one
+        // hydration-grace sleep on the first retry, then re-navigate.
         const currentUrl = page.url();
-        if (currentUrl.startsWith('chrome-error://')) {
+        if (currentUrl.startsWith('chrome-error://') || attempt > 0) {
           await gotoWithRetry(page, '/login');
           await page.waitForLoadState('domcontentloaded');
         } else {
@@ -935,6 +974,8 @@ export async function loginUser(
         //     somewhere (e.g. /assets), and the previous logged-in
         //     session wasn't cleared.
         const url = page.url();
+        // intentional: diagnostic-only read — body text is best-effort extra
+        // context for the error message below; the h1 failure itself throws.
         const bodyText = (await page.textContent('body').catch(() => '')) ?? '';
         const onChromeError = url.startsWith('chrome-error://');
         console.log(
@@ -1025,8 +1066,13 @@ export async function loginUser(
     await passwordInput.fill(user.password);
     // Wait for submit button to be enabled (not aria-busy from stale hydration state)
     await submitButton.waitFor({ state: 'visible', timeout: 5000 });
+    // Function (not string) — a string predicate evaluates via `eval`,
+    // which the dev-server CSP (script-src without unsafe-eval) blocks.
     await page.waitForFunction(
-      '(() => { const btn = document.querySelector(\'button[type="submit"]\'); return btn && !btn.disabled; })()',
+      () => {
+        const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+        return btn && !btn.disabled;
+      },
       { timeout: 10000 }
     );
     const retryResp = await attemptLogin();
@@ -1045,8 +1091,13 @@ export async function loginUser(
     await emailInput.fill(user.email);
     await passwordInput.fill(user.password);
     await submitButton.waitFor({ state: 'visible', timeout: 5000 });
+    // Function (not string) — a string predicate evaluates via `eval`,
+    // which the dev-server CSP (script-src without unsafe-eval) blocks.
     await page.waitForFunction(
-      '(() => { const btn = document.querySelector(\'button[type="submit"]\'); return btn && !btn.disabled; })()',
+      () => {
+        const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+        return btn && !btn.disabled;
+      },
       { timeout: 10000 }
     );
     const retryResp = await attemptLogin();
@@ -1191,40 +1242,32 @@ export async function loginUser(
     throw waitErr;
   }
   if (page.url().includes('/login')) {
+    if (!options._retriedOnce) {
+      // One-shot recovery: the just-established session was invalidated
+      // after the shell appeared (shared-user token-family revocation
+      // from a concurrent run, or a backend restart mid-login — the
+      // f4-batch AUTH-SECURITY flake, 2026-10-03). Re-run the login
+      // ONCE; a persistent auth problem still fails loudly below.
+      await clearAuthStorage(page);
+      await loginUser(page, user, {
+        ...options,
+        forceFreshLogin: true,
+        _retriedOnce: true,
+      });
+      return;
+    }
     throw new Error(
       'Login failed: Redirected to login after app shell appeared; token may be invalid.'
     );
   }
 
-  // Phase 11.1 fix: after successful UI login, access_token lives in JS module
-  // memory only. When the test later calls page.goto() (which triggers a full page
-  // reload in Playwright), JS memory is wiped and initializeAuth() finds no
-  // access_token. It attempts to refresh using the stored refresh_token, but that
-  // token may have been rotated during login (replay detection) causing a 401 that
-  // clears auth state and redirects to /login.
-  //
-  // Fix: do a supplementary API login and inject access_token into localStorage.
-  // initializeAuth() reads access_token from localStorage if present (line 263 of
-  // authService.ts), making subsequent page.goto() navigations auth-stable.
-  const hasAccessToken = await page.evaluate(
-    () => !!localStorage.getItem('access_token')
-  );
-  if (!hasAccessToken) {
-    try {
-      const apiAuth = await loginViaApi(user.email, user.password);
-      await page.evaluate(
-        ({ access_token }) => {
-          localStorage.setItem('access_token', access_token);
-        },
-        apiAuth
-      );
-    } catch {
-      // intentional: auth fixture has explicit retry budgets for the well-known transient failures (rate-limit 429, login-race); the surrounding code surfaces final failure via explicit assertions.
-      // API login failed — auth may break on next page.goto() but don't block
-      // the current test; the UI login already succeeded.
-    }
-  }
-
+  // Phase 11.1: after a successful UI login the access_token lives in
+  // apiClient module memory ONLY — loginUser must NOT persist it to
+  // localStorage (the old "supplementary injection" workaround here
+  // broke the AUTH-SECURITY 11.1 assertions). Full page reloads resume
+  // the session via the refresh cookie silent-refresh path — pinned by
+  // JOURNEY-AUTH-SECURITY "app shell loads without access_token in
+  // localStorage (session from cookie)".
   // Verify the auth store has finished initializing and is stable.
   // .app-sidebar being visible means the store synchronously hydrated
   // (isAuthenticated=true from localStorage user), but the async
@@ -1254,8 +1297,10 @@ export async function loginUser(
         );
         return hasUser && notOnLogin && hasAppShell;
       });
+      // intentional: page.evaluate may fail transiently during navigation —
+      // the retry loop continues and the next attempt re-evaluates.
     } catch {
-      // page.evaluate may fail transiently during navigation
+      /* intentional: transient navigation failure — retry loop continues */
     }
     if (!storeReady) { await page.waitForTimeout(500); continue; }
 
@@ -1270,7 +1315,16 @@ export async function loginUser(
         const controller = new AbortController();
         const t = setTimeout(() => controller.abort(), 10_000);
         try {
-          const token = localStorage.getItem('access_token');
+          // Phase 11.1: the access_token is in apiClient MODULE MEMORY,
+          // never localStorage — the old localStorage probe always
+          // returned null after the 11.1 hardening, failed this check,
+          // and forced the API-injection fallback below (which wrote a
+          // token to localStorage and broke the AUTH-SECURITY 11.1
+          // assertions). Probe through the app's sanctioned read-only
+          // getter instead (window.__getAccessToken, exported by the
+          // apiClient module).
+          const token = (window as unknown as { __getAccessToken?: () => string | null })
+            .__getAccessToken?.();
           if (!token) return false;
           const resp = await fetch('/api/v1/auth/me/', {
             headers: { Authorization: `Bearer ${token}` },
@@ -1284,8 +1338,10 @@ export async function loginUser(
         }
       });
       if (apiOk) break; // Both DOM and API checks passed
+      // intentional: page.evaluate may fail transiently — the retry loop
+      // continues and the next attempt re-evaluates.
     } catch {
-      // page.evaluate may fail transiently
+      /* intentional: transient navigation failure — retry loop continues */
     }
     await page.waitForTimeout(500);
   }

@@ -32,6 +32,6 @@ try:
         ["tenant_id", "format"],
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     ropa_generated_total = _MetricStub()
     ropa_export_total = _MetricStub()

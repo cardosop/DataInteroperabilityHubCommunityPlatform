@@ -102,7 +102,7 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    throttle_classes = [FederatedImportThrottle]
+    throttle_classes = (FederatedImportThrottle,)
 
     @extend_schema(
         summary="List supported federated import providers",
@@ -252,7 +252,7 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
         try:
             job = Job.objects.get(id=job_id, tenant=tenant, type=JobType.FEDERATED_IMPORT)
         except Job.DoesNotExist:
-            raise NotFound(f"Federated import job {job_id} not found.")
+            raise NotFound(f"Federated import job {job_id} not found.") from None
 
         safe_details = _mask_credentials(job.details_json or {})
         return Response(
@@ -287,7 +287,7 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
         try:
             job = Job.objects.get(id=job_id, tenant=tenant, type=JobType.FEDERATED_IMPORT)
         except Job.DoesNotExist:
-            raise NotFound(f"Federated import job {job_id} not found.")
+            raise NotFound(f"Federated import job {job_id} not found.") from None
 
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
             return api_error_response(

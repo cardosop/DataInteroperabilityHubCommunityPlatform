@@ -63,16 +63,15 @@ class ODPSDashboardsValidationTest(TestCase):
                 self.fail(f"Dashboard file {dashboard_file} is not valid JSON: {e}")
 
     def test_dashboards_have_required_structure(self):
-        """Test that all dashboards have required structure (dashboard, title, panels)."""
+        """Test that all dashboards have required structure (title, panels)."""
         for dashboard_file in self.required_dashboards:
             dashboard_path = self.dashboards_dir / dashboard_file
             with open(dashboard_path) as f:
                 config = json.load(f)
 
-            self.assertIn(
-                "dashboard", config, f"Dashboard {dashboard_file} must have 'dashboard' key"
-            )
-            dashboard = config["dashboard"]
+            # Dashboards are stored in Grafana provisioning file format:
+            # the dashboard model IS the top-level object (no {"dashboard": ...} API wrapper).
+            dashboard = config
 
             self.assertIn("title", dashboard, f"Dashboard {dashboard_file} must have 'title'")
             self.assertIn("panels", dashboard, f"Dashboard {dashboard_file} must have 'panels'")
@@ -92,7 +91,7 @@ class ODPSDashboardsValidationTest(TestCase):
             with open(dashboard_path) as f:
                 config = json.load(f)
 
-            dashboard = config["dashboard"]
+            dashboard = config
 
             self.assertIn("tags", dashboard, f"Dashboard {dashboard_file} must have 'tags'")
             self.assertIsInstance(
@@ -117,7 +116,7 @@ class ODPSDashboardsValidationTest(TestCase):
             with open(dashboard_path) as f:
                 config = json.load(f)
 
-            dashboard = config["dashboard"]
+            dashboard = config
             panels = dashboard.get("panels", [])
 
             for i, panel in enumerate(panels):
@@ -158,7 +157,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Adoption (Marketplace)")
         self.assertIn("odps", dashboard["tags"])
         self.assertIn("marketplace", dashboard["tags"])
@@ -180,7 +179,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Version Distribution")
 
         # Check for version-related queries
@@ -200,7 +199,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODCS Version Distribution")
 
         # Check for ODCS version queries
@@ -220,7 +219,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS $ref Resolution Performance")
 
         # Check for performance-related queries
@@ -243,7 +242,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Rate Limiting")
 
         # Check for rate limiting queries
@@ -265,7 +264,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Cache Performance")
 
         # Check for cache-related queries
@@ -283,7 +282,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS vs ODCS Separation Metrics")
 
         # Check for both ODPS and ODCS queries
@@ -303,7 +302,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODCS Regression Detection")
 
         # Check for regression queries
@@ -323,7 +322,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Performance Targets")
 
         # Check for target comparison queries
@@ -357,7 +356,7 @@ class ODPSDashboardsValidationTest(TestCase):
             with open(dashboard_path) as f:
                 config = json.load(f)
 
-            dashboard = config["dashboard"]
+            dashboard = config
             for panel in dashboard.get("panels", []):
                 for target in panel.get("targets", []):
                     expr = target.get("expr", "")
@@ -404,7 +403,7 @@ class ODPSDashboardsValidationTest(TestCase):
             with open(dashboard_path) as f:
                 config = json.load(f)
 
-            dashboard = config["dashboard"]
+            dashboard = config
 
             # Check that panels have descriptions
             for i, panel in enumerate(dashboard.get("panels", [])):
@@ -422,7 +421,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Marketplace Integration")
         self.assertIn("marketplace", dashboard["tags"])
         self.assertIn("task-6.6.8", dashboard["tags"])
@@ -473,7 +472,7 @@ class ODPSDashboardsValidationTest(TestCase):
         with open(dashboard_path) as f:
             config = json.load(f)
 
-        dashboard = config["dashboard"]
+        dashboard = config
         self.assertEqual(dashboard["title"], "ODPS Creation Flow Performance")
         self.assertIn("creation", dashboard["tags"])
         self.assertIn("workflow", dashboard["tags"])

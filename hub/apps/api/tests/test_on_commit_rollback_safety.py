@@ -27,6 +27,10 @@ from hub.apps.users.models import User
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def _simulate_rollback():
+    raise IntegrityError("simulated rollback")
+
+
 class NotificationSignalRollbackTest(TestCase):
     """
     Proves that notification email tasks queued via the
@@ -55,7 +59,7 @@ class NotificationSignalRollbackTest(TestCase):
                     instance=instance,
                     created=False,
                 )
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -82,7 +86,7 @@ class NotificationSignalRollbackTest(TestCase):
                     instance=instance,
                     created=False,
                 )
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -134,7 +138,7 @@ class DjangoOnCommitRollbackWebhookPatternTest(TestCase):
             with transaction.atomic():
                 _did = "fake-delivery-id"
                 transaction.on_commit(lambda: mock_deliver.delay(_did))
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -183,7 +187,7 @@ class DjangoOnCommitRollbackCompliancePatternTest(TestCase):
                         job_timeout=1800,
                     )
                 )
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -246,7 +250,7 @@ class DjangoOnCommitRollbackContractNotificationPatternTest(TestCase):
                         field_path=None,
                     )
                 )
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -267,7 +271,7 @@ class DjangoOnCommitRollbackContractNotificationPatternTest(TestCase):
         try:
             with transaction.atomic():
                 transaction.on_commit(lambda: mock_task.delay(_cid))
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -314,7 +318,7 @@ class DjangoOnCommitRollbackContractNotificationPatternTest(TestCase):
                         tenant_id=str(uuid.uuid4()),
                     )
                 )
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 
@@ -350,7 +354,7 @@ class InvitationEmailRollbackTest(TestCase):
                     fake_user,
                     plaintext_token="tok-123",
                 )
-                raise IntegrityError("simulated rollback")
+                _simulate_rollback()
         except IntegrityError:
             pass
 

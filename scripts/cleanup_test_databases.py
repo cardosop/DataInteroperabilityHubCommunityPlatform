@@ -117,10 +117,11 @@ def drop_database(conn, database_name: str) -> bool:
     try:
         # Escape database name for safety
         cursor.execute('DROP DATABASE IF EXISTS "{}";'.format(database_name.replace('"', '""')))
-        return True
-    except Exception as e:
+    except psycopg2.Error as e:
         print(f"  ⚠️  Error dropping {database_name}: {e}")
         return False
+    else:
+        return True
     finally:
         cursor.close()
 
@@ -209,7 +210,7 @@ def cleanup_test_databases(
                 dropped_count += 1
                 if verbose and dropped_count % 50 == 0:
                     print(f"  Dropped {dropped_count}/{total_found} databases...")
-            except Exception as e:
+            except psycopg2.Error as e:
                 failed_count += 1
                 if verbose:
                     print(f"  ⚠️  Error dropping {db_name}: {e}")
@@ -230,8 +231,6 @@ def cleanup_test_databases(
                 print(f"⚠️  Failed to drop: {failed_count}")
             print("=" * 60)
 
-        return (total_found, terminated_total, dropped_count)
-
     except psycopg2.OperationalError as e:
         print(f"❌ ERROR: Could not connect to PostgreSQL: {e}")
         print("\nConnection parameters:")
@@ -247,6 +246,8 @@ def cleanup_test_databases(
 
         traceback.print_exc()
         sys.exit(1)
+    else:
+        return (total_found, terminated_total, dropped_count)
 
 
 def main():

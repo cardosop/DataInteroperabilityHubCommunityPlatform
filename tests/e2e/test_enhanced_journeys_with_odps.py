@@ -105,7 +105,7 @@ class EnhancedJourneyTestBase(E2ETestBase):
                         run.refresh_from_db()
                         if run.status in terminal:
                             break
-                        time.sleep(2)  # noqa: sleep-needed — polling loop
+                        time.sleep(2)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             except Exception as exc:
                 _logger.warning("Poll task failed for run %s: %s", run.id, exc)
 
@@ -132,10 +132,10 @@ class EnhancedJourneyTestBase(E2ETestBase):
 
     def create_valid_odps_document(
         self,
-        product_id: str = None,
+        product_id: str | None = None,
         include_marketplace: bool = True,
         include_contract: bool = True,
-        odcs_contract_data: dict = None,
+        odcs_contract_data: dict | None = None,
     ) -> str:
         """Create a valid ODPS document for testing."""
         if product_id is None:
@@ -201,7 +201,10 @@ class EnhancedJourneyTestBase(E2ETestBase):
         return json.dumps(odps_doc, indent=2)
 
     def link_odps_to_odcs_contract(
-        self, odcs_contract_id: str, odps_raw: str = None, odps_contract_id: str = None
+        self,
+        odcs_contract_id: str,
+        odps_raw: str | None = None,
+        odps_contract_id: str | None = None,
     ) -> Contract:
         """Link ODPS to ODCS contract."""
         return self.contract_service.link_odps_to_odcs(

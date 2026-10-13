@@ -7,12 +7,14 @@ Tests all authentication and authorization features without mocks/stubs:
 - Authentication failure scenarios (unauthenticated, expired tokens, invalid tokens)
 """
 
+import contextlib
 import json
 import uuid
 from datetime import timedelta
 
 import pytest
 from django.conf import settings
+from django.conf import settings as _settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -32,6 +34,21 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+# The suite exercises ODPS operations through the paid GraphQL layer
+# (createODPS / exportODPS / linkODPS mutations) — the GraphQL app is
+# absent in core-only mode, so the module is skipped there.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "ODPS operations are exercised through the paid GraphQL "
+            "layer — core-only has no GraphQL endpoint."
+        ),
+    ),
+]
 
 
 class ODPSAuthenticationAuthorizationValidationTest(ContractsAPITestBase):
@@ -255,11 +272,10 @@ class ODPSAuthenticationAuthorizationValidationTest(ContractsAPITestBase):
         # Viewer should not be able to create - check for permission error
         if "data" in data and data["data"] and data["data"].get("createODPS"):
             errors = data["data"]["createODPS"].get("errors", [])
-            if not errors:
+            if not errors and "errors" not in data:
                 # If no errors in response, check GraphQL errors
-                if "errors" not in data:
-                    # This means permission check is missing - we'll need to add it
-                    pass
+                # This means permission check is missing - we'll need to add it
+                pass
 
         # Test with guest user (should fail - no creation permission)
         response = self._execute_graphql(mutation, variables, user=self.guest_user)
@@ -437,16 +453,14 @@ class ODPSAuthenticationAuthorizationValidationTest(ContractsAPITestBase):
         service_guest = ContractService(
             tenant_id=str(self.tenant.id), user_id=str(self.guest_user.id)
         )
-        try:
+        # Expected - permission check should raise an error
+        with contextlib.suppress(Exception):
             service_guest.delete_contract(
                 contract_id=str(test_contract3.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.guest_user.id),
             )
             # Permission check should prevent this
-        except Exception:
-            # Expected - permission check should raise an error
-            pass
 
     # ============================================================================
     # 10.1.15.2 Role-Based Access Control Testing

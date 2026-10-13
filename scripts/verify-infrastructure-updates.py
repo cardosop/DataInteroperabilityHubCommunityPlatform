@@ -73,7 +73,7 @@ class InfrastructureVerifier:
             return result.returncode, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
             return 1, "", f"Command timed out after {timeout} seconds"
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return 1, "", str(e)
 
     def verify_cicd_pipelines(self) -> ComponentVerification:

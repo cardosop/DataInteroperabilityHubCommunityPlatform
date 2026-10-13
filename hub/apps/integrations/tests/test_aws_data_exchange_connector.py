@@ -1315,9 +1315,9 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
         with (
             mock_patch("time.sleep"),
             mock_patch(f"{time_module}.time", side_effect=[0, 3700] + [3700] * 20),
+            self.assertRaises(TimeoutError),
         ):  # Exceed timeout
-            with self.assertRaises(TimeoutError):
-                self.connector._wait_for_job_completion("job-123", timeout_seconds=3600)
+            self.connector._wait_for_job_completion("job-123", timeout_seconds=3600)
 
     @patch("hub.apps.integrations.connectors.aws_data_exchange_connector.boto3")
     def test_wait_for_job_completion_failed(self, mock_boto3):
@@ -1886,10 +1886,7 @@ class TestAWSDataExchangeConnectorRetryLogic(TestCase):
 
         # Mock circuit breaker to pass through exceptions
         def circuit_breaker_call(func):
-            try:
-                return func()
-            except Exception as e:
-                raise e
+            return func()
 
         self.connector._circuit_breaker.call = circuit_breaker_call
 
@@ -2023,10 +2020,7 @@ class TestAWSDataExchangeConnectorErrorHandling(TestCase):
 
         # Mock circuit breaker to pass through exceptions
         def circuit_breaker_call(func):
-            try:
-                return func()
-            except Exception as e:
-                raise e
+            return func()
 
         self.connector._circuit_breaker.call = circuit_breaker_call
 
@@ -2289,7 +2283,9 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
             self.assertEqual(listings[0].title, "Test Dataset")
             # Should handle missing fields gracefully (may be None or empty string)
             description = listings[0].description
-            self.assertEqual(description, "", "Description should be empty for listing without description")
+            self.assertEqual(
+                description, "", "Description should be empty for listing without description"
+            )
 
     @patch(
         "hub.apps.integrations.connectors.aws_data_exchange_connector.AWSDataExchangeConnector._get_dataexchange_client"
@@ -2469,7 +2465,9 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
         self.assertEqual(mapping.asset_data["name"], "Test Dataset")
         # Should handle missing fields gracefully (may be None or empty string)
         description = mapping.asset_data.get("description")
-        self.assertEqual(description, "", "Description should be empty for listing without description")
+        self.assertEqual(
+            description, "", "Description should be empty for listing without description"
+        )
 
     def test_download_resource_invalid_resource_id_format(self):
         """Test download_resource with invalid resource ID format"""
@@ -2607,7 +2605,7 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
 
         # Should handle None limit gracefully (may use default)
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: edge-case type exercise
+            listings = self.connector.list_listings(limit=None)  # test: edge-case type exercise
             self.assertIsInstance(listings, list)
         except (ValueError, TypeError):
             # Expected if validation is strict

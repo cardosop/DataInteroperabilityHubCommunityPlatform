@@ -349,7 +349,7 @@ class AuditEvent(models.Model):
             self.timestamp = timezone.now()
         super().save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
+    def delete(self, *_args, **_kwargs):
         """Override delete to prevent deletion"""
         raise ValueError("Audit events are immutable and cannot be deleted")
 
@@ -378,7 +378,7 @@ class AuditEvent(models.Model):
 
 
 class AuditMerkleSnapshot(models.Model):
-    """Phase 234.1.5–234.1.7 — durable proof-of-tampering-resistance row.
+    """Phase 234.1.5-234.1.7 — durable proof-of-tampering-resistance row.
 
     One row per (tenant, period_start, period_end) describing the Merkle
     root computed over that window's ``AuditEvent.chain_hash`` leaves,
@@ -820,7 +820,7 @@ def resolve_retention_days_for_event_type(
     1.  Active ``AuditEventRetentionPolicy`` row for ``(tenant_id, event_type)``
         with ``enabled=True`` — if found, returns its ``retention_days``.
     2.  Fallback to ``default_days`` (typically the
-        ``settings.AUDIT_RETENTION_YEARS`` × 365 day count).
+        ``settings.AUDIT_RETENTION_YEARS`` x 365 day count).
 
     The function is INTENTIONALLY thin so it can be called inside hot
     archive-sweep loops without dragging in heavy logic. Callers that

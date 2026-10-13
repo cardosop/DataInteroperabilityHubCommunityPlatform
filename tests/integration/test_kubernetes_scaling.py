@@ -32,7 +32,7 @@ def kustomize_available_check():
 class TestKubernetesScaling:
     """Validate HPA, ResourceQuota, and PVC scaling-related structure."""
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_hpa_has_scale_target_and_metrics(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -61,7 +61,7 @@ class TestKubernetesScaling:
                 f"{service_name} HPA {hpa.get('metadata', {}).get('name')} should have spec.metrics or targetCPUUtilizationPercentage"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_hpa_scale_target_exists(self, service_name, base_path, kustomize_available_check):
         """HPA scaleTargetRef points to a Deployment or StatefulSet in the same build."""
         manifests = load_manifests_from_kustomize(base_path)
@@ -90,7 +90,7 @@ class TestKubernetesScaling:
                     f"{service_name} HPA scaleTargetRef StatefulSet {name} in ns {ns} not found in build"
                 )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_resource_quota_has_hard_limits(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -103,7 +103,7 @@ class TestKubernetesScaling:
                 f"{service_name} ResourceQuota {rq.get('metadata', {}).get('name')} should have spec.hard"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_resource_quota_namespace_consistent(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -116,7 +116,7 @@ class TestKubernetesScaling:
                 f"{service_name} ResourceQuota {rq.get('metadata', {}).get('name')} should have metadata.namespace"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_pvc_access_modes_valid(self, service_name, base_path, kustomize_available_check):
         """PersistentVolumeClaims have valid accessModes (ReadWriteOnce, ReadOnlyMany, ReadWriteMany)."""
         valid_modes = {"ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"}
@@ -129,7 +129,7 @@ class TestKubernetesScaling:
                     f"{service_name} PVC {pvc.get('metadata', {}).get('name')} has invalid accessMode: {m}"
                 )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_pvc_storage_request_positive(self, service_name, base_path, kustomize_available_check):
         """PersistentVolumeClaims spec.resources.requests.storage is a valid quantity string."""
         manifests = load_manifests_from_kustomize(base_path)
@@ -141,6 +141,9 @@ class TestKubernetesScaling:
             assert storage, (
                 f"{service_name} PVC {pvc.get('metadata', {}).get('name')} missing spec.resources.requests.storage"
             )
-            assert isinstance(storage, str) and len(storage) > 0, (
+            assert isinstance(storage, str), (
+                f"{service_name} PVC storage request should be non-empty string (e.g. 10Gi)"
+            )
+            assert len(storage) > 0, (
                 f"{service_name} PVC storage request should be non-empty string (e.g. 10Gi)"
             )

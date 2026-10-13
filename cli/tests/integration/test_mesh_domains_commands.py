@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -32,21 +34,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestMeshDomainsCommandsRealAPI:
@@ -147,16 +138,16 @@ print(f"API_KEY={api_key_value}")
                 # Extract API key from output
                 # Look for line starting with "API_KEY=" first (most reliable)
                 output_lines = result.stdout.strip().split("\n")
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line.startswith("API_KEY="):
                         api_key = line.split("=", 1)[1].strip()
                         if api_key and len(api_key) > 20:
                             return api_key
 
                 # Fallback: look for lines that look like API keys (long alphanumeric with dashes/underscores)
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     # API keys are typically long (40+ characters), alphanumeric with possible dashes/underscores
                     if line and len(line) > 20:  # API keys are typically long
                         # Additional validation: check if it looks like an API key
@@ -195,7 +186,7 @@ print(f"API_KEY={api_key_value}")
             pass
         return None
 
-    def _create_test_domain(self, api_base_url: str, api_key: str, name: str = None) -> str:
+    def _create_test_domain(self, api_base_url: str, api_key: str, name: str | None = None) -> str:
         """
         Create a test domain for testing.
         Returns the domain ID.
@@ -225,11 +216,12 @@ print(f"API_KEY={api_key_value}")
             assert domain_id, "Failed to get domain ID from response."
 
             # Wait a bit for domain to be fully created
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
-            return domain_id
         except Exception as e:
             pytest.skip(f"Failed to create test domain: {e!s}")
+        else:
+            return domain_id
 
     def _delete_test_domain(self, api_base_url: str, api_key: str, domain_id: str):
         """Delete a test domain"""
@@ -247,10 +239,10 @@ print(f"API_KEY={api_key_value}")
             pass  # Ignore cleanup errors
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_domains_success_table_format(self, setup_config, api_available):
+    def test_list_domains_success_table_format(self, setup_config, api_service_available):
         """Test listing domains in table format"""
         if not self.api_key:
             pytest.skip(
@@ -265,10 +257,10 @@ print(f"API_KEY={api_key_value}")
         assert len(result.output) > 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_domains_success_json_format(self, setup_config, api_available):
+    def test_list_domains_success_json_format(self, setup_config, api_service_available):
         """Test listing domains in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -283,10 +275,10 @@ print(f"API_KEY={api_key_value}")
         assert "count" in output_data or "results" in output_data
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_domains_with_filters(self, setup_config, api_available):
+    def test_list_domains_with_filters(self, setup_config, api_service_available):
         """Test listing domains with filters"""
         if not self.api_key:
             pytest.skip(
@@ -302,10 +294,10 @@ print(f"API_KEY={api_key_value}")
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_list_domains_empty_result(self, setup_config, api_available):
+    def test_list_domains_empty_result(self, setup_config, api_service_available):
         """Test listing domains with no results"""
         if not self.api_key:
             pytest.skip(
@@ -320,10 +312,10 @@ print(f"API_KEY={api_key_value}")
         assert len(result.output) >= 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_create_domain_success_table_format(self, setup_config, api_available):
+    def test_create_domain_success_table_format(self, setup_config, api_service_available):
         """Test creating a domain successfully in table format"""
         if not self.api_key:
             pytest.skip(
@@ -377,10 +369,10 @@ print(f"API_KEY={api_key_value}")
             pass
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_create_domain_success_json_format(self, setup_config, api_available):
+    def test_create_domain_success_json_format(self, setup_config, api_service_available):
         """Test creating a domain successfully in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -406,10 +398,10 @@ print(f"API_KEY={api_key_value}")
             self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_create_domain_with_all_options(self, setup_config, api_available):
+    def test_create_domain_with_all_options(self, setup_config, api_service_available):
         """Test creating a domain with all optional parameters"""
         if not self.api_key:
             pytest.skip(
@@ -469,10 +461,10 @@ print(f"API_KEY={api_key_value}")
             pass
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_create_domain_missing_name(self, setup_config, api_available):
+    def test_create_domain_missing_name(self, setup_config, api_service_available):
         """Test creating a domain without required name"""
         if not self.api_key:
             pytest.skip(
@@ -490,10 +482,10 @@ print(f"API_KEY={api_key_value}")
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_create_domain_invalid_json_boundaries(self, setup_config, api_available):
+    def test_create_domain_invalid_json_boundaries(self, setup_config, api_service_available):
         """Test creating a domain with invalid JSON in boundaries"""
         if not self.api_key:
             pytest.skip(
@@ -510,10 +502,10 @@ print(f"API_KEY={api_key_value}")
         assert "Invalid JSON" in result.output or "JSON" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_domain_success_table_format(self, setup_config, api_available):
+    def test_get_domain_success_table_format(self, setup_config, api_service_available):
         """Test getting a domain in table format"""
         if not self.api_key:
             pytest.skip(
@@ -533,10 +525,10 @@ print(f"API_KEY={api_key_value}")
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_domain_success_json_format(self, setup_config, api_available):
+    def test_get_domain_success_json_format(self, setup_config, api_service_available):
         """Test getting a domain in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -557,10 +549,10 @@ print(f"API_KEY={api_key_value}")
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_domain_not_found(self, setup_config, api_available):
+    def test_get_domain_not_found(self, setup_config, api_service_available):
         """Test getting a non-existent domain"""
         if not self.api_key:
             pytest.skip(
@@ -580,10 +572,10 @@ print(f"API_KEY={api_key_value}")
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_update_domain_success_table_format(self, setup_config, api_available):
+    def test_update_domain_success_table_format(self, setup_config, api_service_available):
         """Test updating a domain successfully in table format"""
         if not self.api_key:
             pytest.skip(
@@ -619,10 +611,10 @@ print(f"API_KEY={api_key_value}")
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_update_domain_success_json_format(self, setup_config, api_available):
+    def test_update_domain_success_json_format(self, setup_config, api_service_available):
         """Test updating a domain successfully in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -656,10 +648,10 @@ print(f"API_KEY={api_key_value}")
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_update_domain_no_fields(self, setup_config, api_available):
+    def test_update_domain_no_fields(self, setup_config, api_service_available):
         """Test updating a domain without any fields"""
         if not self.api_key:
             pytest.skip(
@@ -682,10 +674,10 @@ print(f"API_KEY={api_key_value}")
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_delete_domain_success_table_format(self, setup_config, api_available):
+    def test_delete_domain_success_table_format(self, setup_config, api_service_available):
         """Test deleting a domain successfully in table format"""
         if not self.api_key:
             pytest.skip(
@@ -702,10 +694,10 @@ print(f"API_KEY={api_key_value}")
         assert "deleted successfully" in result.output.lower() or "deleted" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_delete_domain_cancelled(self, setup_config, api_available):
+    def test_delete_domain_cancelled(self, setup_config, api_service_available):
         """Test cancelling domain deletion"""
         if not self.api_key:
             pytest.skip(
@@ -725,10 +717,10 @@ print(f"API_KEY={api_key_value}")
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_domains_command_group_exists(self, setup_config, api_available):
+    def test_domains_command_group_exists(self, setup_config, api_service_available):
         """Test that domains command group exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "domains", "--help"])
@@ -736,50 +728,50 @@ print(f"API_KEY={api_key_value}")
         assert "Domain management commands" in result.output or "domains" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_domains_list_command_exists(self, setup_config, api_available):
+    def test_domains_list_command_exists(self, setup_config, api_service_available):
         """Test that domains list command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "domains", "list", "--help"])
         assert result.exit_code == 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_domains_create_command_exists(self, setup_config, api_available):
+    def test_domains_create_command_exists(self, setup_config, api_service_available):
         """Test that domains create command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "domains", "create", "--help"])
         assert result.exit_code == 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_domains_get_command_exists(self, setup_config, api_available):
+    def test_domains_get_command_exists(self, setup_config, api_service_available):
         """Test that domains get command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "domains", "get", "--help"])
         assert result.exit_code == 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_domains_update_command_exists(self, setup_config, api_available):
+    def test_domains_update_command_exists(self, setup_config, api_service_available):
         """Test that domains update command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "domains", "update", "--help"])
         assert result.exit_code == 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_domains_delete_command_exists(self, setup_config, api_available):
+    def test_domains_delete_command_exists(self, setup_config, api_service_available):
         """Test that domains delete command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "domains", "delete", "--help"])
@@ -883,16 +875,16 @@ print(f"API_KEY={api_key_value}")
             if result.returncode == 0:
                 # Extract API key from output
                 output_lines = result.stdout.strip().split("\n")
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line.startswith("API_KEY="):
                         api_key = line.split("=", 1)[1].strip()
                         if api_key and len(api_key) > 20:
                             return api_key
 
                 # Fallback: look for lines that look like API keys
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) > 20:
                         if any(
                             skip in line
@@ -928,7 +920,7 @@ print(f"API_KEY={api_key_value}")
             pass
         return None
 
-    def _create_test_domain(self, api_base_url: str, api_key: str, name: str = None) -> str:
+    def _create_test_domain(self, api_base_url: str, api_key: str, name: str | None = None) -> str:
         """
         Create a test domain for testing.
         Returns the domain ID.
@@ -961,11 +953,12 @@ print(f"API_KEY={api_key_value}")
             assert domain_id, "Failed to get domain ID from response."
 
             # Wait a bit for domain to be fully created
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
-            return domain_id
         except Exception as e:
             pytest.skip(f"Failed to create test domain: {e!s}")
+        else:
+            return domain_id
 
     def _delete_test_domain(self, api_base_url: str, api_key: str, domain_id: str):
         """Delete a test domain"""
@@ -983,10 +976,10 @@ print(f"API_KEY={api_key_value}")
             pass  # Ignore cleanup errors
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_check_command_exists(self, setup_config, api_available):
+    def test_compliance_check_command_exists(self, setup_config, api_service_available):
         """Test that compliance check command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "compliance", "check", "--help"])
@@ -994,10 +987,10 @@ print(f"API_KEY={api_key_value}")
         assert "Check compliance status" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_report_command_exists(self, setup_config, api_available):
+    def test_compliance_report_command_exists(self, setup_config, api_service_available):
         """Test that compliance report command exists"""
         runner = CliRunner()
         result = runner.invoke(cli, ["mesh", "compliance", "report", "--help"])
@@ -1005,10 +998,10 @@ print(f"API_KEY={api_key_value}")
         assert "Get compliance report" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_check_success_table_format(self, setup_config, api_available):
+    def test_compliance_check_success_table_format(self, setup_config, api_service_available):
         """Test checking compliance in table format"""
         if not self.api_key:
             pytest.skip(
@@ -1046,10 +1039,10 @@ print(f"API_KEY={api_key_value}")
                 self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_check_success_json_format(self, setup_config, api_available):
+    def test_compliance_check_success_json_format(self, setup_config, api_service_available):
         """Test checking compliance in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -1090,10 +1083,10 @@ print(f"API_KEY={api_key_value}")
                 self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_check_with_asset_id(self, setup_config, api_available):
+    def test_compliance_check_with_asset_id(self, setup_config, api_service_available):
         """Test checking compliance with asset ID"""
         if not self.api_key:
             pytest.skip(
@@ -1122,10 +1115,10 @@ print(f"API_KEY={api_key_value}")
                 self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_check_domain_not_found(self, setup_config, api_available):
+    def test_compliance_check_domain_not_found(self, setup_config, api_service_available):
         """Test handling domain not found error"""
         if not self.api_key:
             pytest.skip(
@@ -1144,10 +1137,10 @@ print(f"API_KEY={api_key_value}")
         ), f"Should show error message: {result.output}"
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_report_success_table_format(self, setup_config, api_available):
+    def test_compliance_report_success_table_format(self, setup_config, api_service_available):
         """Test getting compliance report in table format"""
         if not self.api_key:
             pytest.skip(
@@ -1187,10 +1180,10 @@ print(f"API_KEY={api_key_value}")
                 self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_report_success_json_format(self, setup_config, api_available):
+    def test_compliance_report_success_json_format(self, setup_config, api_service_available):
         """Test getting compliance report in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -1231,10 +1224,10 @@ print(f"API_KEY={api_key_value}")
                 self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_report_no_reports(self, setup_config, api_available):
+    def test_compliance_report_no_reports(self, setup_config, api_service_available):
         """Test handling case when no reports exist"""
         if not self.api_key:
             pytest.skip(
@@ -1270,10 +1263,10 @@ print(f"API_KEY={api_key_value}")
                 self._delete_test_domain(api_base_url, self.api_key, domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_report_domain_not_found(self, setup_config, api_available):
+    def test_compliance_report_domain_not_found(self, setup_config, api_service_available):
         """Test handling domain not found error"""
         if not self.api_key:
             pytest.skip(
@@ -1292,10 +1285,10 @@ print(f"API_KEY={api_key_value}")
         ), f"Should show error message: {result.output}"
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_compliance_workflow_check_then_report(self, setup_config, api_available):
+    def test_compliance_workflow_check_then_report(self, setup_config, api_service_available):
         """Test complete workflow: check compliance, then get report"""
         if not self.api_key:
             pytest.skip(
@@ -1317,7 +1310,7 @@ print(f"API_KEY={api_key_value}")
             )
 
             # Step 2: Wait a bit for compliance check to complete (if async)
-            time.sleep(2)  # noqa: sleep-needed — test timing requirement
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             # Step 3: Get report
             report_result = runner.invoke(

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -110,7 +111,7 @@ class OrchestrationBusinessRules(BusinessRules):
         return "OrchestrationBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -336,13 +337,12 @@ class OrchestrationBusinessRules(BusinessRules):
             )
 
         # Validate user permissions if user provided
-        if user:
+        if user and workflow.tenant_id and user.tenant_id != workflow.tenant_id:
             # Check if user belongs to the same tenant as workflow
-            if workflow.tenant_id and user.tenant_id != workflow.tenant_id:
-                result.warnings.append(
-                    f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
-                    f"than workflow ({workflow.tenant_id})"
-                )
+            result.warnings.append(
+                f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
+                f"than workflow ({workflow.tenant_id})"
+            )
 
         result.details["workflow_id"] = str(workflow.id)
         result.details["workflow_name"] = workflow.workflow_name
@@ -429,37 +429,43 @@ class OrchestrationBusinessRules(BusinessRules):
             result.errors.append("Workflow step compensation_data must be a dictionary if provided")
 
         # Validate step_index matches workflow's current_step_index (if step is current)
-        if step.workflow_instance and step.step_index == step.workflow_instance.current_step_index:
+        if (
+            step.workflow_instance
+            and step.step_index == step.workflow_instance.current_step_index
+            and step.status == StepStatus.PENDING
+            and step.workflow_instance.status != WorkflowStatus.RUNNING
+        ):
             # This is the current step - validate consistency
-            if (
-                step.status == StepStatus.PENDING
-                and step.workflow_instance.status != WorkflowStatus.RUNNING
-            ):
-                result.warnings.append(
-                    f"Step status is PENDING but workflow status is {step.workflow_instance.status}, "
-                    f"expected RUNNING"
-                )
+            result.warnings.append(
+                f"Step status is PENDING but workflow status is {step.workflow_instance.status}, "
+                f"expected RUNNING"
+            )
 
         # Validate tenant consistency if tenant provided
-        if tenant and step.workflow_instance and step.workflow_instance.tenant_id:
-            if step.workflow_instance.tenant_id != tenant.id:
-                result.is_valid = False
-                result.errors.append(
-                    f"Step's workflow tenant_id ({step.workflow_instance.tenant_id}) "
-                    f"does not match provided tenant ({tenant.id})"
-                )
+        if (
+            tenant
+            and step.workflow_instance
+            and step.workflow_instance.tenant_id
+            and step.workflow_instance.tenant_id != tenant.id
+        ):
+            result.is_valid = False
+            result.errors.append(
+                f"Step's workflow tenant_id ({step.workflow_instance.tenant_id}) "
+                f"does not match provided tenant ({tenant.id})"
+            )
 
         # Validate user permissions if user provided
-        if user and step.workflow_instance:
+        if (
+            user
+            and step.workflow_instance
+            and step.workflow_instance.tenant_id
+            and user.tenant_id != step.workflow_instance.tenant_id
+        ):
             # Check if user belongs to the same tenant as step's workflow
-            if (
-                step.workflow_instance.tenant_id
-                and user.tenant_id != step.workflow_instance.tenant_id
-            ):
-                result.warnings.append(
-                    f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
-                    f"than step's workflow ({step.workflow_instance.tenant_id})"
-                )
+            result.warnings.append(
+                f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
+                f"than step's workflow ({step.workflow_instance.tenant_id})"
+            )
 
         result.details["step_id"] = str(step.id)
         result.details["step_name"] = step.step_name
@@ -499,13 +505,17 @@ class OrchestrationBusinessRules(BusinessRules):
             )
 
         # Validate step tenant consistency
-        if step and step.workflow_instance and step.workflow_instance.tenant_id:
-            if step.workflow_instance.tenant_id != tenant.id:
-                result.is_valid = False
-                result.errors.append(
-                    f"Step's workflow tenant_id ({step.workflow_instance.tenant_id}) "
-                    f"does not match provided tenant ({tenant.id})"
-                )
+        if (
+            step
+            and step.workflow_instance
+            and step.workflow_instance.tenant_id
+            and step.workflow_instance.tenant_id != tenant.id
+        ):
+            result.is_valid = False
+            result.errors.append(
+                f"Step's workflow tenant_id ({step.workflow_instance.tenant_id}) "
+                f"does not match provided tenant ({tenant.id})"
+            )
 
         result.details["tenant_id"] = str(tenant.id)
         return result
@@ -542,19 +552,23 @@ class OrchestrationBusinessRules(BusinessRules):
             )
 
         # Validate user belongs to same tenant as step's workflow
-        if step and step.workflow_instance and step.workflow_instance.tenant_id:
-            if user.tenant_id != step.workflow_instance.tenant_id:
-                result.warnings.append(
-                    f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
-                    f"than step's workflow ({step.workflow_instance.tenant_id})"
-                )
+        if (
+            step
+            and step.workflow_instance
+            and step.workflow_instance.tenant_id
+            and user.tenant_id != step.workflow_instance.tenant_id
+        ):
+            result.warnings.append(
+                f"User ({user.id}) belongs to different tenant ({user.tenant_id}) "
+                f"than step's workflow ({step.workflow_instance.tenant_id})"
+            )
 
         result.details["user_id"] = str(user.id)
         result.details["user_tenant_id"] = str(user.tenant_id)
         return result
 
     def _validate_state_persistence(
-        self, workflow: WorkflowInstance, tenant: Any | None = None, user: User | None = None
+        self, workflow: WorkflowInstance, _tenant: Any | None = None, _user: User | None = None
     ) -> ValidationResult:
         """
         Validate that workflow state is persisted correctly.
@@ -632,7 +646,7 @@ class OrchestrationBusinessRules(BusinessRules):
         return result
 
     def _validate_state_recovery(
-        self, workflow: WorkflowInstance, tenant: Any | None = None, user: User | None = None
+        self, workflow: WorkflowInstance, _tenant: Any | None = None, _user: User | None = None
     ) -> ValidationResult:
         """
         Validate that workflow state can be recovered from database.
@@ -731,7 +745,7 @@ class OrchestrationBusinessRules(BusinessRules):
         return result
 
     def _validate_state_consistency(
-        self, workflow: WorkflowInstance, tenant: Any | None = None, user: User | None = None
+        self, workflow: WorkflowInstance, _tenant: Any | None = None, _user: User | None = None
     ) -> ValidationResult:
         """
         Validate that workflow state is consistent across steps.
@@ -799,7 +813,12 @@ class OrchestrationBusinessRules(BusinessRules):
                             "step_index", "step_name", "output_data", "status"
                         ).order_by("step_index")[:100]
                     )  # Limit to 100 steps max
-                except (InterfaceError, OperationalError, DatabaseError, ObjectDoesNotExist) as db_error:
+                except (
+                    InterfaceError,
+                    OperationalError,
+                    DatabaseError,
+                    ObjectDoesNotExist,
+                ) as db_error:
                     # If database query fails, log warning and skip step validation
                     logger.warning(
                         f"Could not fetch workflow steps for validation: {db_error!s}",
@@ -844,13 +863,15 @@ class OrchestrationBusinessRules(BusinessRules):
                                 if step.step_index < workflow.current_step_index:
                                     # For completed steps, values should match or be updated
                                     pass
-                                elif step.step_index == workflow.current_step_index:
+                                elif (
+                                    step.step_index == workflow.current_step_index
+                                    and state_value != value
+                                ):
                                     # For current step, values should match
-                                    if state_value != value:
-                                        result.warnings.append(
-                                            f"Step {step.step_index} output_data[{key}] ({value}) "
-                                            f"does not match state_data[{key}] ({state_value})"
-                                        )
+                                    result.warnings.append(
+                                        f"Step {step.step_index} output_data[{key}] ({value}) "
+                                        f"does not match state_data[{key}] ({state_value})"
+                                    )
             except Exception as e:
                 result.warnings.append(f"Could not validate step output_data consistency: {e!s}")
 
@@ -888,7 +909,7 @@ class OrchestrationBusinessRules(BusinessRules):
                     f"State data size ({state_size} bytes) exceeds recommended maximum "
                     f"({max_state_size} bytes)"
                 )
-        except Exception as e:
+        except (TypeError, ValueError) as e:  # json.dumps failures on non-serializable state
             result.warnings.append(f"Could not validate state data size: {e!s}")
 
         result.details["workflow_id"] = str(workflow.id)
@@ -961,8 +982,8 @@ class OrchestrationBusinessRules(BusinessRules):
     def _validate_workflow_definition(
         self,
         workflow_definition: WorkflowDefinition,
-        tenant: Any | None = None,
-        user: User | None = None,
+        _tenant: Any | None = None,
+        _user: User | None = None,
     ) -> ValidationResult:
         """
         Comprehensive workflow definition validation including:
@@ -1076,7 +1097,7 @@ class OrchestrationBusinessRules(BusinessRules):
             parser = WorkflowDSLParser()
             parser.parse_json(dsl)
             details["dsl_structure_valid"] = True
-        except Exception as e:
+        except ValidationError as e:  # parse_json raises only django ValidationError
             errors.append(f"Invalid workflow DSL structure: {e!s}")
             details["dsl_structure_valid"] = False
 
@@ -1422,7 +1443,7 @@ class OrchestrationBusinessRules(BusinessRules):
                 task_name = step.get("task")
                 if task_name and isinstance(task_name, str):
                     tasks.append(task_name)
-            elif step_type == "parallel" or step_type == "retry" or step_type == "loop":
+            elif step_type in {"parallel", "retry", "loop"}:
                 nested_steps = step.get("steps", [])
                 for nested_step in nested_steps:
                     tasks.extend(extract_tasks(nested_step))

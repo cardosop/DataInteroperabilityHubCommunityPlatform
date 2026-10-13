@@ -54,8 +54,7 @@ class TestApiLogic:
         # 401/403 should NOT be accepted — they would indicate a broken
         # authorization configuration that this test must catch.
         assert response.status_code == status.HTTP_200_OK, (
-            f"DQ runs endpoint returned {response.status_code}, expected 200. "
-            f"Body: {response.data}"
+            f"DQ runs endpoint returned {response.status_code}, expected 200. Body: {response.data}"
         )
         # Verify response has expected structure
         data = response.json() if hasattr(response, "json") else response.data

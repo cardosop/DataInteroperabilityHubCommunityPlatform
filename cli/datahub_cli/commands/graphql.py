@@ -69,7 +69,7 @@ def query(query_str, query_file, variables, endpoint, jsonld_context):
     try:
         variables_dict = json.loads(variables)
     except json.JSONDecodeError:
-        raise click.UsageError(f"Invalid JSON for --variables: {variables}")
+        raise click.UsageError(f"Invalid JSON for --variables: {variables}") from None
 
     endpoint_paths = {
         "strawberry": "/graphql/",

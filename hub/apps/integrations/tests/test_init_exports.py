@@ -39,7 +39,7 @@ class TestIntegrationsModuleExports(TestCase):
 
     def test_import_both_together(self):
         """Test importing both CKANConnector and MarketplaceConnectorFactory together"""
-        from hub.apps.integrations import CKANConnector, MarketplaceConnectorFactory
+        from hub.apps.integrations import CKANConnector
 
         # Verify they work together
         connector = CKANConnector(base_url="https://test.ckan.org")
@@ -82,8 +82,9 @@ class TestIntegrationsModuleExports(TestCase):
 
         # Both accesses resolve through the same lazy-load proxy to
         # the underlying class.  Verify both conditions:
-        self.assertIs(CKAN1, CKAN2,
-            "CKANConnector lazy proxy must return the same object on each access")
+        self.assertIs(
+            CKAN1, CKAN2, "CKANConnector lazy proxy must return the same object on each access"
+        )
         self.assertEqual(CKAN1.__module__, CKAN2.__module__)
 
     def test_import_with_factory_usage(self):

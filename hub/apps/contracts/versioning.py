@@ -255,11 +255,11 @@ def is_compatible_version(version: str, target_version: str) -> bool:
 
         if v1 is None or v2 is None:
             return False
-
-        # Same major version means compatible
-        return v1.major == v2.major
     except (ValueError, AttributeError):
         return False
+    else:
+        # Same major version means compatible
+        return v1.major == v2.major
 
 
 class VersionMigrationFramework:

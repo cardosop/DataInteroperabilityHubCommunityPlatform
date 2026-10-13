@@ -41,8 +41,8 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         error = httpx.HTTPStatusError("Not Found", request=Mock(), response=error_response)
         mapped_error = self.connector._map_databricks_error(error, context="test: ")
 
-        self.assertIsInstance(mapped_error, NotFoundError)
-        self.assertIn("Share not found", str(mapped_error))
+        assert isinstance(mapped_error, NotFoundError)
+        assert "Share not found" in str(mapped_error)
 
     def test_map_databricks_error_403_to_permission_error(self):
         """Test that 403 errors are mapped to PermissionError"""
@@ -57,8 +57,8 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         error = httpx.HTTPStatusError("Forbidden", request=Mock(), response=error_response)
         mapped_error = self.connector._map_databricks_error(error, context="test: ")
 
-        self.assertIsInstance(mapped_error, PermissionError)
-        self.assertIn("Access denied", str(mapped_error))
+        assert isinstance(mapped_error, PermissionError)
+        assert "Access denied" in str(mapped_error)
 
     def test_map_databricks_error_400_to_value_error(self):
         """Test that 400 errors are mapped to ValueError"""
@@ -75,8 +75,8 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         error = httpx.HTTPStatusError("Bad Request", request=Mock(), response=error_response)
         mapped_error = self.connector._map_databricks_error(error, context="test: ")
 
-        self.assertIsInstance(mapped_error, ValueError)
-        self.assertIn("Invalid parameter", str(mapped_error))
+        assert isinstance(mapped_error, ValueError)
+        assert "Invalid parameter" in str(mapped_error)
 
     def test_map_databricks_error_429_to_connection_error(self):
         """Test that 429 errors are mapped to ConnectionError (transient)"""
@@ -93,8 +93,8 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         error = httpx.HTTPStatusError("Too Many Requests", request=Mock(), response=error_response)
         mapped_error = self.connector._map_databricks_error(error, context="test: ")
 
-        self.assertIsInstance(mapped_error, ConnectionError)
-        self.assertIn("Rate limit exceeded", str(mapped_error))
+        assert isinstance(mapped_error, ConnectionError)
+        assert "Rate limit exceeded" in str(mapped_error)
 
     def test_map_databricks_error_500_to_connection_error(self):
         """Test that 500 errors are mapped to ConnectionError (transient)"""
@@ -113,8 +113,8 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         )
         mapped_error = self.connector._map_databricks_error(error, context="test: ")
 
-        self.assertIsInstance(mapped_error, ConnectionError)
-        self.assertIn("Internal server error", str(mapped_error))
+        assert isinstance(mapped_error, ConnectionError)
+        assert "Internal server error" in str(mapped_error)
 
     def test_extract_error_message_from_json_response(self):
         """Test extracting error message from JSON response"""
@@ -127,7 +127,7 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         response.status_code = 404
 
         error_message = self.connector._extract_error_message(response)
-        self.assertEqual(error_message, "Share not found")
+        assert error_message == "Share not found"
 
     def test_extract_error_message_from_nested_error(self):
         """Test extracting error message from nested error structure"""
@@ -137,7 +137,7 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         response.status_code = 400
 
         error_message = self.connector._extract_error_message(response)
-        self.assertEqual(error_message, "Nested error message")
+        assert error_message == "Nested error message"
 
     def test_extract_error_message_fallback_to_text(self):
         """Test fallback to response text if JSON parsing fails"""
@@ -147,7 +147,7 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         response.status_code = 500
 
         error_message = self.connector._extract_error_message(response)
-        self.assertEqual(error_message, "Plain text error message")
+        assert error_message == "Plain text error message"
 
     def test_extract_error_message_fallback_to_status_code(self):
         """Test fallback to status code if text is empty"""
@@ -157,39 +157,39 @@ class TestDatabricksConnectorErrorHandling(TestCase):
         response.status_code = 500
 
         error_message = self.connector._extract_error_message(response)
-        self.assertIn("500", error_message)
+        assert "500" in error_message
 
     def test_is_transient_error_429(self):
         """Test that 429 is identified as transient error"""
-        self.assertTrue(self.connector._is_transient_error(429))
+        assert self.connector._is_transient_error(429)
 
     def test_is_transient_error_500(self):
         """Test that 500 is identified as transient error"""
-        self.assertTrue(self.connector._is_transient_error(500))
+        assert self.connector._is_transient_error(500)
 
     def test_is_transient_error_502(self):
         """Test that 502 is identified as transient error"""
-        self.assertTrue(self.connector._is_transient_error(502))
+        assert self.connector._is_transient_error(502)
 
     def test_is_transient_error_503(self):
         """Test that 503 is identified as transient error"""
-        self.assertTrue(self.connector._is_transient_error(503))
+        assert self.connector._is_transient_error(503)
 
     def test_is_transient_error_504(self):
         """Test that 504 is identified as transient error"""
-        self.assertTrue(self.connector._is_transient_error(504))
+        assert self.connector._is_transient_error(504)
 
     def test_is_transient_error_400(self):
         """Test that 400 is NOT identified as transient error"""
-        self.assertFalse(self.connector._is_transient_error(400))
+        assert not self.connector._is_transient_error(400)
 
     def test_is_transient_error_404(self):
         """Test that 404 is NOT identified as transient error"""
-        self.assertFalse(self.connector._is_transient_error(404))
+        assert not self.connector._is_transient_error(404)
 
     def test_is_transient_error_403(self):
         """Test that 403 is NOT identified as transient error"""
-        self.assertFalse(self.connector._is_transient_error(403))
+        assert not self.connector._is_transient_error(403)
 
 
 class TestDatabricksConnectorRetryLogic(TestCase):
@@ -240,13 +240,13 @@ class TestDatabricksConnectorRetryLogic(TestCase):
         self.connector._request_with_retry("GET", "/api/2.0/test")
 
         # Verify retries occurred
-        self.assertEqual(self.connector.client.request.call_count, 3)
+        assert self.connector.client.request.call_count == 3
         # Verify exponential backoff delays
-        self.assertEqual(mock_sleep.call_count, 2)
+        assert mock_sleep.call_count == 2
         mock_sleep.assert_any_call(1.0)  # backoff_factor * (2 ** 0) = 1
         mock_sleep.assert_any_call(2.0)  # backoff_factor * (2 ** 1) = 2
         # Real CB tracked failures and recovered
-        self.assertEqual(self.connector._circuit_breaker._get_failure_count(), 0)
+        assert self.connector._circuit_breaker._get_failure_count() == 0
 
     @patch("hub.apps.integrations.connectors.databricks_connector.time.sleep")
     def test_retry_on_500_error(self, mock_sleep):
@@ -276,8 +276,8 @@ class TestDatabricksConnectorRetryLogic(TestCase):
         self.connector._request_with_retry("GET", "/api/2.0/test")
 
         # Verify retries occurred
-        self.assertEqual(self.connector.client.request.call_count, 3)
-        self.assertEqual(mock_sleep.call_count, 2)
+        assert self.connector.client.request.call_count == 3
+        assert mock_sleep.call_count == 2
 
     def test_no_retry_on_404_error(self):
         """Test that 404 errors are NOT retried"""
@@ -299,9 +299,9 @@ class TestDatabricksConnectorRetryLogic(TestCase):
             self.connector._request_with_retry("GET", "/api/2.0/test")
 
         # Verify no retries occurred
-        self.assertEqual(self.connector.client.request.call_count, 1)
+        assert self.connector.client.request.call_count == 1
         # Permanent (non-transient) failures should increment the CB counter
-        self.assertEqual(self.connector._circuit_breaker._get_failure_count(), 1)
+        assert self.connector._circuit_breaker._get_failure_count() == 1
 
     @patch("hub.apps.integrations.connectors.databricks_connector.time.sleep")
     def test_max_retries_exceeded(self, mock_sleep):
@@ -326,12 +326,12 @@ class TestDatabricksConnectorRetryLogic(TestCase):
             self.connector._request_with_retry("GET", "/api/2.0/test")
 
         # Verify max retries were attempted (max_retries + 1 = 3 attempts)
-        self.assertEqual(self.connector.client.request.call_count, 3)
-        self.assertIn("Transient Databricks error", str(context.exception))
-        self.assertIn("500", str(context.exception))
+        assert self.connector.client.request.call_count == 3
+        assert "Transient Databricks error" in str(context.exception)
+        assert "500" in str(context.exception)
         # The CB wraps the entire _request_with_retry call — 3 internal
         # HTTP retries count as 1 CB-level failure (the overall call failed).
-        self.assertEqual(self.connector._circuit_breaker._get_failure_count(), 1)
+        assert self.connector._circuit_breaker._get_failure_count() == 1
 
     @patch("hub.apps.integrations.connectors.databricks_connector.time.sleep")
     def test_retry_on_network_error(self, mock_sleep):
@@ -349,10 +349,10 @@ class TestDatabricksConnectorRetryLogic(TestCase):
         self.connector._request_with_retry("GET", "/api/2.0/test")
 
         # Verify retries occurred
-        self.assertEqual(self.connector.client.request.call_count, 3)
-        self.assertEqual(mock_sleep.call_count, 2)
+        assert self.connector.client.request.call_count == 3
+        assert mock_sleep.call_count == 2
         # After 2 failures + 1 success, CB failure count should be 0
-        self.assertEqual(self.connector._circuit_breaker._get_failure_count(), 0)
+        assert self.connector._circuit_breaker._get_failure_count() == 0
 
 
 class TestDatabricksConnectorCircuitBreaker(TestCase):
@@ -397,9 +397,7 @@ class TestDatabricksConnectorCircuitBreaker(TestCase):
             "error_code": "INTERNAL_SERVER_ERROR",
             "message": "Internal error",
         }
-        error_response.text = (
-            '{"error_code": "INTERNAL_SERVER_ERROR", "message": "Internal error"}'
-        )
+        error_response.text = '{"error_code": "INTERNAL_SERVER_ERROR", "message": "Internal error"}'
         error_response.raise_for_status = Mock(
             side_effect=httpx.HTTPStatusError(
                 "Internal Server Error", request=Mock(), response=error_response
@@ -414,24 +412,22 @@ class TestDatabricksConnectorCircuitBreaker(TestCase):
         # Verify CB is now OPEN
         from hub.apps.core.resilience.circuit_breaker import CircuitBreakerState
 
-        self.assertEqual(cb._get_state(), CircuitBreakerState.OPEN)
+        assert cb._get_state() == CircuitBreakerState.OPEN
 
         # Fourth request is immediately rejected by the open CB
-        connector.client.request = Mock(
-            return_value=Mock(status_code=200, raise_for_status=Mock())
-        )
+        connector.client.request = Mock(return_value=Mock(status_code=200, raise_for_status=Mock()))
         with self.assertRaises(ConnectionError) as context:
             connector._request_with_retry("GET", "/api/2.0/test")
-        self.assertIn("Circuit breaker is open", str(context.exception))
+        assert "Circuit breaker is open" in str(context.exception)
         # The HTTP client should NOT have been called — CB rejected it
         connector.client.request.assert_not_called()
 
     def test_circuit_breaker_configuration(self):
         """Test that circuit breaker is configured correctly"""
-        self.assertEqual(self.connector._circuit_breaker.failure_threshold, 5)
-        self.assertEqual(self.connector._circuit_breaker.timeout_seconds, 60)
-        self.assertEqual(self.connector._circuit_breaker.success_threshold, 2)
-        self.assertEqual(self.connector._circuit_breaker.service_name, "databricks-connector")
+        assert self.connector._circuit_breaker.failure_threshold == 5
+        assert self.connector._circuit_breaker.timeout_seconds == 60
+        assert self.connector._circuit_breaker.success_threshold == 2
+        assert self.connector._circuit_breaker.service_name == "databricks-connector"
 
 
 class TestDatabricksConnectorDistributedTracing(TestCase):
@@ -468,8 +464,8 @@ class TestDatabricksConnectorDistributedTracing(TestCase):
         # Verify trace headers were added
         call_args = self.connector.client.request.call_args
         headers = call_args[1].get("headers", {})
-        self.assertIn("X-Trace-Id", headers)
-        self.assertEqual(headers["X-Trace-Id"], "trace-123")
+        assert "X-Trace-Id" in headers
+        assert headers["X-Trace-Id"] == "trace-123"
 
     @patch("hub.apps.api.middleware.trace_propagation.get_trace_headers")
     def test_no_trace_headers_when_not_available(self, mock_get_trace_headers):
@@ -486,4 +482,4 @@ class TestDatabricksConnectorDistributedTracing(TestCase):
         self.connector._request_with_retry("GET", "/api/2.0/test")
 
         # Verify request was made
-        self.assertEqual(self.connector.client.request.call_count, 1)
+        assert self.connector.client.request.call_count == 1

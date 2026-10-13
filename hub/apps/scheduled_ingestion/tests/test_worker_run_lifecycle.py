@@ -63,9 +63,9 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         now = timezone.now()
         apply_run_completion_side_effects(run, "COMPLETED")
         self.ingestion.refresh_from_db()
-        self.assertIsNotNone(self.ingestion.next_run_at)
+        assert self.ingestion.next_run_at is not None
         # next_run_at should be in the future (recalculated from schedule)
-        self.assertGreater(self.ingestion.next_run_at, now)
+        assert self.ingestion.next_run_at > now
 
     def test_completed_run_resets_failure_count(self):
         """Successful completion resets consecutive_failure_count to 0."""
@@ -74,17 +74,15 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         run = self._create_run()
         apply_run_completion_side_effects(run, "COMPLETED")
         self.ingestion.refresh_from_db()
-        self.assertEqual(self.ingestion.consecutive_failure_count, 0)
+        assert self.ingestion.consecutive_failure_count == 0
 
     def test_completed_run_creates_cost_tracking_side_effect(self):
         """COMPLETED run creates COST_TRACKING side effect."""
         run = self._create_run()
         apply_run_completion_side_effects(run, "COMPLETED")
-        self.assertTrue(
-            SideEffect.objects.filter(
-                run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING
-            ).exists()
-        )
+        assert SideEffect.objects.filter(
+            run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING
+        ).exists()
 
     def test_completed_run_creates_all_side_effects(self):
         """COMPLETED run creates COST_TRACKING, DLQ_SYNC, NOTIFICATION, AUDIT_EVENT."""
@@ -93,10 +91,10 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         types = set(
             SideEffect.objects.filter(run_object_id=run.pk).values_list("effect_type", flat=True)
         )
-        self.assertIn(SideEffectType.COST_TRACKING, types)
-        self.assertIn(SideEffectType.DLQ_SYNC, types)
-        self.assertIn(SideEffectType.NOTIFICATION, types)
-        self.assertIn(SideEffectType.AUDIT_EVENT, types)
+        assert SideEffectType.COST_TRACKING in types
+        assert SideEffectType.DLQ_SYNC in types
+        assert SideEffectType.NOTIFICATION in types
+        assert SideEffectType.AUDIT_EVENT in types
 
     def test_failed_run_increments_failure_count(self):
         """Failed run increments consecutive_failure_count."""
@@ -107,17 +105,15 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         run.save()
         apply_run_completion_side_effects(run, "FAILED")
         self.ingestion.refresh_from_db()
-        self.assertEqual(self.ingestion.consecutive_failure_count, 1)
+        assert self.ingestion.consecutive_failure_count == 1
 
     def test_failed_run_does_not_create_cost_tracking(self):
         """FAILED run does NOT create COST_TRACKING side effect."""
         run = self._create_run()
         apply_run_completion_side_effects(run, "FAILED")
-        self.assertFalse(
-            SideEffect.objects.filter(
-                run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING
-            ).exists()
-        )
+        assert not SideEffect.objects.filter(
+            run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING
+        ).exists()
 
     def test_auto_pause_after_max_consecutive_failures(self):
         """After max consecutive failures, ingestion auto-pauses."""
@@ -128,7 +124,7 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         run.save()
         apply_run_completion_side_effects(run, "FAILED")
         self.ingestion.refresh_from_db()
-        self.assertEqual(self.ingestion.status, ScheduledIngestionStatus.PAUSED)
+        assert self.ingestion.status == ScheduledIngestionStatus.PAUSED
 
     def test_failure_count_resets_on_success_after_failures(self):
         """Success after failures resets consecutive_failure_count."""
@@ -138,8 +134,8 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         run = self._create_run()
         apply_run_completion_side_effects(run, "COMPLETED")
         self.ingestion.refresh_from_db()
-        self.assertEqual(self.ingestion.consecutive_failure_count, 0)
-        self.assertEqual(self.ingestion.status, ScheduledIngestionStatus.ACTIVE)
+        assert self.ingestion.consecutive_failure_count == 0
+        assert self.ingestion.status == ScheduledIngestionStatus.ACTIVE
 
     def test_failure_below_threshold_does_not_pause(self):
         """Failure count below max threshold keeps status as ERROR, not PAUSED."""
@@ -150,25 +146,19 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         run.save()
         apply_run_completion_side_effects(run, "FAILED")
         self.ingestion.refresh_from_db()
-        self.assertEqual(self.ingestion.consecutive_failure_count, 3)
-        self.assertEqual(self.ingestion.status, ScheduledIngestionStatus.ERROR)
+        assert self.ingestion.consecutive_failure_count == 3
+        assert self.ingestion.status == ScheduledIngestionStatus.ERROR
 
     def test_side_effects_are_executed_immediately(self):
         """Side effects are attempted and completed immediately."""
         run = self._create_run()
         apply_run_completion_side_effects(run, "COMPLETED")
         effects = SideEffect.objects.filter(run_object_id=run.pk)
-        self.assertGreater(effects.count(), 0)
+        assert effects.count() > 0
         for se in effects:
-            self.assertGreaterEqual(
-                se.attempt_count,
-                1,
-                f"{se.effect_type} was not attempted",
-            )
-            self.assertIn(
-                se.status,
-                (SideEffectStatus.COMPLETED, SideEffectStatus.FAILED),
-                f"{se.effect_type} should reach terminal status, got {se.status}",
+            assert se.attempt_count >= 1, f"{se.effect_type} was not attempted"
+            assert se.status in (SideEffectStatus.COMPLETED, SideEffectStatus.FAILED), (
+                f"{se.effect_type} should reach terminal status, got {se.status}"
             )
 
     def test_failed_side_effect_does_not_propagate(self):
@@ -179,4 +169,4 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         # all should have been attempted
         effects = SideEffect.objects.filter(run_object_id=run.pk)
         attempted = effects.filter(attempt_count__gte=1).count()
-        self.assertEqual(attempted, effects.count())
+        assert attempted == effects.count()

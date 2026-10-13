@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from hub.apps.jobs.models import Job
+from typing import TYPE_CHECKING
+
 from hub.apps.ropa.models import RopaGeneration
 from hub.apps.ropa.services.pipeline import failure_generation, materialize_generation
+
+if TYPE_CHECKING:
+    from hub.apps.jobs.models import Job
 
 
 def _execute_ropa_generate_job(job_obj: Job) -> dict:

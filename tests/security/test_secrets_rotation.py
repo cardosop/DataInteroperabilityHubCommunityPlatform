@@ -18,6 +18,7 @@ on shallow clones (CI fetch-depth 1 makes them vacuous there); the publish
 pipeline re-runs them against full history before every public sync.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -77,8 +78,10 @@ CERT_FILES = ("ca.crt", "ca.key", "pgbouncer.crt", "pgbouncer.key", "postgres.cr
 pytestmark = pytest.mark.security
 
 
-def _run(*args: str, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess:
-    return subprocess.run(args, capture_output=True, text=True, cwd=str(cwd), timeout=300)
+def _run(
+    *args: str, cwd: Path = REPO_ROOT, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    return subprocess.run(args, capture_output=True, text=True, cwd=str(cwd), timeout=300, env=env)
 
 
 def _git(*args: str) -> str:
@@ -108,8 +111,8 @@ def _extract_secret_values(path: Path) -> dict[str, str]:
     from urllib.parse import urlsplit
 
     values: dict[str, str] = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line or line.startswith("#") or not SECRET_KEY_RE.match(line):
             continue
         key, _, raw = line.partition("=")
@@ -196,13 +199,11 @@ def test_root_env_mirrors_dev_environment():
     root_path = REPO_ROOT / ".env"
     dev_path = REPO_ROOT / ".env.dev"
     if not root_path.exists() or not dev_path.exists():
-        pytest.skip("root .env or .env.dev absent — mirror assertion not applicable")
+        pytest.skip("root .env or .env.dev absent — mirror assertion not applicable")  # noqa: skip-in-body
     root_values = _extract_secret_values(root_path)
     dev_values = _extract_secret_values(dev_path)
     drift = [
-        key
-        for key in MIRROR_KEYS
-        if key in dev_values and root_values.get(key) != dev_values[key]
+        key for key in MIRROR_KEYS if key in dev_values and root_values.get(key) != dev_values[key]
     ]
     assert not drift, (
         "root .env (compose interpolation source) drifted from .env.dev (container env_file) — "
@@ -218,17 +219,23 @@ def test_postgres_tls_material_absent_from_history_and_valid():
 
     in_history = []
     for name in CERT_FILES:
-        body_lines = (CERTS_DIR / name).read_text().splitlines()
-        # Pick a base64 body line as a distinctive fragment for -S matching.
-        fragment = next(
-            (ln for ln in body_lines if len(ln) >= 40 and "BEGIN" not in ln and "END" not in ln),
-            None,
-        )
-        assert fragment, f"{name}: no usable body fragment"
-        if _in_history(fragment):
-            in_history.append(name)
+        rel = f"infrastructure/postgres/certs/{name}"
+        body = (CERTS_DIR / name).read_text()
+        # Rotation means the working-tree material predates no commit: no
+        # PRE-rotation version of the file may equal the current content. A
+        # fragment pickaxe (`git log -S`) cannot distinguish "regenerated"
+        # from "never rotated" while the files stay tracked — the fragment of
+        # a regenerated file still matches its own rotation commit — so
+        # compare full file bodies against every committed version EXCEPT the
+        # most recent one, which is the rotation commit itself.
+        commits = _git("log", "--format=%H", "--", rel).split()
+        for commit in commits[1:]:  # all commits before the last change
+            if _run("git", "show", f"{commit}:{rel}").stdout == body:
+                in_history.append(name)
+                break
     assert not in_history, (
-        f"TLS material still present in git history — regenerate certs (313.0.1): {in_history}"
+        f"TLS material identical to a pre-rotation committed version — rotate the "
+        f"certs (313.0.1): {in_history}"
     )
 
     # Validity + contract: CN/SANs preserved, leaves signed by the new CA,
@@ -241,15 +248,31 @@ def test_postgres_tls_material_absent_from_history_and_valid():
     assert "DataInteroperabilityHub Internal CA" in ca_subject.stdout
     for name, expected_dns in (("pgbouncer", "pgbouncer"), ("postgres", "postgres")):
         sans = _run(
-            "openssl", "x509", "-in", str(CERTS_DIR / f"{name}.crt"), "-noout", "-ext", "subjectAltName"
+            "openssl",
+            "x509",
+            "-in",
+            str(CERTS_DIR / f"{name}.crt"),
+            "-noout",
+            "-ext",
+            "subjectAltName",
         ).stdout
         assert expected_dns in sans, f"{name}.crt lost expected SAN {expected_dns}: {sans}"
         verify = _run(
-            "openssl", "verify", "-CAfile", str(CERTS_DIR / "ca.crt"), str(CERTS_DIR / f"{name}.crt")
+            "openssl",
+            "verify",
+            "-CAfile",
+            str(CERTS_DIR / "ca.crt"),
+            str(CERTS_DIR / f"{name}.crt"),
         )
-        assert verify.returncode == 0, f"{name}.crt not signed by new CA: {verify.stdout}{verify.stderr}"
-        mod_cert = _run("openssl", "x509", "-in", str(CERTS_DIR / f"{name}.crt"), "-noout", "-modulus").stdout
-        mod_key = _run("openssl", "rsa", "-in", str(CERTS_DIR / f"{name}.key"), "-noout", "-modulus").stdout
+        assert verify.returncode == 0, (
+            f"{name}.crt not signed by new CA: {verify.stdout}{verify.stderr}"
+        )
+        mod_cert = _run(
+            "openssl", "x509", "-in", str(CERTS_DIR / f"{name}.crt"), "-noout", "-modulus"
+        ).stdout
+        mod_key = _run(
+            "openssl", "rsa", "-in", str(CERTS_DIR / f"{name}.key"), "-noout", "-modulus"
+        ).stdout
         assert mod_cert == mod_key, f"{name}: cert and key modulus mismatch"
 
 
@@ -257,7 +280,7 @@ def test_gitleaks_reports_tree_clean():
     """313.0.2: gitleaks clean on the tracked tree (skipped when CLI absent — repo convention)."""
     gitleaks = shutil.which("gitleaks")
     if gitleaks is None:
-        pytest.skip("gitleaks CLI not installed — CI runs gitleaks/gitleaks-action@v2")
+        pytest.skip("gitleaks CLI not installed — CI runs gitleaks/gitleaks-action@v2")  # noqa: skip-in-body
     proc = _run(
         gitleaks,
         "detect",
@@ -281,7 +304,9 @@ def test_gitleaks_reports_tree_clean():
 # without the other breaks the stack.
 # ---------------------------------------------------------------------------
 
-requires_docker = pytest.mark.skipif(shutil.which("docker") is None, reason="docker CLI not available")
+requires_docker = pytest.mark.skipif(
+    shutil.which("docker") is None, reason="docker CLI not available"
+)
 compose_tests = pytest.mark.docker_compose_runtime
 
 
@@ -292,7 +317,18 @@ def _compose(*files: str, env_file: str | None = None) -> subprocess.CompletedPr
     if env_file:
         args += ["--env-file", str(REPO_ROOT / env_file)]
     args += ["config"]
-    return _run(*args)
+    # The api test container's process env carries EMPTY interpolation vars
+    # (e.g. MINIO_ROOT_PASSWORD from the .env.test env_file). Compose
+    # interpolation precedence puts process env ABOVE the .env file, and
+    # `${VAR:?...}` treats an empty process-env value as missing — so the dev
+    # compose "fails" inside the container even though root .env is correct.
+    # A host-side `docker compose config` has no such exports; reproduce it
+    # with a minimal env so compose interpolates from root .env alone.
+    clean_env = {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "HOME": os.environ.get("HOME", "/root"),
+    }
+    return _run(*args, env=clean_env)
 
 
 @requires_docker

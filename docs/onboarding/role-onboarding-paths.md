@@ -53,7 +53,7 @@ frontend/src/
 **Prerequisites:** Python 3.12, Docker, PostgreSQL client
 
 ### Day 1 Morning — Environment
-1. Clone repo + `python -m venv .venv && source .venv/bin/activate` (5 min)
+1. Clone repo + `python3.12 -m venv venv && source venv/bin/activate` (5 min)
 2. `pip install -r requirements.txt -r requirements-dev.txt` (10 min)
 3. `docker compose up -d postgres redis-cache` — start infra (5 min)
 4. `python hub/manage.py migrate` — apply migrations (2 min)

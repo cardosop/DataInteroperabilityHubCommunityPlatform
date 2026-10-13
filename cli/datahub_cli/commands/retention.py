@@ -46,12 +46,12 @@ def list_policies(page: int, page_size: int, output_format: str):
             )
             for r in results:
                 click.echo(
-                    f"  {r.get('event_type', '?'):40s} {r.get('retention_days', '?'):5s}d  "
+                    f"  {r.get('event_type', '?'):40s} {r.get('retention_days', '?')!s:5s}d  "
                     f"{r.get('description', '')[:60]}"
                 )
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @retention.command("create-policy")
@@ -84,7 +84,7 @@ def create_policy(event_type: str, retention_days: int, description: str, output
             click.echo(f"Retention: {data.get('retention_days')} days")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @retention.command("update-policy")
@@ -113,7 +113,7 @@ def update_policy(policy_id: str, retention_days: int, description: str, output_
             click.echo(f"Policy updated: {data.get('retention_days')} days")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @retention.command("delete-policy")
@@ -125,7 +125,7 @@ def delete_policy(policy_id: str):
         click.echo(f"Policy deleted: {policy_id}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @retention.command("sweep-status")
@@ -150,4 +150,4 @@ def sweep_status(output_format: str):
             click.echo("Run: python manage.py enforce_retention --execute")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e

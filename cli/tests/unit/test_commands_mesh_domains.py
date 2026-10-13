@@ -564,8 +564,8 @@ class TestMeshDomainsDelete:
         # Output includes confirmation prompt, extract JSON part
         output_lines = result.output.strip().split("\n")
         json_line = None
-        for line in output_lines:
-            line = line.strip()
+        for raw_line in output_lines:
+            line = raw_line.strip()
             if line.startswith("{") and line.endswith("}"):
                 json_line = line
                 break

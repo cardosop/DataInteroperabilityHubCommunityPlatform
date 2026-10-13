@@ -9,7 +9,14 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('File Upload Flow', () => {
-  test.setTimeout(120000);
+  // 240s (was 120s): the /datasets/create nav path alone can consume most of
+  // a 120s budget on the HDD box under E2E load (login ≤60s + sidebar nav
+  // with list-API wait ≤60s + waitForAppMainReady ≤65s), and the upload
+  // loop then needs its own retry/backoff budget (3 attempts with 429
+  // retry-after waits). The observed 120s failure died inside
+  // waitForLoadingComplete right after loginAndNavigateToRoute — before the
+  // upload even started.
+  test.setTimeout(240000);
 
   test.describe('Failure', () => {
     test('unauthenticated access to datasets create redirects to login', async ({ page }) => {
@@ -38,8 +45,14 @@ test.describe('File Upload Flow', () => {
     const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
     await expect(dropzone.first()).toBeVisible({ timeout: 15000 });
 
-    // Find file input (inside dropzone or form)
-    const fileInput = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"] input[type="file"], input.file-upload-input').first();
+    // Find file input. The dropzone DIV itself must NOT be an alternative —
+    // `.first()` resolves the div (it precedes its child input in DOM order)
+    // and setInputFiles then fails with "Node is not an HTMLInputElement".
+    const fileInput = page
+      .locator(
+        '.file-upload-dropzone input[type="file"], [data-testid="file-upload-dropzone"] input[type="file"], input.file-upload-input'
+      )
+      .first();
     await expect(fileInput).toBeAttached({ timeout: 10000 });
 
     // Upload file with retry on rate limit (429) - parse retry-after from error message
@@ -50,7 +63,11 @@ test.describe('File Upload Flow', () => {
     while (!uploadSuccess && retries < maxRetries) {
       try {
         await fileInput.setInputFiles({
-          name: 'test.csv',
+          // Backend enforces unique ACTIVE filenames per tenant
+          // (FILENAME_COLLISION 409) — a fixed name collides with
+          // residue from prior runs and every retry 409s. Unique
+          // per attempt, like the asset-key convention.
+          name: `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.csv`,
           mimeType: 'text/csv',
           buffer: Buffer.from('name,age\nJohn,30\nJane,25'),
         });

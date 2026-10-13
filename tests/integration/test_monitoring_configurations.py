@@ -289,9 +289,10 @@ class TestMonitoringServicesIntegration:
         """Check if service is available"""
         try:
             response = requests.get(url, timeout=timeout)
-            return response.status_code in [200, 401, 403]  # 401/403 means service is up
         except Exception:
             return False
+        else:
+            return response.status_code in [200, 401, 403]  # 401/403 means service is up
 
     def test_prometheus_metrics_endpoint(self):
         """Test that Prometheus metrics endpoint works"""

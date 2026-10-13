@@ -17,4 +17,3 @@ def _reset_workflow_definition_cache():
     from hub.apps.orchestration.registry import reset_workflow_definition_cache
 
     reset_workflow_definition_cache()
-    yield

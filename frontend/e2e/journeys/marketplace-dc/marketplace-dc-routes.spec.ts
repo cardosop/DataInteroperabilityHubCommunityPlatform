@@ -24,7 +24,7 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         await assertListPageLoads(page, '.listing-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -41,7 +41,7 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         await assertListPageLoads(page, '.order-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -58,7 +58,7 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         await assertListPageLoads(page, '.entitlement-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
+          test.skip(String(err).includes('BACKEND_TIMEOUT'), 'Backend timeout under parallel E2E load');
           return;
         }
         throw err;
@@ -87,13 +87,13 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
+          test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
       }
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
       await responsePromise;
@@ -109,13 +109,13 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         // Error display didn't appear — page may show empty listing detail or still be loading
         const onLogin = page.url().includes('/login');
         if (onLogin) {
-          test.skip(true, 'Redirected to login during error wait — auth may have expired');
+          test.skip(onLogin, 'Redirected to login during error wait — auth may have expired');
           return;
         }
         // Check if page is still loading (backend slow under parallel E2E load)
         const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
         if (stillLoading) {
-          test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+          test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
           return;
         }
         // If listing detail loaded for nil-UUID, that is a data integrity problem
@@ -150,7 +150,7 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
+          test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
           return;
         }
         // SPA 404 page renders without .app-main, [data-testid="app-main"] — valid for a route that doesn't exist
@@ -162,7 +162,7 @@ test.describe('Marketplace and Data Consumer routes @critical', () => {
         // Fall through to the assertion below which checks for 404/error
       }
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
       // Wait for network to idle: React Router may partial-match listings/:id, causing

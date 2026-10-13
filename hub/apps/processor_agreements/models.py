@@ -213,7 +213,6 @@ class AssetProcessorMembership(models.Model):
     def save(self, *args, **kwargs):
         if self.asset_id:
             self.tenant_id = self.asset.tenant_id
-        if self.asset_id and self.processor_id:
-            if self.processor.tenant_id != self.asset.tenant_id:
-                raise ValidationError("Processor and asset must belong to the same tenant.")
+        if self.asset_id and self.processor_id and self.processor.tenant_id != self.asset.tenant_id:
+            raise ValidationError("Processor and asset must belong to the same tenant.")
         super().save(*args, **kwargs)

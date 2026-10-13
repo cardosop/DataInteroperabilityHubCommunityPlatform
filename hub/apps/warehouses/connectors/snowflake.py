@@ -42,10 +42,13 @@ class SnowflakeConnector(WarehouseConnector):
         asset_id: str = "",
         request_id: str = "",
     ):
-        super().__init__(connection_config, timeout_ms)
-        self._tenant_id = tenant_id
-        self._asset_id = asset_id
-        self._request_id = request_id
+        super().__init__(
+            connection_config,
+            timeout_ms,
+            tenant_id=tenant_id,
+            asset_id=asset_id,
+            request_id=request_id,
+        )
         self._conn = None
 
     def connect(self) -> None:
@@ -131,7 +134,6 @@ class SnowflakeConnector(WarehouseConnector):
             # Per-query credit attribution can be refined via QUERY_HISTORY.
             cost_credits = max(elapsed, 60.0) / 3600.0 * 2.0
             self._record_cost(self._tenant_id, cost_credits, "snowflake_credits")
-            return result
         except Exception:
             logger.exception(
                 "snowflake_query_failed",
@@ -141,21 +143,22 @@ class SnowflakeConnector(WarehouseConnector):
                 ),
             )
             raise
+        else:
+            return result
         finally:
             cursor.close()
 
     def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
-        import time
         sql = (
             "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COMMENT "
             "FROM INFORMATION_SCHEMA.COLUMNS "
             "WHERE TABLE_NAME = %(table_name)s "
             "ORDER BY ORDINAL_POSITION"
         )
-        t0 = time.monotonic()
         result = self.execute_query(sql, {"table_name": table_name.upper()})
-        elapsed = time.monotonic() - t0
-        self._record_cost(self._tenant_id, max(elapsed, 60.0) / 3600.0 * 2.0, "snowflake-credit")
+        # P7 (task 7.5): execute_query already records the query's cost —
+        # the extra record here double-counted every schema reflection
+        # (the same 0.11 class fixed for Databricks).
         return [
             SchemaColumn(
                 name=r[0],

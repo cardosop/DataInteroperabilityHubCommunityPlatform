@@ -34,8 +34,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _ALERTS_PATH = _REPO_ROOT / "monitoring" / "prometheus" / "alerts" / "webhook.yml"
@@ -100,16 +98,15 @@ class TestWebhookAlertsYaml:
             "alert rule must annotate its runbook target."
         )
 
-@pytest.mark.skip(reason="PyYAML not installed")
     def test_alerts_yaml_parses(self) -> None:
         """The YAML file MUST parse — guards against unbalanced quotes,
         bad indentation, etc."""
-        try:
-            import yaml  # type: ignore[import-untyped]
-        except ImportError:
+        import yaml
+
         with _ALERTS_PATH.open() as fp:
             data = yaml.safe_load(fp)
-        assert isinstance(data, dict) and "groups" in data
+        assert isinstance(data, dict)
+        assert "groups" in data
         assert len(data["groups"]) >= 1
         rules = data["groups"][0].get("rules", [])
         assert len(rules) == len(_REQUIRED_ALERT_RULES), (

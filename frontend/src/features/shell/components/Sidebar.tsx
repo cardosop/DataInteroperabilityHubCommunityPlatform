@@ -30,7 +30,11 @@ export function Sidebar() {
   const hasRole = (requiredRoles?: string[]): boolean => {
     if (!requiredRoles || requiredRoles.length === 0) return true;
     if (!user) return false;
-    return requiredRoles.some((role) => user.roles.includes(role));
+    // user.roles is absent from some auth payloads (E2E API-injected
+    // users) — treat missing roles as "no roles" rather than crashing
+    // the shell (Cannot read properties of undefined (reading
+    // 'includes')).
+    return requiredRoles.some((role) => (user.roles ?? []).includes(role));
   };
 
   const decoratedNavItems: NavItem[] = navItems.map((item) =>
@@ -120,11 +124,9 @@ export function Sidebar() {
       <aside
         id="app-sidebar"
         className={`app-sidebar ${isOpen ? 'app-sidebar--open' : ''}`}
-        role="navigation"
-        aria-label="Main navigation"
         aria-hidden={false}
       >
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" aria-label="Main navigation">
         {coreItems.length > 0 && (
           <ul className="nav-list">{renderItems(coreItems)}</ul>
         )}

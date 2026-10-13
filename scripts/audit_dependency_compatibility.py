@@ -88,8 +88,8 @@ def parse_requirements_file(filepath: Path) -> list[tuple[str, str]]:
         return dependencies
 
     with open(filepath) as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             # Skip comments and empty lines
             if not line or line.startswith("#"):
                 continue
@@ -147,7 +147,7 @@ def check_pypi_compatibility(package_name: str) -> bool | None:
                     return None
             except Exception:
                 return None
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
 
     return None
@@ -186,7 +186,7 @@ def test_dependency_installation(package_name: str, version_spec: str) -> tuple[
             return False, error_msg
     except subprocess.TimeoutExpired:
         return False, "Installation check timed out"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
 
 

@@ -178,12 +178,13 @@ class WriteBehindBuffer:
 
         try:
             count = self._flush_events(events_to_flush)
-            return count
         except Exception:
             # Re-prepend events to front of buffer so they are retried
             with self._lock:
                 self._buffer.extendleft(reversed(events_to_flush))
             raise
+        else:
+            return count
 
     def _flush_loop(self):
         """Background thread loop for time-based flushing."""
@@ -243,8 +244,6 @@ class WriteBehindBuffer:
                     duration=duration,
                 )
 
-                return persisted_count
-
             except Exception as e:
                 retry_count += 1
                 duration = time.time() - start_time
@@ -271,6 +270,8 @@ class WriteBehindBuffer:
                     # Store failed events for manual retry or DLQ
                     self._handle_failed_events(events_data, str(e))
                     raise
+            else:
+                return persisted_count
 
         return persisted_count
 

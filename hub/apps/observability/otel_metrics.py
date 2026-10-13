@@ -34,6 +34,7 @@ Migration from prometheus-client:
 import threading
 from typing import Any, Optional
 
+from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 
 # OpenTelemetry imports
@@ -41,7 +42,6 @@ try:
     from opentelemetry import metrics
     from opentelemetry.exporter.prometheus import REGISTRY, PrometheusMetricReader
     from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.resources import Resource
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -55,7 +55,7 @@ except ImportError:
 # Global meter instance and metric reader
 _meter: object | None = None
 # Use string annotation to avoid NameError if PrometheusMetricReader not available
-_metric_reader: Optional["PrometheusMetricReader"] = None if not OPENTELEMETRY_AVAILABLE else None
+_metric_reader: Optional["PrometheusMetricReader"] = None
 _initialized = False
 
 
@@ -77,7 +77,7 @@ def setup_opentelemetry_metrics() -> object | None:
 
         if not getattr(settings, "OPENTELEMETRY_METRICS_ENABLED", True):
             return None
-    except Exception:
+    except ImproperlyConfigured:
         # Django not configured yet, will initialize later
         return None
 
@@ -272,7 +272,9 @@ class _LabeledMetric:
 class _CounterWrapper:
     """Wrapper for Counter metrics that handles None gracefully"""
 
-    def __init__(self, name: str, description: str, unit: str = "1", expected_labels: tuple = None):
+    def __init__(
+        self, name: str, description: str, unit: str = "1", expected_labels: tuple | None = None
+    ):
         self.name = name
         self.description = description
         self.unit = unit
@@ -302,13 +304,13 @@ class _CounterWrapper:
                 )
         return self._counter
 
-    def add(self, amount: float, attributes: dict[str, str] = None):
+    def add(self, amount: float, attributes: dict[str, str] | None = None):
         """Add to counter"""
         counter = self._get_counter()
         if counter is not None:
             counter.add(amount, attributes=attributes or {})
 
-    def inc(self, attributes: dict[str, str] = None):
+    def inc(self, attributes: dict[str, str] | None = None):
         """Increment counter by 1"""
         self.add(1, attributes=attributes)
 
@@ -321,7 +323,12 @@ class _HistogramWrapper:
     """Wrapper for Histogram metrics that handles None gracefully"""
 
     def __init__(
-        self, name: str, description: str, unit: str, buckets: tuple, expected_labels: tuple = None
+        self,
+        name: str,
+        description: str,
+        unit: str,
+        buckets: tuple,
+        expected_labels: tuple | None = None,
     ):
         self.name = name
         self.description = description
@@ -356,13 +363,13 @@ class _HistogramWrapper:
                 )
         return self._histogram
 
-    def record(self, amount: float, attributes: dict[str, str] = None):
+    def record(self, amount: float, attributes: dict[str, str] | None = None):
         """Record a value"""
         histogram = self._get_histogram()
         if histogram is not None:
             histogram.record(amount, attributes=attributes or {})
 
-    def observe(self, amount: float, attributes: dict[str, str] = None):
+    def observe(self, amount: float, attributes: dict[str, str] | None = None):
         """Alias for record (for compatibility with prometheus-client API)"""
         self.record(amount, attributes=attributes)
 
@@ -374,7 +381,9 @@ class _HistogramWrapper:
 class _UpDownCounterWrapper:
     """Wrapper for UpDownCounter metrics that handles None gracefully"""
 
-    def __init__(self, name: str, description: str, unit: str = "1", expected_labels: tuple = None):
+    def __init__(
+        self, name: str, description: str, unit: str = "1", expected_labels: tuple | None = None
+    ):
         self.name = name
         self.description = description
         self.unit = unit
@@ -405,13 +414,13 @@ class _UpDownCounterWrapper:
                 )
         return self._counter
 
-    def _get_key(self, attributes: dict[str, str] = None) -> str:
+    def _get_key(self, attributes: dict[str, str] | None = None) -> str:
         """Get a key for the attributes dict"""
         if attributes is None:
             return ""
         return ",".join(f"{k}={v}" for k, v in sorted(attributes.items()))
 
-    def add(self, amount: float, attributes: dict[str, str] = None):
+    def add(self, amount: float, attributes: dict[str, str] | None = None):
         """Add to counter"""
         counter = self._get_counter()
         if counter is not None:
@@ -420,7 +429,7 @@ class _UpDownCounterWrapper:
             key = self._get_key(attributes)
             self._current_values[key] = self._current_values.get(key, 0) + amount
 
-    def set(self, value: float, attributes: dict[str, str] = None):
+    def set(self, value: float, attributes: dict[str, str] | None = None):
         """Set counter to a specific value (resets to 0 first, then adds value)"""
         key = self._get_key(attributes)
         current = self._current_values.get(key, 0)
@@ -436,11 +445,11 @@ class _UpDownCounterWrapper:
                 self._value_proxy = _ValueProxy()
             self._value_proxy.set(value)
 
-    def inc(self, amount: float = 1, attributes: dict[str, str] = None):
+    def inc(self, amount: float = 1, attributes: dict[str, str] | None = None):
         """Increment counter"""
         self.add(amount, attributes=attributes)
 
-    def dec(self, amount: float = 1, attributes: dict[str, str] = None):
+    def dec(self, amount: float = 1, attributes: dict[str, str] | None = None):
         """Decrement counter"""
         self.add(-amount, attributes=attributes)
 
@@ -1815,7 +1824,7 @@ transformation_queue_depth = _UpDownCounterWrapper(
 
 @csrf_exempt
 @require_GET
-def metrics_view(request):
+def metrics_view(_request):
     """
     Prometheus metrics endpoint using OpenTelemetry Prometheus exporter.
 
@@ -1825,12 +1834,26 @@ def metrics_view(request):
     Returns:
         HTTP response with Prometheus metrics in text format
     """
-    if not OPENTELEMETRY_AVAILABLE or REGISTRY is None:
+    if not OPENTELEMETRY_AVAILABLE:
+        return HttpResponse("Metrics not available", status=503, content_type="text/plain")
+    # Resolve the exporter's REGISTRY at CALL time: the module-level
+    # binding above captures whatever the exporter exported at import
+    # time (None until a PrometheusMetricReader is instantiated), so a
+    # fresh import is required after the lazy init.
+    from opentelemetry.exporter.prometheus import REGISTRY as _prom_registry
+
+    if _prom_registry is None:
+        # Lazy init — the PrometheusMetricReader is created on first use;
+        # nothing guarantees another component has triggered setup before
+        # the first scrape.
+        setup_opentelemetry_metrics()
+        from opentelemetry.exporter.prometheus import REGISTRY as _prom_registry
+    if _prom_registry is None:
         return HttpResponse("Metrics not available", status=503, content_type="text/plain")
 
     try:
         # Generate Prometheus format from the registry
-        metrics_data = generate_latest(REGISTRY)
+        metrics_data = generate_latest(_prom_registry)
         return HttpResponse(metrics_data, content_type=CONTENT_TYPE_LATEST)
     except (ValueError, AttributeError, RuntimeError) as e:
         import logging

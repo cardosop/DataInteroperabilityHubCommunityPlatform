@@ -332,7 +332,7 @@ class FieldLineageTest(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         retry_delay * (2**attempt)
                     )  # INTENTIONAL: e2e/integration test polling real services
 
@@ -612,7 +612,7 @@ class HierarchicalLineageTest(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         retry_delay * (2**attempt)
                     )  # INTENTIONAL: e2e/integration test polling real services
 
@@ -770,10 +770,9 @@ class HierarchicalLineageTest(TestCase):
             if isinstance(model, dict):
                 fields = model.get("fields", [])
                 for field in fields:
-                    if isinstance(field, dict):
-                        # Fields should have lineage
-                        if "lineage" in field:
-                            self.assertIn("input_fields", field["lineage"])
+                    # Fields should have lineage
+                    if isinstance(field, dict) and "lineage" in field:
+                        self.assertIn("input_fields", field["lineage"])
 
     def test_multi_level_lineage_queries(self):
         """Test multi-level lineage queries"""
@@ -853,10 +852,16 @@ class HierarchicalLineageTest(TestCase):
         second_query_elapsed = time.time() - start_time
 
         # Verify performance: both queries should complete within a reasonable time
-        self.assertLess(first_query_elapsed, 5.0,
-                        f"First lineage query took {first_query_elapsed:.2f}s, expected < 5s")
-        self.assertLess(second_query_elapsed, 5.0,
-                        f"Second lineage query took {second_query_elapsed:.2f}s, expected < 5s")
+        self.assertLess(
+            first_query_elapsed,
+            5.0,
+            f"First lineage query took {first_query_elapsed:.2f}s, expected < 5s",
+        )
+        self.assertLess(
+            second_query_elapsed,
+            5.0,
+            f"Second lineage query took {second_query_elapsed:.2f}s, expected < 5s",
+        )
 
         # Cached query should be faster (or at least not slower)
         # Note: In test environment, cache might not be significantly faster
@@ -881,10 +886,12 @@ class HierarchicalLineageTest(TestCase):
             max_model_depth=-1,
             max_field_depth=-1,
         )
-        self.assertEqual(len(result.get("contracts", [])), 0,
-                         "Negative max depths should return empty contracts")
-        self.assertEqual(len(result.get("entries", [])), 0,
-                         "Negative max depths should return empty entries")
+        self.assertEqual(
+            len(result.get("contracts", [])), 0, "Negative max depths should return empty contracts"
+        )
+        self.assertEqual(
+            len(result.get("entries", [])), 0, "Negative max depths should return empty entries"
+        )
 
     def tearDown(self):
         """Clean up test data and close database connections"""
@@ -1163,10 +1170,14 @@ class LineageImpactAnalysisTest(TestCase):
             tenant_id=str(self.tenant.id),
             max_contract_depth=-1,  # Invalid depth
         )
-        self.assertNotIn("error", result,
-                         "Negative depth should not crash — service should return gracefully")
-        self.assertEqual(result.get("total_affected", -1), 1,
-                         "Should still include the source contract in impact analysis")
+        self.assertNotIn(
+            "error", result, "Negative depth should not crash — service should return gracefully"
+        )
+        self.assertEqual(
+            result.get("total_affected", -1),
+            1,
+            "Should still include the source contract in impact analysis",
+        )
 
     def tearDown(self):
         """Clean up test data and close database connections"""
@@ -1217,7 +1228,7 @@ class LineageODPSIntegrationTest(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         retry_delay * (2**attempt)
                     )  # INTENTIONAL: e2e/integration test polling real services
 

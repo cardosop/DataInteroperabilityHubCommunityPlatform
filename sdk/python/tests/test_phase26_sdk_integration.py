@@ -37,7 +37,9 @@ def client():
     if not api_key:
         pytest.skip("DATAHUB_API_KEY not set")
 
-    config = DataHubClientConfig(base_url=_HUB_BASE_URL, api_token=api_key)
+    # ODPS product creation is workflow-backed and takes 60-120s — the
+    # 30s default read-times-out before the server responds under load.
+    config = DataHubClientConfig(base_url=_HUB_BASE_URL, api_token=api_key, timeout=120.0)
     return DataHubClient(config)
 
 

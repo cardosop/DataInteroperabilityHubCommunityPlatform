@@ -30,6 +30,9 @@ class InternalUpdateExportRunSerializer(serializers.Serializer):
     result_json = serializers.JSONField(required=False)
     completed_at = serializers.DateTimeField(required=False)
     prefect_flow_run_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    # W3.5 (R2-P4) — the worker's liveness claim (the export flow's
+    # heartbeat seam; the lease the stuck-run detector honors).
+    heartbeat_at = serializers.DateTimeField(required=False)
 
 
 class InternalProcessExportSerializer(serializers.Serializer):

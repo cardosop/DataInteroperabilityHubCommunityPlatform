@@ -29,7 +29,18 @@ test.describe("Phase 7.5 gap — user profile + tenant settings @deprecated", ()
   test('P — User profile page loads and shows own data or app handles route', async ({ page }) => {
     await page.goto('/settings/profile', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    // The ProtectedRoute auth gate shows "Checking authentication…" until
+    // the session resolves — a fixed 2s sleep races it under batch load
+    // (b7: no terminal marker was in the body at 2s). Wait for a
+    // terminal state (profile page or app shell) instead.
+    // intentional: bounded best-effort probe — the 404/login branches below handle the states where no profile/app marker ever renders.
+    await page
+      .locator(
+        '.profile-page, [class*="profile"], [class*="settings"], .app-main, [data-testid="app-main"], main, [role="main"]'
+      )
+      .first()
+      .waitFor({ state: 'visible', timeout: 30000 })
+      .catch(() => null);
 
     const body = page.locator('body');
     await expect(body).toBeVisible();
@@ -76,7 +87,17 @@ test.describe("Phase 7.5 gap — user profile + tenant settings @deprecated", ()
   }) => {
     await page.goto('/settings/tenant', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    // Same auth-gate race as the profile test: a fixed 2s sleep fires
+    // while ProtectedRoute still shows "Checking authentication…" under
+    // batch load. Wait for a terminal state instead.
+    // intentional: bounded best-effort probe — the permission/404/login branches below handle the states where no tenant-settings marker ever renders.
+    await page
+      .locator(
+        '.tenant-settings-page, [data-testid="tenant-settings-page"], .tenant-settings, [class*="tenant"], [class*="config"], .app-main, [data-testid="app-main"], main, [role="main"]'
+      )
+      .first()
+      .waitFor({ state: 'visible', timeout: 30000 })
+      .catch(() => null);
 
     const body = page.locator('body');
     await expect(body).toBeVisible();
@@ -90,9 +111,6 @@ test.describe("Phase 7.5 gap — user profile + tenant settings @deprecated", ()
     const redirectedToLogin = page.url().includes('/login');
     const on403 = page.url().includes('/403');
     if (redirectedToLogin || on403) return;
-
-    // Wait for content to settle (lazy-loaded, role-gated page)
-    await page.waitForTimeout(2000);
     const hasTenantPage = (await tenantPage.count()) > 0;
     const hasPermissionMsg = (await permissionMsg.count()) > 0;
     const has404 = (await body.locator('text=/404|Not Found/').count()) > 0;

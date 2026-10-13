@@ -21,9 +21,17 @@ import { waitForMarketplaceListings } from '../../fixtures/helpers';
 test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
   test.setTimeout(120000);
 
-  test.beforeAll(async () => {
-    await seedMarketplaceListings(4);  // need ≥2 for comparison, ≥4 for max-3 constraint test
-  });
+  // Hook budget: 4 listings × (asset + activate + listing + publish) ≈
+  // 60-90s healthy. Mid-batch API recreates add connection-failure
+  // settle waits (10s × retries per listing) — 240s keeps the seed's
+  // recovery paths reachable (b8: the hook timed out at 120s while the
+  // API was mid-recreate at 21:18).
+  test.beforeAll(
+    async () => {
+      await seedMarketplaceListings(4); // need ≥2 for comparison, ≥4 for max-3 constraint test
+    },
+    { timeout: 240_000 },
+  );
 
   test.describe('Success', () => {
     test('compare button activates when 2 listings are selected', async ({
@@ -34,6 +42,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -50,6 +60,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         cbCount = await page.locator('.listing-card-compare input[type="checkbox"]').count();
         if (cbCount >= 2) break;
         await page.reload({ waitUntil: 'domcontentloaded' });
+        // intentional: best-effort wait inside the reload retry loop —
+        // the cbCount < 2 skip below is the load-bearing gate.
         await page
           .locator('[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state')
           .first()
@@ -57,7 +69,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
           .catch(() => null);
       }
       if (cbCount < 2) {
-        test.skip(true, `Only ${cbCount} listing(s) after 3 reloads — need ≥2 to test comparison`);
+        test.skip(cbCount < 2, `Only ${cbCount} listing(s) after 3 reloads — need ≥2 to test comparison`);
         return;
       }
 
@@ -87,6 +99,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -101,7 +115,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (cbCount < 2) {
-        test.skip(true, `Only ${cbCount} listing(s) after retries — need ≥2 to test comparison`);
+        test.skip(cbCount < 2, `Only ${cbCount} listing(s) after retries — need ≥2 to test comparison`);
         return;
       }
 
@@ -128,6 +142,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -141,7 +157,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 
@@ -176,6 +192,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -189,7 +207,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 
@@ -224,6 +242,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -237,7 +257,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 
@@ -265,6 +285,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -279,7 +301,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         1,
       );
       if (cbCount < 1) {
-        test.skip(true, 'No listings after retries');
+        test.skip(cbCount < 1, 'No listings after retries');
         return;
       }
       const checkboxes = page.locator('.listing-card-compare input[type="checkbox"]');
@@ -309,6 +331,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -324,7 +348,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       );
 
       if (mcCount < 4) {
-        test.skip(true, `Only ${mcCount} listings after retries — need ≥4 to test max-3 constraint`);
+        test.skip(mcCount < 4, `Only ${mcCount} listings after retries — need ≥4 to test max-3 constraint`);
         return;
       }
 
@@ -350,6 +374,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -363,7 +389,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 
@@ -390,6 +416,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -403,7 +431,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 
@@ -428,6 +456,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -441,7 +471,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 
@@ -466,6 +496,8 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
       test.skip(page.url().includes('/login'), 'Could not authenticate');
 
       await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort wait for the page shell — the login
+      // check below is the load-bearing gate.
       await page
         .locator('[data-testid="listing-list-page"], .listing-list-page, [data-testid="listing-list-grid"], .listing-list-grid, .empty-state, [data-testid="empty-state"]')
         .first()
@@ -479,7 +511,7 @@ test.describe('Side-by-Side Listing Comparison (278.V.8) @critical', () => {
         2,
       );
       if (_cbCount < 2) {
-        test.skip(true, `Only ${_cbCount} listing(s) after retries — need ≥2`);
+        test.skip(_cbCount < 2, `Only ${_cbCount} listing(s) after retries — need ≥2`);
         return;
       }
 

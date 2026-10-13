@@ -57,8 +57,11 @@ import argparse
 import datetime as _dt
 import json
 import sys
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 DEFAULT_HISTORY_FILE = "audit-reports/lineage-e2e-cycles.jsonl"
 DEFAULT_THRESHOLD = 7

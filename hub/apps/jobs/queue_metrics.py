@@ -17,6 +17,7 @@ import contextlib
 import logging
 
 from django.conf import settings
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def emit_rq_queue_depth() -> dict[str, int]:
 
     try:
         redis_conn = _get_redis_connection()
-    except Exception as exc:
+    except (ValueError, TypeError) as exc:
         logger.warning(
             "rq_queue_depth_redis_connect_failed",
             extra={"error": str(exc)},
@@ -64,7 +65,7 @@ def emit_rq_queue_depth() -> dict[str, int]:
             redis_key = f"rq:queue:{queue_name}"
             try:
                 count = redis_conn.llen(redis_key)
-            except Exception:
+            except RedisError:
                 count = 0
 
             counts[queue_name] = count
@@ -75,7 +76,7 @@ def emit_rq_queue_depth() -> dict[str, int]:
                 reg_key = f"rq:{registry}:{queue_name}"
                 try:
                     reg_count = redis_conn.zcard(reg_key)
-                except Exception:
+                except RedisError:
                     reg_count = 0
                 _metric.labels(queue_name=queue_name, status=registry).set(reg_count)
 

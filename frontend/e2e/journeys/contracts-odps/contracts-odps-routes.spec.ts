@@ -96,11 +96,9 @@ test.describe('Contracts and ODPS routes @critical', () => {
       // exact error text depends on backend load and response time.
       if (!hasErrorDisplay) {
         // Check if page is still loading (backend slow under parallel E2E load)
-        const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
-        if (stillLoading) {
-          test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
-          return;
-        }
+        const stillLoading = (await page.locator('[data-testid="skeleton-row"], [data-testid="detail-page-skeleton"], .skeleton, .loading-spinner').count()) > 0;
+        test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+        if (stillLoading) return;
       }
       expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
@@ -108,7 +106,7 @@ test.describe('Contracts and ODPS routes @critical', () => {
       if (hasErrorDisplay) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errorText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
-        if (errorText && !errorText.includes('404') && !errorText.toLowerCase().includes('not found')) {
+        if (errorText && !/404|not[ _-]?found/i.test(errorText)) {
           console.warn(`[H3] contract edit nil-UUID: error-display shows non-404 error: "${errorText.slice(0, 200)}"`);
         }
       }
@@ -147,11 +145,9 @@ test.describe('Contracts and ODPS routes @critical', () => {
       // exact error text depends on backend load and response time.
       if (!hasErrorDisplay) {
         // Check if page is still loading (backend slow under parallel E2E load)
-        const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
-        if (stillLoading) {
-          test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
-          return;
-        }
+        const stillLoading = (await page.locator('[data-testid="skeleton-row"], [data-testid="detail-page-skeleton"], .skeleton, .loading-spinner').count()) > 0;
+        test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+        if (stillLoading) return;
       }
       expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
@@ -159,7 +155,7 @@ test.describe('Contracts and ODPS routes @critical', () => {
       if (hasErrorDisplay) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errorText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
-        if (errorText && !errorText.includes('404') && !errorText.toLowerCase().includes('not found')) {
+        if (errorText && !/404|not[ _-]?found/i.test(errorText)) {
           console.warn(`[H3] odps detail nil-UUID: error-display shows non-404 error: "${errorText.slice(0, 200)}"`);
         }
       }
@@ -181,16 +177,14 @@ test.describe('Contracts and ODPS routes @critical', () => {
           contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
         });
       } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
+        const onLogin = page.url().includes('/login');
+        test.skip(onLogin, 'Redirected to login — auth may have expired');
+        if (onLogin) return;
         throw _err;
       }
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
-        return;
-      }
+      const onLogin = page.url().includes('/login');
+      test.skip(onLogin, 'Redirected to login — auth may have expired');
+      if (onLogin) return;
       expect(page.url()).toContain('/contracts');
       await assertSuccessfulLoad(page, {
         apiResponsePromise: apiPromise,
@@ -201,7 +195,10 @@ test.describe('Contracts and ODPS routes @critical', () => {
     });
 
     test('odps list loads (empty or with data)', async ({ page }) => {
-      // ODPS internally uses /contracts endpoint OR a dedicated /odps endpoint depending on version
+      // /odps is a backward-compat redirect (routes.tsx Phase 211.A6):
+      // /odps → /contracts?spec_type=ODPS. The legacy /odps URL no longer
+      // renders its own page — assert the canonical post-redirect URL and
+      // the contracts list content.
       const apiPromise = page.waitForResponse(
         (r) =>
           (r.url().includes('/contracts') || r.url().includes('/odps')) &&
@@ -213,37 +210,39 @@ test.describe('Contracts and ODPS routes @critical', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.odps-list-page, .odps-empty-state',
+          contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
         });
       } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
+        const onLogin = page.url().includes('/login');
+        test.skip(onLogin, 'Redirected to login — auth may have expired');
+        if (onLogin) return;
         throw _err;
       }
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
-        return;
-      }
-      expect(page.url()).toContain('/odps');
+      const onLogin = page.url().includes('/login');
+      test.skip(onLogin, 'Redirected to login — auth may have expired');
+      if (onLogin) return;
+      expect(page.url()).toContain('/contracts');
+      expect(page.url()).toContain('spec_type=ODPS');
       await assertSuccessfulLoad(page, {
         apiResponsePromise: apiPromise,
-        successContentSelector: '.odps-list-page, .odps-empty-state',
+        successContentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
         rejectErrorDisplay: true,
       });
     });
 
     test('odps upload page loads', async ({ page }) => {
+      // /odps/upload redirects to /contracts/create (Phase 211.A6) — the
+      // canonical create route now owns ODPS uploads; the legacy URL no
+      // longer renders a dedicated page.
       const { ok } = await navigateOrSkip(page, '/odps/upload', {
-        contentSelector: '.odps-upload-page',
+        contentSelector: '.contract-create-page',
       });
       if (!ok) return;
 
-      expect(page.url()).toContain('/odps/upload');
+      expect(page.url()).toContain('/contracts/create');
       // Upload page may not trigger list API; verify frontend success only
       await assertSuccessfulLoad(page, {
-        successContentSelector: '.odps-upload-page',
+        successContentSelector: '.contract-create-page',
         rejectErrorDisplay: true,
       });
     });

@@ -86,17 +86,16 @@ def fix_file(file_path):
     content = remove_patch_decorators(content)
 
     # Remove unused imports
-    if "from unittest.mock import" in content:
-        # Check if Mock, MagicMock, patch are still used
-        if (
-            "Mock(" not in content
-            and "MagicMock(" not in content
-            and "@patch" not in content
-            and "with patch(" not in content
-        ):
-            # Remove the import
-            content = re.sub(r"from unittest\.mock import[^\n]*\n", "", content)
-            content = re.sub(r"import unittest\.mock[^\n]*\n", "", content)
+    # Check if Mock, MagicMock, patch are still used
+    if "from unittest.mock import" in content and (
+        "Mock(" not in content
+        and "MagicMock(" not in content
+        and "@patch" not in content
+        and "with patch(" not in content
+    ):
+        # Remove the import
+        content = re.sub(r"from unittest\.mock import[^\n]*\n", "", content)
+        content = re.sub(r"import unittest\.mock[^\n]*\n", "", content)
 
     if content != original_content:
         with open(file_path, "w") as f:

@@ -32,17 +32,52 @@ backend events are routed by ``user_id``.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
 import time
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
+import redis
 from django.http import StreamingHttpResponse
-from rest_framework import permissions
+from rest_framework import permissions, renderers
 from rest_framework.views import APIView
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
 logger = logging.getLogger(__name__)
+
+
+class EventStreamRenderer(renderers.BaseRenderer):
+    """
+    W5.3 (R2-F3) — content-negotiation renderer for the SSE endpoint.
+
+    DRF 3.16 negotiates the Accept header BEFORE the handler runs; the
+    default renderer set (JSON/Browsable) rejects ``Accept:
+    text/event-stream`` — the header both the browser's native
+    EventSource and fetch-based SSE readers send — with 406
+    NotAcceptable. Production reverse proxies do not rewrite Accept
+    (only the dev proxy does), so every direct SSE request 406'd.
+
+    The renderer is NEVER invoked: the view returns a plain
+    ``StreamingHttpResponse`` directly; this class exists solely so
+    content negotiation accepts the media type.
+    """
+
+    media_type = "text/event-stream"
+    format = "stream"
+    charset = None
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):  # noqa: ARG002 — DRF render signature
+        # The stream itself never reaches DRF rendering (the view returns
+        # a plain StreamingHttpResponse). DRF DOES route error envelopes
+        # here (401/429/5xx produced by the exception handler), and the
+        # client's error normalization reads them as JSON — render the
+        # envelope as JSON so an SSE-Accept error response stays
+        # machine-readable instead of crashing the renderer.
+        return json.dumps(data).encode("utf-8")
 
 
 # Periodic comment-ping interval — keeps proxies (nginx, ALB) from
@@ -59,8 +94,13 @@ class NotificationStreamView(APIView):
     """SSE endpoint."""
 
     permission_classes = [permissions.IsAuthenticated]
+    # W5.3 (R2-F3) — accept the SSE media type (see EventStreamRenderer)
+    # AND application/json (reverse proxies/dev tooling may normalize the
+    # Accept header; error envelopes render as JSON through JSONRenderer,
+    # which the client's error normalization reads).
+    renderer_classes = [EventStreamRenderer, renderers.JSONRenderer]  # noqa: RUF012 — DRF class attr idiom
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, *_args, **_kwargs):
         user_id = str(request.user.id)
         response = StreamingHttpResponse(
             _event_stream(user_id),
@@ -71,8 +111,15 @@ class NotificationStreamView(APIView):
         return response
 
 
-def _event_stream(user_id: str) -> Iterator[bytes]:
-    """Yield SSE-framed messages until the connection ends."""
+async def _event_stream(user_id: str) -> AsyncIterator[bytes]:
+    """Yield SSE-framed messages until the connection ends.
+
+    W5.3 (R2-F3) — an ASYNC generator is mandatory: Django 6's ASGI
+    handler materializes SYNC streaming iterators wholesale
+    (``sync_to_async(list)(stream)``) before sending the first byte —
+    an infinite SSE stream therefore delivered zero bytes forever.
+    Async iterators stream incrementally.
+    """
     # Initial "ready" event — the client uses this to confirm the
     # stream is open before flipping its mode away from polling.
     yield b"event: ready\ndata: {}\n\n"
@@ -89,8 +136,9 @@ def _event_stream(user_id: str) -> Iterator[bytes]:
     try:
         while time.time() < deadline:
             # Non-blocking poll: get_message returns None when no
-            # event is available, so we control the loop cadence.
-            message = pubsub.get_message(timeout=1.0)
+            # event is available, so we control the loop cadence. The
+            # blocking read runs off the event loop.
+            message = await asyncio.to_thread(pubsub.get_message, 1.0)
             now = time.time()
             if message and message.get("type") == "message":
                 payload = _decode_payload(message.get("data"))
@@ -105,7 +153,7 @@ def _event_stream(user_id: str) -> Iterator[bytes]:
             if now - last_ping >= _PING_INTERVAL_SECONDS:
                 yield b": ping\n\n"
                 last_ping = now
-    except Exception as exc:  # pragma: no cover — defensive
+    except Exception as exc:
         logger.warning("notification_stream_error user_id=%s err=%s", user_id, exc)
     finally:
         with contextlib.suppress(Exception):
@@ -132,7 +180,7 @@ def _try_get_pubsub(user_id: str):
         # user-scoped pattern.
         pubsub.subscribe(f"notification:user:{user_id}")
         return pubsub
-    except Exception as exc:
+    except (ImportError, redis.RedisError) as exc:
         logger.debug("notification_stream_pubsub_unavailable err=%s", exc)
         return None
 
@@ -144,7 +192,7 @@ def _decode_payload(raw) -> dict | None:
         raw = raw.decode("utf-8", errors="replace")
     try:
         return json.loads(raw)
-    except Exception:
+    except json.JSONDecodeError:
         return None
 
 

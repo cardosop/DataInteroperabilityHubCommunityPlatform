@@ -33,41 +33,40 @@ class ContractFormatHandlingMixin:
         is_lineage_visualization = "lineage/visualization" in path
         is_export = "export" in path
 
-        if is_lineage_visualization or is_export:
+        if (is_lineage_visualization or is_export) and (
+            "format" in request.GET or "format" in drf_request.query_params
+        ):
             # If format is in query parameters, clear any format from kwargs
             # This prevents DRF from trying to match format suffix patterns
-            if "format" in request.GET or "format" in drf_request.query_params:
-                # Get format from query params to check if it's a valid format
-                # suffix
-                format_in_query = request.GET.get("format") or (
-                    drf_request.query_params.get("format")
-                )
+            # Get format from query params to check if it's a valid format
+            # suffix
+            format_in_query = request.GET.get("format") or (drf_request.query_params.get("format"))
 
-                # Valid format suffixes for DRF (json, yaml, etc.)
-                valid_format_suffixes = ["json", "yaml", "xml", "csv"]
+            # Valid format suffixes for DRF (json, yaml, etc.)
+            valid_format_suffixes = ["json", "yaml", "xml", "csv"]
 
-                # Only clear format if it's NOT a valid format suffix
-                # This allows format suffixes to work for other endpoints
-                if format_in_query and format_in_query.lower() not in (valid_format_suffixes):
-                    # Clear format from kwargs if it was set by format suffix
-                    # pattern
-                    if "format" in kwargs:
-                        # Store it temporarily but don't use it for routing
-                        drf_request._format_from_suffix = kwargs.pop("format")
-                    # Also clear format attribute if it was set
-                    # CRITICAL: This must be done before content negotiation
-                    if hasattr(drf_request, "format") and drf_request.format:
-                        drf_request._original_format = drf_request.format
-                        drf_request.format = None
-                    # Disable format suffix handling for this request
-                    # CRITICAL: Set format_kwarg to None to prevent DRF from
-                    # trying to use format suffixes
-                    # This must be set on the viewset instance, not just the
-                    # request
-                    self.format_kwarg = None
-                    # Also set on the request object for consistency
-                    if hasattr(drf_request, "format_kwarg"):
-                        drf_request.format_kwarg = None
+            # Only clear format if it's NOT a valid format suffix
+            # This allows format suffixes to work for other endpoints
+            if format_in_query and format_in_query.lower() not in (valid_format_suffixes):
+                # Clear format from kwargs if it was set by format suffix
+                # pattern
+                if "format" in kwargs:
+                    # Store it temporarily but don't use it for routing
+                    drf_request._format_from_suffix = kwargs.pop("format")
+                # Also clear format attribute if it was set
+                # CRITICAL: This must be done before content negotiation
+                if hasattr(drf_request, "format") and drf_request.format:
+                    drf_request._original_format = drf_request.format
+                    drf_request.format = None
+                # Disable format suffix handling for this request
+                # CRITICAL: Set format_kwarg to None to prevent DRF from
+                # trying to use format suffixes
+                # This must be set on the viewset instance, not just the
+                # request
+                self.format_kwarg = None
+                # Also set on the request object for consistency
+                if hasattr(drf_request, "format_kwarg"):
+                    drf_request.format_kwarg = None
 
         return drf_request
 

@@ -4,11 +4,10 @@ Phase 80.1 — Asset signal tests.
 Tests that the post_save signal on Asset enqueues a search vector rebuild
 and that failures are logged rather than propagated.
 
-Phase 250.1.F update (closes B2-5): the rebuild is GATED on
-``status != DRAFT``. The original Phase 80.1 tests below were rewritten
-to seed assets with ``status=AssetStatus.ACTIVE`` so they continue to
-exercise the enqueue path. The DRAFT-suppression contract has its own
-dedicated suite at ``test_search_vector_signal_timing.py``.
+Phase 226 G12 update: EVERY save enqueues the rebuild — including
+DRAFT (drafts are tenant-scoped searchable). The tests seed ACTIVE
+assets for historical continuity; the full status matrix lives in
+``test_search_vector_signal_timing.py``.
 """
 
 from unittest.mock import patch
@@ -34,8 +33,8 @@ class AssetSignalTest(TestCase):
         return tenant
 
     def _create_active_asset(self, tenant, name):
-        """Phase 250.1.F gate: only non-DRAFT saves enqueue the
-        rebuild, so signal-fire tests must seed with ACTIVE."""
+        """Every save enqueues (Phase 226 G12); tests seed ACTIVE
+        for historical continuity with the original Phase 80.1 flow."""
         return Asset.objects.create(
             tenant=tenant,
             name=name,
@@ -71,9 +70,11 @@ class AssetSignalTest(TestCase):
         """
         tenant = self._create_tenant()
         # Should NOT raise
-        with self.assertLogs("hub.apps.assets.signals", level="WARNING") as cm:
-            with self.captureOnCommitCallbacks(execute=True):
-                self._create_active_asset(tenant, "sig-exc-test")
+        with (
+            self.assertLogs("hub.apps.assets.signals", level="WARNING") as cm,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self._create_active_asset(tenant, "sig-exc-test")
         self.assertTrue(
             any(
                 "asset_search_vector_enqueue_redis_or_rq_error" in r

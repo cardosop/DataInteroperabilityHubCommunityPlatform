@@ -40,7 +40,15 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
   { path: '/datasets', label: 'Datasets', icon: '📊' },
   { path: '/files', label: 'Files', icon: '📁' },
   { path: '/contracts', label: 'Contracts', icon: '📄' },
-  { path: '/marketplace', label: 'Marketplace', icon: '🛒' },
+  {
+    path: '/marketplace',
+    label: 'Marketplace',
+    icon: '🛒',
+    // 313.H.4 — marketplace is a PAID surface; the sidebar hides the
+    // link in core-only deployments (mirror of the route gate in
+    // routes.tsx /marketplace).
+    requiredCapability: 'marketplace',
+  },
   {
     path: '/integrations/connections',
     label: 'Integrations',
@@ -151,6 +159,24 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'],
   },
   {
+    // close-test-coverage-gaps 2.3 — the approvers' inbox. Role-gated to
+    // the SAME set as the governance subtree's ProtectedRoute (routes.tsx
+    // governance children): approvers (DPO/LEGAL/SECURITY admins) can
+    // reach the route but were invisible in the sidebar before this
+    // entry. Primary nav (not advanced) — it is the landing surface the
+    // approval-inbox E2E suite navigates.
+    path: '/governance/my-approvals',
+    label: 'My Approvals',
+    icon: '✅',
+    requiredRole: [
+      'TENANT_ADMIN',
+      'DPO',
+      'LEGAL_ADMIN',
+      'SECURITY_ADMIN',
+      'PLATFORM_ADMIN',
+    ],
+  },
+  {
     path: '/audit',
     label: 'Audit',
     icon: '🔍',
@@ -163,12 +189,27 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     requiredRole: ['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN'],
   },
   { path: '/admin', label: 'Admin', icon: '⚙️', requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'] },
+  {
+    // openspec add-databricks-control-plane task 0.15 — workspace registry.
+    path: '/databricks',
+    label: 'Databricks',
+    icon: '🏭',
+    requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'],
+    requiredCapability: 'databricks',
+  },
 ];
 
 /** Roles required to access compliance sidebar routes. */
 export const COMPLIANCE_SIDEBAR_REQUIRED_ROLES: string[] = [
   'COMPLIANCE_OFFICER',
   'DPO',
+  'DATA_PROVIDER',
   'TENANT_ADMIN',
   'PLATFORM_ADMIN',
 ];
+// DATA_PROVIDER: the compliance runs view (hub/apps/compliance/views.py)
+// is IsAuthenticated-only, the sidebar advertises /compliance to every
+// role, and the DPO onboarding journey (asset → DQ → compliance scan)
+// runs AS the DATA_PROVIDER persona — gating the route to the privacy
+// roles alone bounced the journey to /403. Keep the route aligned with
+// the backend + sidebar rather than stricter than both.

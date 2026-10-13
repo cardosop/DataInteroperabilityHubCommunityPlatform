@@ -49,7 +49,7 @@ class Migration(migrations.Migration):
             model_name="dataset",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("file__isnull", False)),
-                fields=("tenant", "file", "file_handle_purpose"),
+                fields=["tenant", "file", "file_handle_purpose"],
                 name="unique_dataset_file_purpose_per_tenant",
             ),
         ),

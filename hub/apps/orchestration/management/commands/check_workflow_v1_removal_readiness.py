@@ -120,7 +120,7 @@ class Command(BaseCommand):
             help="Emit a structured JSON verdict instead of human-readable text.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         workflow = options["workflow"]
         version = options["version"]
         soak_days = options["soak_days"]

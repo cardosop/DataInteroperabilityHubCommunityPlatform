@@ -37,8 +37,6 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import Role, UserRole
-
         self.client = APIClient()
 
         # Get or create FREE plan
@@ -52,41 +50,37 @@ class Phase25TenantOnboardingE2ETest(TestCase):
             },
         )
 
-        # Create a platform admin tenant + user for onboarding requests.
-        # The onboarding endpoint requires IsAuthenticated + PLATFORM_ADMIN role.
-        platform_tenant, _ = Tenant.objects.get_or_create(
-            slug=f"platform-admin-tenant-{uuid.uuid4().hex[:8]}",
-            defaults={"name": "Platform Admin Tenant", "status": TenantStatus.ACTIVE},
-        )
+        # Create a platform admin user for onboarding requests.  The
+        # onboarding view gates on the User.is_platform_admin FLAG
+        # (IsPlatformAdmin in tenants/permissions.py) — the canonical
+        # platform-admin shape is tenant=None + is_platform_admin=True,
+        # mirroring ensure_e2e_user_roles (e2e_platform@example.com).
+        # A PLATFORM_ADMIN role or is_superuser alone is NOT sufficient
+        # (403 AUTH_FORBIDDEN, batch 10-3b).
         self.platform_admin = User.objects.create_user(
-            email="platform-admin-e2e@example.com",
+            email=f"platform-admin-e2e-{uuid.uuid4().hex[:8]}@example.com",
             password="PlatformAdmin123!",
-            tenant=platform_tenant,
+            tenant=None,
             status=UserStatus.ACTIVE,
-        )
-        self.platform_admin.is_superuser = True
-        self.platform_admin.save(update_fields=["is_superuser"])
-        # Also create the PLATFORM_ADMIN role for explicit role check
-        pa_role, _ = Role.objects.get_or_create(
-            tenant=platform_tenant,
-            name="PLATFORM_ADMIN",
-            defaults={"description": "Platform Administrator"},
-        )
-        UserRole.objects.get_or_create(
-            user=self.platform_admin,
-            role=pa_role,
+            is_platform_admin=True,
         )
         self.client.force_authenticate(user=self.platform_admin)
 
     def test_complete_tenant_onboarding_workflow(self):
         """Test complete tenant onboarding workflow"""
+        # Unique per run: the shared test DB can retain rows from a prior
+        # batch whose flush deadlocked, so fixed slugs/emails would 400.
+        unique_suffix = uuid.uuid4().hex[:8]
+        tenant_slug = f"e2e-onboarded-{unique_suffix}"
+        first_email = f"onboard-e2e-{unique_suffix}@example.com"
+
         # Step 1: Create tenant via onboarding endpoint
         data = {
             "name": "E2E Onboarded Tenant",
-            "slug": "e2e-onboarded-tenant",
+            "slug": tenant_slug,
             "plan_slug": "free",
             "first_user": {
-                "email": "onboarde2e@example.com",
+                "email": first_email,
                 "password": "SecurePass123!",
                 "display_name": "E2E Onboarded User",
             },
@@ -111,14 +105,14 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
             # Step 3: Verify user created
             user = User.objects.get(id=user_id)
-            self.assertEqual(user.email, "onboarde2e@example.com")
+            self.assertEqual(user.email, first_email)
             self.assertEqual(user.tenant_id, tenant.id)
             self.assertEqual(user.status, UserStatus.ACTIVE)
 
             # Step 4: User can log in
             login_response = self.client.post(
                 "/api/v1/auth/login/",
-                {"email": "onboarde2e@example.com", "password": "SecurePass123!"},
+                {"email": first_email, "password": "SecurePass123!"},
                 format="json",
             )
 
@@ -147,18 +141,23 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
     def test_tenant_onboarding_duplicate_slug_fails(self):
         """Test that duplicate tenant slug fails"""
+        # Unique per run: the shared test DB can retain rows from a prior
+        # batch whose flush deadlocked, so fixed slugs/emails would 400.
+        unique_suffix = uuid.uuid4().hex[:8]
+        duplicate_slug = f"duplicate-e2e-{unique_suffix}"
+
         # Create existing tenant
         Tenant.objects.create(
             name=f"Existing Tenant {uuid.uuid4().hex[:8]}",
-            slug="duplicate-e2e-slug",
+            slug=duplicate_slug,
             status=TenantStatus.ACTIVE,
         )
 
         data = {
             "name": "Duplicate Slug Tenant",
-            "slug": "duplicate-e2e-slug",
+            "slug": duplicate_slug,
             "first_user": {
-                "email": "duplicate@example.com",
+                "email": f"duplicate-{unique_suffix}@example.com",
                 "password": "SecurePass123!",
                 "display_name": "Duplicate User",
             },
@@ -171,11 +170,14 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
     def test_tenant_onboarding_user_can_access_tenant_data(self):
         """Test that onboarded user can only access their tenant's data"""
+        # Unique per run: the shared test DB can retain rows from a prior
+        # batch whose flush deadlocked, so fixed slugs/emails would 400.
+        unique_suffix = uuid.uuid4().hex[:8]
         data = {
             "name": "Isolation Test Tenant",
-            "slug": "isolation-test-tenant",
+            "slug": f"isolation-test-{unique_suffix}",
             "first_user": {
-                "email": "isolation@example.com",
+                "email": f"isolation-{unique_suffix}@example.com",
                 "password": "SecurePass123!",
                 "display_name": "Isolation User",
             },

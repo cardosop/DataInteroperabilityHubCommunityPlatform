@@ -4,6 +4,8 @@ Workflow State Machine
 Implements workflow state transitions with validation and error handling.
 """
 
+from typing import ClassVar
+
 from django.core.exceptions import ValidationError
 
 from .models import WorkflowStatus
@@ -22,7 +24,7 @@ class WorkflowStateMachine:
     """
 
     # Valid state transitions
-    VALID_TRANSITIONS: dict[WorkflowStatus, set[WorkflowStatus]] = {
+    VALID_TRANSITIONS: ClassVar[dict[WorkflowStatus, set[WorkflowStatus]]] = {
         WorkflowStatus.DRAFT: {WorkflowStatus.RUNNING, WorkflowStatus.CANCELLED},
         WorkflowStatus.RUNNING: {
             WorkflowStatus.COMPLETED,
@@ -40,7 +42,7 @@ class WorkflowStateMachine:
     }
 
     # Terminal states
-    TERMINAL_STATES: set[WorkflowStatus] = {
+    TERMINAL_STATES: ClassVar[set[WorkflowStatus]] = {
         WorkflowStatus.COMPLETED,
         WorkflowStatus.FAILED,
         WorkflowStatus.CANCELLED,

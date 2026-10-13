@@ -1,0 +1,207 @@
+{
+  "title": "Databricks \u2014 Jobs Fleet",
+  "uid": "databricks-jobs",
+  "description": "Phase 4 (add-databricks-jobs 4.5) \u2014 job-fleet observability: failed runs, the run failure rate, long-running runs, per-state run counts, terminal outcomes, and mirror staleness. Metrics from hub/apps/databricks_admin/metrics.py.",
+  "tags": [
+    "databricks",
+    "jobs",
+    "production"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Failed Runs (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_job_runs_total{outcome=\"FAILED\"}[24h]))",
+          "legendFormat": "failed runs"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Run Failure Rate (30m)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(databricks_job_runs_total{outcome=\"FAILED\"}[30m])) / sum(rate(databricks_job_runs_total[30m]))",
+          "legendFormat": "failure share"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.1,
+                "color": "yellow"
+              },
+              {
+                "value": 0.25,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Long-Running \u2014 Max Age",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max((time() - databricks_job_run_started_since_timestamp) * (databricks_job_run_started_since_timestamp > 0))",
+          "legendFormat": "max running age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1200,
+                "color": "yellow"
+              },
+              {
+                "value": 1800,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Runs per Lifecycle State",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 6,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (lifecycle_state) (databricks_job_run_state_count)",
+          "legendFormat": "{{lifecycle_state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Terminal Runs by Outcome (24h)",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(databricks_job_runs_total[24h]))",
+          "legendFormat": "{{outcome}}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Mirror Staleness \u2014 Max Age",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(time() - databricks_jobs_mirror_last_success_timestamp)",
+          "legendFormat": "max mirror age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 43200,
+                "color": "yellow"
+              },
+              {
+                "value": 86400,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -9,7 +9,6 @@ Tests verify that:
 """
 
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +30,7 @@ class ODPSSchemaLoadingTest(TestCase):
         # Get the base directory for contracts app
         self.base_dir = Path(__file__).parent.parent
         self.schemas_dir = self.base_dir / "schemas" / "odps"
-        self.required_versions = ["4.1", "4.0", "3.x", "2.x", "1.x"]
+        self.required_versions = ["4.2", "4.1", "4.0", "3.x", "2.x", "1.x"]
 
     def test_load_odps_schema_v4_1(self):
         """Test loading ODPS schema for version 4.1"""
@@ -149,18 +148,36 @@ class ODPSSchemaLoadingTest(TestCase):
         invalid_json = "{ invalid json syntax here }"
         m_open = mock_open(read_data=invalid_json)
 
-        with patch("builtins.open", m_open), \
-             patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "is_file", return_value=True):
-            with self.assertRaises(json.JSONDecodeError):
-                load_odps_schema("9.9")
+        with (
+            patch("builtins.open", m_open),
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_file", return_value=True),
+            self.assertRaises(json.JSONDecodeError),
+        ):
+            load_odps_schema("9.9")
 
         _schema_cache.clear()
 
     def test_load_odps_schema_file_not_dict(self):
         """Test error handling when schema file doesn't contain a JSON object"""
-        # This is tested implicitly - if a schema file contains non-dict JSON, it should fail
-        # We verify this by ensuring all actual schema files are dicts in other tests
+        from unittest.mock import mock_open
+
+        from hub.apps.contracts.odps_schema import _schema_cache
+
+        _schema_cache.clear()
+
+        # Valid JSON, but not an object: the loader must reject non-dict content.
+        m_open = mock_open(read_data='["not", "a", "schema", "object"]')
+        with (
+            patch("builtins.open", m_open),
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_file", return_value=True),
+            self.assertRaises(ValueError) as cm,
+        ):
+            load_odps_schema("9.9")
+
+        self.assertIn("does not contain a JSON object", str(cm.exception))
+        _schema_cache.clear()
 
     def test_get_available_odps_versions(self):
         """Test getting list of available ODPS versions"""
@@ -178,8 +195,8 @@ class ODPSSchemaLoadingTest(TestCase):
             )
 
         # Verify versions are sorted correctly (newest first, then .x versions)
-        # 4.1 should come before 4.0, which should come before 3.x
-        self.assertEqual(versions[0], "4.1", "4.1 should be first (newest)")
+        # 4.2 should come before 4.1, which should come before 4.0, then 3.x
+        self.assertEqual(versions[0], "4.2", "4.2 should be first (newest)")
 
         # Verify .x versions come after numeric versions
         numeric_versions = [v for v in versions if not v.endswith(".x")]
@@ -395,9 +412,18 @@ class ODPSSchemaLoadingTest(TestCase):
 
     def test_missing_schema_file_handling_invalid_path(self):
         """Test handling when path exists but is not a file"""
-        # This is harder to test without mocking, but we verify the error handling
-        # exists in the code. The actual test would require creating a directory
-        # with the schema name, which is unlikely in practice.
+        clear_schema_cache()
+
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_file", return_value=False),
+            self.assertRaises(FileNotFoundError) as cm,
+        ):
+            load_odps_schema("9.9")
+
+        self.assertIn("exists but is not a file", str(cm.exception))
+        self.assertNotIn("9.9", get_cached_schema_versions())
+        clear_schema_cache()
 
     def test_schema_loading_all_versions_cached(self):
         """Test loading all versions and verifying they're all cached"""
@@ -449,7 +475,7 @@ class ODPSSchemaLoadingTest(TestCase):
         """Test that schema loading handles None values correctly."""
         # load_odps_schema(None) should raise ValueError, not crash
         with self.assertRaises(ValueError):
-            load_odps_schema(None)  # type: ignore[misc]  # test: edge-case type exercise
+            load_odps_schema(None)  # test: edge-case type exercise
 
     def test_schema_loading_handles_nested_structures(self):
         """Test that schema loading handles nested structures correctly."""

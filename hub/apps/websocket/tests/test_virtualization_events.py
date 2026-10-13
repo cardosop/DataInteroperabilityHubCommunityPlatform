@@ -10,14 +10,13 @@ These tests verify:
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 from asgiref.sync import sync_to_async
 from django.utils import timezone as django_timezone
 
 from hub.apps.core.events.models import Event as EventModel
-from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 

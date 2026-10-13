@@ -1547,18 +1547,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -7482,18 +7470,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -9037,18 +9013,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -14972,18 +14936,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -16531,18 +16483,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -22466,18 +22406,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -24023,18 +23951,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -29958,18 +29874,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -31515,18 +31419,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -37450,18 +37342,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -39007,18 +38887,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -44942,18 +44810,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -46499,18 +46355,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -52434,18 +52278,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -53991,18 +53823,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -59926,18 +59746,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -61483,18 +61291,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -67418,18 +67214,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -68975,18 +68759,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -74910,18 +74682,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -76467,18 +76227,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -82402,18 +82150,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -83959,18 +83695,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -89894,18 +89618,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -91451,18 +91163,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -97386,18 +97086,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -98943,18 +98631,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -104878,18 +104554,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"
@@ -106435,18 +106099,6 @@
             "service": "datasets"
           },
           {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
-            "path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "method": "get",
-            "name": "dataset-share",
-            "service": "datasets"
-          },
-          {
             "path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "method": "get",
             "name": "dataset-versions",
@@ -112370,18 +112022,6 @@
           },
           {
             "path": "/api/v1/warehouses/query/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "method": "get",
-            "name": "",
-            "service": "warehouses"
-          },
-          {
-            "path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
             "method": "get",
             "name": "",
             "service": "warehouses"

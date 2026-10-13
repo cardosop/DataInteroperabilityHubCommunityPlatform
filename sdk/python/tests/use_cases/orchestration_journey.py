@@ -103,7 +103,7 @@ def test_job_has_status_field():
         pytest.skip("No orchestration jobs exist to inspect")
 
     job = jobs[0]
-    keys_lower = {k.lower() for k in job.keys()}
+    keys_lower = {k.lower() for k in job}
     has_status = any(
         k in keys_lower for k in ("status", "state", "job_status", "run_status", "execution_status")
     )

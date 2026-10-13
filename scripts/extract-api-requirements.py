@@ -72,7 +72,7 @@ class APIRequirementsExtractor:
             endpoints.extend(self._extract_credential_endpoints(content, spec_name))
             endpoints.extend(self._extract_implicit_endpoints(content, spec_name))
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"Error processing {spec_path}: {e}")
 
         return endpoints

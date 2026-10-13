@@ -28,7 +28,6 @@ import os
 import subprocess
 import sys
 import uuid
-from typing import Optional
 
 import pytest
 
@@ -41,7 +40,7 @@ from datahub_interoperability.errors import (
 )
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -64,7 +63,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         key = _create_baas_tenant_and_key()
         if key:
             return key
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         import sys as _sys
 
         print(
@@ -80,7 +79,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception as exc:
+    except (OSError, ValueError, AttributeError, RuntimeError) as exc:
         import sys as _sys
 
         print(
@@ -96,12 +95,11 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_baas_tenant_and_key() -> Optional[str]:
+def _create_baas_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``baas_enabled=True`` and return an API key."""
 
-    uuid.uuid4().hex[:8]
+    unique_id = uuid.uuid4().hex[:8]
     try:
-        uuid.uuid4().hex[:8]
         django_shell_script = f"""
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, Role, UserRole
@@ -109,10 +107,12 @@ from hub.apps.auth.models import APIKey as AuthAPIKey
 from hub.apps.baas.models import APITierModel
 import os
 
+unique_id = '{unique_id}'
+
 # Get or create tenant
 tenant, _ = Tenant.objects.get_or_create(
-    slug=f'baas-sdk-test-tenant-{{unique_id}}',
-    defaults={{'name': f'BaaS SDK Test Tenant {{unique_id}}', 'baas_enabled': True}}
+    slug=f'baas-sdk-test-tenant-{unique_id}',
+    defaults={{'name': f'BaaS SDK Test Tenant {unique_id}', 'baas_enabled': True}}
 )
 if not tenant.baas_enabled:
     tenant.baas_enabled = True
@@ -120,7 +120,7 @@ if not tenant.baas_enabled:
 
 # Get or create user
 user, _ = User.objects.get_or_create(
-    email=f'baas-sdk-test-{{unique_id}}@example.com',
+    email=f'baas-sdk-test-{unique_id}@example.com',
     defaults={{
         'tenant': tenant,
         'status': UserStatus.ACTIVE
@@ -166,8 +166,8 @@ from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantPlan
 plan = TenantPlan.objects.first()
 if plan:
-    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
-    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={{"plan": plan, 'status': SubscriptionStatus.ACTIVE}})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={{"plan": plan, 'status': SubscriptionStatus.ACTIVE}})
 
 # Print the plaintext key (it's only available at creation time)
 print('API_KEY_START')
@@ -201,8 +201,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -215,11 +215,11 @@ print('API_KEY_END')
 
             # Fallback: if markers didn't work, try old method
             if not api_key:
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if not line or len(line) < 20:
                         continue
-                    if line.startswith(">>>") or line.startswith("..."):
+                    if line.startswith((">>>", "...")):
                         continue
                     if "imported" in line.lower() or "objects" in line.lower() or "Error" in line:
                         continue
@@ -238,7 +238,7 @@ print('API_KEY_END')
                 print(f"Stderr: {result.stderr[:500]}", file=sys.stderr)
     except subprocess.TimeoutExpired:
         print("Subprocess timed out", file=sys.stderr)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         # Log error for debugging but don't fail tests
         print(f"Error creating API key: {type(e).__name__}: {e}", file=sys.stderr)
     return None
@@ -398,18 +398,40 @@ class TestBaaSAPIIntegration:
         # Should be a list (may be empty if no usage)
 
     async def test_get_usage_by_tenant_integration(self, baas_api):
-        """Test getting usage by tenant via SDK with real API"""
+        """Test getting usage by tenant via SDK with real API.
+
+        Two contracts: a tenant-admin credential is rejected with 403
+        (platform-administrator message), and the platform-admin path
+        returns the usage list.  Previously the test stopped at the 403
+        and skipped — the success path is the point of the endpoint.
+        """
+        # Tenant-admin path: server rejects non-platform-admins.
         try:
             result = await baas_api.get_usage_by_tenant()
             assert isinstance(result, list)
         except (ForbiddenError, BaaSError) as e:
             # Expected if user is not admin
-            if isinstance(e, ForbiddenError) or (
-                "platform administrator" in str(e) or "admin" in str(e).lower()
+            if not (
+                isinstance(e, ForbiddenError)
+                or "platform administrator" in str(e)
+                or "admin" in str(e).lower()
             ):
-                pytest.skip("User is not platform admin, cannot test by-tenant endpoint")
-            else:
                 raise
+
+        # Platform-admin path: canonical auto-provisioned admin token.
+        from tests.conftest import get_api_key
+
+        admin_key = get_api_key()
+        if not admin_key:
+            pytest.skip("No platform-admin token available for by-tenant endpoint")
+        admin_config = DataHubClientConfig(
+            base_url=os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1"),
+            api_token=admin_key,
+            timeout=30.0,
+        )
+        async with DataHubClient(admin_config) as admin_client:
+            result = await BaaSAPI(admin_client).get_usage_by_tenant()
+            assert isinstance(result, list)
 
     async def test_check_quota_integration(self, baas_api):
         """Test checking quota via SDK with real API"""

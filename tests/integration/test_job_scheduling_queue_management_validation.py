@@ -16,6 +16,7 @@ import uuid
 from datetime import timedelta
 
 import freezegun
+import redis.exceptions
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -42,7 +43,7 @@ from hub.apps.jobs.utils import (
     increment_shared_slots_usage,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -64,7 +65,7 @@ class JobQueueInfrastructureTest(TestCase):
             redis_client = get_redis_queue_client()
             redis_client.ping()
             self.redis_available = True
-        except Exception:
+        except redis.exceptions.RedisError:
             self.redis_available = False
 
         # Create test tenant and user
@@ -131,7 +132,7 @@ class JobQueueInfrastructureTest(TestCase):
         try:
             redis_client.ping()
             redis_available = True
-        except Exception:
+        except redis.exceptions.RedisError:
             redis_available = False
 
         if not redis_available:
@@ -490,7 +491,7 @@ class JobSchedulingTest(TestCase):
             redis_client = get_redis_queue_client()
             redis_client.ping()
             self.redis_available = True
-        except Exception:
+        except redis.exceptions.RedisError:
             self.redis_available = False
 
         self.tenant = Tenant.objects.create(
@@ -776,7 +777,7 @@ class JobQueueManagementTest(TestCase):
             redis_client = get_redis_queue_client()
             redis_client.ping()
             self.redis_available = True
-        except Exception:
+        except redis.exceptions.RedisError:
             self.redis_available = False
 
         self.tenant = Tenant.objects.create(
@@ -863,8 +864,11 @@ class JobQueueManagementTest(TestCase):
         # With ASYNC=False, enqueue() runs jobs inline — verify DB status changed
         for job in [job1, job2]:
             job.refresh_from_db()
-            self.assertIn(job.status, [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
-                f"Job {job.id} should have been processed after re-enqueue")
+            self.assertIn(
+                job.status,
+                [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
+                f"Job {job.id} should have been processed after re-enqueue",
+            )
 
     def test_queue_clearing_and_purging(self):
         """Test queue clearing and purging"""
@@ -914,8 +918,11 @@ class JobQueueManagementTest(TestCase):
         # With ASYNC=False, enqueue() runs jobs inline — verify DB status changed
         for job in jobs[:2]:
             job.refresh_from_db()
-            self.assertIn(job.status, [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
-                f"Job {job.id} should have been processed after re-enqueue")
+            self.assertIn(
+                job.status,
+                [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
+                f"Job {job.id} should have been processed after re-enqueue",
+            )
 
     def test_queue_status_monitoring(self):
         """Test queue status monitoring"""
@@ -1117,7 +1124,7 @@ class JobWorkerManagementTest(TestCase):
             redis_client = get_redis_queue_client()
             redis_client.ping()
             self.redis_available = True
-        except Exception:
+        except redis.exceptions.RedisError:
             self.redis_available = False
 
         self.tenant = Tenant.objects.create(
@@ -1161,7 +1168,7 @@ class JobWorkerManagementTest(TestCase):
         try:
             redis_client.ping()
             redis_healthy = True
-        except Exception:
+        except redis.exceptions.RedisError:
             redis_healthy = False
 
         if not redis_healthy:

@@ -71,9 +71,7 @@ def compliance_intake_gate_satisfied_for_asset(asset: Any) -> bool:
         return False
     if latest.allowed_to_store is not True:
         return False
-    if latest.status != ComplianceRunStatus.SUCCEEDED:
-        return False
-    return True
+    return latest.status == ComplianceRunStatus.SUCCEEDED
 
 
 def enqueue_compliance_intake_scan(asset_id: str, tenant_id: str) -> ComplianceRun | None:

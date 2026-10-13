@@ -25,7 +25,7 @@ from typing import Any
 import structlog
 from click.testing import CliRunner
 from django.contrib.auth import get_user_model
-from django.test import TransactionTestCase, override_settings
+from django.test import LiveServerTestCase, TransactionTestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -48,6 +48,7 @@ except ImportError:
 from hub.apps.assets.models import Asset
 from hub.apps.auth.models import APIKey
 from hub.apps.baas.models import APIUsage
+from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -56,7 +57,6 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.tenants.models import Tenant
-from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
@@ -66,6 +66,7 @@ from hub.apps.webhooks.models import (
     WebhookEventType,
     WebhookStatus,
 )
+from tests.utils.cli_config import point_cli_config_at_tmpdir
 
 User = get_user_model()
 logger = structlog.get_logger(__name__)
@@ -200,7 +201,6 @@ class CLIComprehensiveTest(TransactionTestCase):
     def _setup_cli_auth(self):
         """Set up CLI authentication."""
         try:
-            from datahub_cli.auth import auth_manager
             from datahub_cli.config import config
         except ImportError:
             # CLI module not available in this environment (e.g., API service container)
@@ -208,6 +208,10 @@ class CLIComprehensiveTest(TransactionTestCase):
             self.skipTest(
                 "CLI module not available. CLI tests should be run from CLI directory: cd cli && pytest ..."
             )
+
+        # The API test image's rootfs is read-only ($HOME/.datahub is not
+        # writable) — redirect the CLI config to a fresh temp dir.
+        point_cli_config_at_tmpdir()
 
         # Set API base URL (use test server URL if available)
         api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
@@ -477,7 +481,7 @@ class CLIComprehensiveTest(TransactionTestCase):
         # Set up CLI auth (will skip if CLI module not available)
         try:
             self._setup_cli_auth()
-            from datahub_cli.auth import auth_manager
+
             from datahub_cli.config import config
             from datahub_cli.main import cli
         except (ImportError, AttributeError) as e:
@@ -503,8 +507,11 @@ class CLIComprehensiveTest(TransactionTestCase):
         result = self.runner.invoke(cli, ["contracts", "list"])
 
         # CLI MUST fail with an invalid API key
-        self.assertNotEqual(result.exit_code, 0,
-                            "CLI must fail with non-zero exit code when using an invalid API key")
+        self.assertNotEqual(
+            result.exit_code,
+            0,
+            "CLI must fail with non-zero exit code when using an invalid API key",
+        )
         self.assertTrue(
             "error" in result.output.lower()
             or "auth" in result.output.lower()
@@ -666,7 +673,11 @@ class CLIComprehensiveTest(TransactionTestCase):
             )
 
 
-class PythonSDKComprehensiveTest(TransactionTestCase):
+class PythonSDKComprehensiveTest(LiveServerTestCase):
+    # LiveServerTestCase: the SDK is a real HTTP client — serving the app
+    # in-process against the PYTEST DB lets the SDK authenticate with API
+    # keys created here (a compose-hosted server reads its own DB and would
+    # 401 on keys minted in the test DB).
     """
     Comprehensive Python SDK testing (10.1.17.2).
 
@@ -812,12 +823,13 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
             for attempt in range(3):
                 try:
                     _do_delete()
-                    return
                 except IntegrityError:
                     if attempt < 2:
                         time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                     else:
                         raise
+                else:
+                    return
         if hasattr(self, "user"):
             User.objects.filter(id=self.user_id).delete()
         if hasattr(self, "tenant"):
@@ -826,7 +838,12 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
 
     def _get_sdk_base_url(self) -> str:
         """Get API base URL for SDK; ensure it includes /api/v1 (SDK appends paths like contracts/)."""
-        base = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
+        # Prefer the in-process live server (serves the pytest DB) over the
+        # compose-hosted API (serves its own DB and would 401 our keys).
+        if hasattr(self, "live_server_url") and self.live_server_url:
+            base = self.live_server_url.rstrip("/") + "/api/v1"
+        else:
+            base = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
         base = base.rstrip("/")
         if not base.endswith("/api/v1"):
             base = base + "/api/v1"
@@ -1298,8 +1315,9 @@ class GraphQLComprehensiveTest(TransactionTestCase):
             if ":" in decoded:
                 _, uuid_str = decoded.split(":", 1)
                 return uuid_str
-            return relay_id
         except Exception:
+            return relay_id
+        else:
             return relay_id
 
     def test_graphql_contract_query(self):
@@ -2035,7 +2053,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
         # Use TestWebhookServer to verify authentication headers are sent
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
-        from queue import Queue
+        from queue import Empty, Queue
 
         class WebhookReceiverHandler(BaseHTTPRequestHandler):
             def __init__(self, request_queue: Queue, *args, **kwargs):
@@ -2088,7 +2106,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             def get_received_request(self, timeout=5.0):
                 try:
                     return self.request_queue.get(timeout=timeout)
-                except:
+                except Empty:
                     return None
 
         # Start test webhook server
@@ -2146,7 +2164,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             # Verify authentication headers were sent (check received request)
             import time
 
-            time.sleep(  # noqa: sleep-needed — test timing requirement
+            time.sleep(  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 0.5
             )  # Give server time to receive request  # INTENTIONAL: test-specific timing
             received_request = server.get_received_request()
@@ -2156,7 +2174,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
                 self.assertTrue(
                     "X-Webhook-Signature" in headers
                     or "X-Hub-Signature" in headers
-                    or any("signature" in k.lower() for k in headers.keys()),
+                    or any("signature" in k.lower() for k in headers),
                     "Webhook delivery should include authentication signature header",
                 )
         finally:

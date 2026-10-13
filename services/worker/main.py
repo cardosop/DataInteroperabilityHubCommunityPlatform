@@ -16,6 +16,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -32,6 +33,10 @@ sys.path.insert(0, project_root)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 # Setup Django
+# JSON-friendly fallback before django.setup() installs django-structlog
+# (see hub/settings.py) — early-startup messages stay structured.
+logging.basicConfig(format="%(message)s", level=os.environ.get("LOG_LEVEL", "INFO"))
+
 django.setup()
 
 # Import after Django setup
@@ -147,7 +152,6 @@ def _resolve_concurrency() -> int | None:
                 raw,
             )
             return None
-        return value
     except ValueError:
         _logging.getLogger(__name__).warning(
             "Invalid WORKER_CONCURRENCY=%r — must be an integer, "
@@ -155,6 +159,8 @@ def _resolve_concurrency() -> int | None:
             raw,
         )
         return None
+    else:
+        return value
 
 
 def main():

@@ -2,7 +2,7 @@
 Asset operations for DataHub SDK.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from uuid import UUID
 
 from .client import DataHubClient
@@ -19,12 +19,12 @@ class AssetsAPI:
 
     async def list_assets(
         self,
-        status: Optional[str] = None,
-        domain: Optional[str] = None,
+        status: str | None = None,
+        domain: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
         if status:
             params["status"] = status
         if domain:
@@ -34,9 +34,9 @@ class AssetsAPI:
     async def get_asset(
         self,
         asset_id: str,
-        include: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {}
+        include: list[str] | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
         if include:
             params["include"] = ",".join(include)
         return await self.client.get(f"assets/{asset_id}/", params=params)
@@ -45,11 +45,11 @@ class AssetsAPI:
         self,
         name: str,
         key: str,
-        description: Optional[str] = None,
-        domain: Optional[str] = None,
+        description: str | None = None,
+        domain: str | None = None,
         visibility: str = "private",
-    ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {
             "name": name,
             "key": key,
             "visibility": visibility,
@@ -60,43 +60,43 @@ class AssetsAPI:
             data["domain"] = domain
         return await self.client.post("assets/", data=data)
 
-    async def update_asset(self, asset_id: str, **kwargs: Any) -> Dict[str, Any]:
+    async def update_asset(self, asset_id: str, **kwargs: Any) -> dict[str, Any]:
         return await self.client.patch(f"assets/{asset_id}/", data=kwargs)
 
     async def delete_asset(self, asset_id: str) -> None:
         await self.client.delete(f"assets/{asset_id}/")
 
-    async def activate_asset(self, asset_id: str) -> Dict[str, Any]:
+    async def activate_asset(self, asset_id: str) -> dict[str, Any]:
         return await self.client.post(f"assets/{asset_id}/activate/")
 
-    async def get_health_score(self, asset_id: str) -> Dict[str, Any]:
+    async def get_health_score(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get(f"assets/{asset_id}/health-score/")
 
-    async def get_recommendations(self, asset_id: str) -> Dict[str, Any]:
+    async def get_recommendations(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get(f"assets/{asset_id}/recommendations/")
 
-    async def get_popularity(self, asset_id: str) -> Dict[str, Any]:
+    async def get_popularity(self, asset_id: str) -> dict[str, Any]:
         return await self.client.get(f"assets/{asset_id}/popularity/")
 
     async def classify_asset(
         self,
         asset_id: str,
-        classification: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        classification: dict[str, Any],
+    ) -> dict[str, Any]:
         return await self.client.post(f"assets/{asset_id}/classify/", data=classification)
 
     async def create_data_first(
         self,
         *,
-        tenant_uuid: Union[str, UUID],
+        tenant_uuid: str | UUID,
         file_id: str,
         key: str,
         name: str,
-        description: Optional[str] = None,
-        domain: Optional[str] = None,
+        description: str | None = None,
+        domain: str | None = None,
         visibility: str = "INTERNAL",
-        idempotency_key: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         """POST /assets/data-first/ with an Idempotency-Key auto-composed.
 
         Phase 250.1.D.5 — wraps the data-first endpoint with the
@@ -126,7 +126,7 @@ class AssetsAPI:
         Raises:
             ValueError: ``tenant_uuid`` is not a valid UUID.
         """
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "file_id": file_id,
             "key": key,
             "name": name,

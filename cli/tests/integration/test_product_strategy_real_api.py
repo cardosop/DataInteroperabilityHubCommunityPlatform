@@ -27,22 +27,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestProductStrategyRealAPI:
@@ -131,8 +122,8 @@ print(api_key_value)
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) > 20:  # API keys are typically long
                         return line
         except Exception:
@@ -205,7 +196,7 @@ print(api_key_value)
                 # Wait a moment for normalization to complete, then verify
                 import time
 
-                time.sleep(1)  # noqa: sleep-needed — test timing requirement
+                time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
                 # Verify contract was normalized and has product strategy
                 verify_response = requests.get(
@@ -241,10 +232,10 @@ print(api_key_value)
         return None
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_real_api_table_format(self, setup_config, api_available):
+    def test_get_product_strategy_real_api_table_format(self, setup_config, api_service_available):
         """Test getting product strategy from real API in table format"""
         if not self.api_key:
             pytest.skip(
@@ -274,10 +265,10 @@ print(api_key_value)
         assert "Summary:" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_real_api_json_format(self, setup_config, api_available):
+    def test_get_product_strategy_real_api_json_format(self, setup_config, api_service_available):
         """Test getting product strategy from real API in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -302,10 +293,10 @@ print(api_key_value)
         assert len(output_data) > 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_empty_contract(self, setup_config, api_available):
+    def test_get_product_strategy_empty_contract(self, setup_config, api_service_available):
         """Test getting product strategy from contract without product strategy"""
         if not self.api_key:
             pytest.skip(
@@ -363,10 +354,10 @@ print(api_key_value)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_invalid_contract_id(self, setup_config, api_available):
+    def test_get_product_strategy_invalid_contract_id(self, setup_config, api_service_available):
         """Test getting product strategy with invalid contract ID"""
         if not self.api_key:
             pytest.skip(
@@ -385,10 +376,10 @@ print(api_key_value)
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_non_odps_contract(self, setup_config, api_available):
+    def test_get_product_strategy_non_odps_contract(self, setup_config, api_service_available):
         """Test getting product strategy from non-ODPS contract (should fail)"""
         if not self.api_key:
             pytest.skip(
@@ -442,10 +433,10 @@ print(api_key_value)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_product_strategy_odps_4_0_contract(self, setup_config, api_available):
+    def test_get_product_strategy_odps_4_0_contract(self, setup_config, api_service_available):
         """Test getting product strategy from ODPS 4.0 contract (should fail - requires 4.1+)"""
         if not self.api_key:
             pytest.skip(

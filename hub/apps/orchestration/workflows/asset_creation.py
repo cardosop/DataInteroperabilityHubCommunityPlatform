@@ -60,6 +60,7 @@ Per-step + workflow timeouts (250.1.A.5 / B-4)
   raises ``WorkflowDeadlineExceeded`` if breached.
 """
 
+import contextlib
 import functools
 import json
 import time
@@ -68,12 +69,14 @@ from typing import Any, Optional
 
 import structlog
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from hub.apps.assets.business_rules import AssetsBusinessRules
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event, redact_fail_closed_audit_payload
+from hub.apps.core.commercial_hooks import map_via_semantic
 from hub.apps.notifications.models import EmailType
 from hub.apps.notifications.tasks import send_email_async
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
@@ -84,8 +87,9 @@ from hub.apps.orchestration.workflow_engine import (
     WorkflowStepValueError,
 )
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.core.commercial_hooks import map_via_semantic
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import (
+    Tenant,
+)
 
 logger = structlog.get_logger(__name__)
 UserModel = get_user_model()
@@ -305,7 +309,7 @@ class AssetCreationWorkflow:
     8. activate asset (auto_activate defaults to True per D250.2)
     9. index for search → notifications → audit logging
 
-    Contract-first intake skips steps 1–4; the gates have nothing to
+    Contract-first intake skips steps 1-4; the gates have nothing to
     scan because there's no payload.
     """
 
@@ -889,7 +893,7 @@ class AssetCreationWorkflow:
             )
             raise WorkflowStepValueError(f"File not found in storage: {e!s}") from e
         except StorageError as e:
-            logger.error(
+            logger.exception(
                 "Storage failure during schema inference download",
                 workflow_instance_id=str(instance.id),
                 file_id=str(file_id),
@@ -898,18 +902,20 @@ class AssetCreationWorkflow:
             raise WorkflowStepValueError(f"Failed to download file: {e!s}") from e
 
         # Infer schema based on format
-        schema_json = {}
-        try:
+        def _infer_schema() -> dict[str, Any]:
             if file_format.upper() == "CSV":
-                schema_json = infer_schema_from_csv(file_content)
+                return infer_schema_from_csv(file_content)
             elif file_format.upper() == "JSON":
-                schema_json = infer_schema_from_json(file_content)
+                return infer_schema_from_json(file_content)
             elif file_format.upper() == "PARQUET":
-                schema_json = infer_schema_from_parquet(file_content)
+                return infer_schema_from_parquet(file_content)
             else:
                 raise WorkflowStepValueError(
                     f"Unsupported file format for schema inference: {file_format}"
                 )
+
+        try:
+            schema_json = _infer_schema()
         except Exception as e:
             logger.error(
                 "Schema inference failed",
@@ -919,7 +925,7 @@ class AssetCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"Schema inference failed: {e!s}")
+            raise ValueError(f"Schema inference failed: {e!s}") from e
 
         # Store schema in state_data
         instance.state_data["schema_json"] = schema_json
@@ -1022,7 +1028,7 @@ class AssetCreationWorkflow:
         odcs_raw = json.dumps(odcs_contract_json)
 
         # Parse and validate ODCS contract
-        try:
+        def _validate_odcs() -> tuple[str, list]:
             parsed_contract = parse_contract(odcs_raw, OriginalFormat.JSON)
             # Basic validation - check required fields
             if not parsed_contract.get("id"):
@@ -1032,8 +1038,10 @@ class AssetCreationWorkflow:
             if not parsed_contract.get("schema"):
                 raise ValueError("ODCS contract missing required field: schema")
 
-            validation_status = "VALID"
-            validation_errors = []
+            return "VALID", []
+
+        try:
+            validation_status, validation_errors = _validate_odcs()
         except Exception as e:
             validation_status = "INVALID"
             validation_errors = [str(e)]
@@ -1043,7 +1051,7 @@ class AssetCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ODCS contract validation failed: {e!s}")
+            raise ValueError(f"ODCS contract validation failed: {e!s}") from e
 
         # Store validation status in state_data
         instance.state_data["odcs_validation_status"] = validation_status
@@ -1095,7 +1103,7 @@ class AssetCreationWorkflow:
         odcs_raw = json.dumps(odcs_contract_json)
 
         # Normalize ODCS → HubContract
-        try:
+        def _normalize_odcs():
             # normalize_contract returns: (hub_contract, spec_type, spec_version, status, errors, warnings)
             hub_contract, _detected_spec_type, _detected_spec_version, status, errors, warnings = (
                 normalize_contract(
@@ -1110,6 +1118,10 @@ class AssetCreationWorkflow:
             if not hub_contract:
                 raise ValueError("Normalization succeeded but hub_contract is None")
 
+            return hub_contract, status, errors, warnings
+
+        try:
+            hub_contract, status, errors, warnings = _normalize_odcs()
         except Exception as e:
             logger.error(
                 "ODCS normalization failed",
@@ -1117,7 +1129,7 @@ class AssetCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ODCS normalization failed: {e!s}")
+            raise ValueError(f"ODCS normalization failed: {e!s}") from e
 
         # Store HubContract in state_data
         instance.state_data["hub_contract_json"] = hub_contract
@@ -1507,7 +1519,7 @@ class AssetCreationWorkflow:
             gate_runs_on_this_version = (
                 WorkflowVersionManager.compare_versions(instance_version, "2.0.0") >= 0
             )
-        except Exception:
+        except ValidationError:  # non-semver versions count as v1
             # Defensive fallback — non-semver versions count as v1.
             gate_runs_on_this_version = False
 
@@ -1725,6 +1737,26 @@ class AssetCreationWorkflow:
                 error=str(exc),
             )
 
+        # In-process webhook delivery for asset.* events (Phase 226 G11).
+        # The bus-based AssetEventSubscriber only fires when a process runs
+        # EventBus.start_listening() — no process in the stack does — so
+        # delivery rows never appeared (webhook-delivery E2E "Last: null").
+        # Trigger deliveries directly, mirroring the mesh pattern
+        # (DataMeshEventPublisher._trigger_webhook_for_event); the helper
+        # is fail-open so a webhook outage can't fail asset creation.
+        # Only trigger for the webhook-subscribable event types — the
+        # helper filters webhooks by event_type anyway, so no-ops on
+        # asset.published / asset.retired (not subscribable).
+        if tenant:
+            from hub.apps.webhooks.asset_event_subscriber import trigger_asset_webhook_event
+
+            trigger_asset_webhook_event(
+                event_type=event,
+                asset_id=str(asset.id),
+                tenant_id=str(tenant.id),
+                data_extra=payload,
+            )
+
     @staticmethod
     @transaction.atomic
     def _create_dataset_from_file_task(
@@ -1782,7 +1814,7 @@ class AssetCreationWorkflow:
             # Infer from filename if still not determined
             if file_format == "CSV" and file_obj.name:
                 filename_lower = file_obj.name.lower()
-                if filename_lower.endswith(".json") or filename_lower.endswith(".ndjson"):
+                if filename_lower.endswith((".json", ".ndjson")):
                     file_format = "JSON"
                 elif filename_lower.endswith(".parquet"):
                     file_format = "PARQUET"
@@ -1802,7 +1834,7 @@ class AssetCreationWorkflow:
                 )
                 raise WorkflowStepValueError(f"File not found in storage: {e!s}") from e
             except StorageError as e:
-                logger.error(
+                logger.exception(
                     "Storage failure during schema inference download",
                     workflow_instance_id=str(instance.id),
                     file_id=str(file_id),
@@ -1904,15 +1936,13 @@ class AssetCreationWorkflow:
         asset = Asset.objects.get(id=asset_id)
         contract = Contract.objects.get(id=contract_id, tenant=asset.tenant)
 
-        # Attach contract to asset
-        contract.asset = asset
-
-        # Get next version for asset
-        latest_contract = asset.contracts.order_by("-version").first()
-        if latest_contract:
-            contract.version = latest_contract.version + 1
-        else:
-            contract.version = 1
+        # W4.4 (R2-I1) — the re-assign allocation under the asset lock
+        # (exclude_pk: the row being moved may already carry a version
+        # on the target asset) + the deterministic conflict translation.
+        from hub.apps.contracts.services.contract_service import (
+            contract_version_conflict_to_409,
+            locked_contract_version,
+        )
 
         # Promote DRAFT -> ACTIVE when both validation and normalization
         # already passed earlier in the workflow. Doing it HERE rather
@@ -1943,7 +1973,12 @@ class AssetCreationWorkflow:
                 normalization_status=contract.normalization_status,
             )
 
-        contract.save(update_fields=update_fields)
+        with locked_contract_version(
+            tenant_id=str(asset.tenant_id), asset=asset, exclude_pk=contract.id
+        ) as version, contract_version_conflict_to_409():
+            contract.asset = asset
+            contract.version = version
+            contract.save(update_fields=update_fields)
 
         # Store contract_id and validation status in state_data
         instance.state_data["contract_id"] = str(contract.id)
@@ -2154,7 +2189,7 @@ class AssetCreationWorkflow:
                 # Defence in depth: ``drift["detected"]==True`` should
                 # have already excluded ``NONE``; landing here means
                 # SchemaDriftResult.severity returned an unknown tier.
-                logger.error(
+                logger.exception(
                     "schema_drift_unknown_severity",
                     workflow_instance_id=str(instance.id),
                     severity=drift["severity"],
@@ -2323,7 +2358,7 @@ class AssetCreationWorkflow:
                     "reason": "DQ service unavailable",
                     "dq_status": asset.dq_status,
                 }
-            logger.error(
+            logger.exception(
                 "Failed to run DQ checks",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
@@ -2443,7 +2478,7 @@ class AssetCreationWorkflow:
                 "compliance_run_id": str(compliance_run.id),
             }
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to run compliance checks",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
@@ -2640,10 +2675,7 @@ class AssetCreationWorkflow:
                     contract_id=contract_id,
                 )
 
-        odps_contract = None
-        odps_contract_id = None
-
-        try:
+        def _link() -> dict[str, Any]:
             if odps_action == "upload":
                 # Parse and validate uploaded ODPS
                 odps_raw = input_data.get("odps_raw")
@@ -2672,29 +2704,34 @@ class AssetCreationWorkflow:
                 )
                 hub_contract_from_odps = normalize_result.hub_contract
 
-                # Get next version for asset
-                latest_contract = asset.contracts.order_by("-version").first()
-                next_version = latest_contract.version + 1 if latest_contract else 1
-
-                # Create ODPS contract record
-                odps_contract = Contract.objects.create(
-                    tenant=asset.tenant,
-                    asset=asset,
-                    version=next_version,
-                    status=ContractStatus.DRAFT,
-                    original_spec_type=OriginalSpecType.ODPS,
-                    original_spec_version=odps_version,
-                    original_format=OriginalFormat.JSON
-                    if odps_format.upper() == "JSON"
-                    else OriginalFormat.YAML,
-                    original_raw=odps_raw,
-                    hub_contract_version="1.0.0",
-                    hub_contract_json=hub_contract_from_odps,
-                    normalization_status=NormalizationStatus.NORMALIZED_OK,
-                    normalization_errors=[],
-                    normalization_warnings=[],
-                    created_by=user,
+                # W4.4 (R2-I1) — version allocation under the asset
+                # lock + the deterministic conflict translation.
+                from hub.apps.contracts.services.contract_service import (
+                    contract_version_conflict_to_409,
+                    locked_contract_version,
                 )
+
+                with locked_contract_version(
+                    tenant_id=str(asset.tenant_id), asset=asset
+                ) as next_version, contract_version_conflict_to_409():
+                    odps_contract = Contract.objects.create(
+                        tenant=asset.tenant,
+                        asset=asset,
+                        version=next_version,
+                        status=ContractStatus.DRAFT,
+                        original_spec_type=OriginalSpecType.ODPS,
+                        original_spec_version=odps_version,
+                        original_format=OriginalFormat.JSON
+                        if odps_format.upper() == "JSON"
+                        else OriginalFormat.YAML,
+                        original_raw=odps_raw,
+                        hub_contract_version="1.0.0",
+                        hub_contract_json=hub_contract_from_odps,
+                        normalization_status=NormalizationStatus.NORMALIZED_OK,
+                        normalization_errors=[],
+                        normalization_warnings=[],
+                        created_by=user,
+                    )
                 odps_contract_id = str(odps_contract.id)
 
                 logger.info(
@@ -2716,13 +2753,12 @@ class AssetCreationWorkflow:
                 # Get original ODCS contract if available (for embedding in ODPS)
                 original_odcs_contract = None
                 if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
-                    try:
+                    # parse_contract raises only ValueError subclasses
+                    with contextlib.suppress(ValueError):
+                        # If parsing fails, continue without original ODCS
                         original_odcs_contract = parse_contract(
                             contract.original_raw, contract.original_format
                         )
-                    except Exception:
-                        # If parsing fails, continue without original ODCS
-                        pass
 
                 # Generate ODPS document
                 odps_doc = generate_odps_from_hubcontract(
@@ -2735,27 +2771,32 @@ class AssetCreationWorkflow:
                 # Format as JSON for storage
                 odps_raw = json.dumps(odps_doc, indent=2)
 
-                # Get next version for asset
-                latest_contract = asset.contracts.order_by("-version").first()
-                next_version = latest_contract.version + 1 if latest_contract else 1
-
-                # Create ODPS contract record
-                odps_contract = Contract.objects.create(
-                    tenant=asset.tenant,
-                    asset=asset,
-                    version=next_version,
-                    status=ContractStatus.DRAFT,
-                    original_spec_type=OriginalSpecType.ODPS,
-                    original_spec_version="4.1",
-                    original_format=OriginalFormat.JSON,
-                    original_raw=odps_raw,
-                    hub_contract_version="1.0.0",
-                    hub_contract_json=contract.hub_contract_json,  # Use same HubContract
-                    normalization_status=NormalizationStatus.NORMALIZED_OK,
-                    normalization_errors=[],
-                    normalization_warnings=[],
-                    created_by=user,
+                # W4.4 (R2-I1) — version allocation under the asset
+                # lock + the deterministic conflict translation.
+                from hub.apps.contracts.services.contract_service import (
+                    contract_version_conflict_to_409,
+                    locked_contract_version,
                 )
+
+                with locked_contract_version(
+                    tenant_id=str(asset.tenant_id), asset=asset
+                ) as next_version, contract_version_conflict_to_409():
+                    odps_contract = Contract.objects.create(
+                        tenant=asset.tenant,
+                        asset=asset,
+                        version=next_version,
+                        status=ContractStatus.DRAFT,
+                        original_spec_type=OriginalSpecType.ODPS,
+                        original_spec_version="4.1",
+                        original_format=OriginalFormat.JSON,
+                        original_raw=odps_raw,
+                        hub_contract_version="1.0.0",
+                        hub_contract_json=contract.hub_contract_json,  # Use same HubContract
+                        normalization_status=NormalizationStatus.NORMALIZED_OK,
+                        normalization_errors=[],
+                        normalization_warnings=[],
+                        created_by=user,
+                    )
                 odps_contract_id = str(odps_contract.id)
 
                 logger.info(
@@ -2781,7 +2822,7 @@ class AssetCreationWorkflow:
                 except Contract.DoesNotExist:
                     raise ValueError(
                         f"ODPS contract {existing_odps_contract_id} not found or not an ODPS contract"
-                    )
+                    ) from None
 
                 # If there's an ODCS contract, validate linking
                 if contract:
@@ -2791,15 +2832,23 @@ class AssetCreationWorkflow:
                         tenant_id=tenant_id,
                     )
 
-                # Attach ODPS contract to asset
-                existing_odps_contract.asset = asset
-                # Get next version for asset
-                latest_contract = asset.contracts.order_by("-version").first()
-                if latest_contract:
-                    existing_odps_contract.version = latest_contract.version + 1
-                else:
-                    existing_odps_contract.version = 1
-                existing_odps_contract.save(update_fields=["asset", "version"])
+                # W4.4 (R2-I1) — the re-assign allocation under the asset
+                # lock (exclude_pk: the row being moved may already carry
+                # a version on the target asset) + the deterministic
+                # conflict translation.
+                from hub.apps.contracts.services.contract_service import (
+                    contract_version_conflict_to_409,
+                    locked_contract_version,
+                )
+
+                with locked_contract_version(
+                    tenant_id=str(asset.tenant_id),
+                    asset=asset,
+                    exclude_pk=existing_odps_contract.id,
+                ) as version, contract_version_conflict_to_409():
+                    existing_odps_contract.asset = asset
+                    existing_odps_contract.version = version
+                    existing_odps_contract.save(update_fields=["asset", "version"])
 
                 odps_contract = existing_odps_contract
                 odps_contract_id = str(odps_contract.id)
@@ -2906,6 +2955,8 @@ class AssetCreationWorkflow:
                 "state": {"odps_contract_id": odps_contract_id},
             }
 
+        try:
+            result = _link()
         except Exception as e:
             logger.error(
                 "ODPS linking failed",
@@ -2915,7 +2966,9 @@ class AssetCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ODPS linking failed: {e!s}")
+            raise ValueError(f"ODPS linking failed: {e!s}") from e
+        else:
+            return result
 
     @staticmethod
     @transaction.atomic
@@ -3154,8 +3207,14 @@ class AssetCreationWorkflow:
         # ``ASSET_SEMANTIC_DEGRADED`` so the SPA can render the
         # inline degradation banner with a retry CTA.
         previous_semantic_status_for_map = asset.semantic_status
+        # Federated marketplace creation maps the asset to semantic itself
+        # before invoking the workflow; honour its skip flag so the asset
+        # is not mapped twice (the generic workflow path keeps its
+        # activation-time mapping when the flag is absent).
+        skip_semantic_map = input_data.get("skip_semantic_mapping", False)
         try:
-            map_via_semantic("asset", asset=asset, tenant=asset.tenant)
+            if not skip_semantic_map:
+                map_via_semantic("asset", asset=asset, tenant=asset.tenant)
         except Exception as e:
             logger.warning(
                 "Semantic mapping failed for asset",
@@ -3325,7 +3384,7 @@ class AssetCreationWorkflow:
                 "semantic_status": asset.semantic_status,
             }
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to index asset for search",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
@@ -3444,7 +3503,7 @@ class AssetCreationWorkflow:
                     email=creator_email,
                 )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to send notification",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
@@ -3545,7 +3604,7 @@ class AssetCreationWorkflow:
     def _resolve_auto_activate(
         cls,
         *,
-        tenant: "Tenant",  # type: ignore[name-defined]  # forward-reference to Tenant model; resolved at runtime
+        tenant: "Tenant",  # forward-reference to Tenant model; resolved at runtime
         caller_auto_activate: bool,
     ) -> dict[str, Any]:
         """Resolve the effective ``auto_activate`` decision.
@@ -3690,7 +3749,7 @@ class AssetCreationWorkflow:
         try:
             tenant_obj = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise ValueError(f"Tenant matching query does not exist: {tenant_id}")
+            raise ValueError(f"Tenant matching query does not exist: {tenant_id}") from None
 
         # Phase 250.2.A.2 (closes Gap 2) — resolve effective
         # auto-activate by ANDing the per-call value with the
@@ -3879,7 +3938,7 @@ class AssetCreationWorkflow:
                     error=error_message,
                 )
             except TypeError:
-                logger.error(
+                logger.exception(
                     f"Asset creation workflow failed: workflow_instance_id={workflow_instance.id}, "
                     f"tenant_id={tenant_id}, error={error_message}"
                 )

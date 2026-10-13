@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { createAssetViaApi } from '../../fixtures/api-assets';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score @critical', () => {
@@ -25,7 +25,7 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score @critical', () =
         contentSelector: '.observability-page, [data-testid="observability-page"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to /login — auth not available in this environment');
+        test.skip(page.url().includes('/login'), 'Redirected to /login — auth not available in this environment');
       }
       expect(page.url()).toContain('/observability');
       const hasContent =

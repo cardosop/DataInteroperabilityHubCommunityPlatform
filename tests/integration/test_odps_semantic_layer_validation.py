@@ -45,11 +45,12 @@ def _get_semantic_service_url():
         import socket
 
         socket.gethostbyname("semantic-service")
-        # We're in docker network, use service name
-        return "http://semantic-service:8081"
     except (socket.gaierror, OSError):
         # Not in docker network, use localhost with mapped port
         return "http://localhost:8094"
+    else:
+        # We're in docker network, use service name
+        return "http://semantic-service:8081"
 
 
 SEMANTIC_SERVICE_URL = _get_semantic_service_url()
@@ -240,7 +241,12 @@ def _map_product_to_rdf(
     last_error = None
     for attempt in range(retries):
         try:
-            response = httpx.post(f"{SEMANTIC_SERVICE_URL}/map/odps", json=payload, timeout=30.0, headers=_internal_api_headers())
+            response = httpx.post(
+                f"{SEMANTIC_SERVICE_URL}/map/odps",
+                json=payload,
+                timeout=30.0,
+                headers=_internal_api_headers(),
+            )
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             last_error = e
             if attempt < retries - 1:
@@ -258,7 +264,7 @@ def _map_product_to_rdf(
                     return result
                 # If no triples and we have retries left, retry
                 if attempt < retries - 1:
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         RETRY_DELAY
                     )  # INTENTIONAL: e2e/integration test polling real services
                     continue
@@ -313,14 +319,14 @@ def _map_odcs_contract_to_rdf(
                     if result.get("triples_count", 0) > 0:
                         return result
                     if attempt < retries - 1:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             RETRY_DELAY
                         )  # INTENTIONAL: e2e/integration test polling real services
                         continue
                 return result
             else:
                 if response.status_code >= 500 and attempt < retries - 1:
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         RETRY_DELAY
                     )  # INTENTIONAL: e2e/integration test polling real services
                     continue
@@ -369,7 +375,7 @@ def _execute_sparql_query(
             error_detail = (
                 response.json().get("detail", "") if response.status_code == 503 else response.text
             )
-        except:
+        except ValueError:
             error_detail = response.text
         if "unavailable" in error_detail.lower() or "connection" in error_detail.lower():
             pytest.skip(f"Fuseki not available: {error_detail}")
@@ -783,9 +789,7 @@ class TestMultilingualSupport:
             "Umfassendes Validierungs-Testprodukt" in b.get("productName", {}).get("value", "")
             for b in bindings
         )
-        assert german_found, (
-            f"German product name should be found in {len(bindings)} results"
-        )
+        assert german_found, f"German product name should be found in {len(bindings)} results"
 
     def test_multilingual_query_spanish(self, complete_odps_product):
         """Test multilingual SPARQL query for Spanish"""
@@ -806,9 +810,7 @@ class TestMultilingualSupport:
             "Producto de Validación Integral" in b.get("productName", {}).get("value", "")
             for b in bindings
         )
-        assert spanish_found, (
-            f"Spanish product name should be found in {len(bindings)} results"
-        )
+        assert spanish_found, f"Spanish product name should be found in {len(bindings)} results"
 
     def test_multilingual_query_all_languages(self, complete_odps_product):
         """Test multilingual SPARQL query without language filter (all languages)"""
@@ -895,7 +897,7 @@ class TestProductContractLinking:
                             break
             if link_found:
                 break
-            time.sleep(  # noqa: sleep-needed — polling loop
+            time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 2.0
             )  # 2s between retries for Fuseki commit  # INTENTIONAL: test-specific timing
 

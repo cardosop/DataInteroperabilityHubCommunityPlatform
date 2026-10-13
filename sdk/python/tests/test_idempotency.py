@@ -84,7 +84,7 @@ def test_compose_idempotency_key_normalises_uuid_to_lowercase():
 
 
 def test_compose_idempotency_key_rejects_non_uuid_tenant():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
         compose_idempotency_key("not-a-uuid", {"a": 1})
 
 

@@ -23,12 +23,7 @@ class SendEmailAsyncTest(TestCase):
     @patch("hub.apps.notifications.tasks.get_email_service")
     @patch("hub.apps.notifications.tasks.NotificationsBusinessRules")
     def test_email_sent_successfully(
-        self,
-        mock_br,
-        mock_get_svc,
-        mock_render,
-        mock_delivery,
-        _log,
+        self, mock_br, mock_get_svc, mock_render, mock_delivery, mock_logger
     ):
         mock_br_inst = MagicMock()
         mock_br_inst.validate.return_value = MagicMock(
@@ -77,7 +72,7 @@ class SendEmailAsyncTest(TestCase):
         mock_del_obj.mark_sent.assert_called_once_with(message_id="msg-1")
 
     @patch("hub.apps.notifications.tasks.logger")
-    def test_empty_email_raises_valueerror(self, _log):
+    def test_empty_email_raises_valueerror(self, mock_logger):
         from hub.apps.notifications.tasks import send_email_async
 
         with self.assertRaises(ValueError) as ctx:
@@ -91,7 +86,7 @@ class SendEmailAsyncTest(TestCase):
         assert "must be provided" in str(ctx.exception)
 
     @patch("hub.apps.notifications.tasks.logger")
-    def test_email_without_at_raises_valueerror(self, _log):
+    def test_email_without_at_raises_valueerror(self, mock_logger):
         from hub.apps.notifications.tasks import send_email_async
 
         with self.assertRaises(ValueError) as ctx:
@@ -134,7 +129,7 @@ class SendJobEmailTest(TestCase):
 
     @patch("hub.apps.notifications.tasks.logger")
     @patch("hub.apps.notifications.tasks.send_email_async")
-    def test_completion_email_calls_send(self, mock_send, _log):
+    def test_completion_email_calls_send(self, mock_send, mock_logger):
         mock_send.return_value = {
             "success": True,
             "delivery_id": "d1",
@@ -154,7 +149,7 @@ class SendJobEmailTest(TestCase):
 
     @patch("hub.apps.notifications.tasks.logger")
     @patch("hub.apps.notifications.tasks.send_email_async")
-    def test_failure_email_calls_send(self, mock_send, _log):
+    def test_failure_email_calls_send(self, mock_send, mock_logger):
         mock_send.return_value = {
             "success": True,
             "delivery_id": "d1",

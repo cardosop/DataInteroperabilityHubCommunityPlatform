@@ -16,6 +16,7 @@ import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 import uuid
+from typing import ClassVar
 
 from rest_framework import status
 
@@ -48,13 +49,14 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
     """
     6.6.1 — Tenant isolation in workflow execution (via API).
 
-    - Workflows cannot access other tenants' data (contract create with asset from other tenant → 400).
+    - Workflows cannot access other tenants' data (contract create with asset from
+      another tenant → 404 NOT_FOUND, existence-leak protection per Phase 18.2.1).
     - Business rules enforce tenant isolation.
-    - Cross-tenant access attempts fail with validation error.
+    - Cross-tenant access attempts fail without revealing the asset's existence.
     """
 
     def test_workflow_triggered_contract_create_rejects_asset_from_other_tenant_via_api(self):
-        """Verify contract create via API with asset_id from another tenant returns 400; business rules enforce isolation."""
+        """Verify contract create via API with asset_id from another tenant returns 404 NOT_FOUND; business rules enforce isolation."""
         other_tenant = TenantFactory.create_tenant()
         UserFactory.create_user(tenant=other_tenant, status=UserStatus.ACTIVE)
         asset_other = AssetFactory.create_asset(
@@ -72,13 +74,13 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
 
         self.assertEqual(
-            response.status_code, status.HTTP_400_BAD_REQUEST, get_response_data(response)
+            response.status_code, status.HTTP_404_NOT_FOUND, get_response_data(response)
         )
         self.assertEqual(Contract.objects.count(), count_before)
         data = response.json()
         self.assertIn("error", data)
         self.assertIn("code", data)
-        self.assertEqual(data.get("code"), "BUSINESS_RULES_VALIDATION")
+        self.assertEqual(data.get("code"), "NOT_FOUND")
 
     def test_contract_list_returns_only_tenant_contracts(self):
         """Verify listing contracts via API returns only the request user's tenant contracts."""
@@ -144,7 +146,7 @@ class TestWorkflowSecurityTenantIsolationWorkflowEngineE2E(WorkflowE2ETestBase):
     must fail validation (business rules enforce tenant consistency).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_workflow_with_cross_tenant_asset_fails_validation(self):
         """Verify workflow execution fails when input references asset from another tenant."""
@@ -335,11 +337,15 @@ class TestWorkflowSecurityBusinessRulesValidationE2E(E2ETestBase):
 
     def test_validation_errors_not_suppressed_invalid_returns_400_with_body(self):
         """Validation failure must return 400 with error body, not 200 or 500."""
+        # Use a real asset + an invalid format so business-rule validation runs.
+        # (A non-existent asset_id is surfaced as 404 NOT_FOUND by design —
+        # existence-leak protection, Phase 18.2.1 — not a 400.)
+        asset_id = self.create_asset(key="val-asset", name="Validation Asset")
         payload = {
             "original_raw": _minimal_odcs_raw(),
-            "original_format": OriginalFormat.JSON,
+            "original_format": "INVALID_FORMAT",
             "original_spec_type": OriginalSpecType.ODCS,
-            "asset_id": "00000000-0000-0000-0000-000000000000",  # non-existent
+            "asset_id": asset_id,
         }
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -367,11 +373,14 @@ class TestWorkflowSecurityBusinessRulesValidationE2E(E2ETestBase):
     def test_validation_results_cannot_be_forged_no_skip_header(self):
         """Sending a header (e.g. X-Skip-Validation) must not cause server to skip validation; invalid data still 400."""
         self.client.credentials(HTTP_X_SKIP_VALIDATION="true")  # if such header exists
+        # Real asset + invalid format: business-rule validation must fire and
+        # return 400 even with the skip header present.
+        asset_id = self.create_asset(key="forge-asset", name="Forge Asset")
         payload = {
             "original_raw": _minimal_odcs_raw(),
-            "original_format": OriginalFormat.JSON,
+            "original_format": "INVALID_FORMAT",
             "original_spec_type": OriginalSpecType.ODCS,
-            "asset_id": "00000000-0000-0000-0000-000000000000",
+            "asset_id": asset_id,
         }
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
         self.client.credentials()

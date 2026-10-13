@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # OpenTelemetry availability flag
 OPENTELEMETRY_AVAILABLE = False
 try:
-    from opentelemetry import metrics, trace
+    from opentelemetry import trace
     from opentelemetry.instrumentation.django import DjangoInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.sdk.resources import Resource
@@ -139,6 +139,16 @@ def get_sampling_config() -> tuple:
     sampler_type = os.getenv("OTEL_TRACES_SAMPLER", "").lower()
     environment = get_environment()
 
+    # Resolve the sampler classes lazily — the module-level import block
+    # also pulls the optional instrumentation packages, whose absence
+    # must not break plain sampling-config queries (and keeps the
+    # function testable without the full OTEL stack).
+    from opentelemetry.sdk.trace.sampling import (
+        ALWAYS_OFF,
+        ALWAYS_ON,
+        TraceIdRatioBased,
+    )
+
     # Check for explicit sampler configuration
     if sampler_type == "always_on":
         return ALWAYS_ON, 1.0
@@ -227,10 +237,11 @@ def create_otlp_exporter():
             exporter = OTLPSpanExporter(endpoint=endpoint)
 
         logger.info(f"OTLP exporter configured: endpoint={endpoint}, protocol={protocol}")
-        return exporter
     except ImportError:
         logger.warning("OTLP exporter not available. Install opentelemetry-exporter-otlp")
         return None
+    else:
+        return exporter
 
 
 def create_jaeger_exporter():
@@ -255,10 +266,11 @@ def create_jaeger_exporter():
         )
 
         logger.info(f"Jaeger exporter configured: host={agent_host}, port={agent_port}")
-        return exporter
     except ImportError:
         logger.warning("Jaeger exporter not available. Install opentelemetry-exporter-jaeger")
         return None
+    else:
+        return exporter
 
 
 def setup_opentelemetry_tracing() -> object | None:
@@ -316,10 +328,11 @@ def setup_opentelemetry_tracing() -> object | None:
         exporter_type = os.getenv("OPENTELEMETRY_EXPORTER", "otlp").lower()
 
         # Create exporter
-        if exporter_type == "jaeger":
-            exporter = create_jaeger_exporter()
-        else:  # default to OTLP
-            exporter = create_otlp_exporter()
+        exporter = (
+            create_jaeger_exporter()
+            if exporter_type == "jaeger"
+            else create_otlp_exporter()  # default to OTLP
+        )
 
         if exporter is None:
             logger.error(f"Failed to create {exporter_type} exporter")
@@ -349,11 +362,11 @@ def setup_opentelemetry_tracing() -> object | None:
             f"sampling_rate={sampling_rate}, exporter={exporter_type}"
         )
 
-        return tracer
-
     except Exception as e:
         logger.error(f"Failed to setup OpenTelemetry tracing: {e}", exc_info=True)
         return None
+    else:
+        return tracer
 
 
 def get_tracer(name: str | None = None) -> object | None:
@@ -392,8 +405,9 @@ def get_current_span():
         span = trace.get_current_span()
         if span and span.get_span_context().is_valid:
             return span
-        return None
     except Exception:
+        return None
+    else:
         return None
 
 

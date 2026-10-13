@@ -59,11 +59,11 @@ class CheckWarehouseSchemaDriftTest(TestCase):
         call_command("check_warehouse_schema_drift", "--dry-run", stdout=self.out, stderr=self.err)
 
         output = self.out.getvalue()
-        self.assertIn("DRIFT", output)
-        self.assertIn("added=1", output)
-        self.assertIn("DRY RUN", output)
+        assert "DRIFT" in output
+        assert "added=1" in output
+        assert "DRY RUN" in output
         # Audit event is still emitted even in dry run
-        self.assertTrue(mock_audit.called)
+        assert mock_audit.called
 
     @patch("hub.apps.warehouses.schema_drift.check_schema_drift")
     @patch("hub.apps.audit.utils.create_audit_event")
@@ -90,8 +90,8 @@ class CheckWarehouseSchemaDriftTest(TestCase):
         call_command("check_warehouse_schema_drift", stdout=self.out, stderr=self.err)
 
         output = self.out.getvalue()
-        self.assertIn("0 of", output)
-        self.assertNotIn("DRIFT", output)
+        assert "0 of" in output
+        assert "DRIFT" not in output
 
     @patch("hub.apps.warehouses.schema_drift.check_schema_drift")
     def test_single_asset_filter(self, mock_check):
@@ -130,7 +130,7 @@ class CheckWarehouseSchemaDriftTest(TestCase):
         )
 
         output = self.out.getvalue()
-        self.assertIn("Checking 1", output)
+        assert "Checking 1" in output
 
     @patch("hub.apps.warehouses.schema_drift.check_schema_drift")
     def test_tenant_filter(self, mock_check):
@@ -161,4 +161,4 @@ class CheckWarehouseSchemaDriftTest(TestCase):
             stderr=self.err,
         )
 
-        self.assertTrue(mock_check.called)
+        assert mock_check.called

@@ -116,8 +116,8 @@ class TriggerIdempotencyTest(TestCase):
         """Backwards-compatible: trigger without header works as before."""
         with self._mock_prefect_trigger():
             resp = _trigger(self.client, self.export)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data["status"], "success")
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["status"] == "success"
 
     @pytest.mark.integration
     def test_trigger_with_idempotency_key_creates_run(self):
@@ -125,13 +125,10 @@ class TriggerIdempotencyTest(TestCase):
         key = _compose_key(self.tenant.id, self.export.id)
         with self._mock_prefect_trigger():
             resp = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertIn("flow_run_id", resp.data)
+        assert resp.status_code == status.HTTP_200_OK
+        assert "flow_run_id" in resp.data
         # One run created
-        self.assertEqual(
-            ScheduledExportRun.objects.filter(scheduled_export=self.export).count(),
-            1,
-        )
+        assert ScheduledExportRun.objects.filter(scheduled_export=self.export).count() == 1
 
     @pytest.mark.integration
     def test_replay_returns_cached_response(self):
@@ -139,18 +136,16 @@ class TriggerIdempotencyTest(TestCase):
         key = _compose_key(self.tenant.id, self.export.id)
         with self._mock_prefect_trigger():
             resp1 = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp1.status_code, status.HTTP_200_OK)
+        assert resp1.status_code == status.HTTP_200_OK
 
         # Second request: should return cached response, NOT create a new run.
         # Wrap with mock — cache layer may require Prefect integration wiring.
         with self._mock_prefect_trigger():
             resp2 = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp2.status_code, status.HTTP_200_OK)
+        assert resp2.status_code == status.HTTP_200_OK
         replay_header = resp2.get("Idempotent-Replay")
-        self.assertIn(
-            replay_header,
-            ("true", None),
-            "Replay header is 'true' when cache wired, None otherwise",
+        assert replay_header in ("true", None), (
+            "Replay header is 'true' when cache wired, None otherwise"
         )
         # DRF Response has .data; cached JsonResponse has .json()
         flow_run_id_2 = (
@@ -163,12 +158,9 @@ class TriggerIdempotencyTest(TestCase):
             if hasattr(resp1, "data")
             else resp1.json().get("flow_run_id")
         )
-        self.assertEqual(flow_run_id_2, flow_run_id_1)
+        assert flow_run_id_2 == flow_run_id_1
         # Still only one run
-        self.assertEqual(
-            ScheduledExportRun.objects.filter(scheduled_export=self.export).count(),
-            1,
-        )
+        assert ScheduledExportRun.objects.filter(scheduled_export=self.export).count() == 1
 
     @pytest.mark.integration
     def test_different_body_with_same_key_returns_409(self):
@@ -176,7 +168,7 @@ class TriggerIdempotencyTest(TestCase):
         key = _compose_key(self.tenant.id, self.export.id)
         with self._mock_prefect_trigger():
             resp1 = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp1.status_code, status.HTTP_200_OK)
+        assert resp1.status_code == status.HTTP_200_OK
 
         # Different parameters → body mismatch
         resp2 = _trigger(
@@ -185,7 +177,7 @@ class TriggerIdempotencyTest(TestCase):
             parameters={"overrides": {"limit": 500}},
             idem_key=key,
         )
-        self.assertEqual(resp2.status_code, status.HTTP_409_CONFLICT)
+        assert resp2.status_code == status.HTTP_409_CONFLICT
 
     @pytest.mark.integration
     def test_key_tied_to_tenant_and_body(self):
@@ -198,26 +190,24 @@ class TriggerIdempotencyTest(TestCase):
 
         with self._mock_prefect_trigger():
             resp = _trigger(self.client, self.export, idem_key=key_for_a)
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        assert resp.status_code == status.HTTP_200_OK
 
         # Reusing key_for_a with export2: since key is scoped to (tenant, body),
         # not export_id, the same key produces a replay.  Wrap the second trigger
         # in the mock as well — the cache layer may not be fully wired in CI.
         with self._mock_prefect_trigger():
             resp2 = _trigger(self.client, export2, idem_key=key_for_a)
-        self.assertEqual(resp2.status_code, status.HTTP_200_OK)
+        assert resp2.status_code == status.HTTP_200_OK
         replay_header = resp2.get("Idempotent-Replay")
-        self.assertIn(
-            replay_header,
-            ("true", None),
-            "Replay header is 'true' when cache is wired, None otherwise",
+        assert replay_header in ("true", None), (
+            "Replay header is 'true' when cache is wired, None otherwise"
         )
 
     @pytest.mark.integration
     def test_invalid_key_format_returns_400(self):
         """Malformed idempotency key returns 400."""
         resp = _trigger(self.client, self.export, idem_key="not-a-valid-key")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
     @pytest.mark.integration
     def test_concurrent_trigger_returns_409(self):
@@ -228,10 +218,10 @@ class TriggerIdempotencyTest(TestCase):
         acquired = IdempotencyService.acquire_lock(
             key, scope=_TRIGGER_IDEMPOTENCY_SCOPE, ttl_seconds=360
         )
-        self.assertTrue(acquired)
+        assert acquired
 
         resp = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+        assert resp.status_code == status.HTTP_409_CONFLICT
 
         IdempotencyService.release_lock(key, scope=_TRIGGER_IDEMPOTENCY_SCOPE)
 
@@ -242,7 +232,7 @@ class TriggerIdempotencyTest(TestCase):
         # Compose key with other tenant's UUID
         key = _compose_key(other_tenant.id, self.export.id)
         resp = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
     @pytest.mark.integration
     def test_non_active_export_rejects_trigger_even_with_idem_key(self):
@@ -250,8 +240,8 @@ class TriggerIdempotencyTest(TestCase):
         paused = _make_export(self.tenant, status=ScheduledExportStatus.PAUSED)
         key = _compose_key(self.tenant.id, paused.id)
         resp = _trigger(self.client, paused, idem_key=key)
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(resp.data["code"], "INVALID_STATUS")
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "INVALID_STATUS"
 
 
 class TriggerIdempotencyEdgeCases(TestCase):
@@ -284,15 +274,15 @@ class TriggerIdempotencyEdgeCases(TestCase):
         key = _compose_key(self.tenant.id, self.export.id)
         with self._mock_prefect_fail("Prefect deployment not found"):
             resp1 = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp1.status_code, status.HTTP_404_NOT_FOUND)
+        assert resp1.status_code == status.HTTP_404_NOT_FOUND
 
         # Replay: same cached error.  Wrap in mock as cache layer may not
         # be fully wired in CI — the test verifies the error HTTP semantics.
         with self._mock_prefect_fail("Prefect deployment not found"):
             resp2 = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp2.status_code, status.HTTP_404_NOT_FOUND)
+        assert resp2.status_code == status.HTTP_404_NOT_FOUND
         replay_header = resp2.get("Idempotent-Replay")
-        self.assertIn(replay_header, ("true", None))
+        assert replay_header in ("true", None)
 
     @patch(
         "hub.apps.scheduled_export.views._trigger_deployment_via_prefect_integration_service",
@@ -303,9 +293,9 @@ class TriggerIdempotencyEdgeCases(TestCase):
         """503 (transient failure) is NOT cached — client should retry."""
         key = _compose_key(self.tenant.id, self.export.id)
         resp1 = _trigger(self.client, self.export, idem_key=key)
-        self.assertEqual(resp1.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        assert resp1.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
         # Lock should be released by the finally block
         # Verify no cached response
         cached = IdempotencyService.get_cached_response(key, scope=_TRIGGER_IDEMPOTENCY_SCOPE)
-        self.assertIsNone(cached)
+        assert cached is None

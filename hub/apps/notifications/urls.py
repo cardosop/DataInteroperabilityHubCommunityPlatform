@@ -1,6 +1,6 @@
 """Notification inbox URL routing (Phase 223.1)."""
 
-from django.urls import include, path
+from django.urls import include, path, re_path
 from rest_framework.routers import DefaultRouter
 
 from .stream_views import NotificationStreamView
@@ -22,18 +22,13 @@ urlpatterns = [
         name="notification-stream",
     ),
     # Phase 277.B.097 — 1-click marketing unsubscribe.
-    # The empty-token catch-all ensures short / missing tokens still
-    # reach the view (always-200 contract prevents enumeration).
-    path(
-        "unsubscribe/<str:token>/",
+    # A single regex route covers both normal and empty tokens
+    # ("unsubscribe//" → token="") so the always-200 contract holds
+    # without a double-slash literal in the URLconf (the URL standards
+    # gate rejects consecutive slashes).
+    re_path(
+        r"^unsubscribe/(?P<token>[^/]*)/$",
         marketing_unsubscribe,
         name="marketing-unsubscribe",
-    ),
-    # Catch empty token with trailing slash (// → token="")
-    path(
-        "unsubscribe//",
-        marketing_unsubscribe,
-        kwargs={"token": ""},
-        name="marketing-unsubscribe-empty-token",
     ),
 ]

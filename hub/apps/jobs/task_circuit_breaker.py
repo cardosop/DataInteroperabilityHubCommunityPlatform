@@ -31,7 +31,10 @@ from __future__ import annotations
 
 import functools
 import logging
-from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from hub.apps.core.resilience.circuit_breaker import CircuitBreakerError
 from hub.apps.core.resilience.service_breakers import get_shared_circuit_breaker as _get_breaker

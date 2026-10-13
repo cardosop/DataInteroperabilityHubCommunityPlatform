@@ -12,7 +12,6 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
   test.setTimeout(90000);
@@ -34,7 +33,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
     if (!(await gotoPrivacyPage(page))) {
-      test.skip(true, 'Auth session lost during navigation');
+      test.skip(!(await gotoPrivacyPage(page)), 'Auth session lost during navigation');
       return;
     }
 
@@ -60,7 +59,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
     if (!(await gotoPrivacyPage(page))) {
-      test.skip(true, 'Auth session lost during navigation');
+      test.skip(!(await gotoPrivacyPage(page)), 'Auth session lost during navigation');
       return;
     }
 
@@ -91,7 +90,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       if (!(await gotoPrivacyPage(page))) {
-        test.skip(true, 'Auth session lost during navigation');
+        test.skip(!(await gotoPrivacyPage(page)), 'Auth session lost during navigation');
         return;
       }
 
@@ -111,7 +110,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       if (!(await gotoPrivacyPage(page))) {
-        test.skip(true, 'Auth session lost during navigation');
+        test.skip(!(await gotoPrivacyPage(page)), 'Auth session lost during navigation');
         return;
       }
 

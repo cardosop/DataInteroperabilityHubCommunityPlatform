@@ -15,6 +15,7 @@ Tests follow TDD doctrine:
 * No stubs — uses ``WorkflowDefinition`` model directly per project doctrine.
 * Root-cause coverage — every contract clause from D250.7 has a test.
 """
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -25,7 +26,6 @@ from django.utils import timezone
 
 from hub.apps.orchestration.models import WorkflowDefinition
 from hub.apps.orchestration.versioning import WorkflowVersionManager
-
 
 pytestmark = pytest.mark.django_db
 
@@ -57,7 +57,7 @@ class TestSoakWindowEligibility(TestCase):
             dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
-        new = WorkflowDefinition.objects.create(
+        _new = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
             dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
@@ -125,8 +125,8 @@ class TestSoakWindowEligibility(TestCase):
 
         # Default 14-day window: old is NOT eligible.
         default_eligible = [
-            d.version for d in
-            WorkflowVersionManager.get_versions_eligible_for_inflight_runs(
+            d.version
+            for d in WorkflowVersionManager.get_versions_eligible_for_inflight_runs(
                 workflow_name="asset_creation",
             )
         ]
@@ -134,8 +134,8 @@ class TestSoakWindowEligibility(TestCase):
 
         # Custom 30-day window: old IS eligible.
         custom_eligible = [
-            d.version for d in
-            WorkflowVersionManager.get_versions_eligible_for_inflight_runs(
+            d.version
+            for d in WorkflowVersionManager.get_versions_eligible_for_inflight_runs(
                 workflow_name="asset_creation",
                 soak_days=30,
             )

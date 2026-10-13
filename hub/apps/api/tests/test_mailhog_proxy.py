@@ -38,12 +38,12 @@ from rest_framework.test import APIClient
 # endpoints returning 404 after production-lockout tests run).
 
 
-_E2E_SETTINGS: dict[str, Any] = dict(
-    ENVIRONMENT="test",
-    DEBUG=False,
-    E2E_TEST_SECRET="proxy-test-secret",
-    MAILHOG_INTERNAL_URL="http://hub-staging-mailhog:8025",
-)
+_E2E_SETTINGS: dict[str, Any] = {
+    "ENVIRONMENT": "test",
+    "DEBUG": False,
+    "E2E_TEST_SECRET": "proxy-test-secret",
+    "MAILHOG_INTERNAL_URL": "http://hub-staging-mailhog:8025",
+}
 
 # URLs mirror MailHog's own URL grammar under the `/test/mailhog/` prefix
 # so specs written for direct MailHog work unchanged against the proxy.

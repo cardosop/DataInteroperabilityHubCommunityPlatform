@@ -86,14 +86,20 @@ export function uniqueEmail(prefix = 'e2e_visitor'): string {
 export function strongPassword(): string {
   // Backend password policy requires: ≥8 chars, uppercase, lowercase, digit,
   // AND special character.  Also must NOT appear in breach databases
-  // (TestPass123! is flagged by HaveIBeenPwned).  Generate a 16-char
-  // random password that's guaranteed unique per invocation.
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  // (TestPass123! is flagged by HaveIBeenPwned).  The previous version
+  // picked 12 chars from a pool that CONTAINED digits but did not guarantee
+  // one — P(no digit) ≈ (49/57)^12 ≈ 16%, and the API correctly rejected
+  // those draws ("This password must contain at least one digit"), flaking
+  // JOURNEY-AUTH-001 on the 2026-09-02 staging smoke. Each policy class is
+  // now guaranteed by construction in the first four chars.
+  const uppers = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lowers = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
   const specials = '!@#$%^&*';
-  let pw = '';
-  for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
-  pw += specials[Math.floor(Math.random() * specials.length)];
-  pw += chars[Math.floor(Math.random() * chars.length)];
+  const all = uppers + lowers + digits + specials;
+  const pick = (pool: string) => pool[Math.floor(Math.random() * pool.length)];
+  let pw = pick(uppers) + pick(lowers) + pick(digits) + pick(specials);
+  for (let i = 0; i < 12; i++) pw += pick(all);
   return pw;
 }
 
@@ -291,10 +297,12 @@ export async function waitForPasswordResetEmail(
           }
         }
       }
-      // After 6 poll attempts (~12s), if no message in MailHog matches the
-      // target recipient, the SMTP delivery path is likely broken or the
-      // worker isn't processing the task.  Fail fast instead of waiting 60s.
-      if (pollCount === 6 && !list.some(m => messageToMatches(m, toEmail))) {
+      // Fail fast when the SMTP path looks broken — but NOT under load:
+      // the U.8 gate runs proved the chain (register → RQ job_low →
+      // worker → SMTP → MailHog) takes >12s on a loaded host, while a
+      // genuinely broken path still fails within the outer 120s budget.
+      // 30 polls (~60s) keeps the fast-fail intent at half the budget.
+      if (pollCount === 30 && !list.some(m => messageToMatches(m, toEmail))) {
         throw new Error(
           `MailHog is reachable at ${MAILHOG_BASE_URL} but no message for ` +
           `${toEmail} found after ${pollCount} polls (~${pollCount * 2}s). ` +
@@ -336,7 +344,7 @@ export async function runJOURNEY_AUTH_004_Success(page: Page): Promise<void> {
  */
 export async function waitForRegisterPageReady(page: Page, timeoutMs = 35_000): Promise<void> {
   const createHeading = page.getByRole('heading', { name: 'Create account' });
-  const unavailableHeading = page.locator('.unavailable-page, [data-testid="unavailable-page"] h1');
+  const unavailableHeading = page.locator('.unavailable-page, [data-testid="unavailable-page"] h1, .disabled-capability-page, [data-testid="disabled-capability-page"]');
   const loadingSpinner = page.locator('.loading-spinner-container');
 
   // Race: terminal state (register/unavailable) OR loading spinner disappears.
@@ -530,7 +538,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await clearAuthStorage(page);
   await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
   const resetHeading = page.getByRole('heading', { name: /Reset password/i });
-  const unavailableHeading = page.locator('.unavailable-page, [data-testid="unavailable-page"] h1');
+  const unavailableHeading = page.locator('.unavailable-page, [data-testid="unavailable-page"] h1, .disabled-capability-page, [data-testid="disabled-capability-page"]');
   // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
   await Promise.race([
     resetHeading.waitFor({ state: 'visible', timeout: 35_000 }),

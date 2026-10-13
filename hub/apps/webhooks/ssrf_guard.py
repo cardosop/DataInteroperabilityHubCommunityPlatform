@@ -85,10 +85,10 @@ def _is_private_ip(ip_str: str) -> bool:
 _DNS_TIMEOUT = 5.0  # seconds
 
 
-def _resolve_and_check(hostname: str) -> None:
+def _resolve_host_ips(hostname: str) -> list[str]:
     """
-    Resolve *hostname* to IP addresses and raise if any resolved address is
-    in a blocked network.  Raises ``SSRFViolationError`` on violation.
+    Resolve *hostname* to IP address strings.  Raises
+    ``SSRFViolationError`` on DNS resolution failure or timeout.
 
     DNS resolution is bounded by a 5-second timeout to prevent slow-loris
     style attacks from stalling the calling thread indefinitely.
@@ -98,16 +98,69 @@ def _resolve_and_check(hostname: str) -> None:
         try:
             results = future.result(timeout=_DNS_TIMEOUT)
         except concurrent.futures.TimeoutError:
-            raise SSRFViolationError(f"DNS resolution of '{hostname}' timed out")
+            raise SSRFViolationError(f"DNS resolution of '{hostname}' timed out") from None
         except socket.gaierror as exc:
             raise SSRFViolationError(f"Hostname '{hostname}' could not be resolved: {exc}") from exc
+    return [
+        str(sockaddr[0])
+        for _family, _type, _proto, _canonname, sockaddr in results
+    ]
 
-    for _family, _type, _proto, _canonname, sockaddr in results:
-        ip = str(sockaddr[0])
+
+def _resolve_and_check(hostname: str) -> None:
+    """
+    Resolve *hostname* to IP addresses and raise if any resolved address is
+    in a blocked network.  Raises ``SSRFViolationError`` on violation.
+    """
+    for ip in _resolve_host_ips(hostname):
         if _is_private_ip(ip):
             raise SSRFViolationError(
                 f"Hostname '{hostname}' resolves to private/reserved IP '{ip}'"
             )
+
+
+def resolve_private_or_none(url: str, *, allow_private: bool = False) -> str | None:
+    """W1.13 — re-validation helper for query/delivery-time SSRF re-checks.
+
+    Returns a short violation description when *url* is PROVEN unsafe —
+    non-http(s) scheme, missing hostname, private IP literal, or a
+    hostname resolving to a blocked network (unless ``allow_private``).
+
+    Returns ``None`` when the URL is safe OR when the hostname failed
+    to resolve: a hostname that cannot resolve cannot be rebound to a
+    private IP, and the downstream HTTP client will fail identically.
+    (Fail-closed on resolution failure remains the create-path contract
+    — ``validate_webhook_url`` / ``is_safe_url`` are unchanged.)
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return "invalid_url"
+
+    violation: str | None = None
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        violation = "invalid_scheme"
+    elif not parsed.hostname:
+        violation = "missing_hostname"
+    elif allow_private:
+        violation = None
+    else:
+        hostname = parsed.hostname
+        try:
+            addr = ipaddress.ip_address(hostname)
+        except ValueError:
+            try:
+                ips = _resolve_host_ips(hostname)
+            except SSRFViolationError:
+                violation = None  # unresolvable — cannot be rebound to a private IP
+            else:
+                violation = next(
+                    ("private_resolution" for ip in ips if _is_private_ip(ip)),
+                    None,
+                )
+        else:
+            violation = "private_ip_literal" if _is_private_ip(str(addr)) else None
+    return violation
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +255,7 @@ def is_safe_url(url: str) -> bool:
 
     try:
         validate_webhook_url(url, raise_as_validation_error=False)
-        return True
     except SSRFViolationError:
         return False
+    else:
+        return True

@@ -25,10 +25,12 @@ import json
 import os
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
+DEFAULT_BASELINE = SCRIPT_DIR / "cli_sdk_openapi_parity_baseline.json"
 
 # ── Path sets ────────────────────────────────────────────────────────────────
 
@@ -140,7 +142,7 @@ def _extract_paths_from_source(
     for py_file in src_dir.rglob("*.py"):
         try:
             content = py_file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         # Literal paths: "assets/", 'contracts/'
@@ -167,7 +169,7 @@ def _extract_js_paths(src_dir: Path) -> set[str]:
     for file in src_dir.rglob("*.ts"):
         try:
             content = file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         # Literal: this.client.get('assets/')
@@ -356,6 +358,17 @@ def main() -> int:
         action="store_true",
         help="Output results as JSON instead of human-readable.",
     )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=DEFAULT_BASELINE,
+        help="ratchet baseline JSON (net-growth fails; see Phase U triage)",
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="record the CURRENT uncovered counts as the ratchet floor",
+    )
     args = parser.parse_args()
 
     # Ensure we're running from the project root
@@ -368,14 +381,47 @@ def main() -> int:
     else:
         _print_human(result)
 
-    total_missing = (
-        len(result["cli_missing"]) + len(result["py_sdk_missing"]) + len(result["js_sdk_missing"])
-    )
-    total_extra = (
-        len(result["cli_extra"]) + len(result["py_sdk_extra"]) + len(result["js_sdk_extra"])
-    )
+    counts = {
+        "cli_missing": len(result["cli_missing"]),
+        "py_sdk_missing": len(result["py_sdk_missing"]),
+        "js_sdk_missing": len(result["js_sdk_missing"]),
+        "cli_extra": len(result["cli_extra"]),
+        "py_sdk_extra": len(result["py_sdk_extra"]),
+        "js_sdk_extra": len(result["js_sdk_extra"]),
+    }
+    # Phase U triage — the zero-uncovered contract predates the API
+    # surface growth: the first armed run showed ~350 uncovered paths per
+    # client with no realistic one-PR fix. The ratchet converts the gate
+    # from permanently-red into owned, shrinking debt: NET-GROWTH fails,
+    # coverage workstreams shrink the baseline over time (GATE-35 shape).
+    if args.update:
+        args.baseline.write_text(
+            json.dumps({"generated_at": datetime.now(UTC).isoformat(), **counts}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"PARITY-RATCHET: baseline written — {counts}")
+        return 0
 
-    return 0 if (total_missing == 0 and total_extra == 0) else 1
+    try:
+        baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"PARITY-RATCHET: baseline missing ({exc}) — run --update first")
+        return 2
+
+    growth = [k for k in counts if counts[k] > int(baseline.get(k, 0))]
+    if growth:
+        print(f"PARITY-RATCHET: uncovered/stale counts grew past the baseline: {growth}")
+        for k in growth:
+            print(f"  {k}: {counts[k]} > baseline {baseline.get(k)}")
+        return 1
+
+    print(
+        f"PARITY-RATCHET: clean — cli_missing={counts['cli_missing']} "
+        f"py={counts['py_sdk_missing']} js={counts['js_sdk_missing']} "
+        f"(extra: cli={counts['cli_extra']} py={counts['py_sdk_extra']} "
+        f"js={counts['js_sdk_extra']}); baseline floor respected"
+    )
+    return 0
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from hub.apps.rate_limiting.service import check_rate_limit
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
@@ -231,7 +231,8 @@ class DataConsumerPersonaTest(E2ETestBase):
             self.assertIn("Retry-After", response.headers or {})
         else:
             import pytest
-            pytest.skip(
+
+            pytest.skip(  # noqa: skip-in-body
                 "Rate limit not reached after 60 requests — "
                 "RATE_LIMIT_E2E_RELAX may be active or Redis may be unavailable"
             )
@@ -259,7 +260,8 @@ class DataConsumerPersonaTest(E2ETestBase):
             self.assertIn("message", error)
         else:
             import pytest
-            pytest.skip(
+
+            pytest.skip(  # noqa: skip-in-body
                 "Rate limit not reached after 60 requests — "
                 "RATE_LIMIT_E2E_RELAX may be active or Redis may be unavailable"
             )

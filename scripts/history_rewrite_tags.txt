@@ -1,0 +1,4 @@
+# W0.4 history-rewrite tag prefixes to drop (git update-ref -d after
+# filter-repo). The 17 staging-restore tag trees are archived to S3
+# before the force-push (W0.6 / S5).
+backup-staging-

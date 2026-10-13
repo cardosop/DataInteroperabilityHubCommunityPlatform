@@ -11,15 +11,35 @@ from pathlib import Path
 
 import pytest
 from datahub_cli.main import cli
-from tests.use_cases.conftest import unique_key
+from tests.use_cases._api_helpers import reset_rate_limits
+from tests.use_cases.conftest import (
+    register_asset_cleanup,
+    register_file_cleanup,
+    unique_key,
+)
 
 pytestmark = pytest.mark.mvp
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits_before_each_test():
+    """Clear the asset-creation throttle buckets before each test.
+
+    The whole use_cases suite runs as one persona user, and the 60/min
+    per-user asset-creation throttle (S-8, Phase 250.1.A.10) is exhausted
+    by cumulative suite activity — measured 2026-09-20: a billing quota
+    loop burst ~41 asset creates in ~3 s and every asset create in this
+    file then 429'd with "Request was throttled".  The shared self-healing
+    reset (same pattern as test_concurrent_operations) keeps these
+    business-flow tests deterministic regardless of file ordering.
+    """
+    reset_rate_limits()
 
 
 class TestComplianceChecks:
     """E2E tests for compliance check execution"""
 
-    def test_run_compliance_check_on_asset(self, runner, authenticated_config):
+    def test_run_compliance_check_on_asset(self, runner, authenticated_config, cleanup_registry):
         """Test running compliance check on an asset"""
         # First create an asset
         asset_result = runner.invoke(
@@ -46,6 +66,7 @@ class TestComplianceChecks:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Run compliance check on asset
                 compliance_result = runner.invoke(
                     cli, ["compliance", "run", "--asset-id", asset_id, "--scan-mode", "internal"]
@@ -77,7 +98,9 @@ class TestComplianceChecks:
         lower = compliance_result.output.lower()
         assert "not found" in lower or "failed" in lower
 
-    def test_run_compliance_check_with_custom_regulations(self, runner, authenticated_config):
+    def test_run_compliance_check_with_custom_regulations(
+        self, runner, authenticated_config, cleanup_registry
+    ):
         """Test running compliance check with custom regulations"""
         # Create asset first
         asset_result = runner.invoke(
@@ -104,6 +127,7 @@ class TestComplianceChecks:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Run compliance check with specific regulations
                 compliance_result = runner.invoke(
                     cli,
@@ -128,6 +152,7 @@ class TestComplianceChecks:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """Test running external scan-only compliance check.
 
@@ -160,6 +185,7 @@ class TestComplianceChecks:
                     break
 
             assert file_id, "Upload succeeded but no file ID in output"
+            register_file_cleanup(cleanup_registry, file_id)
 
             compliance_result = runner.invoke(
                 cli,
@@ -187,7 +213,7 @@ class TestComplianceChecks:
         assert result.exit_code != 0
         assert "at least one" in result.output.lower() or "required" in result.output.lower()
 
-    def test_get_compliance_run_results(self, runner, authenticated_config):
+    def test_get_compliance_run_results(self, runner, authenticated_config, cleanup_registry):
         """Test getting a real compliance run by first creating one."""
         # Create an asset and start a compliance run
         asset_result = runner.invoke(
@@ -209,6 +235,7 @@ class TestComplianceChecks:
                 asset_id = line.split("ID:")[1].strip()
                 break
         assert asset_id
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         run_result = runner.invoke(
             cli,
@@ -284,7 +311,7 @@ class TestComplianceChecks:
 class TestComplianceReporting:
     """E2E tests for compliance reporting"""
 
-    def test_generate_gdpr_report(self, runner, authenticated_config):
+    def test_generate_gdpr_report(self, runner, authenticated_config, cleanup_registry):
         """Test generating GDPR compliance report"""
         # Create asset first
         asset_result = runner.invoke(
@@ -304,6 +331,7 @@ class TestComplianceReporting:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Generate GDPR report
                 report_result = runner.invoke(
                     cli, ["compliance", "report", "--asset-id", asset_id, "--regulation", "GDPR"]
@@ -317,7 +345,7 @@ class TestComplianceReporting:
                         or "compliance run" in report_result.output.lower()
                     )
 
-    def test_generate_hipaa_report(self, runner, authenticated_config):
+    def test_generate_hipaa_report(self, runner, authenticated_config, cleanup_registry):
         """Test generating HIPAA compliance report"""
         # Create asset first
         asset_result = runner.invoke(
@@ -337,6 +365,7 @@ class TestComplianceReporting:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Generate HIPAA report
                 report_result = runner.invoke(
                     cli, ["compliance", "report", "--asset-id", asset_id, "--regulation", "HIPAA"]
@@ -350,7 +379,7 @@ class TestComplianceReporting:
                         or "compliance run" in report_result.output.lower()
                     )
 
-    def test_generate_sox_report(self, runner, authenticated_config):
+    def test_generate_sox_report(self, runner, authenticated_config, cleanup_registry):
         """Test generating SOX compliance report"""
         # Create asset first
         asset_result = runner.invoke(
@@ -369,6 +398,7 @@ class TestComplianceReporting:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Generate SOX report
                 report_result = runner.invoke(
                     cli, ["compliance", "report", "--asset-id", asset_id, "--regulation", "SOX"]
@@ -382,7 +412,7 @@ class TestComplianceReporting:
                         or "compliance run" in report_result.output.lower()
                     )
 
-    def test_generate_lgpd_report(self, runner, authenticated_config):
+    def test_generate_lgpd_report(self, runner, authenticated_config, cleanup_registry):
         """Test generating LGPD compliance report"""
         # Create asset first
         asset_result = runner.invoke(
@@ -402,6 +432,7 @@ class TestComplianceReporting:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Generate LGPD report
                 report_result = runner.invoke(
                     cli, ["compliance", "report", "--asset-id", asset_id, "--regulation", "LGPD"]
@@ -415,7 +446,7 @@ class TestComplianceReporting:
                         or "compliance run" in report_result.output.lower()
                     )
 
-    def test_generate_ccpa_report(self, runner, authenticated_config):
+    def test_generate_ccpa_report(self, runner, authenticated_config, cleanup_registry):
         """Test generating CCPA compliance report"""
         # Create asset first
         asset_result = runner.invoke(
@@ -435,6 +466,7 @@ class TestComplianceReporting:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Generate CCPA report
                 report_result = runner.invoke(
                     cli, ["compliance", "report", "--asset-id", asset_id, "--regulation", "CCPA"]
@@ -459,7 +491,7 @@ class TestComplianceReporting:
 class TestAccessRequests:
     """E2E tests for access request management"""
 
-    def test_create_access_request_for_asset(self, runner, authenticated_config):
+    def test_create_access_request_for_asset(self, runner, authenticated_config, cleanup_registry):
         """Test creating access request for an asset"""
         # Create asset first
         asset_result = runner.invoke(
@@ -479,6 +511,7 @@ class TestAccessRequests:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Create access request
                 request_result = runner.invoke(
                     cli,
@@ -602,7 +635,7 @@ class TestAccessRequests:
 class TestCompleteComplianceWorkflow:
     """E2E tests for complete compliance workflows"""
 
-    def test_complete_compliance_workflow(self, runner, authenticated_config):
+    def test_complete_compliance_workflow(self, runner, authenticated_config, cleanup_registry):
         """Test complete compliance workflow: create asset, run check, generate report"""
         # Create asset
         asset_result = runner.invoke(
@@ -629,6 +662,7 @@ class TestCompleteComplianceWorkflow:
                         break
 
             if asset_id:
+                register_asset_cleanup(cleanup_registry, asset_id)
                 # Run compliance check
                 compliance_result = runner.invoke(
                     cli,

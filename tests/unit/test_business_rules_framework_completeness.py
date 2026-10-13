@@ -10,8 +10,6 @@ Tests that verify:
 
 import inspect
 
-import pytest
-
 # Import all business rules classes
 from hub.apps.contracts.business_rules import ODPSBusinessRules, ODPSExportRules, ODPSLinkingRules
 from hub.apps.contracts.business_rules import ValidationResult as ContractsValidationResult
@@ -205,7 +203,9 @@ class TestFrameworkGaps:
         """Test that BusinessRules base class exists (gap closed)."""
         # Try to import base class
         try:
-            from hub.apps.core.business_rules.base import BusinessRules
+            from hub.apps.core.business_rules.base import (
+                BusinessRules,
+            )
 
             base_class_exists = True
         except (ImportError, ModuleNotFoundError):
@@ -237,7 +237,7 @@ class TestFrameworkGaps:
 
         # They should all be the SAME class (consolidated into one shared class)
         # — this is what closed the duplication gap.
-        unique_classes = set(id(cls) for cls in validation_results)
+        unique_classes = {id(cls) for cls in validation_results}
         assert len(unique_classes) == 1, (
             f"ValidationResult should be a single shared class, not duplicated. "
             f"Found {len(unique_classes)} distinct classes — consolidation gap remains."

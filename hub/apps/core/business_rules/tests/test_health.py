@@ -40,6 +40,23 @@ class TestBusinessRulesHealth(TestCase):
         assert result["degraded_count"] == 1
 
     @pytest.mark.integration
+    def test_degradation_emits_the_audit_log_message(self):
+        """W5.3: the registration-failure log line is the audit trail for
+        degraded rules — a mutation of the message must not survive."""
+        with self.assertLogs("hub.apps.core.business_rules.health", level="ERROR") as logs:
+            mark_rule_degraded("audit_rule", "ImportError: boom")
+        self.assertTrue(
+            any(
+                record.getMessage().startswith(
+                    "business_rule_registration_failed rule=audit_rule error=ImportError: boom"
+                )
+                for record in logs.records
+            ),
+            "the degradation audit message must name the event and the rule, "
+            "verbatim (a substring check would survive a wrapping mutation)",
+        )
+
+    @pytest.mark.integration
     def test_clear_resets_degraded_rules(self):
         mark_rule_degraded("rule_x", "error")
         clear_degraded_rules()

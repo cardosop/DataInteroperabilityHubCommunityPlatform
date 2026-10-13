@@ -5,13 +5,15 @@ Service layer for Data Mesh operations.
 Provides business logic for domain management, policy applications, and compliance reporting.
 """
 
+import contextlib
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, InterfaceError, transaction
 from django.utils import timezone
 
+from hub.apps.core.events.bus import EventBusError
 from hub.apps.core.events.service_publishers import DataMeshEventPublisher
 from hub.apps.core.services.base import BaseService, ConflictError, NotFoundError, ValidationError
 from hub.apps.mesh.business_rules import DataMeshBusinessRules
@@ -172,16 +174,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             raise ValidationError("Boundaries must be a dictionary")
 
         # Validate common boundary fields if present
-        if "data_products" in boundaries:
-            if not isinstance(boundaries["data_products"], list):
-                raise ValidationError("boundaries.data_products must be a list")
+        if "data_products" in boundaries and not isinstance(boundaries["data_products"], list):
+            raise ValidationError("boundaries.data_products must be a list")
 
         if "schemas" in boundaries and not isinstance(boundaries["schemas"], list):
             raise ValidationError("boundaries.schemas must be a list")
 
-        if "access_patterns" in boundaries:
-            if not isinstance(boundaries["access_patterns"], list):
-                raise ValidationError("boundaries.access_patterns must be a list")
+        if "access_patterns" in boundaries and not isinstance(boundaries["access_patterns"], list):
+            raise ValidationError("boundaries.access_patterns must be a list")
 
     def _validate_resource_quota(self, resource_quota: dict[str, Any]) -> None:
         """
@@ -204,7 +204,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 raise ValidationError(f"Resource quota '{key}' cannot be negative")
 
     def _allocate_resource_quota(
-        self, tenant_id: str, resource_quota: dict[str, Any]
+        self, _tenant_id: str, resource_quota: dict[str, Any]
     ) -> dict[str, Any]:
         """
         Allocate resource quota for the domain.
@@ -241,7 +241,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # Initialize resource_usage to track actual usage
         resource_usage = {}
-        for key in allocated_quota.keys():
+        for key in allocated_quota:
             resource_usage[f"{key}_used"] = 0
 
         return allocated_quota
@@ -309,7 +309,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         try:
             tenant_obj = Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise ValidationError(f"Invalid or non-existent tenant: {effective_tenant_id}")
+            raise ValidationError(
+                f"Invalid or non-existent tenant: {effective_tenant_id}"
+            ) from None
 
         # Validate owner_id if provided: must exist and belong to tenant
         if owner_id:
@@ -318,7 +320,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             except User.DoesNotExist:
                 raise ValidationError(
                     f"Owner user {owner_id} not found or does not belong to tenant"
-                )
+                ) from None
 
         # Permission checks before workflow (wrong tenant, missing TENANT_ADMIN, ABAC deny)
         user_obj = User.objects.get(id=self.user_id) if self.user_id else None
@@ -326,12 +328,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             from hub.apps.core.services.base import PermissionError
             from hub.apps.governance.services import GovernanceService
 
-            try:
-                GovernanceService(
-                    tenant_id=effective_tenant_id, user_id=self.user_id
-                ).check_user_permissions_for_domain_creation(self.user_id, effective_tenant_id)
-            except PermissionError:
-                raise
+            GovernanceService(
+                tenant_id=effective_tenant_id, user_id=self.user_id
+            ).check_user_permissions_for_domain_creation(self.user_id, effective_tenant_id)
             # ABAC: skip for platform admins (they transcend tenant boundaries); otherwise enforce when tenant has policies for DATA_MESH_DOMAIN
             if not (user_obj and getattr(user_obj, "is_platform_admin", False)):
                 from hub.apps.governance.abac import ABACEngine
@@ -414,15 +413,15 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                         logger.warning(
                             "Workflow reported as existing but not found in registry - this is OK, workflow exists"
                         )
-                except Exception as lookup_error:
+                except (DatabaseError, InterfaceError) as lookup_error:
                     logger.warning(
                         f"Error looking up existing workflow: {lookup_error} - this is OK, workflow exists"
                     )
                 # Continue - workflow exists, which is fine. Don't raise any error.
             # Handle ValidationError types (both Django and custom)
-            elif isinstance(e, DjangoValidationError) or isinstance(e, ValidationError):
+            elif isinstance(e, (DjangoValidationError, ValidationError)):
                 # Re-raise other validation errors
-                logger.error(f"Validation error during workflow registration: {error_msg}")
+                logger.exception(f"Validation error during workflow registration: {error_msg}")
                 raise ValidationError(f"Failed to register workflow: {error_msg}") from e
             # Handle RuntimeError (from registry when workflow can't be found)
             elif isinstance(e, RuntimeError) and "transaction isolation" in error_msg.lower():
@@ -433,7 +432,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 # Don't raise - workflow exists, will be available shortly
             else:
                 # Re-raise other errors
-                logger.error(
+                logger.exception(
                     f"Unexpected error during workflow registration: {error_type}: {error_msg}"
                 )
                 raise ValidationError(f"Failed to register workflow: {error_msg}") from e
@@ -508,7 +507,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 )
 
         # Update status if different from default (workflow sets to ACTIVE)
-        if status != DomainStatus.ACTIVE and domain.status != status:
+        if status not in (DomainStatus.ACTIVE, domain.status):
             domain.status = status
             domain.save(update_fields=["status"])
 
@@ -754,7 +753,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 except User.DoesNotExist:
                     raise ValidationError(
                         f"Owner user {owner_id} not found or does not belong to tenant"
-                    )
+                    ) from None
                 changes["owner_id"] = {
                     "old": str(domain.owner_id) if domain.owner_id else None,
                     "new": str(owner_id),
@@ -788,13 +787,13 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             raise ConflictError(
                 f"Domain with name '{name}' already exists for tenant",
                 code="DOMAIN_NAME_EXISTS",
-            )
+            ) from None
         except DjangoValidationError as e:
             if "already exists" in str(e):
                 raise ConflictError(
                     f"Domain with name '{name}' already exists for tenant",
                     code="DOMAIN_NAME_EXISTS",
-                )
+                ) from None
             raise
 
         # Create audit log for domain update
@@ -809,12 +808,10 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 actor_user = None
                 if self.user_id:
-                    try:
+                    with contextlib.suppress(User.DoesNotExist):
                         actor_user = User.objects.get(
                             id=self.user_id, tenant_id=effective_tenant_id
                         )
-                    except User.DoesNotExist:
-                        pass  # Continue without actor_user if not found
 
                 # Check if ownership was transferred
                 ownership_transferred = "owner_id" in changes
@@ -986,10 +983,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             tenant_obj = Tenant.objects.get(id=effective_tenant_id)
             actor_user = None
             if self.user_id:
-                try:
+                with contextlib.suppress(User.DoesNotExist):
                     actor_user = User.objects.get(id=self.user_id, tenant_id=effective_tenant_id)
-                except User.DoesNotExist:
-                    pass  # Continue without actor_user if not found
 
             audit_details = {
                 "domain_id": domain_id_str,
@@ -1109,7 +1104,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             # First get policy without tenant filter to check tenant compatibility
             policy = AccessPolicy.objects.get(id=policy_id)
         except AccessPolicy.DoesNotExist:
-            raise NotFoundError(f"Policy with id '{policy_id}' not found")
+            raise NotFoundError(f"Policy with id '{policy_id}' not found") from None
 
         # 4. Validate domain and policy belong to same tenant (check before other validations)
         if policy.tenant_id != domain.tenant_id:
@@ -1166,7 +1161,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # 9. Check compliance (create or update compliance report)
         try:
             self._check_compliance_for_domain(domain, policy_application)
-        except Exception as e:
+        except (DatabaseError, InterfaceError) as e:
             # Log compliance check error but don't fail policy application
             logger.warning(
                 f"Compliance check failed for policy application {policy_application.id}: {e}",
@@ -1368,7 +1363,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 "domain", "policy", "applied_by"
             ).get(id=policy_application_id, domain__tenant_id=effective_tenant_id)
         except PolicyApplication.DoesNotExist:
-            raise NotFoundError(f"Policy application with id '{policy_application_id}' not found")
+            raise NotFoundError(
+                f"Policy application with id '{policy_application_id}' not found"
+            ) from None
 
         domain = policy_application.domain
         policy = policy_application.policy
@@ -1404,7 +1401,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # 5. Update compliance report
         try:
             self._check_compliance_for_domain(domain, policy_application)
-        except Exception as e:
+        except (DatabaseError, InterfaceError) as e:
             # Log compliance check error but don't fail revocation
             logger.warning(
                 f"Compliance check failed for policy revocation {policy_application.id}: {e}",
@@ -1527,7 +1524,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             try:
                 asset = Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
             except Asset.DoesNotExist:
-                raise NotFoundError(f"Asset with id '{asset_id}' not found")
+                raise NotFoundError(f"Asset with id '{asset_id}' not found") from None
 
         # 3. Retrieve all applied policies for the domain
         applied_policies = PolicyApplication.objects.filter(
@@ -1581,19 +1578,22 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                     compliance_status = MeshComplianceStatus.PARTIAL
 
             # Check policy expiration (if applicable)
-            if hasattr(policy_app, "expires_at") and policy_app.expires_at:
-                if policy_app.expires_at < timezone.now():
-                    violations.append(
-                        {
-                            "type": "POLICY_EXPIRED",
-                            "severity": "HIGH",
-                            "description": f"Policy {policy.name} has expired",
-                            "policy_application_id": str(policy_app.id),
-                            "policy_id": str(policy.id),
-                            "expires_at": policy_app.expires_at.isoformat(),
-                        }
-                    )
-                    compliance_status = MeshComplianceStatus.NON_COMPLIANT
+            if (
+                hasattr(policy_app, "expires_at")
+                and policy_app.expires_at
+                and policy_app.expires_at < timezone.now()
+            ):
+                violations.append(
+                    {
+                        "type": "POLICY_EXPIRED",
+                        "severity": "HIGH",
+                        "description": f"Policy {policy.name} has expired",
+                        "policy_application_id": str(policy_app.id),
+                        "policy_id": str(policy.id),
+                        "expires_at": policy_app.expires_at.isoformat(),
+                    }
+                )
+                compliance_status = MeshComplianceStatus.NON_COMPLIANT
 
         # 7. Validate assets if asset_id provided or check domain assets
         if asset:
@@ -1736,7 +1736,6 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 10. Publish compliance.checked event
         try:
-
             # Publish both mesh.compliance.checked events
             self.publish_mesh_compliance_checked(
                 domain_id=str(domain.id),
@@ -1746,14 +1745,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 tenant_id=effective_tenant_id,
                 user_id=self.user_id,
             )
-        except Exception as e:
+        except EventBusError as e:
             # Log error but don't fail compliance check
             logger.warning(
                 f"Failed to publish compliance.checked event for domain {domain.id}: {e}",
                 exc_info=True,
             )
 
-        # 11. Publish compliance.report.generated event
+        # 11. Publish mesh.compliance.report_generated event
         try:
             self.publish_compliance_report_generated(
                 compliance_report_id=str(compliance_report.id),
@@ -1764,7 +1763,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 tenant_id=effective_tenant_id,
                 user_id=self.user_id,
             )
-        except Exception as e:
+        except EventBusError as e:
             # Log error but don't fail compliance check
             logger.warning(
                 f"Failed to publish compliance.report.generated event for domain {domain.id}: {e}",
@@ -1808,7 +1807,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         try:
             Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
-            raise ValidationError(f"Tenant with id '{effective_tenant_id}' not found")
+            raise ValidationError(f"Tenant with id '{effective_tenant_id}' not found") from None
 
         import logging
 
@@ -1966,7 +1965,6 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 7. Publish topology.updated event
         try:
-
             self.publish_topology_updated(
                 tenant_id=effective_tenant_id,
                 domain_count=len(nodes),
@@ -1974,7 +1972,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 updated_at=timezone.now().isoformat(),
                 user_id=self.user_id,
             )
-        except Exception as e:
+        except EventBusError as e:
             # Log error but don't fail topology generation
             logger.warning(
                 f"Failed to publish topology.updated event for tenant {effective_tenant_id}: {e}",
@@ -2070,7 +2068,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 tenant_id=effective_tenant_id,
                 user_id=self.user_id,
             )
-        except Exception as e:
+        except EventBusError as e:
             import logging
 
             logger = logging.getLogger(__name__)

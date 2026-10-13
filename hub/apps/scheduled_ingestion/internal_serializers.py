@@ -31,6 +31,9 @@ class InternalUpdateIngestionRunSerializer(serializers.Serializer):
     completed_at = serializers.DateTimeField(required=False)
     prefect_flow_run_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
     error_message = serializers.CharField(required=False, allow_blank=True)
+    # W3.5 (R2-P4) — the worker's liveness claim (the Prefect flow's
+    # heartbeat seam; the lease the stuck-run detector honors).
+    heartbeat_at = serializers.DateTimeField(required=False)
 
 
 class InternalProcessFileSerializer(serializers.Serializer):

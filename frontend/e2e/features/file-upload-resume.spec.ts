@@ -22,9 +22,10 @@
  *      the localStorage checkpoint is left behind so a reload would
  *      surface a Resume prompt.
  *   3. **Resume action wires the file-picker.** Verifies that
- *      clicking the Resume CTA opens the resume-only ``<input
- *      type=file>`` (the user-gesture path that lets the user re-pick
- *      the same File handle since the original is gone after reload).
+ *      clicking the Resume CTA opens the shared ``<input type=file>``
+ *      (the user-gesture path that lets the user re-pick the same
+ *      File handle since the original is gone after reload); the pick
+ *      is routed to the resume path by the CTA click.
  *
  * What is intentionally NOT duplicated here (covered upstream):
  *   - Real S3 ``list_parts`` round-trip — pytest contract test
@@ -37,6 +38,8 @@
  *     ``src/features/files/utils/xhrChunkPut.test.ts``.
  */
 
+import { mkdirSync, truncateSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../fixtures/auth';
 import { waitForAppMainReady } from '../fixtures/helpers';
@@ -129,9 +132,10 @@ test.describe('Feature: File Upload Resume (Phase 260.3.F.3)', () => {
     await page.reload();
     await waitForAppMainReady(page, { timeout: 30_000 });
 
-    // The dedicated resume <input type="file"> exists in the DOM with
-    // a stable test id. Pre-click the input is empty.
-    const resumeInput = page.getByTestId('resume-file-input');
+    // The shared file input exists in the DOM with a stable test id
+    // (the resume CTA re-uses it — the pick is routed by the resume
+    // button click, not by a dedicated input). Pre-click it is empty.
+    const resumeInput = page.getByTestId('file-upload-input');
     await expect(resumeInput).toBeAttached();
 
     // Wire a filechooser listener BEFORE the click — Playwright
@@ -171,40 +175,86 @@ test.describe('Feature: File Upload Resume (Phase 260.3.F.3)', () => {
     await waitForAppMainReady(page, { timeout: 30_000 });
     await page.evaluate((key) => localStorage.removeItem(key), RESUME_STORAGE_KEY);
 
-    // Block ALL S3-style PUTs so the chunk transport fails. The
+    // Block ALL object-store PUTs so the chunk transport fails. The
     // backend ``/files/init/`` and ``/chunks/init/`` calls remain
     // live so the multipart upload_id IS allocated and the baseline
     // checkpoint (Phase 260.3.F GAP-A defence) is written before the
     // first PUT is attempted.
+    //
+    // Match on the TARGET ORIGIN, not hostname tokens: 260.7.J rewrites
+    // the internally-signed ``minio-test:9000`` presigned URL to the
+    // browser-reachable ``localhost:9010``, so any PUT leaving the app
+    // origin is the chunk transport by construction. The previous
+    // ``/(?:minio|amazonaws|s3\b)/`` URL regex only matched by accident
+    // (the MinIO access-key prefix inside the ``X-Amz-Credential`` query
+    // param) — a cred rotation would have silently stopped aborting, let
+    // the upload complete, cleared the checkpoint, and flipped this test
+    // into a hard failure.
+    const appOrigin = new URL(page.url()).origin;
     await page.route(/.+/, async (route) => {
       const req = route.request();
-      const url = req.url();
-      const method = req.method();
-      if (method === 'PUT' && /(?:minio|amazonaws|s3\b)/i.test(url)) {
+      if (req.method() === 'PUT' && new URL(req.url()).origin !== appOrigin) {
         await route.abort('failed');
         return;
       }
       await route.continue();
     });
 
-    // Drop a 200 MB file so the backend takes the multipart path
-    // (``size > 100 MB`` threshold; see ``init_upload`` in
-    // ``hub/apps/files/views.py``). Buffer.alloc is zero-filled which
-    // is fine — the bytes never reach S3 since we abort the PUT.
+    // The upload dropzone lives inside the Upload modal (FileListPage
+    // renders FileUpload in a Modal opened by btn-upload-file — the
+    // auto-open-on-checkpoint path doesn't apply here since this test
+    // pre-clears checkpoints). Open the modal first.
+    await page.getByTestId('btn-upload-file').click();
     const dropzone = page.getByTestId('file-upload-dropzone');
     await expect(dropzone).toBeVisible();
-    const dropzoneInput = dropzone.locator('input[type="file"]');
-    await dropzoneInput.setInputFiles({
-      name: 'resume-victim.csv',
-      mimeType: 'text/csv',
-      buffer: Buffer.alloc(200 * 1024 * 1024 + 1024),
-    });
 
-    // Wait for the failed PUT to propagate. The uploader catches the
-    // error and surfaces it via ``ErrorDisplay``; the dropzone
-    // returns to idle. We don't assert on the timing — just that
-    // the upload error renders within a reasonable budget.
-    await page.waitForTimeout(3_000);
+    // Drop a 200 MB file so the backend takes the multipart path
+    // (``size > 100 MB`` threshold; see ``init_upload`` in
+    // ``hub/apps/files/views.py``). Playwright caps in-memory
+    // ``setInputFiles`` buffers at 50 MB (b7 #22 hit exactly that
+    // error), so the payload is a SPARSE file on disk passed by path:
+    // ``truncateSync`` gives it the logical 200 MB size with zero
+    // physical blocks, the browser streams logical zeros, and the
+    // bytes never reach S3 since we abort the PUT. The file lives
+    // under the per-test output dir (wiped by the runner each run),
+    // so no cleanup bookkeeping is needed.
+    const bigFilePath = test.info().outputPath('resume-victim.csv');
+    // outputPath() does not create the file (or its parent dir) and
+    // truncateSync only extends EXISTING files — create it first.
+    mkdirSync(dirname(bigFilePath), { recursive: true });
+    writeFileSync(bigFilePath, '');
+    truncateSync(bigFilePath, 200 * 1024 * 1024 + 1024);
+    const dropzoneInput = dropzone.locator('input[type="file"]');
+    await dropzoneInput.setInputFiles(bigFilePath);
+
+    // Wait for the GAP-A baseline checkpoint to land instead of racing a
+    // fixed sleep: ``/files/init/`` must return the upload_id before the
+    // uploader can persist the baseline, and that call takes 1-3.2s on
+    // the test stack (MinIO ``initiate_multipart_upload`` on a loaded
+    // host). A fixed 3s wait lost this race ~50% of runs — the
+    // localStorage read happened before init completed and saw null.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(
+            (key) => localStorage.getItem(key),
+            RESUME_STORAGE_KEY
+          ),
+        {
+          timeout: 30_000,
+          message: 'GAP-A baseline checkpoint was never persisted',
+        }
+      )
+      .not.toBeNull();
+
+    // Pin that the aborted chunk PUT actually failed and surfaced via
+    // ErrorDisplay — verifies the "failed chunk PUT" premise rather
+    // than assuming it, and guards against the upload silently
+    // completing and clearing the checkpoint.
+    await expect(page.getByTestId('error-display-title')).toHaveText(
+      'Upload failed',
+      { timeout: 15_000 }
+    );
 
     // The Phase 260.3.F GAP-A baseline checkpoint MUST be on disk
     // even though zero parts ever PUT successfully.

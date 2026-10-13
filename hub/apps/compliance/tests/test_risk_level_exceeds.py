@@ -88,24 +88,28 @@ class RiskLevelExceedsTest(SimpleTestCase):
 
     @pytest.mark.unit
     def test_exceeds_full_fail_closed_truth_table(self):
-        """Every combination of level × threshold behaves correctly.
+        """Every combination of level x threshold behaves correctly.
 
         Concrete ordinal logic (higher > lower), plus fail-closed for
         UNKNOWN level, UNKNOWN/garbage threshold, and None values.
         """
         # ── Same-level cases ──────────────────────────────────────────
         for rl in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
-            self.assertFalse(
-                RiskLevel.exceeds(rl, rl), f"{rl} must not exceed itself"
-            )
+            self.assertFalse(RiskLevel.exceeds(rl, rl), f"{rl} must not exceed itself")
         # UNKNOWN vs UNKNOWN — fail-closed (threshold is UNKNOWN)
         self.assertTrue(RiskLevel.exceeds("UNKNOWN", "UNKNOWN"))
 
         # ── Lower vs higher (must NOT exceed) ─────────────────────────
         non_exceed_pairs = [
-            ("NONE", "LOW"), ("NONE", "MEDIUM"), ("NONE", "HIGH"), ("NONE", "CRITICAL"),
-            ("LOW", "MEDIUM"), ("LOW", "HIGH"), ("LOW", "CRITICAL"),
-            ("MEDIUM", "HIGH"), ("MEDIUM", "CRITICAL"),
+            ("NONE", "LOW"),
+            ("NONE", "MEDIUM"),
+            ("NONE", "HIGH"),
+            ("NONE", "CRITICAL"),
+            ("LOW", "MEDIUM"),
+            ("LOW", "HIGH"),
+            ("LOW", "CRITICAL"),
+            ("MEDIUM", "HIGH"),
+            ("MEDIUM", "CRITICAL"),
             ("HIGH", "CRITICAL"),
         ]
         for lower, higher in non_exceed_pairs:
@@ -116,9 +120,15 @@ class RiskLevelExceedsTest(SimpleTestCase):
 
         # ── Higher vs lower (must exceed) ─────────────────────────────
         exceed_pairs = [
-            ("LOW", "NONE"), ("MEDIUM", "NONE"), ("HIGH", "NONE"), ("CRITICAL", "NONE"),
-            ("MEDIUM", "LOW"), ("HIGH", "LOW"), ("CRITICAL", "LOW"),
-            ("HIGH", "MEDIUM"), ("CRITICAL", "MEDIUM"),
+            ("LOW", "NONE"),
+            ("MEDIUM", "NONE"),
+            ("HIGH", "NONE"),
+            ("CRITICAL", "NONE"),
+            ("MEDIUM", "LOW"),
+            ("HIGH", "LOW"),
+            ("CRITICAL", "LOW"),
+            ("HIGH", "MEDIUM"),
+            ("CRITICAL", "MEDIUM"),
             ("CRITICAL", "HIGH"),
         ]
         for higher, lower in exceed_pairs:

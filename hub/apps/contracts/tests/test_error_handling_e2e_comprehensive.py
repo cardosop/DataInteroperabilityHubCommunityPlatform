@@ -15,6 +15,8 @@ Tests verify proper error types, error codes, error messages, and error recovery
 import json
 import uuid
 
+import pytest
+from django.conf import settings as _settings
 from rest_framework import status
 
 from hub.apps.contracts.linking_validation import (
@@ -36,7 +38,7 @@ from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
 
-def create_valid_odps_4_1(product_id: str = None) -> dict:
+def create_valid_odps_4_1(product_id: str | None = None) -> dict:
     """Create a valid ODPS 4.1 document for testing"""
     if product_id is None:
         product_id = f"test-product-{uuid.uuid4().hex[:12]}"
@@ -69,7 +71,7 @@ def create_valid_odps_4_1(product_id: str = None) -> dict:
     }
 
 
-def create_valid_odcs_3_0_2(contract_id: str = None) -> dict:
+def create_valid_odcs_3_0_2(contract_id: str | None = None) -> dict:
     """Create a valid ODCS 3.0.2 document for testing"""
     if contract_id is None:
         contract_id = f"test-odcs-{uuid.uuid4().hex[:12]}"
@@ -82,6 +84,24 @@ def create_valid_odcs_3_0_2(contract_id: str = None) -> dict:
         "version": "1.0.0",
         "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
     }
+
+
+# The suite exercises the paid Product-First flow error surface
+# (malformed ODPS documents, ref-resolution failures, linking validation) —
+# in core-only mode the product endpoint returns FEATURE_NOT_AVAILABLE
+# (404) before any of these downstream validations, so the module is
+# skipped there.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Error-handling suite exercises the paid marketplace "
+            "Product-First flow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    ),
+]
 
 
 class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
@@ -1065,11 +1085,11 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         contract_error = contract_response.data.get("error") or contract_response.data
 
         self.assertTrue(
-            isinstance(product_error, dict) or isinstance(product_error, str),
+            isinstance(product_error, (dict, str)),
             "Product endpoint should return error information",
         )
         self.assertTrue(
-            isinstance(contract_error, dict) or isinstance(contract_error, str),
+            isinstance(contract_error, (dict, str)),
             "Contract endpoint should return error information",
         )
 

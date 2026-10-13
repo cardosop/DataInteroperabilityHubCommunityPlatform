@@ -72,13 +72,13 @@ class MetricsExportTest(TestCase):
         # 4. Comments: # HELP and # TYPE
 
         lines = content.split("\n")
-        for line in lines:
-            line = line.strip()
+        for raw_line in lines:
+            line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue  # Skip comments and empty lines
 
             # Check for HELP or TYPE comments
-            if line.startswith("# HELP") or line.startswith("# TYPE"):
+            if line.startswith(("# HELP", "# TYPE")):
                 continue
 
             # Check metric format: name{labels} value
@@ -185,8 +185,8 @@ class MetricsExportTest(TestCase):
         labeled_metric_pattern = r"^([a-zA-Z_:][a-zA-Z0-9_:]*)\{([^}]+)\}\s+[\d.]+$"
 
         lines = content.split("\n")
-        for line in lines:
-            line = line.strip()
+        for raw_line in lines:
+            line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
 

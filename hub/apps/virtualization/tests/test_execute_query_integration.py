@@ -4,7 +4,6 @@ Integration tests for execute_query() method.
 Tests federated query execution and E2E workflows using real services.
 """
 
-import contextlib
 import socket
 import unittest
 import uuid
@@ -15,7 +14,6 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.virtualization_support import get_test_db_source as _get_test_db_source
@@ -44,9 +42,10 @@ def _database_reachable():
             (db.get("HOST", "localhost"), int(db.get("PORT", 5432))), timeout=2
         )
         sock.close()
-        return True
     except OSError:
         return False
+    else:
+        return True
 
 
 def semantic_service_available() -> bool:
@@ -61,9 +60,10 @@ def semantic_service_available() -> bool:
 
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except (ConnectionError, OSError, TimeoutError):
         return False
+    else:
+        return is_healthy
 
 
 class VirtualizationExecuteQueryIntegrationTest(TestCase):
@@ -195,12 +195,14 @@ class VirtualizationExecuteQueryIntegrationTest(TestCase):
         self.assertIsNotNone(execution1)
         self.assertIsNotNone(execution2)
         self.assertEqual(
-            execution1.status, QueryExecutionStatus.COMPLETED,
-            f"First execution should complete; got {execution1.status}"
+            execution1.status,
+            QueryExecutionStatus.COMPLETED,
+            f"First execution should complete; got {execution1.status}",
         )
         self.assertEqual(
-            execution2.status, QueryExecutionStatus.COMPLETED,
-            f"Second execution should complete; got {execution2.status}"
+            execution2.status,
+            QueryExecutionStatus.COMPLETED,
+            f"Second execution should complete; got {execution2.status}",
         )
         self.assertIsNotNone(execution1.result_cache_key)
         self.assertIsNotNone(execution2.result_cache_key)
@@ -265,14 +267,13 @@ class VirtualizationExecuteQueryE2ETest(TestCase):
             parameters={},
         )
 
-        self.assertIsNotNone(
-            execution, "execute_query() must return an execution record"
-        )
+        self.assertIsNotNone(execution, "execute_query() must return an execution record")
         self.assertEqual(execution.virtual_dataset_id, dataset.id)
         # SYNC execution with valid sources should complete
         self.assertEqual(
-            execution.status, QueryExecutionStatus.COMPLETED,
-            f"SYNC E2E execution should complete; got {execution.status}"
+            execution.status,
+            QueryExecutionStatus.COMPLETED,
+            f"SYNC E2E execution should complete; got {execution.status}",
         )
         self.assertIsNotNone(execution.query)
         self.assertGreater(len(execution.query), 0)
@@ -305,9 +306,7 @@ class VirtualizationExecuteQueryE2ETest(TestCase):
             parameters={},
         )
 
-        self.assertIsNotNone(
-            execution, "execute_query() must return an execution record"
-        )
+        self.assertIsNotNone(execution, "execute_query() must return an execution record")
         self.assertEqual(execution.execution_mode, QueryExecutionMode.ASYNC)
         self.assertIn(
             execution.status,
@@ -316,7 +315,7 @@ class VirtualizationExecuteQueryE2ETest(TestCase):
                 QueryExecutionStatus.RUNNING,
                 QueryExecutionStatus.COMPLETED,
             ],
-            f"ASYNC execution should not fail with valid sources; got {execution.status}"
+            f"ASYNC execution should not fail with valid sources; got {execution.status}",
         )
 
         execution.refresh_from_db()
@@ -485,7 +484,7 @@ class VirtualizationGetQueryResultIntegrationTest(TestCase):
         import base64
         import io
 
-        import pandas as pd
+        import pandas as pd  # type: ignore[import-untyped]
         from django.core.cache import cache
 
         # Create test results

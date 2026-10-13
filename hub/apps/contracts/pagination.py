@@ -6,7 +6,7 @@ Implements cursor-based and offset-based pagination for optimal performance.
 
 from typing import Any
 
-from django.core.paginator import Paginator
+from django.core.paginator import InvalidPage, Paginator
 from django.db.models import QuerySet
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.response import Response
@@ -84,7 +84,7 @@ def paginate_queryset(
 
     try:
         page_obj = paginator.page(page)
-    except Exception:
+    except InvalidPage:
         # Invalid page number, return empty results
         return [], {
             "count": paginator.count,

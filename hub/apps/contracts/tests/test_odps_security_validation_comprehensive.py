@@ -408,9 +408,10 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             enable_caching=False,
         )
         # Add test URL to allowlist
-        resolver.config._config_data["url_allowlist"] = list(
-            self.config._config_data["url_allowlist"]
-        ) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = [
+            *list(self.config._config_data["url_allowlist"]),
+            "https://example.com",
+        ]
 
         # Simulate that 1.5MB has already been used by resolving a ref
         # First ref: valid JSON content of approximately 1.5MB
@@ -460,9 +461,10 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             enable_caching=False,
             httpx_transport=httpx.MockTransport(handler),
         )
-        resolver.config._config_data["url_allowlist"] = list(
-            self.config._config_data["url_allowlist"]
-        ) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = [
+            *list(self.config._config_data["url_allowlist"]),
+            "https://example.com",
+        ]
 
         # resolve() calls _check_timeout() which initializes _start_time
         result = resolver.resolve_external("https://example.com/schema.json")
@@ -507,9 +509,10 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             enable_caching=False,
             httpx_transport=httpx.MockTransport(handler),
         )
-        resolver.config._config_data["url_allowlist"] = list(
-            self.config._config_data["url_allowlist"]
-        ) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = [
+            *list(self.config._config_data["url_allowlist"]),
+            "https://example.com",
+        ]
 
         # Set start_time to 1 second ago (within 30 second timeout)
         resolver._start_time = time.time() - 1
@@ -689,9 +692,10 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             max_ref_size=1000,  # 1KB for testing
             enable_caching=False,
         )
-        resolver.config._config_data["url_allowlist"] = list(
-            self.config._config_data["url_allowlist"]
-        ) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = [
+            *list(self.config._config_data["url_allowlist"]),
+            "https://example.com",
+        ]
 
         large_padding = 2000 - len(json.dumps({"data": ""}).encode())
         large_content = json.dumps({"data": "x" * large_padding}).encode()
@@ -795,9 +799,10 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             max_total_size=DEFAULT_MAX_TOTAL_SIZE,  # 10MB
             enable_caching=False,
         )
-        resolver.config._config_data["url_allowlist"] = list(
-            self.config._config_data["url_allowlist"]
-        ) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = [
+            *list(self.config._config_data["url_allowlist"]),
+            "https://example.com",
+        ]
 
         exact_padding = DEFAULT_MAX_REF_SIZE - len(json.dumps({"data": ""}).encode())
         exact_content = json.dumps({"data": "x" * exact_padding}).encode()
@@ -833,9 +838,10 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             max_total_size=DEFAULT_MAX_TOTAL_SIZE,
             enable_caching=False,
         )
-        resolver_total.config._config_data["url_allowlist"] = list(
-            self.config._config_data["url_allowlist"]
-        ) + ["https://example.com"]
+        resolver_total.config._config_data["url_allowlist"] = [
+            *list(self.config._config_data["url_allowlist"]),
+            "https://example.com",
+        ]
 
         first_ref_size = DEFAULT_MAX_TOTAL_SIZE - DEFAULT_MAX_REF_SIZE
         first_padding = first_ref_size - len(json.dumps({"data": ""}).encode())
@@ -903,7 +909,7 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
         """Test that security validation handles None values correctly."""
         # Passing None should raise TypeError or ODPSRefResolutionError
         with self.assertRaises((TypeError, ODPSRefResolutionError)):
-            self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
+            self.resolver.resolve_external(None)  # test: edge-case type exercise
 
     def test_security_validation_handles_nested_structures(self):
         """Test that security validation handles nested structures correctly."""

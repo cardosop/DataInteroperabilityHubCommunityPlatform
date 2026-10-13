@@ -1,10 +1,14 @@
-"""URL routing for warehouse connections, ACLs, query, and Delta Sharing."""
+"""URL routing for warehouse connections, ACLs, and query.
+
+(The fabricated DeltaShareView routes were removed with 5.5 — the
+native bearer-token protocol surface lives under
+/api/v1/databricks/delta-sharing.)
+"""
 
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    DeltaShareView,
     LiveQueryViewSet,
     WarehouseConnectionACLViewSet,
     WarehouseConnectionViewSet,
@@ -14,16 +18,7 @@ router = DefaultRouter()
 router.register(r"connections", WarehouseConnectionViewSet, basename="warehouse-connection")
 router.register(r"acls", WarehouseConnectionACLViewSet, basename="warehouse-acl")
 
-urlpatterns = router.urls + [
+urlpatterns = [
+    *router.urls,
     path("query/", LiveQueryViewSet.as_view({"get": "list"}), name="livequery-list"),
-    path(
-        "share/<uuid:asset_id>/",
-        DeltaShareView.as_view({"get": "list_tables"}),
-        name="deltashare-list-tables",
-    ),
-    path(
-        "share/<uuid:asset_id>/query/",
-        DeltaShareView.as_view({"get": "query_table"}),
-        name="deltashare-query-table",
-    ),
 ]

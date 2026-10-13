@@ -395,9 +395,10 @@ class ODPSCreationCompensationTransactionTest(ODPSCreationCompensationIntegratio
         except ValidationError as e:
             # If creation fails validation, verify the error is informative
             self.assertIsNotNone(e.details)
-            self.assertTrue(any(
-                word in str(e).lower() for word in ("name", "required", "missing", "normalis")
-            ), f"ValidationError should explain the rejection; got: {e}")
+            self.assertTrue(
+                any(word in str(e).lower() for word in ("name", "required", "missing", "normalis")),
+                f"ValidationError should explain the rejection; got: {e}",
+            )
 
     def test_compensation_handles_nested_structures(self):
         """Test that compensation handles nested structures correctly."""

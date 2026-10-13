@@ -49,7 +49,9 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #9ca3af;
+  /* ≥4.5:1 contrast on the white panel (gray-500; gray-400 failed axe
+     color-contrast as a SERIOUS violation). */
+  color: #6b7280;
   margin: 0 0 6px;
 }
 

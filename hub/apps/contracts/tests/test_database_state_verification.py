@@ -10,6 +10,7 @@ This test suite implements comprehensive, engineering-grade validation for:
 All tests use real implementations (no mocks/stubs) per requirements.
 """
 
+import contextlib
 import json
 import time
 import uuid
@@ -37,6 +38,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
+from hub.apps.core.services.base import NotFoundError
 from tests.utils.wait_helpers import wait_for_event_persistence
 
 logger = structlog.get_logger(__name__)
@@ -1266,7 +1268,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
         # Try to link with invalid ODPS contract ID (should fail)
         invalid_odps_id = str(uuid.uuid4())
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(NotFoundError):
             self.contract_service.link_odps_to_odcs(
                 odcs_contract_id=str(odcs_contract.id), odps_contract_id=invalid_odps_id
             )
@@ -1390,7 +1392,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                     if Contract.objects.filter(id=odps_id).exists():
                         break
                     if attempt < max_retries - 1:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             0.05
                         )  # INTENTIONAL: retry backoff for cross-thread transaction visibility
                     else:
@@ -1399,10 +1401,11 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs_contract.id), odps_contract_id=str(odps_id)
                 )
-                return True
             except Exception:
                 # In concurrent scenarios, some failures are expected (e.g., duplicate links)
                 return False
+            else:
+                return True
             finally:
                 from django.db import connection as _conn
 
@@ -1561,7 +1564,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                     ):
                         break
                     if attempt < max_retries - 1:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             0.05
                         )  # INTENTIONAL: retry backoff for cross-thread transaction visibility
                     else:
@@ -1574,13 +1577,14 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs2.id), odps_contract_id=str(odps2.id)
                 )
-                return True
             except Exception as e:
                 # Log the exception for debugging, but return False
                 import logging
 
                 logging.getLogger(__name__).debug(f"Link sequence 1 failed: {e}")
                 return False
+            else:
+                return True
             finally:
                 from django.db import connection as _conn
 
@@ -1601,7 +1605,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                     ):
                         break
                     if attempt < max_retries - 1:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             0.05
                         )  # INTENTIONAL: retry backoff for cross-thread transaction visibility
                     else:
@@ -1614,13 +1618,14 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs1.id), odps_contract_id=str(odps1.id)
                 )
-                return True
             except Exception as e:
                 # Log the exception for debugging, but return False
                 import logging
 
                 logging.getLogger(__name__).debug(f"Link sequence 2 failed: {e}")
                 return False
+            else:
+                return True
             finally:
                 from django.db import connection as _conn
 
@@ -1793,17 +1798,21 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
 
     def test_transaction_consistency_with_rollback(self):
         """Test transaction consistency with rollback scenarios"""
+        contract = None
+
         # Create contract in transaction
-        try:
+        def _create_contract_and_fail():
+            nonlocal contract
             with transaction.atomic():
                 contract = self.contract_service.create_contract(
                     original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
                 )
                 # Simulate error that causes rollback
                 raise ValueError("Simulated error")
-        except ValueError:
-            # Transaction should be rolled back
-            pass
+
+        # Transaction should be rolled back
+        with contextlib.suppress(ValueError):
+            _create_contract_and_fail()
 
         # Contract should not exist after rollback
         contracts = Contract.objects.filter(id=contract.id)

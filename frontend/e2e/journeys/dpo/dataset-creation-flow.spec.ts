@@ -48,7 +48,7 @@ test.describe('Dataset Creation Flow', () => {
     // Upload file if dropzone present - handle rate limiting (429)
     const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
     if ((await dropzone.count()) === 0) {
-      test.skip(true, 'File upload dropzone not found — UI may have changed');
+      test.skip((await dropzone.count()) === 0, 'File upload dropzone not found — UI may have changed');
     }
     {
       await expect(dropzone.first()).toBeVisible({ timeout: 10000 });
@@ -66,7 +66,11 @@ test.describe('Dataset Creation Flow', () => {
         while (!uploadSuccess && retries < maxRetries) {
           try {
             await fileInput.first().setInputFiles({
-              name: 'test.csv',
+              // Backend enforces unique ACTIVE filenames per tenant
+          // (FILENAME_COLLISION 409) — a fixed name collides with
+          // residue from prior runs and every retry 409s. Unique
+          // per attempt, like the asset-key convention.
+          name: `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.csv`,
               mimeType: 'text/csv',
               buffer: Buffer.from('name,age\nJohn,30\nJane,25'),
             });
@@ -211,6 +215,11 @@ test.describe('Dataset Creation Flow', () => {
     await verifySemanticIri(page, 'dataset', datasetId, {
       testInfo: test.info(),
       skipSparqlOn: ({ status }) => status === 404 || status === 501 || status === 503,
+      // Datasets are NOT ingested into the semantic triple store (only
+      // assets are — verified: zero /id/dataset/ subjects ever). The
+      // dereference + JSON-LD steps still assert the Linked Data surface;
+      // only the triple-visibility check is opted out.
+      expectSparqlTriple: false,
     });
   });
 });

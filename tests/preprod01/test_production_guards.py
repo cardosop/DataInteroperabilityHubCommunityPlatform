@@ -17,11 +17,20 @@ def _run_guard_code(env_vars: dict) -> None:
     _DEV_SECRET_KEY = "dev-secret-key-not-for-production"
     _DEV_JWT_SECRET_KEY = "dev-jwt-secret-key-not-for-production"
     _DEV_ENCRYPTION_KEY = "dev-encryption-key-not-for-production"
+    # Production-safe defaults: guards under test must fire on their OWN
+    # condition, not get pre-empted by the SECRET_KEY guard. Tests that
+    # exercise a key guard pass the dev default explicitly.
+    _PROD_SECRET_KEY = "production-safe-secret-key-0123456789abcdef0123456789abcdef"
+    _PROD_JWT_SECRET_KEY = "production-safe-jwt-secret-0123456789abcdef0123456789abcdef"
+    _PROD_ENCRYPTION_KEY = "production-safe-encryption-key-0123456789abcdef0123456789abcdef"
 
     ENVIRONMENT = env_vars.get("ENVIRONMENT", "development")
-    SECRET_KEY = env_vars.get("SECRET_KEY", _DEV_SECRET_KEY)
-    JWT_SECRET_KEY = env_vars.get("JWT_SECRET_KEY", _DEV_JWT_SECRET_KEY)
-    ENCRYPTION_KEY = env_vars.get("ENCRYPTION_KEY", _DEV_ENCRYPTION_KEY)
+    _default_key = _PROD_SECRET_KEY if ENVIRONMENT == "production" else _DEV_SECRET_KEY
+    SECRET_KEY = env_vars.get("SECRET_KEY", _default_key)
+    _default_jwt = _PROD_JWT_SECRET_KEY if ENVIRONMENT == "production" else _DEV_JWT_SECRET_KEY
+    JWT_SECRET_KEY = env_vars.get("JWT_SECRET_KEY", _default_jwt)
+    _default_enc = _PROD_ENCRYPTION_KEY if ENVIRONMENT == "production" else _DEV_ENCRYPTION_KEY
+    ENCRYPTION_KEY = env_vars.get("ENCRYPTION_KEY", _default_enc)
     DEBUG = env_vars.get("DEBUG", "False")
 
     if ENVIRONMENT == "production":
@@ -89,6 +98,18 @@ class TestDebugGuard:
 
     def test_debug_false_in_production_passes(self):
         env = {"ENVIRONMENT": "production", "DEBUG": "False"}
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strongpw@host:6379/0",
+            )
+        )
         _run_guard_code(env)
 
     def test_debug_true_in_development_passes(self):
@@ -114,6 +135,18 @@ class TestPgBouncerChannelsGuard:
             "PGBOUNCER_ENABLED": "true",
             "CHANNEL_LAYERS_CONFIGURED": "false",
         }
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strongpw@host:6379/0",
+            )
+        )
         _run_guard_code(env)
 
     def test_channels_without_pgbouncer_passes(self):
@@ -122,6 +155,18 @@ class TestPgBouncerChannelsGuard:
             "PGBOUNCER_ENABLED": "false",
             "CHANNEL_LAYERS_CONFIGURED": "true",
         }
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strongpw@host:6379/0",
+            )
+        )
         _run_guard_code(env)
 
 
@@ -205,7 +250,7 @@ class TestSecretKeyGuard:
     """Critical keys must not be dev defaults in production."""
 
     def test_dev_secret_key_in_production_raises(self):
-        env = {"ENVIRONMENT": "production", "SECRET_KEY": "dev-secret-key-change-me"}
+        env = {"ENVIRONMENT": "production", "SECRET_KEY": "dev-secret-key-not-for-production"}
         with pytest.raises(ImproperlyConfigured, match="SECRET_KEY"):
             _run_guard_code(env)
 
@@ -214,4 +259,16 @@ class TestSecretKeyGuard:
             "ENVIRONMENT": "production",
             "SECRET_KEY": "prod-real-secret-64-chars-long-xxxxxxxxxx",
         }
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strongpw@host:6379/0",
+            )
+        )
         _run_guard_code(env)

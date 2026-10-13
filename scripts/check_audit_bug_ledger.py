@@ -519,7 +519,7 @@ def load_ledger(path: Path) -> dict:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Malformed ledger at {path}: {exc}") from exc
     if not isinstance(parsed, dict):
-        raise ValueError(
+        raise TypeError(
             f"Malformed ledger at {path}: root must be a JSON object, got {type(parsed).__name__}"
         )
     return parsed

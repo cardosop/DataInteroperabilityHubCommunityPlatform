@@ -26,19 +26,30 @@ class TestS3Contract:
 
     @pytest.fixture
     def s3_endpoint(self):
-        return os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
+        from django.conf import settings
+
+        # Inside the api-service-test container localhost:9000 is not MinIO —
+        # the compose service is minio-test:9000 (AWS_S3_ENDPOINT_URL).
+        return (
+            os.environ.get("MINIO_ENDPOINT")
+            or getattr(settings, "AWS_S3_ENDPOINT_URL", None)
+            or "http://localhost:9000"
+        )
 
     @pytest.fixture
     def s3_credentials(self):
+        # Defaults match docker-compose.test.yml's minio-test service
+        # (minio/minio123): .env.test leaves MINIO_ROOT_USER/PASSWORD empty
+        # so compose interpolation falls back to these.
         return {
-            "access_key": os.environ.get("MINIO_ACCESS_KEY", "minioadmin"),
-            "secret_key": os.environ.get("MINIO_SECRET_KEY", "minioadmin"),
+            "access_key": os.environ.get("MINIO_ACCESS_KEY", "minio"),
+            "secret_key": os.environ.get("MINIO_SECRET_KEY", "minio123"),
         }
 
     def test_s3_put_get_delete_cycle(self, s3_endpoint, s3_credentials):
         """PutObject → GetObject → DeleteObject completes without error."""
         import boto3
-        from botocore.exceptions import ClientError
+        from botocore.exceptions import ClientError, EndpointConnectionError
 
         bucket = f"test-contract-{uuid.uuid4().hex[:8]}"
         key = f"test-object-{uuid.uuid4().hex[:8]}.txt"
@@ -77,9 +88,9 @@ class TestS3Contract:
                 client.get_object(Bucket=bucket, Key=key)
             assert exc_info.value.response["Error"]["Code"] in ("NoSuchKey", "404")
 
-        except ClientError as e:
-            if "EndpointConnectionError" in str(type(e).__name__) or "Could not connect" in str(e):
-                pytest.skip(f"MinIO/S3 not available at {s3_endpoint}")  # noqa: skip-in-body — runtime service dependency
+        except EndpointConnectionError:
+            pytest.skip(f"MinIO/S3 not available at {s3_endpoint}")  # noqa: skip-in-body — runtime service dependency
+        except ClientError:
             raise
         finally:
             with contextlib.suppress(Exception):
@@ -113,12 +124,12 @@ class TestStripeContract:
         else:
             pytest.skip("Live Stripe key — skipping contract test")  # noqa: skip-in-body — runtime service dependency
 
-@pytest.mark.skip(reason="stripe library not installed")
     def test_stripe_customer_lifecycle_pattern(self):
         """Verify the customer create/update/delete pattern is correct."""
         try:
             import stripe
         except ImportError:
+            pytest.skip("service library not installed")
 
         # Verify Stripe API version and expected method signatures
         assert hasattr(stripe.Customer, "create"), "Customer.create missing"
@@ -126,12 +137,12 @@ class TestStripeContract:
         assert hasattr(stripe.Subscription, "create"), "Subscription.create missing"
         assert hasattr(stripe.PaymentIntent, "create"), "PaymentIntent.create missing"
 
-@pytest.mark.skip(reason="stripe library not installed")
     def test_stripe_idempotency_key_pattern(self):
         """Stripe requests support Idempotency-Key header."""
         try:
             import stripe
         except ImportError:
+            pytest.skip("service library not installed")
 
         # Verify the Stripe library supports idempotency keys
         # The stripe-python library accepts idempotency_key as a parameter
@@ -191,26 +202,29 @@ class TestSparqlContract:
 class TestPrefectContract:
     """Prefect Server: flow registration, deployment creation."""
 
-@pytest.mark.skip(reason="prefect library not installed")
     def test_prefect_api_client_importable(self):
         """Prefect client library is importable."""
         try:
-            from prefect import get_client  # noqa: F401
-            from prefect.client.schemas.actions import DeploymentCreate  # noqa: F401
+            from prefect import get_client
+            from prefect.client.schemas.actions import (
+                DeploymentCreate,
+            )
         except ImportError:
+            pytest.skip("service library not installed")
 
-@pytest.mark.skip(reason="prefect library not installed")
     def test_prefect_deployment_create_schema(self):
         """DeploymentCreate schema has required fields."""
         try:
-            import inspect
-
             from prefect.client.schemas.actions import DeploymentCreate
 
-            sig = inspect.signature(DeploymentCreate.__init__)
-            params = list(sig.parameters.keys())
-            # DeploymentCreate should have name, flow_id, etc.
-            assert "name" in params or "flow_id" in params, (
-                "DeploymentCreate should have name/flow_id parameters"
+            # Prefect 3.x models are pydantic-based: the fields live on the
+            # model (model_fields), not on __init__ (whose signature is
+            # (self, data)).
+            fields = getattr(DeploymentCreate, "model_fields", None) or getattr(
+                DeploymentCreate, "__fields__", {}
+            )
+            assert "name" in fields or "flow_id" in fields, (
+                "DeploymentCreate should have name/flow_id fields"
             )
         except ImportError:
+            pytest.skip("prefect library not installed")

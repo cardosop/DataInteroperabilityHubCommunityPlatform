@@ -33,7 +33,10 @@ import os
 import pathlib
 import re
 import sys
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # How many days from ``today`` count as "due soon"; surfaces entries
 # approaching the window without yet blocking CI.

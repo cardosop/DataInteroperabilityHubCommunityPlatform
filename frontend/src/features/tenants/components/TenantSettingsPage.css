@@ -39,12 +39,27 @@
 }
 
 .tenant-settings-tab:hover {
-  color: var(--color-secondary);
+  /* close-test-coverage-gaps 5.4 — secondary-500 (#2F6BFF) measures
+     4.5:1 on white, right on the AA threshold and flagged by the axe
+     audit; secondary-600 (#2756E6) clears it at 5.9:1. */
+  color: var(--color-secondary-600);
 }
 
 .tenant-settings-tab.active {
-  color: var(--color-secondary);
+  color: var(--color-secondary-600);
   font-weight: 600;
+  border-bottom-color: var(--color-secondary-600);
+}
+
+/* Dark mode re-anchors the tab accents to the theme's secondary token
+   (secondary-400 #5B7DFF, 4.95:1 on the dark surface) — the light-mode
+   600 would sink to 3.03:1 on dark. */
+[data-theme='dark'] .tenant-settings-tab:hover,
+[data-theme='dark'] .tenant-settings-tab.active {
+  color: var(--color-secondary);
+}
+
+[data-theme='dark'] .tenant-settings-tab.active {
   border-bottom-color: var(--color-secondary);
 }
 

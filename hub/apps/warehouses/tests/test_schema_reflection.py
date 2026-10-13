@@ -89,9 +89,11 @@ class ReflectAndPopulateTests(TestCase):
             # invoked, which means the table_name override worked.
             # Log unexpected types so programming errors are visible.
             import logging
+
             if not isinstance(exc, (ValueError, type(None))):
                 logging.getLogger(__name__).warning(
                     "Connector error in schema reflection name-check test "
                     "(expected — name override reached the connector): %s: %s",
-                    type(exc).__name__, exc,
+                    type(exc).__name__,
+                    exc,
                 )

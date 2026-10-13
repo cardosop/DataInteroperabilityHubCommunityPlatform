@@ -25,6 +25,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
+@pytest.mark.journey("JOURNEY-AUTH-PROFILE")
 class MeProfileUpdateTest(TestCase):
     """Test PATCH /auth/me/ profile update."""
 
@@ -117,6 +118,32 @@ class MeProfileUpdateTest(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.preferences, prefs)
 
+    def test_patch_has_seen_tour_updates_user(self):
+        """PATCH has_seen_tour persists the flag and returns it in the
+        /auth/me/ payload (Phase 278.R.6 product-tour cross-device
+        persistence — close-test-coverage-gaps 3.2)."""
+        self._login()
+        self.assertFalse(self.user.has_seen_tour)
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"has_seen_tour": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["has_seen_tour"])
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.has_seen_tour)
+
+    def test_get_me_includes_has_seen_tour(self):
+        """GET /auth/me/ carries has_seen_tour — the SPA's ProductTourGate
+        reads it to decide whether to re-show the tour."""
+        self._login()
+        response = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("has_seen_tour", response.data)
+        self.assertFalse(response.data["has_seen_tour"])
+
     def test_patch_partial_update_preserves_other_fields(self):
         """PATCH with only display_name preserves avatar and preferences."""
         self.user.avatar_url = "https://example.com/old.png"
@@ -196,6 +223,44 @@ class MeProfileUpdateTest(TestCase):
         # Next GET must return updated data (not cached old)
         get_resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(get_resp.data["name"], "Cached Update")
+
+    def test_stale_get_set_after_patch_cannot_poison_cache(self):
+        """A slow GET's late SET (built pre-PATCH) must never be served.
+
+        Regression (2026-10-03): the GET branch cached its payload after
+        building it — a GET that started BEFORE the PATCH but landed its
+        cache.set AFTER the PATCH's cache.delete poisoned the entry with
+        the OLD name for the full 300s TTL, and the SPA's refresh paths
+        re-applied the stale payload (JOURNEY-AUTH-PROFILE intermittent
+        header staleness under batch load). The version-tagged entry
+        makes such a late SET unreadable.
+        """
+        from django.core.cache import cache as dj_cache
+
+        self._login()
+        # Prime under version 0, then PATCH (bumps the version + deletes).
+        self.client.get("/api/v1/auth/me/")
+        self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "Fresh Name"},
+            format="json",
+        )
+
+        # Simulate the slow GET's late SET: version 0 + OLD payload.
+        stale_key = f"user:me:{self.user.id}"
+        stale_payload = {
+            "v": 0,
+            "data": {
+                "id": str(self.user.id),
+                "email": self.user.email,
+                "name": "STALE OLD NAME",
+            },
+        }
+        dj_cache.set(stale_key, stale_payload, 300)
+
+        get_resp = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(get_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(get_resp.data["name"], "Fresh Name")
 
     def test_get_me_includes_avatar_and_preferences(self):
         """GET /auth/me/ includes avatar and preferences in response."""

@@ -52,13 +52,14 @@ def test_tenant_factory():
         print(f"{GREEN}✅ TenantFactory: Created tenant {tenant.name}{RESET}")
         # Cleanup
         tenant.delete()
-        return True
     except Exception as e:
         print(f"{RED}❌ TenantFactory failed: {e}{RESET}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def test_tenant_config_factory():
@@ -75,13 +76,14 @@ def test_tenant_config_factory():
         # Cleanup
         config.delete()
         tenant.delete()
-        return True
     except Exception as e:
         print(f"{RED}❌ TenantConfigFactory failed: {e}{RESET}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def test_email_delivery_factory():
@@ -100,13 +102,14 @@ def test_email_delivery_factory():
         delivery.delete()
         user.delete()
         tenant.delete()
-        return True
     except Exception as e:
         print(f"{RED}❌ EmailDeliveryFactory failed: {e}{RESET}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def test_job_factory():
@@ -126,13 +129,14 @@ def test_job_factory():
         job.delete()
         user.delete()
         tenant.delete()
-        return True
     except Exception as e:
         print(f"{RED}❌ JobFactory failed: {e}{RESET}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def test_contract_factory():
@@ -151,13 +155,14 @@ def test_contract_factory():
         contract.delete()
         user.delete()
         tenant.delete()
-        return True
     except Exception as e:
         print(f"{RED}❌ ContractFactoryEnhanced failed: {e}{RESET}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def test_data_cleanup():
@@ -188,13 +193,14 @@ def test_data_cleanup():
         assert not Job.objects.filter(id=job.id).exists()
 
         print(f"{GREEN}✅ Test data cleanup: Successfully cleaned up all test data{RESET}")
-        return True
     except Exception as e:
         print(f"{RED}❌ Test data cleanup failed: {e}{RESET}")
         import traceback
 
         traceback.print_exc()
         return False
+    else:
+        return True
 
 
 def main():

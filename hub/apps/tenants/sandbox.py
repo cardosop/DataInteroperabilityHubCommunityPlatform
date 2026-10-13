@@ -1,5 +1,5 @@
 """
-281.B.7.3–281.B.7.5 — Isolated Tenant Sandbox.
+281.B.7.3-281.B.7.5 — Isolated Tenant Sandbox.
 
 Provides per-tenant sandbox environments: identical config, isolated data,
 relaxed rate limits, "SANDBOX" UI label, 30-day auto-expiry, <1h provisioning.
@@ -28,7 +28,7 @@ logger = structlog.get_logger(__name__)
 # ── Sandbox configuration ──────────────────────────────────────────────────
 
 SANDBOX_EXPIRY_DAYS = 30
-SANDBOX_RATE_LIMIT_MULTIPLIER = 5  # 5× relaxed rate limits in sandbox
+SANDBOX_RATE_LIMIT_MULTIPLIER = 5  # 5x relaxed rate limits in sandbox
 
 
 class TenantSandbox(models.Model):

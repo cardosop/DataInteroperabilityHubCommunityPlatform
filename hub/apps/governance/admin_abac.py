@@ -20,10 +20,13 @@ from __future__ import annotations
 
 import functools
 import logging
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from django.http import JsonResponse
 from rest_framework import status
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 

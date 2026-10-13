@@ -199,13 +199,13 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
 
         # Should succeed without errors
         self.assertTrue(hasattr(result, "hub_contract"))
-        if result.hub_contract:
+        if (
+            result.hub_contract
+            and "marketplace" in result.hub_contract
+            and "x_odps" in result.hub_contract["marketplace"]
+        ):
             # Marketplace should be normalized without paymentGateways
-            if (
-                "marketplace" in result.hub_contract
-                and "x_odps" in result.hub_contract["marketplace"]
-            ):
-                self.assertNotIn("payment_gateways", result.hub_contract["marketplace"]["x_odps"])
+            self.assertNotIn("payment_gateways", result.hub_contract["marketplace"]["x_odps"])
 
     def test_normalize_gracefully_handles_product_strategy(self):
         """Test that normalizer gracefully skips productStrategy (4.1+ feature)"""
@@ -225,13 +225,13 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
 
         # Should succeed without errors
         self.assertTrue(hasattr(result, "hub_contract"))
-        if result.hub_contract:
+        if (
+            result.hub_contract
+            and "extensions" in result.hub_contract
+            and "x_odps" in result.hub_contract["extensions"]
+        ):
             # productStrategy should NOT be normalized (4.1+ feature)
-            if (
-                "extensions" in result.hub_contract
-                and "x_odps" in result.hub_contract["extensions"]
-            ):
-                self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
+            self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
 
     def test_normalize_detects_version_if_not_provided(self):
         """Test that normalize() detects ODPS 4.0 version if not provided"""
@@ -311,9 +311,12 @@ class ODPSNormalizerV4_0GracefulDegradationTest(TestCase):
                 self.assertNotIn("payment_gateways", error)
 
         # Should not have paymentGateways in output
-        if result.hub_contract and "marketplace" in result.hub_contract:
-            if "x_odps" in result.hub_contract["marketplace"]:
-                self.assertNotIn("payment_gateways", result.hub_contract["marketplace"]["x_odps"])
+        if (
+            result.hub_contract
+            and "marketplace" in result.hub_contract
+            and "x_odps" in result.hub_contract["marketplace"]
+        ):
+            self.assertNotIn("payment_gateways", result.hub_contract["marketplace"]["x_odps"])
 
     def test_graceful_degradation_product_strategy(self):
         """Test that productStrategy (4.1+ feature) is gracefully skipped"""
@@ -333,9 +336,12 @@ class ODPSNormalizerV4_0GracefulDegradationTest(TestCase):
                 self.assertNotIn("product_strategy", error)
 
         # Should not have productStrategy in output
-        if result.hub_contract and "extensions" in result.hub_contract:
-            if "x_odps" in result.hub_contract["extensions"]:
-                self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
+        if (
+            result.hub_contract
+            and "extensions" in result.hub_contract
+            and "x_odps" in result.hub_contract["extensions"]
+        ):
+            self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
 
     def test_normalize_handles_unicode_characters(self):
         """Test that normalization handles unicode characters correctly."""

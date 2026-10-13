@@ -154,7 +154,7 @@ def test_redis_connection_pools():
             continue
 
     if not pool_configs:
-        pytest.skip("No Redis instances accessible — cannot test connection pools")
+        pytest.skip("No Redis instances accessible — cannot test connection pools")  # noqa: skip-in-body
 
     for host, port, name in pool_configs:
         url = f"redis://{host}:{port}/0"

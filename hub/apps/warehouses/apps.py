@@ -8,4 +8,4 @@ class WarehousesConfig(AppConfig):
     verbose_name = "Warehouses"
 
     def ready(self):
-        import hub.apps.warehouses.signals  # noqa: F401
+        import hub.apps.warehouses.signals

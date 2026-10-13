@@ -15,6 +15,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 
 import json
 import uuid
+from typing import ClassVar
 
 from hub.apps.assets.tests.factories import AssetFactory
 from hub.apps.contracts.models import OriginalFormat, OriginalSpecType
@@ -47,7 +48,7 @@ class TestWorkflowRetryAfterValidationFailureE2E(WorkflowE2ETestBase):
     - Workflow state is correct after retry (COMPLETED, steps COMPLETED).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_workflow_retry_after_fixing_validation_issue_succeeds(self):
         """Verify workflow can retry after fixing validation issue (e.g. create missing asset)."""
@@ -182,7 +183,7 @@ class TestWorkflowCompensationAfterValidationFailureE2E(WorkflowE2ETestBase):
     - Compensation completes successfully (workflow ROLLED_BACK, completed steps COMPENSATED).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_compensation_executes_after_validation_failure(self):
         """Verify compensation executes after step failure (e.g. create_contract_record fails)."""
@@ -288,7 +289,7 @@ class TestWorkflowStateRecoveryAfterErrorsE2E(WorkflowE2ETestBase):
     - Validation state is preserved (state_data / _validation_results where applicable).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_workflow_state_consistent_after_errors(self):
         """Verify workflow state is consistent after failure (failed step marked, instance FAILED)."""
@@ -405,7 +406,7 @@ class TestValidationBehaviorServiceFailureE2E(WorkflowE2ETestBase):
     workflow fails and state is consistent; validation was applied before the step ran.
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_behavior_when_step_raises_connection_error(self):
         """Verify workflow fails consistently when a step raises a connection-like error (real failure)."""
@@ -444,7 +445,7 @@ class TestValidationBehaviorMissingResourceE2E(WorkflowE2ETestBase):
     workflow fails with consistent state.
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_behavior_when_step_fails_on_missing_resource(self):
         """Tests workflow state consistency when a step fails due to a referenced resource (asset) not existing."""
@@ -479,7 +480,7 @@ class TestValidationBehaviorInvalidInputE2E(WorkflowE2ETestBase):
     workflow fails with consistent state.
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_behavior_when_step_fails_on_invalid_input(self):
         """Tests workflow state consistency when a step fails due to invalid input data (non-UUID asset_id)."""
@@ -518,7 +519,7 @@ class TestValidationBehaviorNonexistentResourceE2E(WorkflowE2ETestBase):
     and state is consistent.
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_behavior_when_step_fails_on_nonexistent_resource(self):
         """Tests workflow state consistency when execution fails due to a non-existent referenced resource."""

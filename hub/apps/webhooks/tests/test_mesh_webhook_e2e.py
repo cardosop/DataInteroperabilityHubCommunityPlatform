@@ -31,8 +31,6 @@ from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookSer
 from tests.utils.polling import wait_until
 
 
-
-
 class MeshWebhookE2ETest(TransactionTestCase):
     """E2E tests for mesh webhook delivery from event bus"""
 

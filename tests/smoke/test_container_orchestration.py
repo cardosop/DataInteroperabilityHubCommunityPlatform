@@ -32,6 +32,11 @@ SERVICES = [
 
 DOCKER_BIN = os.environ.get("DOCKER_BIN", "docker")
 
+COMPOSE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "docker-compose.test.yml",
+)
+
 
 def _docker_available() -> bool:
     """Check if Docker is available. Used as the skipif condition at collection time."""
@@ -43,12 +48,13 @@ def _docker_available() -> bool:
             text=True,
             timeout=10,
         )
-        return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+    else:
+        return result.returncode == 0
 
 
-def _inspect_container(container_name: str) -> Optional[dict]:
+def _inspect_container(container_name: str) -> dict | None:
     """Return docker inspect output for a container, or None."""
     try:
         result = subprocess.run(
@@ -66,18 +72,31 @@ def _inspect_container(container_name: str) -> Optional[dict]:
 
 
 def _find_running_containers(service_name: str) -> list[str]:
-    """Find running containers matching a service name pattern."""
-    try:
-        result = subprocess.run(
-            [DOCKER_BIN, "ps", "--filter", f"name={service_name}", "--format", "{{.Names}}"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return [n for n in result.stdout.strip().split("\n") if n]
-    except subprocess.TimeoutExpired:
-        return []
+    """Find running containers matching a service name pattern.
+
+    docker-compose.test.yml pins ``container_name`` with the ``hub-test-``
+    prefix (e.g. ``api-service-test`` → ``hub-test-api``); a deployed stack
+    uses the bare compose service name. ``docker ps --filter name=`` does
+    substring matching, so try both patterns.
+    """
+    patterns = [service_name]
+    if service_name.endswith("-service-test"):
+        patterns.append(f"hub-test-{service_name[: -len('-service-test')]}")
+    for pattern in patterns:
+        try:
+            result = subprocess.run(
+                [DOCKER_BIN, "ps", "--filter", f"name={pattern}", "--format", "{{.Names}}"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            names = [n for n in result.stdout.strip().split("\n") if n]
+            if names:
+                return names
+        except subprocess.TimeoutExpired:
+            continue
+    return []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -89,15 +108,13 @@ def _find_running_containers(service_name: str) -> list[str]:
 class TestContainerBuild:
     """Container image build validation."""
 
-@pytest.mark.skipif(not os.path.exists(compose_file), reason="docker-compose.test.yml not found")
+    @pytest.mark.skipif(
+        not os.path.exists(COMPOSE_FILE), reason="docker-compose.test.yml not found"
+    )
     def test_docker_compose_config_valid(self):
         """docker-compose.test.yml parses without errors."""
-        compose_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "docker-compose.test.yml",
-        )
         result = subprocess.run(
-            [DOCKER_BIN, "compose", "-f", compose_file, "config", "--quiet"],
+            [DOCKER_BIN, "compose", "-f", COMPOSE_FILE, "config", "--quiet"],
             check=False,
             capture_output=True,
             text=True,
@@ -136,7 +153,7 @@ class TestContainerRuntime:
             user = config.get("User", "")
             if not user:
                 continue
-            assert user != "0" and user != "root" and user != "0:0", (
+            assert user not in {"0", "root", "0:0"}, (
                 f"Container '{cname}' ({service}) runs as root (User={user!r})"
             )
 

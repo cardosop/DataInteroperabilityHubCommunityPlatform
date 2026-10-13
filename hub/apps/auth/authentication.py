@@ -5,6 +5,8 @@ JWT and API Key authentication for REST API.
 """
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.db import DatabaseError, InterfaceError
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
@@ -68,7 +70,7 @@ class JWTAuthentication(BaseAuthentication):
                 User = get_user_model()
                 user_exists = User.objects.filter(id=user_id).exists()
                 logger.warning(f"User exists in database: {user_exists}")
-            except Exception:
+            except (ImproperlyConfigured, ValidationError, DatabaseError, InterfaceError):
                 pass
             raise AuthenticationFailed("User not found")
 
@@ -89,7 +91,7 @@ class JWTAuthentication(BaseAuthentication):
 
         return (user, token)
 
-    def authenticate_header(self, request):
+    def authenticate_header(self, _request):
         """Return the WWW-Authenticate header value."""
         return "Bearer"
 
@@ -127,7 +129,7 @@ class APIKeyAuthentication(BaseAuthentication):
         try:
             api_key_obj = APIKey.objects.get(key_hash=key_hash)
         except APIKey.DoesNotExist:
-            raise AuthenticationFailed("Invalid API key")
+            raise AuthenticationFailed("Invalid API key") from None
 
         # Check if expired or revoked
         if api_key_obj.is_expired():
@@ -179,6 +181,6 @@ class APIKeyAuthentication(BaseAuthentication):
 
         return (user, api_key)
 
-    def authenticate_header(self, request):
+    def authenticate_header(self, _request):
         """Return the WWW-Authenticate header value."""
         return "ApiKey"

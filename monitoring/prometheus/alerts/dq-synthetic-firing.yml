@@ -1,0 +1,136 @@
+# Phase 240.1.B.4 — synthetic firing tests for the DQ alert rules.
+#
+# Run with:
+#   promtool test rules monitoring/prometheus/alerts/dq-synthetic-firing.yml
+#
+# Each test case fabricates a metric series and asserts the alert
+# fires after its ``for:`` window.  This satisfies the 240.1.B.4
+# acceptance criterion ("synthetic chaos test in staging — block
+# dq-service for 6 minutes → assert DQServiceCircuitOpen fires
+# within 7m") at CI time without needing a running Prometheus or
+# staging cluster.
+#
+# Critical-severity alerts (DQServiceCircuitOpen, DQAlertDeliveryFailing,
+# DQAuditWriteFailing) have full firing-time tests so the on-call
+# wake-up path is regression-pinned.  Warning-severity alerts are
+# covered with a single representative scenario each — the heavy
+# lifting for those is the human runbook review at deploy time.
+
+rule_files:
+  - dq.yml
+
+evaluation_interval: 1m
+
+tests:
+  # -------------------------------------------------------------
+  # 240.1.B.4 — DQServiceCircuitOpen synthetic chaos
+  # -------------------------------------------------------------
+  # Series: circuit_breaker_state for dq-service stays at OPEN (=2)
+  # for 6 minutes.  The alert's `for: 5m` window means it fires at
+  # 6m elapsed.  This is the spec-mandated "block dq-service for 6
+  # minutes" scenario in CI form.
+  - interval: 1m
+    name: DQServiceCircuitOpen synthetic chaos
+    input_series:
+      - series: 'circuit_breaker_state{service="dq-service"}'
+        values: '2x10'  # OPEN for 10 evaluation intervals
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: DQServiceCircuitOpen
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: data-quality
+              service: dq-service
+            exp_annotations:
+              summary: "dq-service circuit breaker OPEN for 5m"
+              description: |
+                The dq-service client circuit breaker has been OPEN for
+                5+ minutes — DQ runs are returning the fallback (status
+                UNKNOWN) instead of executing. Check dq-service pod
+                health, network egress, and recent deploys.
+                Runbook: docs/runbooks/data-quality.md#dq-service-circuit-open.
+              # Rule emits ``runbook_url`` (matching the project-wide
+              # convention used by all other alert rules); promtool's
+              # exp_annotations is exact-match so the keyname must align.
+              runbook_url: "docs/runbooks/data-quality.md#dq-service-circuit-open"
+
+  # -------------------------------------------------------------
+  # DQServiceCircuitOpen — does NOT fire when CLOSED (=0) sustained
+  # -------------------------------------------------------------
+  - interval: 1m
+    name: DQServiceCircuitOpen does not fire when closed
+    input_series:
+      - series: 'circuit_breaker_state{service="dq-service"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DQServiceCircuitOpen
+        exp_alerts: []
+
+  # -------------------------------------------------------------
+  # DQAuditWriteFailing — pages oncall above the 1/min threshold
+  # -------------------------------------------------------------
+  # Series: 60 errors over 5 minutes = 12/min average → way above
+  # the 1/60 (= 1/min) threshold.  rate() over 5m sees the climb;
+  # alert's `for: 5m` window means it fires at 6m.
+  - interval: 1m
+    name: DQAuditWriteFailing synthetic
+    input_series:
+      - series: 'dq_audit_write_errors_total'
+        values: '0+12x10'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: DQAuditWriteFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: data-quality
+            # promtool's exp_annotations is exact-match: omitting the
+            # block means it expects {} and rejects when the rule emits
+            # any annotation. Mirror the rule output verbatim. The
+            # `{{ $value | humanize }}` template renders to "200m"
+            # for the 0+12x10 input series (12 errors/min ÷ 60 = 0.2/s
+            # = "200m" per Prometheus humanize convention).
+            exp_annotations:
+              summary: "DQ audit-event writes failing > 1/min"
+              description: |
+                DQ audit-event writes are failing at
+                200m errors / second. Compliance
+                evidence is at risk.  Check the audit-table connection
+                pool, recent migrations, and the
+                ``audit_event_write_failed`` log entries.
+                Runbook: docs/runbooks/data-quality.md#dq-audit-write-failing.
+              runbook_url: "docs/runbooks/data-quality.md#dq-audit-write-failing"
+
+  # -------------------------------------------------------------
+  # DQRunFailureRateHigh — fires above the 5% sustained threshold
+  # -------------------------------------------------------------
+  # Series: 10% of runs fail over 15 minutes.  Both numerator and
+  # denominator are non-zero so the clamp_min doesn't dominate.
+  - interval: 1m
+    name: DQRunFailureRateHigh synthetic
+    input_series:
+      - series: 'dq_runs_total{status="FAIL"}'
+        values: '0+1x20'    # 1 failure / minute
+      - series: 'dq_runs_total{status="PASS"}'
+        values: '0+9x20'    # 9 passes / minute → 10% failure rate
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: DQRunFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: data-quality
+            # `{{ $value | humanizePercentage }}` renders to "10%" for
+            # the 1 fail / 9 pass per minute input series.
+            exp_annotations:
+              summary: "DQ run failure rate > 5% over 15m"
+              description: |
+                Sustained failure rate is 10%
+                (budget 5%). Likely causes: dq-service regression, profile
+                mis-configuration, or a tenant-side bad data wave.  Pivot
+                via ``rate(dq_runs_total{status="FAIL"}[5m]) by (engine,
+                tenant_id)``. Runbook:
+                docs/runbooks/data-quality.md#dq-run-failure-rate-high.
+              runbook_url: "docs/runbooks/data-quality.md#dq-run-failure-rate-high"

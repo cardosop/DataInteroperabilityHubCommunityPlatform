@@ -27,22 +27,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestPaymentGatewaysRealAPI:
@@ -197,10 +188,10 @@ print(api_key_obj.key)
         return None
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_real_api_table_format(self, setup_config, api_available):
+    def test_get_payment_gateways_real_api_table_format(self, setup_config, api_service_available):
         """Test getting payment gateways from real API in table format"""
         if not self.api_key:
             pytest.skip(
@@ -222,10 +213,10 @@ print(api_key_obj.key)
         assert "Total:" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_real_api_json_format(self, setup_config, api_available):
+    def test_get_payment_gateways_real_api_json_format(self, setup_config, api_service_available):
         """Test getting payment gateways from real API in JSON format"""
         if not self.api_key:
             pytest.skip(
@@ -250,10 +241,10 @@ print(api_key_obj.key)
         assert len(output_data) > 0
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_empty_contract(self, setup_config, api_available):
+    def test_get_payment_gateways_empty_contract(self, setup_config, api_service_available):
         """Test getting payment gateways from contract without payment gateways"""
         if not self.api_key:
             pytest.skip(
@@ -311,10 +302,10 @@ print(api_key_obj.key)
             pytest.skip(f"Failed to create test contract: {e!s}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_invalid_contract_id(self, setup_config, api_available):
+    def test_get_payment_gateways_invalid_contract_id(self, setup_config, api_service_available):
         """Test getting payment gateways with invalid contract ID"""
         if not self.api_key:
             pytest.skip(
@@ -333,10 +324,10 @@ print(api_key_obj.key)
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_payment_gateways_non_odps_contract(self, setup_config, api_available):
+    def test_get_payment_gateways_non_odps_contract(self, setup_config, api_service_available):
         """Test getting payment gateways from non-ODPS contract (should fail)"""
         if not self.api_key:
             pytest.skip(

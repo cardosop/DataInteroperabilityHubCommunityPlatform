@@ -24,7 +24,7 @@ Security Event Types:
 import contextlib
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import structlog
@@ -44,7 +44,7 @@ except ImportError:
     get_user_model = None
 
 
-class SecurityEventType(str, Enum):
+class SecurityEventType(StrEnum):
     """Security event types for ODPS $ref resolution"""
 
     PATH_TRAVERSAL = "PATH_TRAVERSAL"
@@ -63,7 +63,7 @@ class SecurityEventType(str, Enum):
     SECURITY_VIOLATION = "SECURITY_VIOLATION"
 
 
-class SecuritySeverity(str, Enum):
+class SecuritySeverity(StrEnum):
     """Security event severity levels"""
 
     LOW = "LOW"
@@ -258,7 +258,7 @@ class SecurityLogger:
 
         if severity == SecuritySeverity.CRITICAL:
             self.logger.error("odps_security_violation", **log_dict)
-        elif severity == SecuritySeverity.HIGH or severity == SecuritySeverity.MEDIUM:
+        elif severity in (SecuritySeverity.HIGH, SecuritySeverity.MEDIUM):
             self.logger.warning("odps_security_violation", **log_dict)
         else:
             self.logger.info("odps_security_violation", **log_dict)
@@ -536,7 +536,7 @@ class SecurityLogger:
                 try:
                     User = get_user_model()
                     user = User.objects.get(id=user_id)
-                except (User.DoesNotExist, Exception):
+                except Exception:
                     pass
 
             SecurityAuditLog.objects.create(
@@ -620,7 +620,7 @@ class SecurityLogger:
                 try:
                     User = get_user_model()
                     user = User.objects.get(id=user_id)
-                except (User.DoesNotExist, Exception):
+                except Exception:
                     pass
 
             SecurityAuditLog.objects.create(
@@ -867,10 +867,7 @@ def _scope_audit_query_by_participants(query, tenant_obj: Any | None, user_obj: 
         query = query.filter(tenant=tenant_obj)
     else:
         query = query.filter(tenant__isnull=True)
-    if user_obj is not None:
-        query = query.filter(user=user_obj)
-    else:
-        query = query.filter(user__isnull=True)
+    query = query.filter(user=user_obj) if user_obj is not None else query.filter(user__isnull=True)
     return query
 
 
@@ -880,10 +877,7 @@ def _scope_incident_query_by_participants(query, tenant_obj: Any | None, user_ob
         query = query.filter(tenant=tenant_obj)
     else:
         query = query.filter(tenant__isnull=True)
-    if user_obj is not None:
-        query = query.filter(user=user_obj)
-    else:
-        query = query.filter(user__isnull=True)
+    query = query.filter(user=user_obj) if user_obj is not None else query.filter(user__isnull=True)
     return query
 
 
@@ -994,9 +988,6 @@ class SecurityIncidentDetector:
                         incident_id=str(incident.id),
                         message="Failed to link audit log to incident",
                     )
-
-            return incident
-
         except Exception as e:
             self.logger.warning(
                 "odps_security_incident_detection_failed",
@@ -1005,6 +996,8 @@ class SecurityIncidentDetector:
                 message="Failed to detect security incident",
             )
             return None
+        else:
+            return incident
 
     def _detect_rate_limit_abuse(self, violation_log: SecurityViolationLog) -> Any | None:
         """Detect rate limit abuse pattern."""

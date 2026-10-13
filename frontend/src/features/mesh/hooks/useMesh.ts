@@ -5,6 +5,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { meshService } from '../services/meshService';
 import type {
   MeshDomainCreateRequest,
@@ -32,7 +33,7 @@ const QUERY_KEYS = {
 export function useMeshDomains(filters: MeshDomainListFilters = {}) {
   return useQuery({
     queryKey: [...QUERY_KEYS.domains, filters],
-    queryFn: () => meshService.listDomains(filters),
+    queryFn: async () => normalizePaginated(await meshService.listDomains(filters)),
   });
 }
 

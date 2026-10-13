@@ -19,6 +19,7 @@ from datetime import datetime
 import pytest
 from django.test import TestCase
 
+from envpolicy import environment_guard, skip_or_fail
 from hub.apps.assets.models import AssetSourceType
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreakerError,
@@ -39,8 +40,27 @@ from hub.apps.integrations.connectors.snowflake_connector import (
 )
 
 
+def _snowflake_package_available() -> bool:
+    """Policy-applied package probe (W16): CI raises, local returns False.
+
+    Used as the class-level ``skipif`` predicate so a missing
+    snowflake-connector-python dependency fails CI loudly at collection
+    instead of silently skipping 14 test classes.
+    """
+    if SNOWFLAKE_AVAILABLE:
+        return True
+    environment_guard("snowflake-connector-python not installed")
+    return False
+
+
 def get_snowflake_credentials() -> dict:
-    """Get Snowflake credentials from environment variables."""
+    """Get Snowflake credentials from environment variables (W16-governed).
+
+    Missing credentials: CI raises EnvironmentFailureError (the environment
+    failure announces itself); local runs skip. See
+    docs/docs/runbooks/RB-INTEGRATIONS-002-snowflake-sandbox-provisioning.md
+    for the provisioning recipe.
+    """
     account = os.getenv("SNOWFLAKE_ACCOUNT")
     user = os.getenv("SNOWFLAKE_USER")
     token = os.getenv("SNOWFLAKE_TOKEN")
@@ -49,8 +69,9 @@ def get_snowflake_credentials() -> dict:
     database = os.getenv("SNOWFLAKE_DATABASE")
 
     if not account or not user or not token:
-        raise unittest.SkipTest(
-            "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, and SNOWFLAKE_TOKEN environment variables are required"
+        skip_or_fail(
+            "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, and SNOWFLAKE_TOKEN "
+            "environment variables are required"
         )
 
     credentials = {
@@ -70,24 +91,26 @@ def get_snowflake_credentials() -> dict:
 
 
 def has_snowflake_connection() -> bool:
-    """Check if Snowflake connection is available.
+    """Check if Snowflake connection is available (W16-governed probe).
 
-    Returns False when:
-    * The ``snowflake-connector-python`` package is not installed.
-    * Required env vars (``SNOWFLAKE_ACCOUNT``, ``SNOWFLAKE_USER``,
-      ``SNOWFLAKE_TOKEN``) are not set.
-    * The connection test fails with a known connection/auth error.
+    Returns True only when the live probe succeeds. Every unavailable
+    branch follows the environment policy instead of returning False:
+
+    * package not installed → ``skip_or_fail`` (CI raises, local skips);
+    * required env vars (``SNOWFLAKE_ACCOUNT``, ``SNOWFLAKE_USER``,
+      ``SNOWFLAKE_TOKEN``) not set → ``skip_or_fail`` via
+      ``get_snowflake_credentials()``;
+    * the connection test fails with a known connection/auth error →
+      ``skip_or_fail`` (a broken/unprovisioned environment is an
+      environment failure, not a silent no-op).
 
     Unexpected exceptions (bugs in the connector) propagate to the caller
     rather than being silently swallowed as "not available."
     """
     if not SNOWFLAKE_AVAILABLE:
-        return False
+        skip_or_fail("snowflake-connector-python not installed")
 
-    try:
-        credentials = get_snowflake_credentials()
-    except unittest.SkipTest:
-        return False
+    credentials = get_snowflake_credentials()
 
     try:
         connector = SnowflakeConnector(
@@ -100,13 +123,16 @@ def has_snowflake_connection() -> bool:
         )
         result = connector.test_connection()
         connector.close()
-        return result
-    except (ConnectionError, ValueError, OSError):
+    except (ConnectionError, ValueError, OSError) as exc:
         # Known connection/auth failures — Snowflake genuinely unavailable.
-        return False
+        skip_or_fail(f"Snowflake connection unavailable: {exc}")
+    else:
+        return result
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorInitialization(TestCase):
     """Test Snowflake connector initialization"""
 
@@ -153,7 +179,9 @@ class TestSnowflakeConnectorInitialization(TestCase):
         self.assertNotIn(SyncDirection.BIDIRECTIONAL, directions)
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorAuthentication(TestCase):
     """Test Snowflake connector authentication"""
 
@@ -229,7 +257,7 @@ class TestSnowflakeConnectorAuthentication(TestCase):
     def test_authenticate_success(self):
         """Test successful authentication"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -249,7 +277,9 @@ class TestSnowflakeConnectorAuthentication(TestCase):
             connector.close()
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorConnectionTest(TestCase):
     """Test Snowflake connector connection testing"""
 
@@ -271,7 +301,7 @@ class TestSnowflakeConnectorConnectionTest(TestCase):
     def test_test_connection_success(self):
         """Test successful connection test"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -293,7 +323,7 @@ class TestSnowflakeConnectorConnectionTest(TestCase):
     def test_test_connection_before_authenticate(self):
         """Test connection test works before authenticate"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -312,18 +342,18 @@ class TestSnowflakeConnectorConnectionTest(TestCase):
             connector.close()
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorSQLExecution(TestCase):
     """Test Snowflake connector SQL execution"""
 
     def setUp(self):
         """Reset circuit breaker so tests with invalid credentials see CLOSED state."""
-        try:
-            reset_circuit_breaker_by_name("snowflake-connector")
-        except (ConnectionError, OSError, ValueError):
+        with contextlib.suppress(ConnectionError, OSError, ValueError):
             # Redis may be unavailable in some test configurations;
             # the circuit breaker falls back gracefully.
-            pass
+            reset_circuit_breaker_by_name("snowflake-connector")
 
     def test_execute_sql_invalid_query(self):
         """Test executing invalid SQL query raises ValueError"""
@@ -361,7 +391,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_execute_sql_simple_query(self):
         """Test executing a simple SQL query"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -386,7 +416,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_execute_sql_with_params(self):
         """Test executing SQL query with parameters"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -411,7 +441,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_get_connection_reuse(self):
         """Test that _get_connection reuses existing connection"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -435,7 +465,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_get_connection_creates_new_on_close(self):
         """Test that _get_connection creates new connection if old one is closed"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -458,7 +488,9 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
             connector.close()
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorDiscoveryOperations(TestCase):
     """Test Snowflake connector discovery operations (validation tests without credentials)"""
 
@@ -510,11 +542,11 @@ class TestSnowflakeConnectorDiscoveryOperations(TestCase):
 
         # Test non-integer offset (type checker warning is expected - we're testing error handling)
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.list_listings(offset="invalid")  # type: ignore[misc]  # test: edge-case type exercise
+            self.connector.list_listings(offset="invalid")  # test: edge-case type exercise
 
         # Test non-integer limit (type checker warning is expected - we're testing error handling)
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.list_listings(limit="invalid")  # type: ignore[misc]  # test: edge-case type exercise
+            self.connector.list_listings(limit="invalid")  # test: edge-case type exercise
 
     def test_list_resources_invalid_input(self):
         """Test list_resources validates input to prevent SQL injection"""
@@ -524,7 +556,7 @@ class TestSnowflakeConnectorDiscoveryOperations(TestCase):
 
         # Test None (type checker warning is expected - we're testing error handling)
         with self.assertRaises(ValueError):
-            self.connector.list_resources(None)  # type: ignore[misc]  # test: edge-case type exercise
+            self.connector.list_resources(None)  # test: edge-case type exercise
 
         # Test SQL injection attempt
         with self.assertRaises(ValueError):
@@ -617,7 +649,9 @@ class TestSnowflakeConnectorDiscoveryOperations(TestCase):
         self.assertIn("provider", listing.metadata.get("snowflake_listing", {}))
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 @pytest.mark.integration
 class TestSnowflakeConnectorListings(TestCase):
     """Test Snowflake connector listing operations (integration tests)"""
@@ -625,7 +659,7 @@ class TestSnowflakeConnectorListings(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -712,7 +746,9 @@ class TestSnowflakeConnectorListings(TestCase):
             self.connector.get_listing("nonexistent_database_12345")
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 @pytest.mark.integration
 class TestSnowflakeConnectorResources(TestCase):
     """Test Snowflake connector resource operations"""
@@ -720,7 +756,7 @@ class TestSnowflakeConnectorResources(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -763,7 +799,9 @@ class TestSnowflakeConnectorResources(TestCase):
             self.connector.list_resources("nonexistent_database_12345")
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorPushOperations(TestCase):
     """Test Snowflake connector push operations (should raise NotImplementedError)"""
 
@@ -826,7 +864,9 @@ class TestSnowflakeConnectorPushOperations(TestCase):
             self.connector.map_from_hub_asset({"name": "test"})
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorPullOperations(TestCase):
     """Test Snowflake connector pull operations (validation tests without credentials)"""
 
@@ -956,7 +996,9 @@ class TestSnowflakeConnectorPullOperations(TestCase):
             )
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 @pytest.mark.integration
 class TestSnowflakeConnectorSyncPull(TestCase):
     """Test Snowflake connector sync_pull operation (integration tests)"""
@@ -964,7 +1006,7 @@ class TestSnowflakeConnectorSyncPull(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -1055,7 +1097,9 @@ class TestSnowflakeConnectorSyncPull(TestCase):
             self.assertEqual(mapping["source_type"], AssetSourceType.FEDERATED.value)
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 @pytest.mark.integration
 class TestSnowflakeConnectorMapping(TestCase):
     """Test Snowflake connector mapping operations"""
@@ -1063,7 +1107,7 @@ class TestSnowflakeConnectorMapping(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -1125,12 +1169,14 @@ class TestSnowflakeConnectorMapping(TestCase):
         try:
             with self.assertRaises(ValueError):
                 # Type checker warning is expected here - we're testing error handling
-                connector.map_to_hub_asset(None)  # type: ignore[misc]  # test: edge-case type exercise
+                connector.map_to_hub_asset(None)  # test: edge-case type exercise
         finally:
             connector.close()
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorCircuitBreaker(TestCase):
     """Test Snowflake connector circuit breaker protection"""
 
@@ -1155,11 +1201,11 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
 
     def test_circuit_breaker_rejects_when_open(self):
         """Circuit breaker in OPEN state raises CircuitBreakerError."""
+        from django.utils import timezone
+
         from hub.apps.core.resilience.circuit_breaker import CircuitBreakerState
 
-        connector = SnowflakeConnector(
-            account="test_account", user="test_user", token="test_token"
-        )
+        connector = SnowflakeConnector(account="test_account", user="test_user", token="test_token")
         try:
             cb = connector._circuit_breaker
             # Force OPEN state by exceeding the failure threshold
@@ -1169,8 +1215,15 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
                 cb._increment_failure_count()
             # Trigger the OPEN transition by recording a failure
             cb._record_failure()
-            # Manually open it to guarantee state
+            # Manually open it to guarantee state.  Phase U.6: an OPEN
+            # state WITHOUT an opened_at timestamp means "opened long ago"
+            # (the timestamp key carries a TTL), so ``call()`` would
+            # immediately attempt the HALF_OPEN probe instead of rejecting.
+            # Record the timestamp — the canonical
+            # ``_set_state(OPEN)`` + ``_set_opened_at()`` pair from
+            # hub/apps/dq/tests/test_circuit_breaker.py::_open_dq_circuit.
             cb._set_state(CircuitBreakerState.OPEN)
+            cb._set_opened_at(timezone.now())
 
             with self.assertRaises(CircuitBreakerError):
                 cb.call(lambda: "should not execute")
@@ -1181,7 +1234,7 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
     def test_circuit_breaker_allows_sql_when_closed(self):
         """Circuit breaker in CLOSED state allows normal SQL execution."""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -1205,9 +1258,7 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
         """OPEN → HALF_OPEN → CLOSED recovery cycle works correctly."""
         from hub.apps.core.resilience.circuit_breaker import CircuitBreakerState
 
-        connector = SnowflakeConnector(
-            account="t", user="u", token="t"
-        )
+        connector = SnowflakeConnector(account="t", user="u", token="t")
         try:
             cb = connector._circuit_breaker
             # Force OPEN state
@@ -1235,7 +1286,9 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
             connector.close()
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 @pytest.mark.integration
 class TestSnowflakeConnectorContextManager(TestCase):
     """Test Snowflake connector context manager and edge-case input handling.
@@ -1249,7 +1302,7 @@ class TestSnowflakeConnectorContextManager(TestCase):
     def setUp(self):
         """Skip all tests in this class when Snowflake is unreachable."""
         if not has_snowflake_connection():
-            raise unittest.SkipTest("Snowflake connection not available")
+            skip_or_fail("Snowflake connection not available")
         credentials = get_snowflake_credentials()
         self.credentials = credentials
 
@@ -1265,12 +1318,14 @@ class TestSnowflakeConnectorContextManager(TestCase):
         ) as connector:
             result = connector.test_connection()
             self.assertTrue(result)
-            self.assertIsNotNone(connector._connection,
-                "Connection should be open inside the with-block")
+            self.assertIsNotNone(
+                connector._connection, "Connection should be open inside the with-block"
+            )
 
         # Verify connection is closed after context exit
-        self.assertIsNone(connector._connection,
-            "Connection should be closed after context manager exit")
+        self.assertIsNone(
+            connector._connection, "Connection should be closed after context manager exit"
+        )
 
     def test_list_listings_with_zero_limit(self):
         """Test list_listings() edge case with zero limit"""
@@ -1289,7 +1344,7 @@ class TestSnowflakeConnectorContextManager(TestCase):
         """
         connector = SnowflakeConnector(**self.credentials)
         connector.authenticate(self.credentials)
-        listings = connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: edge-case type exercise
+        listings = connector.list_listings(limit=None)  # test: edge-case type exercise
         self.assertIsInstance(listings, list)
         for lst in listings:
             self.assertIsInstance(lst, MarketplaceListing)
@@ -1323,15 +1378,15 @@ class TestSnowflakeConnectorContextManager(TestCase):
             connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorCloseErrorHandling(TestCase):
     """Tests for Snowflake connector close() error handling."""
 
     def test_close_handles_error_gracefully(self):
         """close() should not raise even when the underlying connection errors."""
-        connector = SnowflakeConnector(
-            account="test_account", user="test_user", token="test_token"
-        )
+        connector = SnowflakeConnector(account="test_account", user="test_user", token="test_token")
 
         class _BadConnection:
             def close(self):
@@ -1340,20 +1395,21 @@ class TestSnowflakeConnectorCloseErrorHandling(TestCase):
         connector._connection = _BadConnection()
         # Should not raise
         connector.close()
-        self.assertIsNone(connector._connection,
-            "Connection reference should be cleared even after close error")
+        self.assertIsNone(
+            connector._connection, "Connection reference should be cleared even after close error"
+        )
 
     def test_close_when_not_connected(self):
         """close() is a no-op when there is no active connection."""
-        connector = SnowflakeConnector(
-            account="test_account", user="test_user", token="test_token"
-        )
+        connector = SnowflakeConnector(account="test_account", user="test_user", token="test_token")
         # _connection is None by default — close() should be safe
         connector.close()
         self.assertIsNone(connector._connection)
 
 
-@pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
+@pytest.mark.skipif(
+    not _snowflake_package_available(), reason="snowflake-connector-python not installed"
+)
 class TestSnowflakeConnectorTagsExtraction(TestCase):
     """Tests for tag extraction in _build_marketplace_listing."""
 

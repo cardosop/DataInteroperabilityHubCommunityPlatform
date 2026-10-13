@@ -2,6 +2,7 @@
 Dataset Serializers
 """
 
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 # Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
@@ -44,13 +45,16 @@ class DatasetSerializer(serializers.ModelSerializer):
             data["asset_id"] = str(instance.asset_id)
             try:
                 data["asset_name"] = instance.asset.name
-            except Exception:
+            except ObjectDoesNotExist:
+                # The lazy FK fetch raises when the related asset row is
+                # gone (e.g. a soft-deleted asset filtered out by the
+                # manager) — enrich best-effort, never fail the list.
                 data["asset_name"] = None
         return data
 
     class Meta:
         model = Dataset
-        fields = [
+        fields = (
             "id",
             "tenant",
             "asset",
@@ -72,8 +76,8 @@ class DatasetSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "canonical_iri",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "schema_json",
@@ -92,7 +96,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "canonical_iri",
-        ]
+        )
 
 
 class DatasetCreateSerializer(serializers.Serializer):
@@ -151,6 +155,17 @@ class DatasetVersionCreateSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Semantic version string (e.g., '1.0.0'). If not provided, will be inferred.",
     )
+    # The service (create_version_from_dataset) accepts schema_json and
+    # falls back to parent.schema_json when None — but this serializer
+    # never declared the field, so DRF silently dropped it from
+    # validated_data and every API-created version cloned the parent's
+    # schema verbatim (b7 re-run #5: the versions-compare diff came back
+    # with zero changes despite an extended schema payload).
+    schema_json = serializers.JSONField(
+        required=False,
+        allow_null=True,
+        help_text="Full schema JSON for the new version (fields etc.).",
+    )
     version_tags = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -174,7 +189,7 @@ class DatasetVersionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dataset
-        fields = [
+        fields = (
             "id",
             "version",
             "semantic_version",
@@ -186,8 +201,8 @@ class DatasetVersionSerializer(serializers.ModelSerializer):
             "schema_json",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "version",
             "semantic_version",
@@ -199,7 +214,7 @@ class DatasetVersionSerializer(serializers.ModelSerializer):
             "schema_json",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class SchemaVersionCompareSerializer(serializers.Serializer):

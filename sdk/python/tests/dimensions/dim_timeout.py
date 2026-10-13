@@ -39,6 +39,5 @@ def test_timeout_error_message_mentions_timeout():
         pytest.fail("Expected timeout error")
     except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError) as exc:
         msg = str(exc).lower()
-        assert "timed out" in msg or "timeout" in msg or "connect" in msg, (
-            f"Timeout error message is not actionable: {str(exc)[:200]}"
-        )
+        if not ("timed out" in msg or "timeout" in msg or "connect" in msg):
+            pytest.fail(f"Timeout error message is not actionable: {str(exc)[:200]}")

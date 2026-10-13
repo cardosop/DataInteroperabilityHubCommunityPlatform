@@ -4,6 +4,7 @@ Pipeline Monitoring Service
 Tracks pipeline execution times, success rates, error rates, latency, and throughput.
 """
 
+from datetime import datetime
 from typing import Any
 
 from django.db.models import Avg, Count, Q
@@ -27,8 +28,8 @@ class PipelineMonitor:
         pipeline_id: str,
         pipeline_name: str | None = None,
         status: str = "PENDING",
-        started_at: timezone.datetime | None = None,
-        completed_at: timezone.datetime | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
         execution_time_seconds: float | None = None,
         latency_ms: float | None = None,
         throughput_items_per_second: float | None = None,
@@ -95,7 +96,7 @@ class PipelineMonitor:
     def update_execution(
         execution_id: str,
         status: str | None = None,
-        completed_at: timezone.datetime | None = None,
+        completed_at: datetime | None = None,
         execution_time_seconds: float | None = None,
         latency_ms: float | None = None,
         throughput_items_per_second: float | None = None,

@@ -16,7 +16,7 @@
  * AccessRequestListPage, AssetListPage, and ContractListPage.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 export interface UseBulkSelectionArgs {
   /** All ids currently visible in the list. Typically `results.map(r => r.id)`. */
@@ -50,10 +50,6 @@ export function useBulkSelection({
 }: UseBulkSelectionArgs): UseBulkSelectionResult {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
 
-  // Stable snapshot of the predicate so effects don't loop if the caller
-  // re-creates the function on every render.
-  const isSelectableRef = useRef(isSelectable);
-  isSelectableRef.current = isSelectable;
 
   // Prune selection when the visible id set changes. This handles
   // pagination, filter changes, and deletion races where a selected row
@@ -74,16 +70,18 @@ export function useBulkSelection({
     });
   }, [allIds]);
 
+  // The predicate feeds memoized callbacks directly — no ref snapshot
+  // (react-hooks/refs forbids reading refs during render; the callback
+  // churn is bounded to the caller's re-render cadence, and the pruning
+  // effect above depends only on allIds).
   const selectableIds = useMemo(() => {
-    const check = isSelectableRef.current;
-    if (!check) return allIds;
-    return allIds.filter(check);
-  }, [allIds]);
+    if (!isSelectable) return allIds;
+    return allIds.filter(isSelectable);
+  }, [allIds, isSelectable]);
 
   const toggle = useCallback(
     (id: string) => {
-      const check = isSelectableRef.current;
-      if (check && !check(id)) return;
+      if (isSelectable && !isSelectable(id)) return;
       setSelected((prev) => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
@@ -91,7 +89,7 @@ export function useBulkSelection({
         return next;
       });
     },
-    [],
+    [isSelectable],
   );
 
   const selectAll = useCallback(() => {

@@ -28,7 +28,8 @@ def test_detect_returns_match_for_each_known_prefix(prefix: str) -> None:
     assert result is not None, f"prefix {prefix!r} should be detected"
     matched_prefix, feature = result
     assert matched_prefix == prefix
-    assert isinstance(feature, str) and feature  # non-empty
+    assert isinstance(feature, str)
+    assert feature
 
 
 @pytest.mark.parametrize("prefix", sorted(MVP_GATED_RELATIVE_PREFIXES))
@@ -105,7 +106,7 @@ def test_detect_matches_double_slash_url(prefix: str) -> None:
 def test_detect_edge_cases(path: str | None) -> None:
     """Edge cases must not crash and must produce deterministic results."""
     if path is None:
-        assert detect_mvp_gated_feature(path) is None  # type: ignore[arg-type]
+        assert detect_mvp_gated_feature(path) is None
     else:
         result = detect_mvp_gated_feature(path)
         # Must not crash, must return None or a valid tuple
@@ -134,7 +135,7 @@ def test_detect_is_deterministic_under_multiple_matches() -> None:
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("https://meshant-internal.example.com/api/v1/mesh/", "https://meshant-internal.example.com"),
         ("http://localhost:8000/api/v1/mesh/", "http://localhost:8000"),

@@ -1313,8 +1313,11 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
 
         create_event = creation_events.filter(action="ODPS_CREATED").first()
         # Verify request_id is consistent
-        self.assertIn("request_id", create_event.details_json,
-            "request_id must be present in audit event details")
+        self.assertIn(
+            "request_id",
+            create_event.details_json,
+            "request_id must be present in audit event details",
+        )
         self.assertEqual(create_event.details_json.get("request_id"), request_id)
 
     def test_complete_audit_trail_for_linking_operations(self):
@@ -2334,7 +2337,9 @@ class AuditLogQueryingTest(ODPSAuditComprehensiveValidationBase):
         future_events = AuditEvent.objects.filter(
             resource_type="ODPS", tenant=self.tenant1, timestamp__gt=tomorrow
         )
-        self.assertGreaterEqual(future_events.count(), 0, "Should have minimal or zero future events")
+        self.assertGreaterEqual(
+            future_events.count(), 0, "Should have minimal or zero future events"
+        )
 
     def test_audit_log_querying_performance(self):
         """Test audit log querying performance."""

@@ -21,7 +21,7 @@ class Command(BaseCommand):
             help="Do not persist a Job row (useful for local smoke tests)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         skip_job = options["skip_job_row"]
         job_id = uuid.uuid4()
         job_row = None
@@ -44,7 +44,6 @@ class Command(BaseCommand):
         except Exception as exc:
             if job_row:
                 import traceback
-                job_row.mark_failed(
-                    f"{exc!r}\n\n{traceback.format_exc()}"
-                )
+
+                job_row.mark_failed(f"{exc!r}\n\n{traceback.format_exc()}")
             raise

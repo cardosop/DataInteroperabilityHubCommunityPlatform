@@ -34,9 +34,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
     except (redis.RedisError, ValueError, OSError):
         return None
+    else:
+        return client
 
 
 class TestDataContractCLIClientCircuitBreaker(TestCase):
@@ -406,7 +407,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
     def test_circuit_breaker_with_none_contract(self):
         """Circuit breaker returns fallback when the service rejects a None contract."""
-        raw_contract = None  # type: ignore[misc]  # test: edge-case type exercise
+        raw_contract = None  # test: edge-case type exercise
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -424,7 +425,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
             result = self.service_client.validate(
                 raw_contract=raw_contract,
                 format="json",
-                use_cache=False,  # type: ignore[misc]  # test: edge-case type exercise
+                use_cache=False,  # test: edge-case type exercise
             )
             self.assertIsNotNone(result)
             self.assertIsInstance(result, dict)

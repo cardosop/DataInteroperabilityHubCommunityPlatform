@@ -20,6 +20,7 @@ import uuid
 import pytest
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
@@ -34,14 +35,10 @@ from hub.apps.warehouses.models import WarehouseConnection, WarehouseType
 pytestmark = pytest.mark.django_db(transaction=True)
 
 # Live tests run when the specific connector's credentials are configured.
-# Per-connector markers prevent Snowflake env vars from enabling BigQuery tests
-# and vice versa.
-_SANDBOX_ENABLED = os.environ.get("WAREHOUSE_SANDBOX_ENABLED", "") == "1"
-_requires_sandbox = pytest.mark.skipif(
-    not _SANDBOX_ENABLED,
-    reason="WAREHOUSE_SANDBOX_ENABLED=1 required",
-)
-
+# Per-connector gates prevent Snowflake env vars from enabling BigQuery tests
+# and vice versa. W1 (W0.10): the gates apply the W16 policy via
+# ``skip_or_fail`` — plain skip markers silently skip in CI, so a
+# mis-configured runner reports green while the live suites never ran.
 _SNOWFLAKE_HAS_ACCOUNT = bool(
     os.environ.get("SNOWFLAKE_SANDBOX_ACCOUNT") or os.environ.get("SNOWFLAKE_ACCOUNT")
 )
@@ -49,20 +46,23 @@ _SNOWFLAKE_HAS_USER = bool(
     os.environ.get("SNOWFLAKE_SANDBOX_USER") or os.environ.get("SNOWFLAKE_USER")
 )
 _SNOWFLAKE_HAS_CREDS = _SNOWFLAKE_HAS_ACCOUNT and _SNOWFLAKE_HAS_USER
-_requires_snowflake_creds = pytest.mark.skipif(
-    not _SNOWFLAKE_HAS_CREDS,
-    reason="SNOWFLAKE_ACCOUNT + SNOWFLAKE_USER required for live Snowflake tests",
-)
+
+
+def _require_snowflake_creds() -> None:
+    if not _SNOWFLAKE_HAS_CREDS:
+        skip_or_fail("SNOWFLAKE_ACCOUNT + SNOWFLAKE_USER required for live Snowflake tests")
+
 
 _BIGQUERY_HAS_PROJECT = bool(
     os.environ.get("BIGQUERY_SANDBOX_PROJECT") or os.environ.get("GCP_PROJECT_ID")
 )
 _BIGQUERY_HAS_CREDS_JSON = bool(os.environ.get("GCP_CREDENTIALS_JSON"))
 _BIGQUERY_HAS_CREDS = _BIGQUERY_HAS_PROJECT and _BIGQUERY_HAS_CREDS_JSON
-_requires_bigquery_creds = pytest.mark.skipif(
-    not _BIGQUERY_HAS_CREDS,
-    reason="GCP_PROJECT_ID + GCP_CREDENTIALS_JSON required for live BigQuery tests",
-)
+
+
+def _require_bigquery_creds() -> None:
+    if not _BIGQUERY_HAS_CREDS:
+        skip_or_fail("GCP_PROJECT_ID + GCP_CREDENTIALS_JSON required for live BigQuery tests")
 
 
 def _mk_tenant():
@@ -184,11 +184,16 @@ class TestBigQueryConnectorContract(TestCase):
         )
 
 
-@_requires_snowflake_creds
 class TestSnowflakeLiveIntegration(TestCase):
-    """Snowflake live integration — gated at class level by @_requires_snowflake_creds.
+    """Snowflake live integration — gated at class setup by
+    ``_require_snowflake_creds`` (W16: raise in CI, skip locally).
     Infrastructure failures (network policy, unreachable host) are caught at connect()
     and converted to pytest.skip()."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _require_snowflake_creds()
 
     @staticmethod
     def _sandbox_config():
@@ -218,7 +223,7 @@ class TestSnowflakeLiveIntegration(TestCase):
         try:
             connector.connect()
         except (SnowflakeDatabaseError, ConnectionError, OSError) as exc:
-            pytest.skip(f"Snowflake infrastructure unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
+            skip_or_fail(f"Snowflake infrastructure unavailable: {exc}")
         try:
             result = connector.execute_query("SELECT 1 AS one")
             assert result.row_count == 1
@@ -234,7 +239,7 @@ class TestSnowflakeLiveIntegration(TestCase):
         try:
             connector.connect()
         except (SnowflakeDatabaseError, ConnectionError, OSError) as exc:
-            pytest.skip(f"Snowflake infrastructure unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
+            skip_or_fail(f"Snowflake infrastructure unavailable: {exc}")
         try:
             schema = connector.reflect_schema("TABLES")
             assert len(schema) > 0, (
@@ -244,9 +249,41 @@ class TestSnowflakeLiveIntegration(TestCase):
             connector.close()
 
 
-@_requires_bigquery_creds
 class TestBigQueryLiveIntegration(TestCase):
-    """BigQuery live integration — gated at class level by @_requires_bigquery_creds."""
+    """BigQuery live integration — gated at class setup by
+    ``_require_bigquery_creds`` (W16: raise in CI, skip locally)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _require_bigquery_creds()
+        # Presence gate passes with STALE credentials (.env.test carries an
+        # expired GCP SA JSON) — probe real auth so the live tests skip
+        # instead of failing with RefreshError at query time. The probe
+        # failure is kept and reported in the skip message (W16 decides
+        # skip-vs-raise), so a stale key is distinguishable from a network
+        # failure.
+        cls._auth_ok = False
+        cls._auth_error: Exception | None = None
+        try:
+            cfg = cls._sandbox_config()
+            connector = BigQueryConnector(connection_config=cfg)
+            connector.connect()
+            try:
+                # A dryRun job is the first REAL auth round trip —
+                # connect() alone builds a lazy client and never touches
+                # Google, so a stale SA key would only surface here.
+                connector.estimate_cost("SELECT 1")
+            finally:
+                connector.close()
+            cls._auth_ok = True
+        except Exception as exc:
+            cls._auth_error = exc
+
+    def setUp(self):
+        if not getattr(self, "_auth_ok", False):
+            err = getattr(self, "_auth_error", None)
+            skip_or_fail(f"BigQuery live auth failed ({err.__class__.__name__}: {err})")
 
     @staticmethod
     def _sandbox_config():
@@ -273,7 +310,7 @@ class TestBigQueryLiveIntegration(TestCase):
         try:
             connector.connect()
         except (ConnectionError, OSError, TimeoutError) as exc:
-            pytest.skip(f"BigQuery infrastructure unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
+            skip_or_fail(f"BigQuery infrastructure unavailable: {exc}")
         try:
             result = connector.execute_query("SELECT 1 AS one")
             assert result.row_count == 1
@@ -288,7 +325,7 @@ class TestBigQueryLiveIntegration(TestCase):
         try:
             connector.connect()
         except (ConnectionError, OSError, TimeoutError) as exc:
-            pytest.skip(f"BigQuery infrastructure unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
+            skip_or_fail(f"BigQuery infrastructure unavailable: {exc}")
         try:
             cost = connector.estimate_cost("SELECT 1")
             assert isinstance(cost, float)

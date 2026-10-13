@@ -3,6 +3,8 @@
  * Based on backend AssetSerializer and Asset model
  */
 
+import type { ComplianceRunSummary } from './complianceDiscovery';
+
 export const AssetStatus = {
   DRAFT: 'DRAFT',
   ACTIVE: 'ACTIVE',
@@ -66,6 +68,15 @@ export interface Asset {
   readonly visibility: AssetVisibility;
   dq_status: DQStatus;
   compliance_status: ComplianceStatus;
+  /**
+   * Phase 231.3 (REQ-COMP-DISCO-001) — latest SUCCEEDED compliance run
+   * summary emitted by the asset detail serializer
+   * (hub/apps/assets/serializers.py, AUDIT.5). Optional on the type so
+   * list-view payloads (which may omit it) still type-check. Feeds the
+   * discovery badge on the detail page; malformed
+   * ``regulation_summaries`` fail closed via the badge's ErrorBoundary.
+   */
+  latest_compliance_run?: ComplianceRunSummary | null;
   /**
    * Phase 250.7.A.1 — post-activation semantic / search status.
    * Surfaced for the SPA's `<SemanticDegradedBanner>` to render

@@ -9,9 +9,10 @@ This utility is designed to run at Django startup to catch configuration errors 
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
+from django.core.exceptions import ImproperlyConfigured
 
 logger = structlog.get_logger(__name__)
 
@@ -54,7 +55,7 @@ class URLPatternValidator:
     KEBAB_CASE_PATTERN = re.compile(r"^[a-z0-9-]+$")
 
     # Common singular forms that should be plural
-    SINGULAR_PATTERNS = [
+    SINGULAR_PATTERNS: ClassVar[list[str]] = [
         r"^asset$",
         r"^contract$",
         r"^dataset$",
@@ -70,7 +71,7 @@ class URLPatternValidator:
     ]
 
     # Unclear abbreviations (warnings only)
-    UNCLEAR_ABBREVIATIONS = {
+    UNCLEAR_ABBREVIATIONS: ClassVar[dict[str, str]] = {
         "dc": "data-contracts",
         "si": "scheduled-ingestions",
         "dq": "data-quality",  # Acceptable if documented
@@ -96,29 +97,41 @@ class URLPatternValidator:
             # Get the root URL resolver
             resolver = get_resolver()
 
-            # Find the /api/v1/ resolver by traversing
-            # Start from root and find the API v1 patterns
+            # Find the /api/v1/ resolver by traversing.
+            # Phase 313.1 — the paid-layer registry mounts at the ROOT as
+            # path("", include("hub.apps.api.paid_urls")) BEFORE the
+            # api/v1 include, so a substring heuristic lands on a paid
+            # app's sub-urlconf (e.g. billing → phantom
+            # "/api/v1/admin/plans/"). Match the exact "api/v1/" mount
+            # first; keep the heuristic only as a fallback.
             api_v1_patterns = None
             for pattern in resolver.url_patterns:
-                pattern_str = str(getattr(pattern, "pattern", ""))
-                # Look for the /api/v1/ pattern
-                if (
-                    "api/v1" in pattern_str
-                    or (hasattr(pattern, "url_patterns") and self._has_api_v1_patterns(pattern))
-                ) and hasattr(pattern, "url_patterns"):
-                    # Check if this is the /api/v1/ resolver
-                    for sub_pattern in pattern.url_patterns:
-                        sub_str = str(getattr(sub_pattern, "pattern", ""))
-                        if "api/v1" in sub_str or (hasattr(sub_pattern, "url_patterns")):
-                            api_v1_patterns = (
-                                sub_pattern.url_patterns
-                                if hasattr(sub_pattern, "url_patterns")
-                                else None
-                            )
-                            if api_v1_patterns:
-                                break
-                    if api_v1_patterns:
-                        break
+                if str(getattr(pattern, "pattern", "")) == "api/v1/" and hasattr(
+                    pattern, "url_patterns"
+                ):
+                    api_v1_patterns = pattern.url_patterns
+                    break
+            if api_v1_patterns is None:
+                for pattern in resolver.url_patterns:
+                    pattern_str = str(getattr(pattern, "pattern", ""))
+                    # Look for the /api/v1/ pattern
+                    if (
+                        "api/v1" in pattern_str
+                        or (hasattr(pattern, "url_patterns") and self._has_api_v1_patterns(pattern))
+                    ) and hasattr(pattern, "url_patterns"):
+                        # Check if this is the /api/v1/ resolver
+                        for sub_pattern in pattern.url_patterns:
+                            sub_str = str(getattr(sub_pattern, "pattern", ""))
+                            if "api/v1" in sub_str or (hasattr(sub_pattern, "url_patterns")):
+                                api_v1_patterns = (
+                                    sub_pattern.url_patterns
+                                    if hasattr(sub_pattern, "url_patterns")
+                                    else None
+                                )
+                                if api_v1_patterns:
+                                    break
+                        if api_v1_patterns:
+                            break
 
             # If we found API v1 patterns, use them; otherwise use root patterns
             if api_v1_patterns:
@@ -127,7 +140,7 @@ class URLPatternValidator:
                 # Fallback: extract from root with /api/v1/ prefix
                 self._extract_patterns_recursive(resolver.url_patterns, patterns, "/api/v1/")
 
-        except Exception as e:
+        except (ImportError, ImproperlyConfigured) as e:
             logger.warning(
                 "url_pattern_extraction_failed",
                 error=str(e),
@@ -152,6 +165,7 @@ class URLPatternValidator:
         patterns: list[dict[str, Any]],
         prefix: str = "",
         file_path: str = "unknown",
+        namespace: str = "",
     ) -> None:
         """Recursively extract URL patterns from Django URL configuration"""
         for pattern in url_patterns:
@@ -164,8 +178,25 @@ class URLPatternValidator:
                 else:
                     continue
 
-                # Get URL name
+                # Includes are containers, not URLs: recurse into them but
+                # do not emit them as patterns (an include prefix alone is
+                # not resolvable — e.g. "/api/v1/public/" 404s while
+                # "/api/v1/public/dsar-requests/" resolves).
+                is_include = hasattr(pattern, "url_patterns")
+
+                # Path-converter patterns (<uuid:…>, <drf_format_suffix:…>)
+                # and raw regex routes cannot be resolved as literal URLs —
+                # skip them (they are covered by parameterized-resolution
+                # tests elsewhere).
+                has_converter = "<" in pattern_str
+                is_raw_regex = pattern_str.startswith(("^", "(?"))
+
+                # Get URL name. Namespaced includes (app_name/namespace on
+                # the resolver) prefix the child names — reverse() only
+                # resolves the fully-qualified form (e.g. "events:replay-events").
                 url_name = getattr(pattern, "name", None)
+                if url_name and namespace:
+                    url_name = f"{namespace}:{url_name}"
 
                 # Get callback/view info
                 callback = getattr(pattern, "callback", None)
@@ -192,19 +223,20 @@ class URLPatternValidator:
                 # Normalize pattern for analysis (remove regex groups)
                 normalized_pattern = self._normalize_pattern(full_pattern)
 
-                patterns.append(
-                    {
-                        "pattern": full_pattern,
-                        "normalized_pattern": normalized_pattern,
-                        "url_name": url_name,
-                        "file_path": file_path,
-                        "line_number": None,  # Django doesn't provide line numbers
-                        "original_pattern": pattern_str,
-                    }
-                )
+                if not is_include and not has_converter and not is_raw_regex:
+                    patterns.append(
+                        {
+                            "pattern": full_pattern,
+                            "normalized_pattern": normalized_pattern,
+                            "url_name": url_name,
+                            "file_path": file_path,
+                            "line_number": None,  # Django doesn't provide line numbers
+                            "original_pattern": pattern_str,
+                        }
+                    )
 
                 # Handle include() patterns
-                if hasattr(pattern, "url_patterns"):
+                if is_include:
                     # Get the prefix from the pattern
                     if hasattr(pattern, "pattern"):
                         include_prefix = str(pattern.pattern).lstrip("^").rstrip("$")
@@ -243,11 +275,18 @@ class URLPatternValidator:
                     else:
                         new_prefix = prefix
 
+                    child_namespace = namespace
+                    include_ns = getattr(pattern, "namespace", None) or getattr(
+                        pattern, "app_name", None
+                    )
+                    if include_ns:
+                        child_namespace = f"{namespace}:{include_ns}" if namespace else include_ns
+
                     self._extract_patterns_recursive(
-                        pattern.url_patterns, patterns, new_prefix, file_path
+                        pattern.url_patterns, patterns, new_prefix, file_path, child_namespace
                     )
 
-            except Exception as e:
+            except (ImportError, ImproperlyConfigured, AttributeError, TypeError, ValueError) as e:
                 logger.debug(
                     "pattern_extraction_error",
                     error=str(e),
@@ -276,10 +315,12 @@ class URLPatternValidator:
         # e.g., \. becomes . (but we'll handle format suffixes separately)
         normalized = normalized.replace("\\.", ".")
 
-        # Remove optional trailing slashes and question marks (regex quantifiers)
+        # Remove trailing regex quantifiers. Keep the pattern's ACTUAL
+        # trailing-slash shape — slash-less ``path()`` routes (e.g. the
+        # Delta Sharing 1.0 oracle shapes under /api/v1/databricks/) are
+        # legitimately registered without one; fabricating a trailing "/"
+        # here produced paths that resolve() cannot match.
         normalized = re.sub(r"\?$", "", normalized)  # Remove trailing ?
-        normalized = re.sub(r"/$", "", normalized)  # Remove trailing /
-        normalized = normalized + "/"  # Add back trailing / for consistency
 
         return normalized
 
@@ -398,11 +439,12 @@ class URLPatternValidator:
             valid_segments.append(segment)
 
         # Check each valid segment for kebab-case
-        for segment in valid_segments:
+        for raw_segment in valid_segments:
+            segment = raw_segment
             # Skip if it's a file extension (e.g., .json, .yaml)
-            if "." in segment and not segment.startswith("."):
+            if "." in raw_segment and not raw_segment.startswith("."):
                 # Split on dot and check the base name
-                base_name = segment.split(".")[0]
+                base_name = raw_segment.split(".")[0]
                 if base_name:
                     segment = base_name
 

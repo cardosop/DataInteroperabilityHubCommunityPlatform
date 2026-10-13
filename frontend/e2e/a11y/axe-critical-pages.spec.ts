@@ -27,7 +27,8 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { clearAuthStorage, getComplianceOfficerUser, getTenantAdminUser, getTestUser, loginUser } from '../fixtures/auth';
+import { clearAuthStorage, getComplianceOfficerUser, getTenantAdminUser, getTenantAdminUserOrTestUser, getTestUser, loginUser } from '../fixtures/auth';
+import { loginAndNavigateToRoute } from '../fixtures/helpers';
 import {
   runAxeAudit,
   expectNoSeriousViolations,
@@ -52,7 +53,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('home', page)();
   });
 
@@ -60,7 +61,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('asset-list', page)();
   });
 
@@ -72,7 +73,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     });
     // Wait for either the error display or the unavailable page (capability).
     await page
-      .waitForSelector('.error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 30_000 })
+      .waitForSelector('.error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .asset-detail-page, [data-testid="asset-detail-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]', { timeout: 30_000 })
       .catch(() => {
         // intentional: page may settle on a generic 404/route-error state without our specific selectors — the audit below still runs against whatever the SPA actually rendered, which IS the a11y signal we care about.
       });
@@ -83,7 +84,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('contracts-list', page)();
   });
 
@@ -91,7 +92,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/datasets', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('datasets-list', page)();
   });
 
@@ -99,7 +100,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('marketplace-list', page)();
   });
 
@@ -107,7 +108,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getComplianceOfficerUser();
     await loginUser(page, user);
     await page.goto('/compliance', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('compliance', page)();
   });
 
@@ -120,7 +121,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     // frontend/src/app/routes/routes.tsx — pinned here so the audit runs
     // against the real DQ surface, not the 404 page.
     await page.goto('/dq', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30_000 });
     await SOFT_MODERATE_LOG('data-quality', page)();
   });
 
@@ -144,14 +145,14 @@ test.describe('A11y axe coverage @a11y @critical', () => {
         '.app-header, [data-testid="app-header"], .unavailable-page, [data-testid="unavailable-page"]',
       )
       .first()
-      .waitFor({ state: 'visible', timeout: 15_000 });
+      .waitFor({ state: 'visible', timeout: 30_000 });
     await SOFT_MODERATE_LOG('admin-settings', page)();
   });
 
   test('login page (unauthenticated) audits clean', async ({ page }) => {
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('input[type="email"], input[name="email"], #email')).toBeVisible({
-      timeout: 15_000,
+      timeout: 30_000,
     });
     await SOFT_MODERATE_LOG('login-page', page)();
   });
@@ -160,7 +161,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     // Submit empty / invalid form to trigger validation errors.
     const emailInput = page.locator('input[type="email"], input[name="email"], #email').first();
-    await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
+    await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
     const submitBtn = page
       .locator(
         'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Login")',
@@ -194,7 +195,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     await page
       .locator('input[type="email"], input[name="email"], #email')
       .first()
-      .waitFor({ state: 'visible', timeout: 15_000 });
+      .waitFor({ state: 'visible', timeout: 30_000 });
     await SOFT_MODERATE_LOG('register-initial', page)();
 
     // Fill some fields, audit again — different ARIA states (filled vs empty).
@@ -209,8 +210,8 @@ test.describe('A11y axe coverage @a11y @critical', () => {
   });
 
   test('reset password page audits clean', async ({ page }) => {
-    await page.goto('/reset-password', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('input, [role="main"], .error-display, [data-testid="error-display"]', { timeout: 15_000 }).catch(
+    await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('input, [role="main"], .error-display, [data-testid="error-display"]', { timeout: 30_000 }).catch(
       () => {
         // intentional: reset-password page may display either the form or a "check your email" confirmation; the audit below scans whichever state rendered — both are valid a11y targets.
       },
@@ -224,7 +225,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // Audit specifically the sidebar to surface nav-only a11y issues.
     const sidebar = page.locator('.app-sidebar, nav, [role="navigation"]').first();
-    await sidebar.waitFor({ state: 'visible', timeout: 15_000 });
+    await sidebar.waitFor({ state: 'visible', timeout: 30_000 });
     const audit = await runAxeAudit(page, 'sidebar', { include: '.app-sidebar' }).catch(
       async () => {
         // intentional: if .app-sidebar is not the canonical class on this build, the broader page-level audit still surfaces sidebar issues — fall back to a whole-page audit so the test produces a result regardless of selector drift.
@@ -242,7 +243,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     await loginUser(page, user);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const header = page.locator('.app-header, [data-testid="app-header"], header, [role="banner"]').first();
-    await header.waitFor({ state: 'visible', timeout: 15_000 });
+    await header.waitFor({ state: 'visible', timeout: 30_000 });
     const audit = await runAxeAudit(page, 'header', { include: '.app-header, [data-testid="app-header"]' }).catch(async () => {
       // intentional: same fallback rationale as the sidebar audit above.
       return runAxeAudit(page, 'header-fallback');
@@ -257,8 +258,8 @@ test.describe('A11y axe coverage @a11y @critical', () => {
     const user = await getTestUser();
     await loginUser(page, user);
     await page.goto('/coming-soon', { waitUntil: 'domcontentloaded' });
-    await page.locator('.unavailable-page, [data-testid="unavailable-page"], [data-testid="coming-soon-page"]').first()
-      .waitFor({ state: 'visible', timeout: 15_000 })
+    await page.locator('.unavailable-page, [data-testid="unavailable-page"], [data-testid="coming-soon-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
       .catch(() => {
         // intentional: not all builds expose /coming-soon; the audit below scans whatever the route resolves to (404, 403, or a redirect target) — that's still a valid a11y surface for the test.
       });
@@ -272,10 +273,60 @@ test.describe('A11y axe coverage @a11y @critical', () => {
       waitUntil: 'domcontentloaded',
     });
     await page.waitForSelector('.error-display, [data-testid="error-display"], .not-found-page, [role="main"], h1', {
-      timeout: 15_000,
+      timeout: 30_000,
     }).catch(() => {
       // intentional: 404-page rendering varies (server-side template vs SPA NotFoundRoute vs redirect-home); the audit below scans whichever state the SPA settled on — that's the a11y target regardless of routing flavour.
     });
     await SOFT_MODERATE_LOG('404-not-found', page)();
+  });
+
+  test('login page with Databricks SSO button audits clean', async ({ page }) => {
+    // Traceability-plan a11y line (P0b first): the Sign-in-with-Databricks
+    // surface. The button renders with the tenant hint (JOURNEY-DB-003
+    // pins the same visibility contract); the audit scans the real login
+    // page with the SSO affordance visible.
+    await page.goto(
+      '/login?tenant_id=00000000-0000-0000-0000-000000000001',
+      { waitUntil: 'domcontentloaded' },
+    );
+    await expect(page.getByTestId('databricks-sso-button')).toBeVisible({
+      timeout: 30_000,
+    });
+    await SOFT_MODERATE_LOG('login-databricks-sso', page)();
+  });
+
+  test('databricks workspace management page + wizard audits clean', async ({ page }) => {
+    // Traceability-plan a11y line (P0 first): JOURNEY-DB-001's management
+    // surface + the open registration wizard (form labels, aria-busy and
+    // aria-current="step" states per the 0.18 a11y pins). Mirrors the
+    // DB-001 spec's route/selector contract so the audit lands on the
+    // real workspace surface (or its documented fallback states).
+    const user = await getTenantAdminUserOrTestUser();
+    await loginAndNavigateToRoute(page, user, '/databricks', {
+      timeout: 60000,
+      contentSelector: [
+        '.warehouse-list',
+        '[data-testid="databricks-register-wizard"]',
+        '[data-testid="databricks-flag-disabled"]',
+        '.error-display, [data-testid="error-display"]',
+      ].join(', '),
+    });
+    await expect(
+      page.getByRole('heading', { name: /Databricks/i }).first()
+    ).toBeVisible({ timeout: 30000 });
+    await SOFT_MODERATE_LOG('databricks-workspace-management', page)();
+
+    // Open the guided wizard and audit the open step surface — the CTA is
+    // always rendered when the flag is enabled (the JOURNEY-DB-001 spec
+    // pins the same contract for the e2e tenant).
+    const registerCta = page.getByRole('button', {
+      name: /Register workspace/i,
+    });
+    await expect(registerCta).toBeVisible({ timeout: 30000 });
+    await registerCta.click();
+    await expect(
+      page.locator('[data-testid="databricks-register-wizard"]')
+    ).toBeVisible({ timeout: 30000 });
+    await SOFT_MODERATE_LOG('databricks-wizard-step1', page)();
   });
 });

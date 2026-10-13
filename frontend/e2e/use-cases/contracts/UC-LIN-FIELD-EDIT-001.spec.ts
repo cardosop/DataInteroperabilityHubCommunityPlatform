@@ -17,42 +17,38 @@
 import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
-import { createAssetViaApi } from '../../fixtures/api-assets';
+import { createODCSContractViaApi } from '../../fixtures/api-assets';
 
 test.describe('UC-LIN-FIELD-EDIT-001: field-level lineage edit', () => {
   test.setTimeout(120_000);
 
   test('tenant admin can add an edge and save', async ({ page }) => {
     const user = await getTestUser();
-    const _assetId = await createAssetViaApi(user, {
-      forceNew: true,
-      ensureActivated: true,
-    });
-
+    // The contract seeder below creates its own linked ACTIVE asset —
+    // a separate createAssetViaApi call would just burn plan quota.
     // Navigate to the contract detail page (tenant-admin user).
     // The exact contract path depends on the asset/contract relation
     // in the seeded fixtures; this is the F2 surface so we use a
     // generic navigation pattern that maps to any active contract.
+    // Self-seed: this UC needs an ACTIVE contract with a linked asset —
+    // the shared tenant's contract list is often empty in batch runs (the
+    // old code skipped with "No contracts available in this environment",
+    // which made the lineage-edit UC a permanent no-op locally). Create one
+    // via the same API seeder the other contract specs use and navigate
+    // straight to its detail page.
+    const contractId = await createODCSContractViaApi(user, { forceNew: true });
     await loginAndNavigateToRoute(
       page,
       user,
-      `/contracts`,
+      `/contracts/${contractId}`,
       {
         timeout: 90_000,
-        contentSelector: '.contract-list, main',
+        contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .contract-detail-content, .error-display, [data-testid="error-display"], main',
       },
     );
-    if (page.url().includes('/login')) {
-      test.skip(true, 'Redirected to login — auth not available');
-    }
-    await waitForLoadingComplete(page, { timeout: 15_000 });
-
-    // Find any active contract row.
-    const firstContract = page.locator('a[href^="/contracts/"]').first();
-    if ((await firstContract.count()) === 0) {
-      test.skip(true, 'No contracts available in this environment');
-    }
-    await firstContract.click();
+    const onLogin = page.url().includes('/login');
+    test.skip(onLogin, 'Redirected to login — auth not available');
+    if (onLogin) return;
     await waitForLoadingComplete(page, { timeout: 15_000 });
 
     // Switch to the Lineage tab.
@@ -65,9 +61,9 @@ test.describe('UC-LIN-FIELD-EDIT-001: field-level lineage edit', () => {
     // The Edit-lineage entrypoint is capability-flag-gated.  If the
     // flag is OFF, the entrypoint is absent — skip the rest.
     const entrypoint = page.getByTestId('lineage-edit-entrypoint');
-    if ((await entrypoint.count()) === 0) {
-      test.skip(true, 'Lineage field-editor capability OFF in this environment');
-    }
+    const capabilityOff = (await entrypoint.count()) === 0;
+    test.skip(capabilityOff, 'Lineage field-editor capability OFF in this environment');
+    if (capabilityOff) return;
     await entrypoint.locator('button').click();
 
     // We're now on the editor.  Toolbar + add-edge button visible.

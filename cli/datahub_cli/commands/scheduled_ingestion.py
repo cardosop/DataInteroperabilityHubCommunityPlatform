@@ -6,6 +6,7 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
+from typing import Any
 
 import click
 
@@ -89,7 +90,7 @@ def list_ingestions(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list scheduled ingestions: {e}")
+        raise click.ClickException(f"Failed to list scheduled ingestions: {e}") from e
 
 
 @scheduled_ingestion.command("get")
@@ -133,7 +134,7 @@ def get_ingestion(ingestion_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get scheduled ingestion: {e}")
+        raise click.ClickException(f"Failed to get scheduled ingestion: {e}") from e
 
 
 @scheduled_ingestion.command("create")
@@ -149,6 +150,11 @@ def get_ingestion(ingestion_id: str, output_format: str):
 )
 @click.option(
     "--schedule-config", help="Schedule configuration as JSON string (required for CUSTOM_CRON)"
+)
+@click.option(
+    "--cron-expression",
+    help="Cron expression; shorthand for --schedule-type CUSTOM_CRON --schedule-config "
+    '\'{"cron": "<expression>"}\'. Mutually exclusive with --schedule-config.',
 )
 @click.option("--file-pattern", default=".*", help="File pattern regex")
 @click.option("--asset-id", help="Target asset ID")
@@ -168,6 +174,7 @@ def create_ingestion(
     source_config: str,
     schedule_type: str,
     schedule_config: str | None,
+    cron_expression: str | None,
     file_pattern: str,
     asset_id: str | None,
     description: str | None,
@@ -176,23 +183,46 @@ def create_ingestion(
     output_format: str,
 ):
     """Create scheduled ingestion"""
-    try:
+
+    def _parse_params() -> tuple[dict, str, dict]:
         # Parse JSON strings
         try:
             source_config_dict = json.loads(source_config)
         except json.JSONDecodeError:
-            raise click.ClickException(f"Invalid JSON in --source-config: {source_config}")
+            raise click.ClickException(
+                f"Invalid JSON in --source-config: {source_config}"
+            ) from None
 
+        # Resolve into a distinct local: assigning to the outer
+        # ``schedule_type`` parameter here would make it local to this
+        # closure on EVERY path, leaving the ``elif`` read unbound
+        # (UnboundLocalError) when no cron expression is given.
+        resolved_schedule_type = schedule_type
         schedule_config_dict = {}
-        if schedule_config:
+        if cron_expression:
+            if schedule_config:
+                raise click.ClickException(
+                    "--cron-expression and --schedule-config are mutually exclusive"
+                )
+            # Backend serializer validates schedule_config["cron"] for CUSTOM_CRON
+            # (legacy 'cron' key accepted in hub/apps/scheduled_ingestion/serializers.py).
+            resolved_schedule_type = "CUSTOM_CRON"
+            schedule_config_dict = {"cron": cron_expression}
+        elif schedule_config:
             try:
                 schedule_config_dict = json.loads(schedule_config)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --schedule-config: {schedule_config}")
+                raise click.ClickException(
+                    f"Invalid JSON in --schedule-config: {schedule_config}"
+                ) from None
         elif schedule_type == "CUSTOM_CRON":
             raise click.ClickException(
                 "--schedule-config is required for CUSTOM_CRON schedule type"
             )
+        return source_config_dict, resolved_schedule_type, schedule_config_dict
+
+    try:
+        source_config_dict, schedule_type, schedule_config_dict = _parse_params()
 
         # Build request data
         data = {
@@ -222,7 +252,7 @@ def create_ingestion(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create scheduled ingestion: {e}")
+        raise click.ClickException(f"Failed to create scheduled ingestion: {e}") from e
 
 
 @scheduled_ingestion.command("update")
@@ -253,7 +283,8 @@ def update_ingestion(
     output_format: str,
 ):
     """Update scheduled ingestion"""
-    try:
+
+    def _build_update_data() -> dict:
         data = {}
 
         if name:
@@ -262,14 +293,18 @@ def update_ingestion(
             try:
                 data["source_config"] = json.loads(source_config)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --source-config: {source_config}")
+                raise click.ClickException(
+                    f"Invalid JSON in --source-config: {source_config}"
+                ) from None
         if schedule_type:
             data["schedule_type"] = schedule_type
         if schedule_config:
             try:
                 data["schedule_config"] = json.loads(schedule_config)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --schedule-config: {schedule_config}")
+                raise click.ClickException(
+                    f"Invalid JSON in --schedule-config: {schedule_config}"
+                ) from None
         if file_pattern:
             data["file_pattern"] = file_pattern
         if status:
@@ -279,6 +314,10 @@ def update_ingestion(
 
         if not data:
             raise click.ClickException("At least one field must be provided for update")
+        return data
+
+    try:
+        data = _build_update_data()
 
         result = api_client.patch(f"scheduled-ingestions/{ingestion_id}/", json_data=data)
 
@@ -291,7 +330,7 @@ def update_ingestion(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update scheduled ingestion: {e}")
+        raise click.ClickException(f"Failed to update scheduled ingestion: {e}") from e
 
 
 @scheduled_ingestion.command("trigger")
@@ -319,7 +358,7 @@ def trigger_ingestion(ingestion_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to trigger scheduled ingestion: {e}")
+        raise click.ClickException(f"Failed to trigger scheduled ingestion: {e}") from e
 
 
 @scheduled_ingestion.command("runs")
@@ -336,7 +375,7 @@ def trigger_ingestion(ingestion_id: str, output_format: str):
 )
 def list_runs(ingestion_id: str, status: str | None, limit: int, offset: int, output_format: str):
     """List runs for scheduled ingestion"""
-    params = {"limit": limit, "offset": offset}
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
     if status:
         params["status"] = status
 
@@ -382,7 +421,7 @@ def list_runs(ingestion_id: str, status: str | None, limit: int, offset: int, ou
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list runs: {e}")
+        raise click.ClickException(f"Failed to list runs: {e}") from e
 
 
 @scheduled_ingestion.command("run-detail")
@@ -422,4 +461,25 @@ def get_run_detail(ingestion_id: str, run_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get run details: {e}")
+        raise click.ClickException(f"Failed to get run details: {e}") from e
+
+
+@scheduled_ingestion.command("delete")
+@click.argument("ingestion_id")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
+def delete_ingestion(ingestion_id: str, confirm: bool):
+    """Delete a scheduled ingestion"""
+    if not confirm and not click.confirm(
+        f"Are you sure you want to delete scheduled ingestion {ingestion_id}?"
+    ):
+        click.echo("Cancelled.")
+        return
+
+    try:
+        # DELETE /api/v1/scheduled-ingestions/{id}/ (DRF destroy)
+        api_client.delete(f"scheduled-ingestions/{ingestion_id}/")
+        click.echo(f"Scheduled ingestion {ingestion_id} deleted.")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to delete scheduled ingestion: {e}") from e

@@ -9,7 +9,6 @@ Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from ._mvp_gates import (
@@ -31,7 +30,7 @@ def _normalize_relative(path: str) -> str:
     return path.lstrip("/")
 
 
-def detect_mvp_gated_feature(path: str) -> Optional[Tuple[str, str]]:
+def detect_mvp_gated_feature(path: str) -> tuple[str, str] | None:
     """Return ``(prefix, feature)`` if ``path`` matches a gated prefix, else None.
 
     Longest-prefix-wins tiebreak guards against future overlapping prefixes.

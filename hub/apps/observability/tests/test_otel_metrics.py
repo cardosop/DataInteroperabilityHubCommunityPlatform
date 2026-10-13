@@ -58,9 +58,13 @@ class OpenTelemetryMetricsSetupTest(TestCase):
 
         if OPENTELEMETRY_AVAILABLE:
             # When OTEL is available, expect a meter instance (not None, not a random object)
-            self.assertIsNotNone(meter, "setup_opentelemetry_metrics() returned None but OTEL is available")
+            self.assertIsNotNone(
+                meter, "setup_opentelemetry_metrics() returned None but OTEL is available"
+            )
         else:
-            self.assertIsNone(meter, "setup_opentelemetry_metrics() should return None when OTEL unavailable")
+            self.assertIsNone(
+                meter, "setup_opentelemetry_metrics() should return None when OTEL unavailable"
+            )
 
     @override_settings(OPENTELEMETRY_METRICS_ENABLED=False)
     def test_setup_opentelemetry_metrics_disabled(self):
@@ -248,11 +252,15 @@ class MetricsViewEndpointTest(TestCase):
         """Test that metrics endpoint responds successfully"""
         response = self.client.get("/metrics/")
         if OPENTELEMETRY_AVAILABLE:
-            self.assertEqual(response.status_code, 200,
-                           "Metrics endpoint must return 200 when OTEL is available")
+            self.assertEqual(
+                response.status_code, 200, "Metrics endpoint must return 200 when OTEL is available"
+            )
         else:
-            self.assertIn(response.status_code, [200, 503],
-                         "Metrics endpoint returns 200 or 503 when OTEL unavailable")
+            self.assertIn(
+                response.status_code,
+                [200, 503],
+                "Metrics endpoint returns 200 or 503 when OTEL unavailable",
+            )
 
     def test_metrics_endpoint_content_type(self):
         """Test metrics endpoint content type"""
@@ -260,8 +268,9 @@ class MetricsViewEndpointTest(TestCase):
 
         if response.status_code == 200:
             content_type = response.get("Content-Type", "")
-            self.assertIn("text/plain", content_type,
-                         "Metrics endpoint must return text/plain content type")
+            self.assertIn(
+                "text/plain", content_type, "Metrics endpoint must return text/plain content type"
+            )
 
     def test_metrics_endpoint_content(self):
         """Test metrics endpoint returns parseable Prometheus text"""
@@ -292,9 +301,7 @@ class MetricsFailureTest(TestCase):
         """Test that metrics handle None meter gracefully"""
         # Metrics wrappers are designed to no-op when meter is None;
         # this must never raise an exception.
-        http_requests_total.labels(
-            method="GET", route="/api/v1/test/", status_class="2xx"
-        ).inc()
+        http_requests_total.labels(method="GET", route="/api/v1/test/", status_class="2xx").inc()
         # If we reach here without exception, the graceful handling works
 
     def test_metrics_labels_with_missing_required_labels(self):
@@ -421,11 +428,15 @@ class MetricsErrorHandlingTest(TestCase):
         """Test metrics view handles generation without crashing"""
         response = self.client.get("/metrics/")
         if OPENTELEMETRY_AVAILABLE:
-            self.assertEqual(response.status_code, 200,
-                           "Metrics endpoint must return 200 when OTEL is available")
+            self.assertEqual(
+                response.status_code, 200, "Metrics endpoint must return 200 when OTEL is available"
+            )
         else:
-            self.assertIn(response.status_code, [200, 503],
-                         "Metrics endpoint returns 200 or 503 when OTEL unavailable")
+            self.assertIn(
+                response.status_code,
+                [200, 503],
+                "Metrics endpoint returns 200 or 503 when OTEL unavailable",
+            )
 
     def test_metrics_view_handles_missing_registry(self):
         """Test metrics view handles missing registry gracefully"""

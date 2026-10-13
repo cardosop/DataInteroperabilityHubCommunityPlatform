@@ -6,6 +6,7 @@ Also checks subscription status (Phase 25.2.4).
 """
 
 import contextlib
+from typing import ClassVar
 
 from django.http import JsonResponse
 
@@ -46,7 +47,7 @@ class TenantSuspensionMiddleware:
         return response
 
     # HTTP methods that are considered write operations
-    WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
+    WRITE_METHODS: ClassVar[list[str]] = ["POST", "PUT", "PATCH", "DELETE"]
 
     # Endpoints that are always allowed (health checks, auth, platform admin).
     # Auth endpoints must work without subscription: login, logout, sessions (list/revoke),
@@ -55,7 +56,7 @@ class TenantSuspensionMiddleware:
     # Platform admin endpoints (/api/v1/platform/) bypass subscription: platform admins
     # perform platform-level operations (tenant suspend/resume, user erasure) that must not
     # be blocked by their tenant's subscription status.
-    ALLOWED_PATHS = [
+    ALLOWED_PATHS: ClassVar[list[str]] = [
         "/health/",
         "/api/health/",
         "/api/v1/auth/",
@@ -203,11 +204,24 @@ class TenantSuspensionMiddleware:
         # subscription status changes (e.g. payment processed) within a
         # reasonable window.
         if request.method in self.WRITE_METHODS:
+            from django.core.cache import cache as _cache
+
             try:
-                from django.core.cache import cache as _cache
-
                 from hub.apps.billing.models import Subscription, SubscriptionStatus
-
+            except (RuntimeError, ImportError, ModuleNotFoundError):
+                # Core-only mode: the paid billing app is not installed —
+                # RuntimeError (private repo, app uninstalled at model
+                # definition) / ModuleNotFoundError (public tree, module
+                # absent) — so the paywall is intentionally absent (OSS
+                # build has no subscription concept).
+                Subscription = SubscriptionStatus = None
+            # NOTE — deliberately NO broad `except Exception` around the
+            # FULL-mode paywall body (Phase P.2c): a query error, a
+            # status-enum error, or any other regression inside the
+            # paywall must surface (500), not silently turn every write
+            # into an allowed write. The narrow-guard behaviour is pinned
+            # by tenants/tests/test_middleware.py::TestSubscriptionEnforcementLiveness.
+            if Subscription is not None:
                 _BLOCKED_STATUSES = frozenset(
                     {
                         SubscriptionStatus.PAST_DUE,
@@ -270,8 +284,5 @@ class TenantSuspensionMiddleware:
                             },
                             status=403,
                         )
-            except Exception:
-                # Don't block on subscription check errors - allow request to proceed
-                pass
 
         return None

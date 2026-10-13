@@ -47,10 +47,9 @@ Subcode taxonomy
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from typing import Any
-
-import logging
 
 from django.conf import settings
 from django.db import DatabaseError, InterfaceError, OperationalError

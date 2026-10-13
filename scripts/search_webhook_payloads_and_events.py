@@ -136,7 +136,7 @@ class WebhookPayloadsAndEventsSearcher:
                                         )
                                     )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def search_payload_structures(self):
@@ -176,7 +176,7 @@ class WebhookPayloadsAndEventsSearcher:
                                 )
                                 self.event_types_found.add(event_type)
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def search_subscription_configs(self):
@@ -213,7 +213,7 @@ class WebhookPayloadsAndEventsSearcher:
                             for event_type in event_types:
                                 self.event_types_found.add(event_type)
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error processing {py_file}: {e}")
 
     def analyze_webhook_models(self):
@@ -230,7 +230,7 @@ class WebhookPayloadsAndEventsSearcher:
 
             # Extract WebhookEventType enum values - look for pattern: NAME = "value", "Label"
             in_event_type_enum = False
-            for i, line in enumerate(lines, 1):
+            for _i, line in enumerate(lines, 1):
                 if "class WebhookEventType" in line:
                     in_event_type_enum = True
                     continue
@@ -268,11 +268,11 @@ class WebhookPayloadsAndEventsSearcher:
                             list_match = re.search(r"\[([^\]]+)\]", lines[j])
                             if list_match:
                                 event_list = list_match.group(1)
-                                for event_match in re.finditer(r"str\(cls\.(\w+)\)", event_list):
+                                for _event_match in re.finditer(r"str\(cls\.(\w+)\)", event_list):
                                     # This is a reference to an enum member, we already extracted it above
                                     pass
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"Error analyzing webhook models: {e}")
 
     def analyze_webhook_validators(self):
@@ -311,7 +311,7 @@ class WebhookPayloadsAndEventsSearcher:
                                 )
                             )
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print(f"Error analyzing {validator_file}: {e}")
 
     def _extract_method_from_line(self, line: str) -> str:
@@ -408,9 +408,10 @@ class WebhookPayloadsAndEventsSearcher:
                         payload["timestamp"] = "example"
                     if '"data"' in line or "'data'" in line:
                         payload["data"] = {}
-                    return payload if payload else None
                 except Exception:
                     pass
+                else:
+                    return payload if payload else None
 
         return None
 
@@ -438,9 +439,8 @@ class WebhookPayloadsAndEventsSearcher:
                 if event_match:
                     event_value = event_match.group(1)
                     # Only add if it's a valid event type
-                    if self._is_valid_event_type(event_value):
-                        if event_value not in event_types:
-                            event_types.append(event_value)
+                    if self._is_valid_event_type(event_value) and event_value not in event_types:
+                        event_types.append(event_value)
 
         return event_types
 
@@ -509,13 +509,11 @@ class WebhookPayloadsAndEventsSearcher:
         # Check if it contains invalid patterns
         event_lower = event_type.lower()
         for pattern in invalid_patterns:
-            if pattern.lower() in event_lower:
-                # Allow if it's still a valid event type pattern (e.g., "contract.created" contains "create" but is valid)
-                if not any(
-                    event_lower.startswith(prefix) and "." in event_lower
-                    for prefix in valid_prefixes
-                ):
-                    return False
+            # Allow if it's still a valid event type pattern (e.g., "contract.created" contains "create" but is valid)
+            if pattern.lower() in event_lower and not any(
+                event_lower.startswith(prefix) and "." in event_lower for prefix in valid_prefixes
+            ):
+                return False
 
         # Additional validation: should have format like "prefix.action" or "prefix.category.action"
         parts = event_type.split(".")
@@ -523,10 +521,7 @@ class WebhookPayloadsAndEventsSearcher:
             return False
 
         # First part should be a valid prefix
-        if parts[0] not in valid_prefixes:
-            return False
-
-        return True
+        return parts[0] in valid_prefixes
 
     def _get_context(self, lines: list[str], line_num: int, context_lines: int = 5) -> str:
         """Get context around a line"""
@@ -544,7 +539,7 @@ class WebhookPayloadsAndEventsSearcher:
                 "total_payload_structures": len(self.payload_structures),
                 "total_subscription_configs": len(self.subscription_configs),
                 "unique_event_types": len(self.event_types_found),
-                "event_types": sorted(list(self.event_types_found)),
+                "event_types": sorted(self.event_types_found),
             },
             "endpoint_references": [asdict(ref) for ref in self.endpoint_references],
             "payload_structures": [asdict(struct) for struct in self.payload_structures],

@@ -9,9 +9,12 @@ from typing import Any
 
 from django.conf import settings
 from django.core.mail import send_mail
-from django.db import transaction
+from django.db import DatabaseError, transaction
+from django.template.exceptions import TemplateDoesNotExist, TemplateSyntaxError
 from django.template.loader import render_to_string
 from django.utils import timezone
+
+from hub.apps.tenants.request_tenant import tenant_context
 
 from .compliance_reports import ComplianceReportGenerator
 from .models import ComplianceReport
@@ -51,6 +54,30 @@ class ReportScheduler:
         if not start_date:
             start_date = end_date - timedelta(days=30)
 
+        # Tenant Isolation RLS contract (CLAUDE.md): the report write is
+        # tenant-scoped — run it inside ``tenant_context`` (self-contained;
+        # callers in request context get harmless nesting).
+        with tenant_context(tenant_id):
+            return ReportScheduler._generate_and_save_report_in_context(
+                tenant_id=tenant_id,
+                regulation=regulation,
+                report_type=report_type,
+                start_date=start_date,
+                end_date=end_date,
+                user_id=user_id,
+            )
+
+    @staticmethod
+    @transaction.atomic
+    def _generate_and_save_report_in_context(
+        tenant_id: str,
+        regulation: str,
+        report_type: str,
+        start_date: datetime,
+        end_date: datetime,
+        user_id: str | None,
+    ) -> ComplianceReport:
+        """The tenant-context-wrapped body of ``generate_and_save_report``."""
         # Generate report based on regulation
         if regulation == "GDPR":
             report_data = ComplianceReportGenerator.generate_gdpr_report(
@@ -125,24 +152,28 @@ class ReportScheduler:
         else:
             raise ValueError(f"Unknown schedule frequency: {schedule_frequency}")
 
-        # Generate initial report
-        report = ReportScheduler.generate_and_save_report(
-            tenant_id=tenant_id,
-            regulation=regulation,
-            report_type=report_type,
-            start_date=start_date,
-            end_date=end_date,
-            user_id=user_id,
-        )
+        # Tenant Isolation RLS contract: the scheduling save is
+        # tenant-scoped — wrap it (generate_and_save_report already
+        # establishes its own context; this save needs one too).
+        with tenant_context(tenant_id):
+            # Generate initial report
+            report = ReportScheduler.generate_and_save_report(
+                tenant_id=tenant_id,
+                regulation=regulation,
+                report_type=report_type,
+                start_date=start_date,
+                end_date=end_date,
+                user_id=user_id,
+            )
 
-        # Mark as scheduled
-        report.scheduled = True
-        report.schedule_frequency = schedule_frequency
-        report.email_recipients = email_recipients
-        report.save()
+            # Mark as scheduled
+            report.scheduled = True
+            report.schedule_frequency = schedule_frequency
+            report.email_recipients = email_recipients
+            report.save()
 
-        # Send initial report
-        ReportScheduler.send_report_email(report)
+            # Send initial report
+            ReportScheduler.send_report_email(report)
 
         return report
 
@@ -177,7 +208,7 @@ class ReportScheduler:
             # Try to render template, fallback to plain text
             try:
                 html_message = render_to_string("governance/compliance_report_email.html", context)
-            except Exception:
+            except (TemplateDoesNotExist, TemplateSyntaxError):
                 # Fallback to plain text
                 html_message = None
 
@@ -219,7 +250,7 @@ Generated at: {report.created_at}
             import structlog
 
             logger = structlog.get_logger(__name__)
-            logger.error(
+            logger.exception(
                 "Failed to send compliance report email", report_id=str(report.id), error=str(e)
             )
             return False
@@ -239,64 +270,70 @@ Generated at: {report.created_at}
         scheduled_reports = ComplianceReport.objects.filter(scheduled=True)
 
         for template_report in scheduled_reports:
-            try:
-                # Calculate next report period
-                end_date = now
-                if template_report.schedule_frequency == "DAILY":
-                    start_date = end_date - timedelta(days=1)
-                elif template_report.schedule_frequency == "WEEKLY":
-                    start_date = end_date - timedelta(days=7)
-                elif template_report.schedule_frequency == "MONTHLY":
-                    start_date = end_date - timedelta(days=30)
-                elif template_report.schedule_frequency == "QUARTERLY":
-                    start_date = end_date - timedelta(days=90)
-                else:
-                    continue
+            # Tenant Isolation RLS contract: each tenant's due-report
+            # work runs inside its own ``tenant_context`` — one tenant's
+            # failure never leaks into another's scope.
+            with tenant_context(str(template_report.tenant_id)):
+                try:
+                    # Calculate next report period
+                    end_date = now
+                    if template_report.schedule_frequency == "DAILY":
+                        start_date = end_date - timedelta(days=1)
+                    elif template_report.schedule_frequency == "WEEKLY":
+                        start_date = end_date - timedelta(days=7)
+                    elif template_report.schedule_frequency == "MONTHLY":
+                        start_date = end_date - timedelta(days=30)
+                    elif template_report.schedule_frequency == "QUARTERLY":
+                        start_date = end_date - timedelta(days=90)
+                    else:
+                        continue
 
-                # Check if report already exists for this period
-                existing = ComplianceReport.objects.filter(
-                    tenant_id=template_report.tenant_id,
-                    regulation=template_report.regulation,
-                    scheduled=False,
-                    start_date__gte=start_date - timedelta(hours=1),
-                    start_date__lte=start_date + timedelta(hours=1),
-                    end_date__gte=end_date - timedelta(hours=1),
-                    end_date__lte=end_date + timedelta(hours=1),
-                ).exists()
+                    # Check if report already exists for this period
+                    existing = ComplianceReport.objects.filter(
+                        tenant_id=template_report.tenant_id,
+                        regulation=template_report.regulation,
+                        scheduled=False,
+                        start_date__gte=start_date - timedelta(hours=1),
+                        start_date__lte=start_date + timedelta(hours=1),
+                        end_date__gte=end_date - timedelta(hours=1),
+                        end_date__lte=end_date + timedelta(hours=1),
+                    ).exists()
 
-                if existing:
-                    continue  # Skip if already generated
+                    if existing:
+                        continue  # Skip if already generated
 
-                # Generate new report
-                new_report = ReportScheduler.generate_and_save_report(
-                    tenant_id=str(template_report.tenant_id),
-                    regulation=template_report.regulation,
-                    report_type=template_report.report_type,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
+                    # Generate new report
+                    new_report = ReportScheduler.generate_and_save_report(
+                        tenant_id=str(template_report.tenant_id),
+                        regulation=template_report.regulation,
+                        report_type=template_report.report_type,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
 
-                # Copy email recipients from template
-                new_report.email_recipients = template_report.email_recipients
-                new_report.save()
+                    # Copy email recipients from template
+                    new_report.email_recipients = template_report.email_recipients
+                    new_report.save()
 
-                # Send email
-                email_sent = ReportScheduler.send_report_email(new_report)
+                    # Send email
+                    email_sent = ReportScheduler.send_report_email(new_report)
 
-                results["generated"] += 1
-                if email_sent:
-                    results["emailed"] += 1
+                    results["generated"] += 1
+                    if email_sent:
+                        results["emailed"] += 1
 
-                results["details"].append(
-                    {
-                        "report_id": str(new_report.id),
-                        "regulation": new_report.regulation,
-                        "email_sent": email_sent,
-                    }
-                )
+                    results["details"].append(
+                        {
+                            "report_id": str(new_report.id),
+                            "regulation": new_report.regulation,
+                            "email_sent": email_sent,
+                        }
+                    )
 
-            except Exception as e:
-                results["failed"] += 1
-                results["details"].append({"template_id": str(template_report.id), "error": str(e)})
+                except (DatabaseError, ValueError) as e:
+                    results["failed"] += 1
+                    results["details"].append(
+                        {"template_id": str(template_report.id), "error": str(e)}
+                    )
 
         return results

@@ -11,7 +11,10 @@ from typing import Any
 import click
 import yaml
 
-CONFIG_DIR = Path.home() / ".datahub"
+# Overridable for containers/CI where $HOME is read-only (the API test
+# image's /home/appuser is) — DATAHUB_CONFIG_DIR points the config file
+# at a writable location.
+CONFIG_DIR = Path(os.environ.get("DATAHUB_CONFIG_DIR", str(Path.home() / ".datahub")))
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 
@@ -53,7 +56,7 @@ class Config:
                             "Warning: Config file contains invalid data, resetting to defaults",
                             err=True,
                         )
-            except Exception as e:
+            except (OSError, yaml.YAMLError) as e:
                 click.echo(f"Warning: Failed to load config file: {e}", err=True)
                 self._config = {}
         else:
@@ -66,7 +69,7 @@ class Config:
         pushes the data from Python's stdio buffers to the OS; we
         intentionally do **not** call ``os.fsync()`` here — it is a full
         OS-buffer-to-storage barrier and would make every ``set()`` call
-        stall for 200+ ms on rotational media.  The CLI config file does
+        stall for 200+ ms on rotational media.  The CLI config file does
         not need power-loss durability.
         """
         config_dir = self._get_config_dir()

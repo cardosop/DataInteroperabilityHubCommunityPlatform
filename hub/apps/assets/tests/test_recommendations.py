@@ -216,9 +216,7 @@ class AssetRecommendationServiceTest(TestCase):
         # (tenant isolation — the user-behavior source must not leak
         # assets from other tenants).
         recommended_ids = [r["asset_id"] for r in recommendations]
-        tenant_asset_ids = set(
-            str(a.id) for a in Asset.objects.filter(tenant=self.tenant)
-        )
+        tenant_asset_ids = {str(a.id) for a in Asset.objects.filter(tenant=self.tenant)}
         self.assertTrue(
             all(rid in tenant_asset_ids for rid in recommended_ids),
             "Every recommendation from user-behavior must belong "
@@ -298,7 +296,7 @@ class AssetRecommendationServiceTest(TestCase):
         self.assertIsInstance(recommendations, list)
         self.assertGreater(len(recommendations), 0)
         # All returned assets must belong to the tenant
-        tenant_asset_ids = set(str(a.id) for a in Asset.objects.filter(tenant=self.tenant))
+        tenant_asset_ids = {str(a.id) for a in Asset.objects.filter(tenant=self.tenant)}
         for rec in recommendations:
             self.assertIn(rec["asset_id"], tenant_asset_ids)
 

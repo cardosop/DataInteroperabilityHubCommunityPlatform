@@ -369,7 +369,7 @@ class DataMeshBusinessRulesBoundariesTest(TestCase):
 
     def test_validate_boundaries_invalid_type(self):
         """Test validate_boundaries with invalid type"""
-        boundaries: Any = "not-a-dict"  # type: ignore[misc]  # test: edge-case type exercise
+        boundaries: Any = "not-a-dict"  # test: edge-case type exercise
 
         result = self.rules.validate_boundaries(boundaries)
 
@@ -2500,9 +2500,17 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
         domain.resource_quota = {"storage_gb": "not-a-number"}
         try:
             domain.full_clean()
-            self.assertTrue(True)  # Model accepted — business rules handle validation
         except DjangoValidationError:
-            self.assertTrue(True)  # Model rejected — also valid behavior
+            # Model rejected the string quota — valid behavior, nothing to assert.
+            return
+        # Model accepted: the RULE layer owns quota validation. A string quota
+        # must produce a non-None verdict (invalid or warned), never a crash.
+        result = self.rules.validate_domain_resource_quota(domain)
+        self.assertIsNotNone(result)
+        self.assertTrue(
+            not result.is_valid or bool(result.warnings),
+            "string quota values must be rejected or warned about, never accepted silently",
+        )
 
     def test_validate_domain_resource_quota_with_usage_exceeding_quota(self):
         """Test error handling when resource_usage exceeds resource_quota"""

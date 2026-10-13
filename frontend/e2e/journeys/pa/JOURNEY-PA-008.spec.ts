@@ -32,7 +32,7 @@ test.describe('JOURNEY-PA-008: Configure External Marketplace Connections', () =
       }
 
       if (!landed) {
-        test.skip(true, 'External marketplace connections page not accessible');
+        test.skip(!landed, 'External marketplace connections page not accessible');
         return;
       }
 

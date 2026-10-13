@@ -21,6 +21,8 @@ import { apiClient } from '../../../shared/api/client';
 import { authService } from '../services/authService';
 
 const ACCESS_TOKEN_KEY = 'access_token';
+// Must match authService.USER_STORAGE_KEY ('user').
+const USER_KEY = 'user';
 
 /**
  * Write a ``_auth_sync_ts`` key to localStorage to force a ``storage``
@@ -69,32 +71,43 @@ export function useCrossTabAuthSync(): void {
     }
 
     // Dedup guard: prevent double-initialization during React strict-mode
-    // double-mount in development.
+    // double-mount in development. The ref MUST be reset in the cleanup —
+    // StrictMode's dev double-mount runs cleanup between the two effect
+    // passes, so without the reset the second pass early-returns and the
+    // storage listener is NEVER attached (the cross-tab E2E proved it:
+    // tab B only un-authed via the slow server-side refresh revocation,
+    // never via the storage event).
     if (initializedRef.current) return;
     initializedRef.current = true;
 
     function handleStorageEvent(event: StorageEvent): void {
-      // Only react to auth-relevant keys
-      if (event.key !== ACCESS_TOKEN_KEY && event.key !== '_auth_sync_ts') {
-        return;
-      }
-
-      // Ignore events where the key was set to null (cleared) — handled
-      // by the removeItem path below.
-      const newAccessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
-
-      if (newAccessToken) {
+      if (event.key === ACCESS_TOKEN_KEY) {
         // ── Login or token refresh in another tab ──────────────
-        // Validate the JWT hasn't expired before adopting it.
+        // Phase 11.1: the writer (authService.setAccessToken) REMOVES the
+        // token from localStorage in the same tick it wrote it, so the
+        // value can only come from the EVENT PAYLOAD (e.newValue), never
+        // from a localStorage read. A removal event (newValue null) is
+        // either that write's own cleanup or the first removal of a
+        // logout — logout itself is driven by the user-key removal
+        // below, so removal events are ignored here.
+        const newAccessToken = event.newValue;
+        if (!newAccessToken) {
+          return;
+        }
+        // Validate the JWT hasn't expired before adopting it. A value
+        // that is not a 3-segment JWT is REJECTED outright — previously a
+        // wrong segment count fell through the guard and the malformed
+        // value was adopted as an access token.
+        const parts = newAccessToken.split('.');
+        if (parts.length !== 3) {
+          return;
+        }
         try {
-          const parts = newAccessToken.split('.');
-          if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1]));
-            if (payload.exp && payload.exp * 1000 <= Date.now()) {
-              // Expired token — don't adopt; the other tab will
-              // refresh it, which will fire another storage event.
-              return;
-            }
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.exp && payload.exp * 1000 <= Date.now()) {
+            // Expired token — don't adopt; the other tab will
+            // refresh it, which will fire another storage event.
+            return;
           }
         } catch {
           // Malformed JWT — ignore
@@ -114,8 +127,15 @@ export function useCrossTabAuthSync(): void {
           apiClient.clearTokens();
           navigate('/login', { replace: true });
         }
-      } else {
+        return;
+      }
+
+      if (event.key === USER_KEY && event.newValue === null) {
         // ── Logout in another tab ─────────────────────────────
+        // clearAuth() removes access_token first and the user profile
+        // LAST — the user-key removal is the reliable "session ended"
+        // signal (a plain access_token removal is ambiguous: the 11.1
+        // sync write removes the token right after writing it).
         apiClient.clearTokens();
         _clearSyncTimestamp();
         navigate('/login', { replace: true });
@@ -126,6 +146,7 @@ export function useCrossTabAuthSync(): void {
 
     return () => {
       window.removeEventListener('storage', handleStorageEvent);
+      initializedRef.current = false;
     };
   }, [navigate]);
 
@@ -133,7 +154,7 @@ export function useCrossTabAuthSync(): void {
   // sync timestamp after mutating localStorage.
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).__crossTabAuthSync = {
+      (window as Window & { __crossTabAuthSync?: { bump: () => void; clear: () => void } }).__crossTabAuthSync = {
         bump: _bumpSyncTimestamp,
         clear: _clearSyncTimestamp,
       };

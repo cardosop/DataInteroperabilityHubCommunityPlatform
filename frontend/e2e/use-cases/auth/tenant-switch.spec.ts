@@ -7,7 +7,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser, loginUser, loginViaApi } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginViaApi } from '../../fixtures/auth';
 import { e2eTestHeaders } from '../../fixtures/e2e-token';
 import { loginAndNavigateToRoute, switchTenantViaUI } from '../../fixtures/helpers';
 
@@ -56,7 +56,7 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
       }).catch(() => null);
     }
     if (!setupRes?.ok()) {
-      test.skip(true, `ensure-e2e-tenant-switch-setup returned ${setupRes?.status() ?? 'network error'} (need ENVIRONMENT=test + valid token)`);
+      test.skip(!setupRes?.ok(), `ensure-e2e-tenant-switch-setup returned ${setupRes?.status() ?? 'network error'} (need ENVIRONMENT=test + valid token)`);
       return;
     }
     const setup = (await setupRes.json()) as { secondary_tenant_id: string; tenant_ids: string[] };
@@ -103,9 +103,20 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
       contentSelector: '[data-testid="home-page"]',
     });
 
-    const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+    let accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
     if (!accessToken) {
-      test.skip(true, 'No access token after login');
+      // The batch wrapper recreates the API right before the run; the
+      // first login can land inside the gunicorn settle window. Retry
+      // the login once before giving up.
+      await new Promise((r) => setTimeout(r, 2000));
+      await loginAndNavigateToRoute(page, user, '/', {
+        timeout: 60000,
+        contentSelector: '[data-testid="home-page"]',
+      });
+      accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+    }
+    if (!accessToken) {
+      test.skip(!accessToken, 'No access token after login');
       return;
     }
 
@@ -124,7 +135,7 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
       }).catch(() => null);
     }
     if (!setupRes?.ok()) {
-      test.skip(true, `ensure-e2e-tenant-switch-setup returned ${setupRes?.status() ?? 'network error'} (need ENVIRONMENT=test + valid token)`);
+      test.skip(!setupRes?.ok(), `ensure-e2e-tenant-switch-setup returned ${setupRes?.status() ?? 'network error'} (need ENVIRONMENT=test + valid token)`);
       return;
     }
     const setup = (await setupRes.json()) as {

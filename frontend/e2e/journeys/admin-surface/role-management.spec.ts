@@ -49,7 +49,7 @@ test.describe('226.G3 — Role create + assign/remove @critical @admin', () => {
       admin = await getTenantAdminUser();
     } catch (err) {
       test.skip(
-        true,
+        !!err,
         `No tenant admin available (${(err as Error).message}). Run ensure_e2e_user_roles.`,
       );
       return;
@@ -102,7 +102,7 @@ test.describe('226.G3 — Role create + assign/remove @critical @admin', () => {
       data: { email: inviteeEmail, display_name: 'G3 Role Probe Invitee', role_ids: [] },
     });
     if (!inviteRes.ok()) {
-      test.skip(true, `Invite failed (${inviteRes.status()}). Likely TENANT_ADMIN gating issue.`);
+      test.skip(!inviteRes.ok(), `Invite failed (${inviteRes.status()}). Likely TENANT_ADMIN gating issue.`);
       return;
     }
     const invitee = (await inviteRes.json()) as { id: string };

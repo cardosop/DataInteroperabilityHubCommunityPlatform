@@ -9,14 +9,20 @@ Uses pytest-benchmark if available; silently skips otherwise.
 
 from __future__ import annotations
 
+from unittest import TestCase
+
 import pytest
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-@pytest.mark.skip(reason="Requires pytest-benchmark and live dataset for meaningful numbers")
 def test_chain_overhead_p95(benchmark):
-    """Chain runner overhead should be under 50ms p95."""
+    """Chain runner overhead should be under 50ms p95.
+
+    ``pytest-benchmark`` ships in requirements-dev.txt and the ``benchmark``
+    fixture comes with it — the previous unconditional skip hid the
+    benchmark from every CI run.
+    """
     from hub.apps.core.business_rules.base import RuleExecutionContext
 
     def _run_chain():

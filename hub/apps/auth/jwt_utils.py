@@ -4,6 +4,7 @@ JWT Token Generation and Validation Utilities
 Handles creation and validation of JWT access tokens.
 """
 
+import math
 import uuid
 from datetime import timedelta
 from typing import Any
@@ -31,6 +32,8 @@ class JWTTokenGenerator:
         roles: list | None = None,
         scopes: list | None = None,
         refresh_token_id: str | None = None,
+        impersonation_session_id: str | None = None,
+        ttl_seconds: int | None = None,
     ) -> str:
         """
         Generate a JWT access token for a user.
@@ -40,12 +43,31 @@ class JWTTokenGenerator:
             tenant_id: Tenant UUID (optional, will use user.tenant.id if not provided)
             roles: List of role names (optional, will fetch from user if not provided)
             scopes: List of scopes (optional)
+            impersonation_session_id: Phase 235.4 — when set, the token carries
+                the ``impersonation_session_id`` claim. The
+                ``ImpersonationMiddleware`` reads this claim to tag
+                ``request.impersonation_session_id`` so audit emitters can
+                link every row written under the impersonation JWT back to
+                the session row.
+            ttl_seconds: Phase 235.4 — override the access-token lifetime
+                (the impersonation JWT is minted with
+                ``ttl = max_minutes * 60`` so it dies with the session).
+                When omitted, the platform default applies.
 
         Returns:
             Encoded JWT token string
         """
         now = timezone.now()
-        exp = now + timedelta(seconds=settings.JWT_ACCESS_TOKEN_EXPIRY)
+        if ttl_seconds is not None:
+            exp = now + timedelta(seconds=ttl_seconds)
+        else:
+            exp = now + timedelta(seconds=settings.JWT_ACCESS_TOKEN_EXPIRY)
+        # Round exp UP: int() truncation makes a token generated at x.999s
+        # expire after ~1ms for a 1-second expiry (exp = floor(now)+1), so a
+        # short-lived token could already be expired by the first request.
+        # A negative ttl mints an already-expired token on purpose — the
+        # Phase 235.4 expiry pin relies on ``jwt.decode`` rejecting it.
+        exp_ts = math.ceil(exp.timestamp())
 
         # Get tenant_id
         if tenant_id is None:
@@ -62,7 +84,7 @@ class JWTTokenGenerator:
             "iss": settings.JWT_ISSUER if hasattr(settings, "JWT_ISSUER") else "hub",
             "sub": str(user.id),
             "aud": ["idh-api-v1"],
-            "exp": int(exp.timestamp()),
+            "exp": exp_ts,
             "iat": int(now.timestamp()),
             "nbf": int(now.timestamp()),
             "jti": str(uuid.uuid4()),  # Unique per token for refresh rotation
@@ -91,6 +113,13 @@ class JWTTokenGenerator:
         # the current session (277.B.068).
         if refresh_token_id:
             payload["refresh_token_id"] = refresh_token_id
+
+        # Phase 235.4 — impersonation linkage. The claim is the ONLY
+        # durable bridge between the short-lived JWT and the
+        # ImpersonationSession row (ImpersonationMiddleware validates
+        # the row is still ACTIVE on every request).
+        if impersonation_session_id:
+            payload["impersonation_session_id"] = impersonation_session_id
 
         # Sign and encode token.
         # RS256: use the private key (api-service); HS256: use the shared secret.
@@ -171,12 +200,17 @@ class JWTTokenGenerator:
         return token_version == user.token_version
 
     @staticmethod
-    def get_user_from_token(payload: dict[str, Any]) -> User | None:
+    def get_user_from_token(payload: dict[str, Any], using: str | None = None) -> User | None:
         """
         Get user from JWT token payload.
 
         Args:
             payload: Decoded JWT payload
+            using: Optional DB alias for the lookup.  Pre-tenant callers
+                (the tenant-scoping middleware, before the RLS tenant
+                GUC exists) pass the pre-tenant alias — the ``users``
+                table carries an RLS policy and an enforcing role would
+                see zero rows otherwise (W1.20 / D2).
 
         Returns:
             User instance if found, None otherwise
@@ -192,11 +226,13 @@ class JWTTokenGenerator:
             # select_related("tenant") avoids a second query for tenant access.
             # prefetch_related("user_roles__role") avoids N queries when building
             # the roles list in generate_access_token / _build_me_response.
-            user = (
-                User.objects.select_related("tenant")
-                .prefetch_related("user_roles__role")
-                .get(id=user_id)
+            queryset = User.objects.select_related("tenant").prefetch_related(
+                "user_roles__role"
             )
-            return user
+            if using:
+                queryset = queryset.using(using)
+            user = queryset.get(id=user_id)
         except User.DoesNotExist:
             return None
+        else:
+            return user

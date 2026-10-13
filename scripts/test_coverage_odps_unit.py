@@ -19,6 +19,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -40,7 +41,7 @@ class ODPSUnitTestCoverage:
     TARGET_COVERAGE = 90.0
 
     # ODPS modules to test
-    ODPS_MODULES = {
+    ODPS_MODULES: ClassVar[dict[str, list[str]]] = {
         "normalizers": [
             "hub.apps.contracts.normalization.odps_normalizer",
             "hub.apps.contracts.normalization.odps_normalizer_base",
@@ -59,7 +60,7 @@ class ODPSUnitTestCoverage:
     }
 
     # Test files for each module category
-    TEST_FILES = {
+    TEST_FILES: ClassVar[dict[str, list[str]]] = {
         "normalizers": [
             "hub/apps/contracts/tests/test_odps_normalizer.py",
             "hub/apps/contracts/tests/test_odps_normalizer_base.py",
@@ -122,7 +123,7 @@ class ODPSUnitTestCoverage:
             check_result = subprocess.run(check_cmd, check=False, capture_output=True, text=True)
             if check_result.returncode == 0 and "hub-api" in check_result.stdout:
                 # Run command in Docker container
-                docker_cmd = ["docker", "exec", "-w", "/app", "hub-api"] + cmd
+                docker_cmd = ["docker", "exec", "-w", "/app", "hub-api", *cmd]
                 try:
                     result = subprocess.run(
                         docker_cmd,
@@ -135,7 +136,7 @@ class ODPSUnitTestCoverage:
                     return result.returncode, result.stdout, result.stderr
                 except subprocess.TimeoutExpired:
                     return 1, "", "Command timed out after 10 minutes"
-                except Exception as e:
+                except (OSError, subprocess.SubprocessError) as e:
                     return 1, "", str(e)
             else:
                 print(
@@ -157,7 +158,7 @@ class ODPSUnitTestCoverage:
                 return result.returncode, result.stdout, result.stderr
             except subprocess.TimeoutExpired:
                 return 1, "", "Command timed out after 10 minutes"
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 return 1, "", str(e)
 
     def run_unit_tests_with_coverage(
@@ -282,7 +283,7 @@ class ODPSUnitTestCoverage:
                     print(
                         f"{YELLOW}Warning: Could not copy coverage.json from Docker container{NC}"
                     )
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 print(f"{YELLOW}Warning: Could not copy coverage.json from Docker: {e}{NC}")
         coverage_data = {}
         overall_coverage = 0.0
@@ -306,7 +307,7 @@ class ODPSUnitTestCoverage:
                             file_coverage = file_data.get("summary", {}).get("percent_covered", 0.0)
                             coverage_data[module] = file_coverage
                             break
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"{YELLOW}Warning: Could not parse coverage JSON: {e}{NC}")
 
         # Parse test results from stdout
@@ -409,7 +410,7 @@ class ODPSUnitTestCoverage:
         total_failed = 0
         avg_coverage = 0.0
 
-        for category, result in self.results.items():
+        for _category, result in self.results.items():
             total_tests += result.get("tests_run", 0)
             total_passed += result.get("tests_passed", 0)
             total_failed += result.get("tests_failed", 0)

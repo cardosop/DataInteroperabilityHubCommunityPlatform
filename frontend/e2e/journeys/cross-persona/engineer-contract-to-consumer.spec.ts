@@ -41,7 +41,7 @@ test.describe('Cross-Persona: Engineer Contract → DPO Asset → Consumer Disco
     try {
       contractId = await createODCSContractViaApi(deUser);
     } catch (err) {
-      test.skip(true, `Contract creation API not available: ${String(err).slice(0, 200)}`);
+      test.skip(!!err, `Contract creation API not available: ${String(err).slice(0, 200)}`);
       return;
     }
     expect(contractId).toBeTruthy();

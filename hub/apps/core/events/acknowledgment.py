@@ -55,14 +55,15 @@ def get_redis_client() -> redis.Redis | None:
 
         client = get_redis_events_client()
         client.ping()
-        return client
-    except Exception as e:
+    except (ImportError, redis.RedisError, ValueError) as e:
         logger.warning(
             "event_acknowledgment_redis_unavailable",
             error=str(e),
             message="Event acknowledgment tracking unavailable",
         )
         return None
+    else:
+        return client
 
 
 def mark_event_pending(
@@ -115,7 +116,6 @@ def mark_event_pending(
             event_type=event_type,
             timeout=timeout,
         )
-        return True
     except Exception as e:
         logger.error(
             "event_mark_pending_error",
@@ -125,6 +125,8 @@ def mark_event_pending(
             exc_info=True,
         )
         return False
+    else:
+        return True
 
 
 def mark_event_processing(
@@ -170,7 +172,6 @@ def mark_event_processing(
         redis_client.delete(pending_key)
 
         logger.debug("event_marked_processing", event_id=event_id, subscriber_name=subscriber_name)
-        return True
     except Exception as e:
         logger.error(
             "event_mark_processing_error",
@@ -180,6 +181,8 @@ def mark_event_processing(
             exc_info=True,
         )
         return False
+    else:
+        return True
 
 
 def acknowledge_event(
@@ -273,7 +276,6 @@ def acknowledge_event(
             event_type=event_type,
             success=success,
         )
-        return True
     except Exception as e:
         logger.error(
             "event_acknowledgment_error",
@@ -283,6 +285,8 @@ def acknowledge_event(
             exc_info=True,
         )
         return False
+    else:
+        return True
 
 
 def check_event_acknowledged(
@@ -308,9 +312,10 @@ def check_event_acknowledged(
     try:
         ack_key = f"{ACK_KEY_PREFIX}:{subscriber_name}:{event_id}"
         ack_data_str = redis_client.get(ack_key)
-        return ack_data_str is not None
-    except Exception:
+    except redis.RedisError:
         return False
+    else:
+        return ack_data_str is not None
 
 
 def get_pending_events(subscriber_name: str, redis_client: redis.Redis | None = None) -> list:
@@ -340,12 +345,13 @@ def get_pending_events(subscriber_name: str, redis_client: redis.Redis | None = 
             if len(parts) >= 4:
                 event_id = ":".join(parts[3:])  # Handle UUIDs with colons
                 event_ids.append(event_id)
-        return event_ids
     except Exception as e:
         logger.error(
             "get_pending_events_error", subscriber_name=subscriber_name, error=str(e), exc_info=True
         )
         return []
+    else:
+        return event_ids
 
 
 def cleanup_timeout_events(subscriber_name: str, redis_client: redis.Redis | None = None) -> int:
@@ -403,7 +409,7 @@ def cleanup_timeout_events(subscriber_name: str, redis_client: redis.Redis | Non
                             event_type=data.get("event_type"),
                             timeout=timeout,
                         )
-            except Exception:
+            except (redis.RedisError, ValueError, AttributeError):
                 pass
 
         # Check processing events
@@ -435,10 +441,9 @@ def cleanup_timeout_events(subscriber_name: str, redis_client: redis.Redis | Non
                             event_type=data.get("event_type"),
                             timeout=timeout,
                         )
-            except Exception:
+            except (redis.RedisError, ValueError, AttributeError):
                 pass
 
-        return cleaned
     except Exception as e:
         logger.error(
             "cleanup_timeout_events_error",
@@ -447,3 +452,5 @@ def cleanup_timeout_events(subscriber_name: str, redis_client: redis.Redis | Non
             exc_info=True,
         )
         return 0
+    else:
+        return cleaned

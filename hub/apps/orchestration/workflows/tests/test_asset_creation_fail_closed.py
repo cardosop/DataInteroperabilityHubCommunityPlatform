@@ -24,6 +24,7 @@ rules) runs against the real implementations.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
 from unittest.mock import patch
@@ -217,20 +218,20 @@ class ExecuteFailClosedAuditTest(TestCase):
                 }
             ),
             _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
+            pytest.raises(FailClosedRejection) as excinfo,
         ):
-            with pytest.raises(FailClosedRejection) as excinfo:
-                AssetCreationWorkflow.execute(
-                    tenant_id=str(tenant.id),
-                    key="fc-test",
-                    name="FC Test",
-                    file_id=str(file_obj.id),
-                    file_format="CSV",
-                    contract_name="C",
-                    contract_description="",
-                    auto_activate=True,
-                    send_notifications=False,
-                    created_by_id=str(user.id),
-                )
+            AssetCreationWorkflow.execute(
+                tenant_id=str(tenant.id),
+                key="fc-test",
+                name="FC Test",
+                file_id=str(file_obj.id),
+                file_format="CSV",
+                contract_name="C",
+                contract_description="",
+                auto_activate=True,
+                send_notifications=False,
+                created_by_id=str(user.id),
+            )
 
         assert excinfo.value.gate == "compliance"
         assert excinfo.value.gate_status == "FAIL"
@@ -277,20 +278,20 @@ class ExecuteFailClosedAuditTest(TestCase):
             _patch_storage_returns(b"a,b\n1,2\n"),
             _patch_compliance({"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}),
             _patch_dq({"overall_status": "FAIL", "quality_score": 12.0, "metadata": {}}),
+            pytest.raises(FailClosedRejection) as excinfo,
         ):
-            with pytest.raises(FailClosedRejection) as excinfo:
-                AssetCreationWorkflow.execute(
-                    tenant_id=str(tenant.id),
-                    key="fc-test-dq",
-                    name="FC Test DQ",
-                    file_id=str(file_obj.id),
-                    file_format="CSV",
-                    contract_name="C",
-                    contract_description="",
-                    auto_activate=True,
-                    send_notifications=False,
-                    created_by_id=str(user.id),
-                )
+            AssetCreationWorkflow.execute(
+                tenant_id=str(tenant.id),
+                key="fc-test-dq",
+                name="FC Test DQ",
+                file_id=str(file_obj.id),
+                file_format="CSV",
+                contract_name="C",
+                contract_description="",
+                auto_activate=True,
+                send_notifications=False,
+                created_by_id=str(user.id),
+            )
 
         assert excinfo.value.gate == "dq"
         assert excinfo.value.gate_status == "FAIL"
@@ -322,27 +323,25 @@ class ExecuteFailClosedTenantOptOutTest(TestCase):
                 }
             ),
             _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
+            contextlib.suppress(FailClosedRejection, ValueError),
         ):
-            try:
-                AssetCreationWorkflow.execute(
-                    tenant_id=str(tenant.id),
-                    key="legacy-test",
-                    name="Legacy Test",
-                    file_id=str(file_obj.id),
-                    file_format="CSV",
-                    contract_name="C",
-                    contract_description="",
-                    auto_activate=False,  # legacy callers used False
-                    send_notifications=False,
-                    created_by_id=str(user.id),
-                )
-            except (FailClosedRejection, ValueError):
-                # Workflow may still fail downstream (no real services
-                # bound for ODPS / activation in unit tests). What MUST
-                # NOT happen: a fail-closed rejection from the gate.
-                # We assert that no FailClosedRejection was raised by
-                # checking the audit table.
-                pass
+            # Workflow may still fail downstream (no real services
+            # bound for ODPS / activation in unit tests). What MUST
+            # NOT happen: a fail-closed rejection from the gate.
+            # We assert that no FailClosedRejection was raised by
+            # checking the audit table.
+            AssetCreationWorkflow.execute(
+                tenant_id=str(tenant.id),
+                key="legacy-test",
+                name="Legacy Test",
+                file_id=str(file_obj.id),
+                file_format="CSV",
+                contract_name="C",
+                contract_description="",
+                auto_activate=False,  # legacy callers used False
+                send_notifications=False,
+                created_by_id=str(user.id),
+            )
 
         # CRITICAL: no fail-closed audit emitted for tenant with the
         # flag off.

@@ -6,8 +6,10 @@ Defines User and Role models with relationships.
 
 import uuid
 import weakref
+from typing import ClassVar
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.validators import EmailValidator
 from django.db import models
 from django.db.models.signals import post_delete, post_save
@@ -211,7 +213,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS: ClassVar[list[str]] = []
 
     class Meta:
         db_table = "users"
@@ -227,7 +229,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                 fields=["tenant", "email"],
                 name="unique_tenant_email",
                 condition=models.Q(tenant__isnull=False),
-            )
+            ),
         ]
 
     def __str__(self):
@@ -235,7 +237,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             return f"{self.email} (Platform Admin)"
         try:
             return f"{self.email} ({self.tenant.name})"
-        except Exception:
+        except (ObjectDoesNotExist, AttributeError):
             return f"{self.email} (tenant_id={self.tenant_id})"
 
     def is_active(self) -> bool:
@@ -319,7 +321,7 @@ class Role(models.Model):
             models.Index(fields=["tenant", "name"]),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "name"], name="unique_tenant_role_name")
+            models.UniqueConstraint(fields=["tenant", "name"], name="unique_tenant_role_name"),
         ]
 
     def __str__(self):
@@ -358,7 +360,7 @@ class UserRole(models.Model):
             # DB-level last-resort guarantee: one role grant per (user, tenant, role).
             models.UniqueConstraint(
                 fields=["user", "tenant", "role"], name="unique_user_tenant_role"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -367,7 +369,7 @@ class UserRole(models.Model):
 
 class UserTenantMembership(models.Model):
     """
-    Many-to-many user–tenant membership for tenant switching.
+    Many-to-many user-tenant membership for tenant switching.
 
     A user may belong to multiple tenants (e.g. personal tenant + org tenants via invitation).
     UNIQUE(user_id, tenant_id). Per design D16 (Tenant Switch).
@@ -398,7 +400,7 @@ class UserTenantMembership(models.Model):
             models.UniqueConstraint(
                 fields=["user", "tenant"],
                 name="unique_user_tenant_membership",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -482,12 +484,12 @@ def _clear_user_role_cache(user_id) -> None:
 
 
 @receiver(post_save, sender=UserRole)
-def _invalidate_user_role_cache_on_save(sender, instance, **kwargs):
+def _invalidate_user_role_cache_on_save(sender, instance, **_kwargs):
     """Clear role cache on the user when a UserRole row is saved."""
     _clear_user_role_cache(instance.user_id)
 
 
 @receiver(post_delete, sender=UserRole)
-def _invalidate_user_role_cache_on_delete(sender, instance, **kwargs):
+def _invalidate_user_role_cache_on_delete(sender, instance, **_kwargs):
     """Clear role cache on the user when a UserRole row is deleted."""
     _clear_user_role_cache(instance.user_id)

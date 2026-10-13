@@ -24,7 +24,7 @@ import re
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -46,7 +46,7 @@ class TestEndpointAuditor:
     """Audit test files for endpoint URL references"""
 
     # Test directory patterns
-    TEST_DIR_PATTERNS = {
+    TEST_DIR_PATTERNS: ClassVar[dict[str, list[str]]] = {
         "unit": [
             "tests/unit",
             "**/tests/unit",
@@ -73,7 +73,7 @@ class TestEndpointAuditor:
     }
 
     # Patterns to match endpoint URLs in test files
-    ENDPOINT_PATTERNS = [
+    ENDPOINT_PATTERNS: ClassVar[list[str]] = [
         # Direct path strings: '/api/v1/...'
         r'["\'](/api/v1/[^"\']+)["\']',
         # f-strings: f'/api/v1/...'
@@ -207,7 +207,7 @@ class TestEndpointAuditor:
         return test_files
 
     def _extract_endpoint_references(
-        self, content: str, endpoints: list[dict[str, Any]], file_path: Path
+        self, content: str, endpoints: list[dict[str, Any]], _file_path: Path
     ) -> list[dict[str, Any]]:
         """
         Extract endpoint references from file content.
@@ -241,7 +241,7 @@ class TestEndpointAuditor:
         for line_num, line in enumerate(lines, start=1):
             # Skip comment lines
             stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+            if stripped.startswith(("#", '"""', "'''")):
                 continue
 
             # Search for endpoint patterns
@@ -354,7 +354,7 @@ class TestEndpointAuditor:
         for test_file in test_files:
             try:
                 content = test_file.read_text(encoding="utf-8")
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 if self.verbose:
                     print(f"Warning: Could not read {test_file}: {e}")
                 continue
@@ -420,10 +420,10 @@ class TestEndpointAuditor:
     def _generate_summary(self, mappings: list[TestEndpointMapping]) -> dict[str, Any]:
         """Generate summary statistics"""
         # Count unique test files
-        test_files = set(m.test_file for m in mappings)
+        test_files = {m.test_file for m in mappings}
 
         # Count unique endpoints
-        endpoints = set(m.endpoint_path for m in mappings)
+        endpoints = {m.endpoint_path for m in mappings}
 
         # Count by test type
         by_test_type = defaultdict(int)

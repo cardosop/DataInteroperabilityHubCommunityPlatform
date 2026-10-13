@@ -186,7 +186,7 @@ class PostSaveCascadeTest(TestCase):
         # (Some backends are eventually consistent; we tolerate that
         # by re-reading with a tiny sleep — but Django's local-mem
         # cache is synchronous in tests.)
-        time.sleep(0.05)  # noqa: sleep-needed — test timing requirement
+        time.sleep(0.05)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
         assert get_cached_contract(str(contract.id)) is None, (
             "Step 2 (invalidate_contract_cache) did not flush the "
             "stale cached snapshot — cache will serve old data."

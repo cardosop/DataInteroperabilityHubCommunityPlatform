@@ -22,9 +22,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Generator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 from tests._persona_provisioning import PersonaCredentials, provision_persona
 
@@ -79,7 +82,7 @@ def _make_persona_client(role: str) -> Generator[PersonaClient, None, None]:
     """
     try:
         creds = provision_persona(role)
-    except Exception:
+    except (OSError, ValueError, RuntimeError):
         creds = PersonaCredentials(
             api_key=f"offline-{role}-token",
             user_id=f"offline-{role}-uid",

@@ -111,8 +111,8 @@ class TestSweepLockDecorator:
 
         assert documented.__name__ == "documented"
         assert documented.__doc__ == "Docstring here."
-        assert documented._sweep_lock_key == "sweep:metadata-sweep"  # type: ignore[attr-defined]
-        assert documented._sweep_lock_ttl == 42  # type: ignore[attr-defined]
+        assert documented._sweep_lock_key == "sweep:metadata-sweep"
+        assert documented._sweep_lock_ttl == 42
 
     def test_lock_released_even_on_exception(self):
         """Lock is released in finally block even if function raises."""

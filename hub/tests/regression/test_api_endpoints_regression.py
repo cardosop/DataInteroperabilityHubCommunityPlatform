@@ -10,7 +10,6 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
 
 User = get_user_model()
 

@@ -4,7 +4,7 @@ Gunicorn configuration for the DataInteroperabilityHub API service.
 Used by all non-development environments (staging, production, test).
 Development uses `uvicorn --reload` directly (see docker-compose.yml).
 
-Worker formula: (2 × CPU cores) + 1 — optimal for I/O-bound Django/DRF apps.
+Worker formula: (2 x CPU cores) + 1 — optimal for I/O-bound Django/DRF apps.
   1 CPU  →  3 workers
   2 CPU  →  5 workers
   4 CPU  →  9 workers
@@ -18,7 +18,7 @@ import os
 
 bind = "0.0.0.0:8000"
 
-# Dynamic worker count — set GUNICORN_WORKERS per environment, defaults to (2×cores)+1
+# Dynamic worker count — set GUNICORN_WORKERS per environment, defaults to (2xcores)+1
 workers = int(os.environ.get("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
 
 # UvicornWorker: ASGI worker that handles HTTP + WebSocket (Django Channels).

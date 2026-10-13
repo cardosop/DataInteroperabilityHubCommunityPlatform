@@ -18,7 +18,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from queue import Queue
+from queue import Empty, Queue
 
 import pytest
 from click.testing import CliRunner
@@ -47,6 +47,7 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.odps_event_subscriber import get_odps_event_subscriber
+from tests.utils.cli_config import point_cli_config_at_tmpdir
 
 # CLI imports
 try:
@@ -75,7 +76,6 @@ def decode_relay_id(relay_id):
         import graphql_relay
 
         _type_name, actual_id = graphql_relay.from_global_id(relay_id)
-        return actual_id
     except Exception:
         # If decoding fails, try to extract from base64 manually
         try:
@@ -88,6 +88,8 @@ def decode_relay_id(relay_id):
         except Exception:
             pass
         return relay_id  # If all decoding fails, return as-is
+    else:
+        return actual_id
 
 
 class WebhookReceiverHandler(BaseHTTPRequestHandler):
@@ -161,7 +163,7 @@ class WebhookTestServer:
             try:
                 request = self.request_queue.get(timeout=0.1)
                 requests_list.append(request)
-            except:
+            except Empty:
                 break
         return requests_list
 
@@ -173,7 +175,7 @@ class WebhookTestServer:
         self.stop()
 
 
-def create_valid_odps_document(product_id: str = None, include_odcs: bool = True) -> dict:
+def create_valid_odps_document(product_id: str | None = None, include_odcs: bool = True) -> dict:
     """Create a valid ODPS document for testing."""
     if product_id is None:
         product_id = f"test-product-{uuid.uuid4().hex[:8]}"
@@ -285,6 +287,9 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
         # Configure CLI if available (env takes precedence over config, so set both)
         if CLI_AVAILABLE:
+            # The API test image's rootfs is read-only ($HOME/.datahub is not
+            # writable) — redirect the CLI config to a fresh temp dir.
+            point_cli_config_at_tmpdir()
             # Prevent Docker's API_BASE_URL env var from overriding the
             # LiveServer URL.  Must pop BEFORE config.set_api_base_url().
             self._saved_api_base_url = os.environ.pop("API_BASE_URL", None)
@@ -303,6 +308,18 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 self.sdk_client = DataHubClient(sdk_config)
             except Exception:
                 pass
+
+    def _sdk_contract_get(self, contract_id) -> dict:
+        """Await the async SDK ContractsAPI.get() from a sync test.
+
+        ContractsAPI is async-only (httpx.AsyncClient); calling get() without
+        await yields an un-awaited coroutine whose .get("id") then raises
+        AttributeError — previously swallowed by the callers' bare except and
+        surfaced only as a "coroutine was never awaited" RuntimeWarning.
+        """
+        import asyncio
+
+        return asyncio.run(self.sdk_client.contracts.get(str(contract_id)))
 
     def tearDown(self):
         """Clean up after tests."""
@@ -332,7 +349,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             "Content-Type": "application/json",
         }
 
-    def _create_asset_via_api(self, name: str = None) -> dict:
+    def _create_asset_via_api(self, name: str | None = None) -> dict:
         """Create an asset via REST API."""
         if name is None:
             name = f"test-asset-{uuid.uuid4().hex[:8]}"
@@ -385,7 +402,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()
 
-    def _create_odps_via_graphql(self, odps_doc: dict, asset_id: str = None) -> dict:
+    def _create_odps_via_graphql(self, odps_doc: dict, asset_id: str | None = None) -> dict:
         """Create an ODPS contract via GraphQL."""
         query = """
         mutation CreateODPS($input: CreateODPSInput!) {
@@ -424,7 +441,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             raise Exception(f"Mutation errors: {result['errors']}")
         return result["contract"]
 
-    def _query_odps_via_graphql(self, contract_id: str = None) -> dict:
+    def _query_odps_via_graphql(self, contract_id: str | None = None) -> dict:
         """Query ODPS contracts via GraphQL."""
         if contract_id:
             # Use contract query with UUID (not odpsContract)
@@ -514,7 +531,9 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                     "Invalid API key" in (result.output or "")
                     or "Not Found" in (result.output or "")
                 ):
-                    pytest.skip("CLI unavailable in integration env (API key rejected or endpoint not found)")  # noqa: skip-in-body — runtime service dependency
+                    pytest.skip(
+                        "CLI unavailable in integration env (API key rejected or endpoint not found)"
+                    )  # noqa: skip-in-body — runtime service dependency
                 self.assertEqual(
                     result.exit_code,
                     0,
@@ -570,7 +589,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 if product_details.get("productID") == product_id:
                     api_contract = contract
                     break
-            except:
+            except (ValueError, AttributeError):
                 continue
 
         self.assertIsNotNone(api_contract, "Contract should be created and retrievable via API")
@@ -579,7 +598,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         # 3. Get contract via SDK (if available)
         if self.sdk_client:
             try:
-                sdk_contract = self.sdk_client.contracts.get(contract_id)
+                sdk_contract = self._sdk_contract_get(contract_id)
                 self.assertIsNotNone(sdk_contract)
 
                 # Verify consistency: API and SDK should return same data
@@ -953,7 +972,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                         if product_details.get("productID") == product_id:
                             contract = c
                             break
-                    except:
+                    except (ValueError, AttributeError):
                         continue
 
                 self.assertIsNotNone(contract, "Contract should be created via CLI")
@@ -976,7 +995,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 # 4. Verify via SDK (if available)
                 if self.sdk_client:
                     try:
-                        sdk_contract = self.sdk_client.contracts.get(contract_id)
+                        sdk_contract = self._sdk_contract_get(contract_id)
                         self.assertIsNotNone(sdk_contract)
                         self.assertEqual(
                             sdk_contract.get("id"),

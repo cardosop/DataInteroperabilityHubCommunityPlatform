@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import contextlib
 import json
-import uuid
 from collections import defaultdict, deque
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from django.core.cache import cache
@@ -22,6 +21,9 @@ from django.core.cache import cache
 from .models import (
     PipelineDependency,
 )
+
+if TYPE_CHECKING:
+    import uuid
 
 logger = structlog.get_logger(__name__)
 
@@ -228,7 +230,7 @@ class PipelineDependencyResolver:
         self,
         pipeline_type: str,
         pipeline_id: str,
-        max_depth: int,
+        _max_depth: int,
     ) -> dict[str, Any] | None:
         # Skip cache when the dependency set is small.
         count = PipelineDependency.objects.filter(
@@ -253,10 +255,8 @@ class PipelineDependencyResolver:
         graph: dict[str, Any],
     ) -> None:
         key = self._cache_key(pipeline_type, pipeline_id)
-        try:
+        with contextlib.suppress(Exception):
             cache.set(key, json.dumps(graph, default=str), timeout=_CACHE_TTL_SECONDS)
-        except Exception:
-            pass  # cache is best-effort
 
     def _build_graph_recursive(
         self,
@@ -361,7 +361,7 @@ def invalidate_pipeline_dependency_cache(
     try:
         pattern = f"pipeline_dep:{tenant_id}:*"
         if hasattr(cache, "keys"):
-            for key in cache.keys(pattern):  # type: ignore[attr-defined]
+            for key in cache.keys(pattern):
                 cache.delete(key)
     except Exception:
         pass  # wildcard invalidation is best-effort

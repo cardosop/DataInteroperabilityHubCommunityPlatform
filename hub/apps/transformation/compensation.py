@@ -116,7 +116,7 @@ class TransformationPipelineCompensation:
                     }
                 except Exception as e:
                     logger.exception(
-                        f"Failed to rollback execution during compensation: {e!s}",
+                        "Failed to rollback execution during compensation",
                         extra={"execution_id": str(self.execution.id)},
                     )
                     self.log_compensation_operation(
@@ -154,7 +154,7 @@ class TransformationPipelineCompensation:
                     }
                 except Exception as e:
                     logger.exception(
-                        f"Failed to cleanup job during compensation: {e!s}",
+                        "Failed to cleanup job during compensation",
                         extra={
                             "execution_id": str(self.execution.id),
                             "job_id": str(self.execution.job.id) if self.execution.job else None,
@@ -188,7 +188,7 @@ class TransformationPipelineCompensation:
                     }
                 except Exception as e:
                     logger.exception(
-                        f"Failed to cleanup result asset during compensation: {e!s}",
+                        "Failed to cleanup result asset during compensation",
                         extra={
                             "execution_id": str(self.execution.id),
                             "result_asset_id": str(self.execution.result_asset.id)
@@ -249,14 +249,15 @@ class TransformationPipelineCompensation:
                     )
 
             compensation_result["compensation_log"] = self.compensation_log
-            return compensation_result
 
         except Exception as e:
             logger.exception(
-                f"Compensation failed with unexpected error: {e!s}",
+                "Compensation failed with unexpected error",
                 extra={"execution_id": str(self.execution.id)},
             )
             compensation_result["status"] = "failed"
             compensation_result["error"] = str(e)
             compensation_result["compensation_log"] = self.compensation_log
+            return compensation_result
+        else:
             return compensation_result

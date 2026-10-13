@@ -4,6 +4,7 @@ Integration tests for multi-level lineage in API.
 
 import json
 
+import pytest
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract
@@ -11,6 +12,7 @@ from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 
+@pytest.mark.journey("JOURNEY-LINEAGE-VISUALIZATION")
 class TestLineageIntegration(ContractsAPITestBase):
     """Integration tests for lineage in API."""
 

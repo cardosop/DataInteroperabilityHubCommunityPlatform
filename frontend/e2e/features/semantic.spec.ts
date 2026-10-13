@@ -24,22 +24,28 @@ test.describe('Feature: Semantic', () => {
       try {
         await waitForAppMainReady(page, { timeout: 60000, acceptRedirectToLogin: true });
       } catch (_err) {
-        if (page.url().includes('/login') || page.url().includes('/403')) { test.skip(true, 'Redirected to login/403 — auth or role gated'); return; }
+        const gated = page.url().includes('/login') || page.url().includes('/403');
+        test.skip(gated, 'Redirected to login/403 — auth or role gated');
+        if (gated) return;
         throw _err;
       }
       const url = page.url();
       expect(url).toMatch(/\/semantic|\/login|\/403|\/unavailable|\/coming-soon/);
       if (url.includes('/semantic')) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"]',
+          successContentSelector: '[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         });
       } else if (url.includes('/unavailable')) {
+        // /unavailable renders DisabledCapabilityPage (250.6.A.5) — its
+        // testids are `disabled-capability-page`; the legacy
+        // `.unavailable-page` markers alone never match (b7 timed out
+        // waiting for exactly that).
         await assertSuccessLoad(page, {
-          successContentSelector: '.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
+          successContentSelector: '.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         });
       } else if (url.includes('/coming-soon')) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="coming-soon-page"], .unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
+          successContentSelector: '[data-testid="coming-soon-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         });
       }
     });
@@ -57,7 +63,7 @@ test.describe('Feature: Semantic', () => {
         if (!/\/(login|403|unavailable|coming-soon)/.test(page.url())) throw err;
       }
       if (!page.url().includes('/semantic')) {
-        test.skip(true, 'Semantic page not available — capability gated or auth redirect');
+        test.skip(!page.url().includes('/semantic'), 'Semantic page not available — capability gated or auth redirect');
         return;
       }
       // SPARQL is the default tab — SemanticPage renders ReactCodeMirror (CM6: .cm-editor),
@@ -85,7 +91,7 @@ test.describe('Feature: Semantic', () => {
         // route gated or login redirect
       }
       if (!page.url().includes('/semantic')) {
-        test.skip(true, 'Semantic page not available — capability gated or auth redirect');
+        test.skip(!page.url().includes('/semantic'), 'Semantic page not available — capability gated or auth redirect');
         return;
       }
       // Click the Ontology tab
@@ -95,7 +101,7 @@ test.describe('Feature: Semantic', () => {
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await ontologyTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       if ((await ontologyTab.count()) === 0) {
-        test.skip(true, 'Ontology tab not visible on semantic page');
+        test.skip((await ontologyTab.count()) === 0, 'Ontology tab not visible on semantic page');
         return;
       }
       await ontologyTab.click();
@@ -143,16 +149,18 @@ test.describe('Feature: Semantic', () => {
       if (onSemantic) {
         // Wait for the page content to become visible — lazy bundle may still be loading
         await page
-          .locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"]')
+          .locator('[data-testid="semantic-page"], .semantic-page, .disabled-capability-page, [data-testid="disabled-capability-page"], .unavailable-page, [data-testid="unavailable-page"]')
           .first()
           .waitFor({ state: 'visible', timeout: 15000 })
           .catch(() => {});
         const hasContent =
-          (await page.locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
+          (await page.locator('[data-testid="semantic-page"], .semantic-page, .disabled-capability-page, [data-testid="disabled-capability-page"], .unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
         expect(hasContent).toBe(true) /* acceptable states */;
       } else if (onUnavailable) {
+        // The /unavailable terminal renders DisabledCapabilityPage
+        // (250.6.A.5) — legacy .unavailable-page markers are dead code.
         await assertSuccessLoad(page, {
-          successContentSelector: '.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
+          successContentSelector: '.disabled-capability-page, [data-testid="disabled-capability-page"], .unavailable-page, [data-testid="unavailable-page"]',
         });
       } else if (onComingSoon) {
         await assertSuccessLoad(page, {

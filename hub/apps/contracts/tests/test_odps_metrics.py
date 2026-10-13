@@ -15,6 +15,7 @@ All tests use real implementations (no mocks/stubs) and verify metrics are colle
 Redis uses real Redis client with graceful handling when unavailable.
 """
 
+import contextlib
 import json
 import tempfile
 from pathlib import Path
@@ -52,8 +53,6 @@ from hub.apps.observability.otel_metrics import (
 
 User = get_user_model()
 
-
-import contextlib
 
 from hub.apps.contracts.tests.test_base import get_real_redis_client_or_none
 
@@ -241,11 +240,8 @@ class ODPSCacheMetricsTest(ODPSMetricsTestBase):
 
         # Test cache miss through public API - resolve_external with non-existent URL
         # This should result in a cache miss (URL not in cache)
-        try:
+        with contextlib.suppress(Exception):
             resolver.resolve_external("https://example.com/nonexistent-schema.json")
-        except Exception:
-            # Expected - URL doesn't exist, but cache miss should be tracked
-            pass
 
         # Verify cache miss metric is available
         self.assertIsNotNone(odps_ref_cache_misses_total)
@@ -259,10 +255,8 @@ class ODPSCacheMetricsTest(ODPSMetricsTestBase):
         try:
             # Trigger cache operations through public API
             # Cache miss: resolve non-existent external ref
-            try:
+            with contextlib.suppress(Exception):
                 resolver.resolve_external("https://example.com/nonexistent.json")
-            except Exception:
-                pass  # Expected - triggers cache miss tracking
 
             # Cache operations are tracked internally when using public API
             # Verify cache hit rate can be retrieved (public API)
@@ -386,10 +380,8 @@ class ODPSCacheMetricsTestWithRedis(ODPSMetricsTestBaseWithRedis):
             timeout_total=ODPS_METRICS_TEST_TIMEOUT_TOTAL,
         )
         try:
-            try:
+            with contextlib.suppress(Exception):
                 resolver.resolve_external("https://example.com/test-schema.json")
-            except Exception:
-                pass  # Expected - triggers cache miss tracking
             resolver.get_cache_hit_rate()
         except Exception:
             pass  # Redis/network may fail; metrics already asserted above
@@ -723,16 +715,12 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
         is still accessible afterward.
         """
         # Test with None values (edge case)
-        try:
+        with contextlib.suppress(TypeError, ValueError, AttributeError):
             odps_normalization_total.labels(status=None, version=None, tenant_id=None).inc()
-        except (TypeError, ValueError, AttributeError):
-            pass  # Library rejects None labels — acceptable
 
         # Test with empty strings (edge case)
-        try:
+        with contextlib.suppress(TypeError, ValueError, AttributeError):
             odps_normalization_total.labels(status="", version="", tenant_id="").inc()
-        except (TypeError, ValueError, AttributeError):
-            pass  # Library rejects empty-string labels — acceptable
 
         # Metrics must remain accessible after edge-case label calls
         self.assertIsNotNone(odps_normalization_total)

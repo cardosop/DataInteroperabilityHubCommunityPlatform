@@ -105,7 +105,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="migrationcheckpoint",
             constraint=models.UniqueConstraint(
-                fields=("migration_name", "contract"),
+                fields=["migration_name", "contract"],
                 name="unique_checkpoint_per_migration_per_contract",
             ),
         ),

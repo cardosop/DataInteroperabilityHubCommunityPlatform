@@ -70,7 +70,7 @@ class AssetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Asset
-        fields = [
+        fields = (
             "id",
             "tenant",
             "key",
@@ -94,8 +94,8 @@ class AssetSerializer(serializers.ModelSerializer):
             "dataset_id",
             "canonical_iri",
             "latest_compliance_run",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "version",
@@ -110,7 +110,7 @@ class AssetSerializer(serializers.ModelSerializer):
             "dataset_id",
             "canonical_iri",
             "latest_compliance_run",
-        ]
+        )
 
     def get_visibility(self, obj) -> str:
         """Return the derived visibility from the Asset model property."""
@@ -168,9 +168,7 @@ class AssetSerializer(serializers.ModelSerializer):
         from hub.apps.compliance.models import ComplianceRunStatus
 
         all_runs = obj.compliance_runs.all()
-        succeeded = [
-            r for r in all_runs if r.status == ComplianceRunStatus.SUCCEEDED
-        ]
+        succeeded = [r for r in all_runs if r.status == ComplianceRunStatus.SUCCEEDED]
         if not succeeded:
             return None
         latest = max(succeeded, key=lambda r: r.completed_at or r.created_at)
@@ -180,10 +178,43 @@ class AssetSerializer(serializers.ModelSerializer):
             "risk_level": latest.risk_level,
             "overall_status": latest.overall_status,
             "allowed_to_store": latest.allowed_to_store,
-            "completed_at": latest.completed_at.isoformat()
-            if latest.completed_at
-            else None,
+            "completed_at": latest.completed_at.isoformat() if latest.completed_at else None,
         }
+
+
+_FORBIDDEN_NAME_TOKENS: tuple[str, ...] = (
+    "<",
+    ">",
+    "javascript:",
+    "onerror=",
+    "onload=",
+    ";",
+    "--",
+    "'",
+)
+
+
+def _validate_no_injection(name: str) -> str:
+    """Reject stored-XSS and SQL-injection vectors in persisted names.
+
+    Pinned by ``cli/tests/security/test_input_fuzzing.py`` (XSS and SQL
+    payloads in asset names MUST be rejected with 4xx, never accepted):
+    the tokens below cover script/img/svg tags, ``javascript:`` URIs,
+    event-handler attributes, and the SQL comment / statement / quote
+    sequences the fuzz suite sends.  Names are rendered into tenant UI
+    and logs, so a stored vector is a real cross-tenant risk, not a
+    cosmetic one.  Apostrophes are rejected for the same reason; asset
+    names use ``key`` for machine identity, so a display name never
+    needs one.
+    """
+    lowered = name.lower()
+    for token in _FORBIDDEN_NAME_TOKENS:
+        if token in lowered:
+            raise serializers.ValidationError(
+                f"name contains a forbidden sequence ({token!r}); "
+                "asset names must not contain markup, script, or SQL syntax"
+            )
+    return name
 
 
 class AssetCreateSerializer(serializers.Serializer):
@@ -194,7 +225,10 @@ class AssetCreateSerializer(serializers.Serializer):
         help_text="Human-friendly identifier, unique per tenant. Must be lowercase alphanumeric with hyphens.",
         validators=[validate_asset_key],
     )
-    name = serializers.CharField(max_length=255)
+    name = serializers.CharField(
+        max_length=255,
+        validators=[_validate_no_injection],
+    )
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     domain = serializers.CharField(
         max_length=100, required=False, allow_blank=True, allow_null=True
@@ -203,15 +237,17 @@ class AssetCreateSerializer(serializers.Serializer):
     # but MUST NOT have a default. A default would inject a legacy
     # value into every create, triggering the deprecation signal on
     # every POST even when the client didn't send it.
-    visibility = serializers.ChoiceField(
-        choices=AssetVisibility.choices, required=False
-    )
+    visibility = serializers.ChoiceField(choices=AssetVisibility.choices, required=False)
 
 
 class AssetUpdateSerializer(serializers.Serializer):
     """Serializer for asset update"""
 
-    name = serializers.CharField(max_length=255, required=False)
+    name = serializers.CharField(
+        max_length=255,
+        required=False,
+        validators=[_validate_no_injection],
+    )
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     domain = serializers.CharField(
         max_length=100, required=False, allow_blank=True, allow_null=True
@@ -300,9 +336,7 @@ class DataFirstAssetCreateSerializer(serializers.Serializer):
     # but MUST NOT have a default. A default would inject a legacy
     # value into every create, triggering the deprecation signal on
     # every POST even when the client didn't send it.
-    visibility = serializers.ChoiceField(
-        choices=AssetVisibility.choices, required=False
-    )
+    visibility = serializers.ChoiceField(choices=AssetVisibility.choices, required=False)
 
 
 class AttachDatasetSerializer(serializers.Serializer):

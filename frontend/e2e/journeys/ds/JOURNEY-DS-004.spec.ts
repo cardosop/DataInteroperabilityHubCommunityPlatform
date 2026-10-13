@@ -25,24 +25,24 @@ test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
-      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state. The 35s budget covers the capability gate's documented worst case: useCapabilities fail-opens at 30s (the capabilities service falls back to deriving from the 19.7 MB openapi.json with a 25s+retry fetch when the manifest call fails), so a slow boot settles the gate instead of reading as a missing page.
       await page
-        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]')
+        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
         .first()
-        .waitFor({ state: 'visible', timeout: 15000 })
+        .waitFor({ state: 'visible', timeout: 35000 })
         .catch(() => null);
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
 
       const isGated =
         page.url().includes('/403') ||
         page.url().includes('/unavailable') ||
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
       if (isGated) {
-        test.skip(true, 'ML capability gated — cannot test Inference tab');
+        test.skip(isGated, 'ML capability gated — cannot test Inference tab');
         return;
       }
 
@@ -53,7 +53,7 @@ test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
       // DS-004 specific: navigate to Inference Deployments tab
       const inferenceTab = page.locator('.ml-tab:has-text("Inference"), button:has-text("Inference")');
       if ((await inferenceTab.count()) === 0) {
-        test.skip(true, 'Inference Deployments tab not found — ML UI may not include inference section');
+        test.skip((await inferenceTab.count()) === 0, 'Inference Deployments tab not found — ML UI may not include inference section');
         return;
       }
       await inferenceTab.first().click();
@@ -81,36 +81,39 @@ test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
-      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state. The 35s budget covers the capability gate's documented worst case: useCapabilities fail-opens at 30s (the capabilities service falls back to deriving from the 19.7 MB openapi.json with a 25s+retry fetch when the manifest call fails), so a slow boot settles the gate instead of reading as a missing page.
       await page
-        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"]')
+        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
         .first()
-        .waitFor({ state: 'visible', timeout: 15000 })
+        .waitFor({ state: 'visible', timeout: 35000 })
         .catch(() => null);
 
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Auth/capability gated');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Auth/capability gated');
         return;
       }
 
-      const isGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const isGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       if (isGated) {
-        test.skip(true, 'ML capability gated');
+        test.skip(isGated, 'ML capability gated');
         return;
       }
 
       // Click Inference tab and verify edge behavior (empty vs populated)
       const inferenceTab = page.locator('.ml-tab:has-text("Inference"), button:has-text("Inference")');
       if ((await inferenceTab.count()) === 0) {
-        test.skip(true, 'Inference Deployments tab not found');
+        test.skip((await inferenceTab.count()) === 0, 'Inference Deployments tab not found');
         return;
       }
       await inferenceTab.first().click();
       await page.waitForTimeout(500);
 
-      // Either empty-state or deployment rows should be present
+      // Either empty-state or deployment rows should be present. The ML
+      // page renders deployment cards with class `.deployment-card` (the
+      // old `.inference-deployment-card` selector predated the component
+      // and matched nothing).
       const hasEmpty = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
-      const hasDeployments = (await page.locator('.inference-deployment-row, .inference-deployment-card, tr').count()) > 0;
+      const hasDeployments = (await page.locator('.inference-deployment-row, .inference-deployment-card, .deployment-card').count()) > 0;
       expect(hasEmpty || hasDeployments, 'Expected empty state or inference deployment rows').toBe(true);
     });
   });

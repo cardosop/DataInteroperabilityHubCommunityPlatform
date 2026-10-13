@@ -8,6 +8,7 @@ Tests for Mesh Compliance API methods.
 Tests compliance checking and report retrieval operations with comprehensive error handling.
 """
 import asyncio
+import contextlib
 import uuid
 from unittest.mock import AsyncMock
 
@@ -20,7 +21,6 @@ from datahub_interoperability.errors import (
 from tests._sdk_test_helpers import (
     create_real_api_config,
 )
-import contextlib
 
 # File-specific tenant parameters
 _COMPLIANCE_TENANT_SLUG = "mesh-compliance-sdk-test-tenant"

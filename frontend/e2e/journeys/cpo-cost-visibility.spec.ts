@@ -6,20 +6,22 @@
  * - The page renders per-tenant and per-feature breakdown tables
  * - Total spend card is visible
  * - Month-over-month trend table renders
+ *
+ * close-test-coverage-gaps 5.3: replaced the hardcoded
+ * `admin@meshant.com/adminpass` credentials and the stale `/auth/login`
+ * + `/auth/logout` URLs with the real fixture login
+ * (`loginUser` + `getPlatformAdminUser()` / `getTenantAdminUser()`) —
+ * the hardcoded account did not exist on the stack, so every test in
+ * this spec silently exercised the 404/login-error path before the
+ * fix.
  */
 import { test, expect } from '@playwright/test';
+import { getPlatformAdminUser, getTenantAdminUser, loginUser } from '../fixtures/auth';
 
 test.describe('CPO Cost Overview Journey', () => {
-  test.beforeEach(async ({ page }) => {
-    // Log in as platform admin
-    await page.goto('/auth/login');
-    await page.getByLabel('Email').fill('admin@meshant.com');
-    await page.getByLabel('Password').fill('adminpass');
-    await page.getByRole('button', { name: /sign in/i }).click();
-    await page.waitForURL(/\/dashboard/);
-  });
-
   test('PLATFORM_ADMIN can view cost overview dashboard', async ({ page }) => {
+    const admin = await getPlatformAdminUser();
+    await loginUser(page, admin);
     await page.goto('/settings/cost-overview');
     await page.waitForSelector('[data-testid="cpo-cost-overview"]');
 
@@ -43,13 +45,10 @@ test.describe('CPO Cost Overview Journey', () => {
   });
 
   test('non-admin user is redirected away from cost overview', async ({ page }) => {
-    // Log out admin, log in as regular user
-    await page.goto('/auth/logout');
-    await page.goto('/auth/login');
-    await page.getByLabel('Email').fill('user@meshant.com');
-    await page.getByLabel('Password').fill('userpass');
-    await page.getByRole('button', { name: /sign in/i }).click();
-    await page.waitForURL(/\/dashboard/);
+    // A TENANT_ADMIN is the canonical non-platform-admin contrast —
+    // the cost-overview surface is PLATFORM_ADMIN-gated.
+    const tenantAdmin = await getTenantAdminUser();
+    await loginUser(page, tenantAdmin);
 
     // Try to access cost overview
     await page.goto('/settings/cost-overview');
@@ -62,6 +61,8 @@ test.describe('CPO Cost Overview Journey', () => {
     // This test expects the backend to have zero completed payments.
     // In CI, the test database starts empty, so the page should render
     // either an empty state or zero-value tables.
+    const admin = await getPlatformAdminUser();
+    await loginUser(page, admin);
     await page.goto('/settings/cost-overview');
     await page.waitForSelector('[data-testid="cpo-cost-overview"]');
 

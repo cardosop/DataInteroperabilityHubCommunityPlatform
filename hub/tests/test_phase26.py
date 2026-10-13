@@ -86,7 +86,7 @@ class TestTypedModels:
 
 
 class TestV310Normalizer:
-    @pytest.fixture()
+    @pytest.fixture
     def src(self):
         return _read("hub/apps/contracts/normalization/odcs_normalizer_v3_1_0.py")
 
@@ -134,7 +134,7 @@ class TestV310Normalizer:
 
 
 class TestV310Generator:
-    @pytest.fixture()
+    @pytest.fixture
     def src(self):
         return _read("hub/apps/contracts/odcs_generator.py")
 
@@ -190,7 +190,7 @@ class TestV310Generator:
 
 
 class TestExportDowngradeWarnings:
-    @pytest.fixture()
+    @pytest.fixture
     def src(self):
         return _read("hub/apps/contracts/views_export.py")
 

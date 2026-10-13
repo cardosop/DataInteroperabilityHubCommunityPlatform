@@ -1,16 +1,15 @@
 """
 Unit tests for contract normalization.
 """
+
 import json
+
 from django.test import TestCase
-from hub.apps.contracts.normalization import (
-    normalize_contract,
-    validate_hubcontract_schema
-)
-from hub.apps.contracts.spec_detection import detect_spec_type
+
 from hub.apps.contracts.coverage import calculate_coverage
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-
+from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
+from hub.apps.contracts.spec_detection import detect_spec_type
 
 
 class NormalizationTest(TestCase):
@@ -22,14 +21,10 @@ class NormalizationTest(TestCase):
             "id": "test",
             "name": "Test",
             "odcs_version": "3.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
-        spec_type, spec_version = detect_spec_type(contract_data)
+        spec_type, _spec_version = detect_spec_type(contract_data)
         self.assertEqual(spec_type, OriginalSpecType.ODCS)
 
     def test_normalize_odcs_to_hubcontract(self):
@@ -44,20 +39,21 @@ class NormalizationTest(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
-                    {"name": "name", "type": "string", "nullable": True}
+                    {"name": "name", "type": "string", "nullable": True},
                 ],
-                "primary_key": ["id"]
-            }
+                "primary_key": ["id"],
+            },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(hub_contract["id"], "test-contract")
         self.assertIn("info", hub_contract)
         self.assertIn("schema", hub_contract)
@@ -70,16 +66,11 @@ class NormalizationTest(TestCase):
         contract_data = {
             "id": "test",
             "name": "Test",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(contract_data),
-            format="JSON"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(contract_data), format="JSON"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -102,9 +93,8 @@ schema:
       type: string
 """
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=yaml_content,
-            format="YAML"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=yaml_content, format="YAML"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -121,14 +111,8 @@ schema:
         hub_contract = {
             "hub_contract_version": "1.0.0",
             "id": "test-contract",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         is_valid, errors = validate_hubcontract_schema(hub_contract)
@@ -156,17 +140,11 @@ schema:
             "id": "test",
             "name": "Test",
             "custom_field": "custom_value",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -205,10 +183,7 @@ class FieldPropertyExtractionTest(TestCase):
                         "max_length": 255,
                         "minimum": None,
                         "maximum": None,
-                        "metadata": {
-                            "source_system": "CRM",
-                            "pii": True
-                        }
+                        "metadata": {"source_system": "CRM", "pii": True},
                     },
                     {
                         "name": "age",
@@ -217,22 +192,20 @@ class FieldPropertyExtractionTest(TestCase):
                         "description": "User age",
                         "minimum": 0,
                         "maximum": 150,
-                        "default": 0
+                        "default": 0,
                     },
                     {
                         "name": "status",
                         "type": "string",
                         "nullable": False,
-                        "enum": ["active", "inactive", "pending"]
-                    }
+                        "enum": ["active", "inactive", "pending"],
+                    },
                 ]
-            }
+            },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -284,16 +257,14 @@ class FieldPropertyExtractionTest(TestCase):
                         "max_length": 100,
                         "minimum": 0,
                         "maximum": 100,
-                        "metadata": {"key": "value"}
+                        "metadata": {"key": "value"},
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -320,13 +291,11 @@ class NormalizationStatusTest(TestCase):
             "version": "1.0.0",
             "info": {
                 "owners": [{"name": "Owner", "email": "owner@example.com"}],
-                "tags": ["tag1", "tag2"]
+                "tags": ["tag1", "tag2"],
             },
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ],
-                "primary_key": ["id"]
+                "fields": [{"name": "id", "type": "string", "nullable": False}],
+                "primary_key": ["id"],
             },
             "quality": {
                 "default_profile_key": "basic",
@@ -335,33 +304,31 @@ class NormalizationStatusTest(TestCase):
                         "rule_id": "rule1",
                         "dimension": "completeness",
                         "expression": "id IS NOT NULL",
-                        "severity": "ERROR"
+                        "severity": "ERROR",
                     }
-                ]
+                ],
             },
             "privacy_compliance": {
                 "contains_personal_data": True,
                 "personal_data_categories": ["PII_DIRECT_EMAIL"],
                 "jurisdictions": ["GDPR"],
                 "legal_bases": ["CONSENT"],
-                "retention_policy": {"period": "P5Y", "notes": "5 years"}
+                "retention_policy": {"period": "P5Y", "notes": "5 years"},
             },
             "lifecycle": {
                 "data_source": "source",
                 "refresh_cadence": "DAILY",
-                "slas": {"availability": "99.0", "latency_ms_p95": 5000}
+                "slas": {"availability": "99.0", "latency_ms_p95": 5000},
             },
             "marketplace": {
                 "license_summary": "Internal only",
                 "intended_use": ["analytics"],
-                "restricted_use": ["marketing"]
-            }
+                "restricted_use": ["marketing"],
+            },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -374,18 +341,12 @@ class NormalizationStatusTest(TestCase):
         odcs_contract = {
             "id": "test",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            },
-            "unmappable_field": "unmappable_value"
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+            "unmappable_field": "unmappable_value",
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -401,13 +362,11 @@ class NormalizationStatusTest(TestCase):
             "kind": "DataContract",
             "id": "test",
             "name": "Test Contract",
-            "schema": {}
+            "schema": {},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        _hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Missing schema.fields is a critical section — normalization should fail
@@ -415,19 +374,10 @@ class NormalizationStatusTest(TestCase):
 
     def test_status_normalization_failed_missing_info_name(self):
         """Test NORMALIZATION_FAILED status when info.name missing"""
-        odcs_contract = {
-            "id": "test",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            }
-        }
+        odcs_contract = {"id": "test", "schema": {"fields": [{"name": "id", "type": "string"}]}}
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Empty name should cause FAILED status
@@ -442,15 +392,11 @@ class NormalizationStatusTest(TestCase):
             "kind": "DataContract",
             "id": "test",
             "name": "Test Contract",
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        _hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Empty fields array means no schema content — normalization should fail
@@ -461,10 +407,12 @@ class NormalizationStatusTest(TestCase):
         # Passing None directly should raise TypeError (json.loads rejects None)
         # or the service layer should catch it and return NORMALIZATION_FAILED
         try:
-            hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-                raw_contract=None,
-                format="JSON",
-                spec_type="ODCS",
+            _hub_contract, _spec_type, _spec_version, status, errors, _warnings = (
+                normalize_contract(
+                    raw_contract=None,
+                    format="JSON",
+                    spec_type="ODCS",
+                )
             )
             # If we get here without an exception, the function caught it internally
             self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
@@ -476,7 +424,7 @@ class NormalizationStatusTest(TestCase):
 
     def test_status_normalization_failed_invalid_json(self):
         """Test NORMALIZATION_FAILED when raw_contract is not valid JSON."""
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        _hub_contract, _spec_type, _spec_version, status, errors, _warnings = normalize_contract(
             raw_contract="!!!not json or yaml!!!",
             format="JSON",
             spec_type="ODCS",
@@ -495,21 +443,16 @@ class NormalizationStatusTest(TestCase):
                     "description": "Users model",
                     "fields": [
                         {"name": "id", "type": "string", "primaryKey": True},
-                        {"name": "email", "type": "string", "unique": True}
+                        {"name": "email", "type": "string", "unique": True},
                     ],
-                    "indexes": [{"fields": ["email"]}]
+                    "indexes": [{"fields": ["email"]}],
                 },
-                {
-                    "name": "orders",
-                    "fields": [{"name": "order_id", "type": "string"}]
-                }
-            ]
+                {"name": "orders", "fields": [{"name": "order_id", "type": "string"}]},
+            ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -529,20 +472,30 @@ class NormalizationStatusTest(TestCase):
             "name": "Contract",
             "schema": {"fields": [{"name": "id", "type": "string"}]},
             "slaProperties": [
-                {"id": "sla1", "property": "availability", "target": "99.9", "unit": "%", "priority": "P1"}
+                {
+                    "id": "sla1",
+                    "property": "availability",
+                    "target": "99.9",
+                    "unit": "%",
+                    "priority": "P1",
+                }
             ],
             "quality": {
                 "default_profile_key": "intake_basic",
                 "rules": [
-                    {"id": "q1", "name": "not_null", "dimension": "Completeness", "rule": "NOT NULL", "severity": "HIGH"}
-                ]
-            }
+                    {
+                        "id": "q1",
+                        "name": "not_null",
+                        "dimension": "Completeness",
+                        "rule": "NOT NULL",
+                        "severity": "HIGH",
+                    }
+                ],
+            },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -558,21 +511,25 @@ class NormalizationStatusTest(TestCase):
             "name": "Contract",
             "schema": {"fields": [{"name": "id", "type": "string"}]},
             "support": [
-                {"name": "Data Team", "email": "data@example.com", "url": "https://support.example.com", "tool": "jira"}
+                {
+                    "name": "Data Team",
+                    "email": "data@example.com",
+                    "url": "https://support.example.com",
+                    "tool": "jira",
+                }
             ],
             "servers": [
-                {"type": "postgresql", "url": "postgres://db.example.com", "description": "Primary DB"}
+                {
+                    "type": "postgresql",
+                    "url": "postgres://db.example.com",
+                    "description": "Primary DB",
+                }
             ],
-            "description": {
-                "usage": "Internal analytics only",
-                "limitations": "No PII sharing"
-            }
+            "description": {"usage": "Internal analytics only", "limitations": "No PII sharing"},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -589,13 +546,11 @@ class NormalizationStatusTest(TestCase):
             "quality": {
                 "type": "GreatExpectations",
                 "specification": "ge://profiles/basic",
-                "rules": [{"name": "not_null", "rule": "NOT NULL"}]
-            }
+                "rules": [{"name": "not_null", "rule": "NOT NULL"}],
+            },
         }
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         self.assertEqual(hub_contract["quality"]["type"], "GreatExpectations")
@@ -612,15 +567,18 @@ class NormalizationStatusTest(TestCase):
             "roles": [{"roleName": "data-reader", "accessType": "read"}],
             "team": [{"member": "alice", "role": "owner"}],
             "price": {"priceAmount": 100, "priceCurrency": "USD", "priceUnit": "month"},
-            "transformSourceObjects": [{"namespace": "ns", "name": "src", "model_name": "m", "field": "f"}],
-            "transformLogic": "SELECT * FROM src"
+            "transformSourceObjects": [
+                {"namespace": "ns", "name": "src", "model_name": "m", "field": "f"}
+            ],
+            "transformLogic": "SELECT * FROM src",
         }
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertIsNotNone(hub_contract)
         self.assertIn("id", hub_contract)
         self.assertIn("info", hub_contract)
@@ -645,20 +603,14 @@ class NormalizationStatusTest(TestCase):
                     "database": "db",
                     "schema": "public",
                     "region": "us-west",
-                    "extra_field": "keep_me"
+                    "extra_field": "keep_me",
                 },
-                {
-                    "type": "kafka",
-                    "topic": "events",
-                    "bootstrapServers": "kafka:9092"
-                }
-            ]
+                {"type": "kafka", "topic": "events", "bootstrapServers": "kafka:9092"},
+            ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -680,35 +632,32 @@ class NormalizationStatusTest(TestCase):
                 "description": "Description",
                 "version": "1.0.0",
                 "owners": [{"name": "Owner", "email": "owner@example.com"}],
-                "tags": ["tag1"]
+                "tags": ["tag1"],
             },
             "schema": {
                 "fields": [{"name": "id", "type": "string"}],
                 "primary_key": ["id"],
                 "unique_constraints": [],
-                "indexes": []
+                "indexes": [],
             },
-            "quality": {
-                "default_profile_key": "basic",
-                "rules": []
-            },
+            "quality": {"default_profile_key": "basic", "rules": []},
             "privacy_compliance": {
                 "contains_personal_data": True,
                 "personal_data_categories": ["PII_DIRECT_EMAIL"],
                 "jurisdictions": ["GDPR"],
                 "legal_bases": ["CONSENT"],
-                "retention_policy": {"period": "P5Y"}
+                "retention_policy": {"period": "P5Y"},
             },
             "lifecycle": {
                 "data_source": "source",
                 "refresh_cadence": "DAILY",
-                "slas": {"availability": "99.0"}
+                "slas": {"availability": "99.0"},
             },
             "marketplace": {
                 "license_summary": "Internal",
                 "intended_use": ["analytics"],
-                "restricted_use": []
-            }
+                "restricted_use": [],
+            },
         }
 
         coverage_result = calculate_coverage(full_contract)
@@ -723,12 +672,8 @@ class NormalizationStatusTest(TestCase):
         minimal_contract = {
             "hub_contract_version": "1.0.0",
             "id": "test",
-            "info": {
-                "name": "Test"
-            },
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
-            }
+            "info": {"name": "Test"},
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         minimal_coverage = calculate_coverage(minimal_contract)
@@ -742,13 +687,11 @@ class NormalizationStatusTest(TestCase):
         odcs_contract = {
             "id": "coverage-test",
             "name": "Coverage Test",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(hub_contract)
@@ -779,21 +722,19 @@ class NormalizationStatusTest(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
-                    {"name": "name", "type": "string", "nullable": True}
+                    {"name": "name", "type": "string", "nullable": True},
                 ],
-                "primary_key": ["id"]
+                "primary_key": ["id"],
             },
             "info": {
                 "owners": [{"name": "Test Owner", "email": "owner@example.com"}],
-                "tags": ["test", "replacement"]
-            }
+                "tags": ["test", "replacement"],
+            },
         }
 
         # Use normalize_contract() as replacement for deprecated function
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, spec_type, spec_version, status, errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Verify the function works correctly

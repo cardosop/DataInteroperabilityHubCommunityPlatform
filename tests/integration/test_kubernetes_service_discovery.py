@@ -32,13 +32,12 @@ def kustomize_available_check():
     # Verify each discovered base can be built — if a base's kustomize build
     # fails (e.g. prefect-server base not fully configured), skip the module.
     import subprocess
+
     for name, base_path in _K8S_BASES:
         try:
             load_manifests_from_kustomize(base_path)
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            pytest.skip(
-                f"kustomize build failed for {name}: {e}"
-            )
+            pytest.skip(f"kustomize build failed for {name}: {e}")
 
 
 def _workload_selector(workload: dict) -> dict | None:
@@ -57,7 +56,7 @@ def _workload_labels(workload: dict) -> dict:
 class TestKubernetesServiceDiscovery:
     """Validate Service resources and their alignment with workloads and Ingress."""
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_services_have_required_spec(self, service_name, base_path, kustomize_available_check):
         """Every Service has spec.ports, spec.selector, and valid type."""
         manifests = load_manifests_from_kustomize(base_path)
@@ -76,7 +75,7 @@ class TestKubernetesServiceDiscovery:
                 f"{service_name} Service has invalid type: {stype}"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_services_have_port_names_or_numbers(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -90,7 +89,7 @@ class TestKubernetesServiceDiscovery:
                     f"{service_name} Service port should be number or string"
                 )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_deployment_has_matching_service(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -126,7 +125,7 @@ class TestKubernetesServiceDiscovery:
                 f"{service_name} Deployment {name} (ns={ns}) has no Service with matching selector {selector}"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_statefulset_has_matching_service(
         self, service_name, base_path, kustomize_available_check
     ):
@@ -160,7 +159,7 @@ class TestKubernetesServiceDiscovery:
                 "no matching Service found"
             )
 
-    @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
+    @pytest.mark.parametrize(("service_name", "base_path"), _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_ingress_backend_services_exist(
         self, service_name, base_path, kustomize_available_check
     ):

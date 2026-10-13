@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -58,10 +59,12 @@ from hub.apps.assets.models import (
     ExternalResourceReference,
 )
 from hub.apps.audit.models import AuditEvent
-from hub.apps.gdpr.models import ErasureRequest
 from hub.apps.gdpr.services import ErasureService
 from hub.apps.governance.models import ClassificationCategory
 from hub.apps.tenants.models import Tenant
+
+if TYPE_CHECKING:
+    from hub.apps.gdpr.models import ErasureRequest
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

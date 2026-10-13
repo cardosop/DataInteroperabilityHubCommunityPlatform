@@ -27,10 +27,14 @@ Activation:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from django.http import HttpRequest, HttpResponse
 
 # ── Redis pub/sub for cache invalidation ──────────────────────────────────
 

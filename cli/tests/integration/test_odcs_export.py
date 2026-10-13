@@ -25,22 +25,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestODCSExportIntegration:
@@ -127,8 +118,8 @@ print(api_key_value)
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) > 20:  # API keys are typically long
                         return line
         except Exception:
@@ -178,7 +169,7 @@ print(api_key_value)
 
         try:
             response = requests.post(url, json=data, headers=self._get_auth_headers(), timeout=10)
-            if response.status_code == 401 or response.status_code == 403:
+            if response.status_code in {401, 403}:
                 pytest.skip(
                     f"Authentication failed (status {response.status_code}). Set DATAHUB_API_KEY environment variable."
                 )
@@ -186,14 +177,17 @@ print(api_key_value)
             return response.json()
         except requests.exceptions.RequestException as e:
             # If it's an authentication error, skip with helpful message
-            if hasattr(e, "response") and e.response is not None:
-                if e.response.status_code in [401, 403]:
-                    pytest.skip("Authentication failed. Set DATAHUB_API_KEY environment variable.")
+            if (
+                hasattr(e, "response")
+                and e.response is not None
+                and e.response.status_code in [401, 403]
+            ):
+                pytest.skip("Authentication failed. Set DATAHUB_API_KEY environment variable.")
             pytest.skip(f"API request failed: {e}")
 
-    def test_export_odcs_all_versions_json(self, runner, api_available):
+    def test_export_odcs_all_versions_json(self, runner, api_service_available):
         """Test exporting ODCS with all supported versions as JSON"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -242,9 +236,9 @@ print(api_key_value)
                 or "kind" in result.output
             )
 
-    def test_export_odcs_all_versions_yaml(self, runner, api_available):
+    def test_export_odcs_all_versions_yaml(self, runner, api_service_available):
         """Test exporting ODCS with all supported versions as YAML"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -291,9 +285,9 @@ print(api_key_value)
                 or "odcs" in result.output.lower()
             )
 
-    def test_export_odcs_format_conversion_json_to_yaml(self, runner, api_available):
+    def test_export_odcs_format_conversion_json_to_yaml(self, runner, api_service_available):
         """Test exporting ODCS with format conversion from JSON to YAML"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -336,9 +330,9 @@ print(api_key_value)
             or "odcs" in result.output.lower()
         )
 
-    def test_export_odcs_format_conversion_yaml_to_json(self, runner, api_available):
+    def test_export_odcs_format_conversion_yaml_to_json(self, runner, api_service_available):
         """Test exporting ODCS with format conversion from YAML to JSON"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -381,9 +375,9 @@ print(api_key_value)
             or "odcs" in result.output.lower()
         )
 
-    def test_export_odcs_error_handling_invalid_version(self, runner, api_available):
+    def test_export_odcs_error_handling_invalid_version(self, runner, api_service_available):
         """Test error handling for invalid ODCS version"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -417,9 +411,9 @@ print(api_key_value)
         assert result.exit_code != 0, "Should fail with invalid version"
         assert "Invalid ODCS version format" in result.output or "invalid" in result.output.lower()
 
-    def test_export_odcs_error_handling_unsupported_version(self, runner, api_available):
+    def test_export_odcs_error_handling_unsupported_version(self, runner, api_service_available):
         """Test error handling for unsupported ODCS version"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -453,9 +447,9 @@ print(api_key_value)
         assert result.exit_code != 0, "Should fail with unsupported version"
         assert "not supported" in result.output.lower()
 
-    def test_export_odcs_error_handling_nonexistent_contract(self, runner, api_available):
+    def test_export_odcs_error_handling_nonexistent_contract(self, runner, api_service_available):
         """Test error handling for nonexistent contract"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         # Test export with nonexistent contract ID
@@ -480,9 +474,9 @@ print(api_key_value)
             or "failed" in result.output.lower()
         )
 
-    def test_export_odcs_with_version_table_output(self, runner, api_available):
+    def test_export_odcs_with_version_table_output(self, runner, api_service_available):
         """Test ODCS export with version showing table output format"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -523,9 +517,9 @@ print(api_key_value)
         assert "ODCS Version: 3.0.2" in result.output or "3.0.2" in result.output
         assert "Format: odcs" in result.output or "odcs" in result.output.lower()
 
-    def test_export_odcs_without_version_uses_default(self, runner, api_available):
+    def test_export_odcs_without_version_uses_default(self, runner, api_service_available):
         """Test ODCS export without version parameter uses default"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:
@@ -564,9 +558,9 @@ print(api_key_value)
             or "exported successfully" in result.output.lower()
         )
 
-    def test_export_odcs_preview_version(self, runner, api_available):
+    def test_export_odcs_preview_version(self, runner, api_service_available):
         """Test ODCS export with preview version"""
-        if not api_available:
+        if not api_service_available:
             pytest.skip("API service not available")
 
         if not self.api_key:

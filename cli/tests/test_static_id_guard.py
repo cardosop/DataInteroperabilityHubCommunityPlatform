@@ -37,6 +37,47 @@ FORBIDDEN_RE = re.compile(
     r")[_-][A-Za-z0-9_-]+$"
 )
 
+# The pattern above also matches *schema vocabulary* — ``asset_id`` as a
+# payload key, ``asset_ids`` as a kwarg, ``asset-id`` as the CLI option
+# name quoted in an expected error message, ``asset_count`` as a response
+# field.  None of those name a backend resource, so none can collide
+# under xdist; flagging them trained readers to ignore the guard.
+#
+# A literal whose final ``[_-]``-separated segment is one of these words
+# is a field/option name.  A real static id ends in an opaque token
+# instead — ``asset-1``, ``contract_abc``, ``tenant_test`` are all still
+# caught, because ``1`` / ``abc`` / ``test`` are not schema words.
+SCHEMA_TAIL_WORDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "ids",
+        "key",
+        "keys",
+        "name",
+        "names",
+        "count",
+        "type",
+        "types",
+        "status",
+        "slug",
+        "ref",
+        "refs",
+        "uri",
+        "url",
+        "path",
+        "list",
+        "at",
+        "by",
+    }
+)
+
+
+def _is_schema_name(value: str) -> bool:
+    """True if ``value`` reads as a field/option name, not a resource id."""
+    tail = re.split(r"[_-]", value)[-1]
+    return tail.lower() in SCHEMA_TAIL_WORDS
+
+
 # Files allowed to retain pre-Phase-216 static ids while the migration
 # proceeds. Each entry is a backlog item to be cleared in a follow-up.
 # A test file MUST NOT be added to this list as part of new work — only
@@ -47,22 +88,10 @@ ALLOWLIST: frozenset[str] = frozenset(
         # static-id rule existed; clearing one entry = one PR that migrates
         # that file's static literals to ``fresh_id``. New tests MUST NOT
         # be added here.
-        "e2e/test_ml_training_workflows.py",
         "integration/test_cli_assets_odps.py",
-        "integration/test_cli_marketplace_odps.py",
-        "integration/test_cli_odps_comprehensive.py",
-        "integration/test_commands_real_api.py",
         "integration/test_installation_config_auth.py",
-        "integration/test_ml_serving_cli_comprehensive.py",
-        "integration/test_ml_training_commands_real_api.py",
-        "integration/test_odh_cli_comprehensive_validation.py",
-        "integration/test_odps_cli_workflows.py",
         "integration/test_odps_error_scenarios.py",
-        "integration/test_payment_gateways_real_api.py",
-        "integration/test_phase26_cli_integration.py",
-        "integration/test_product_strategy_real_api.py",
         "unit/test_commands_assets.py",
-        "unit/test_commands_baas.py",
         "unit/test_commands_compliance.py",
         "unit/test_commands_contracts.py",
         "unit/test_commands_lineage.py",
@@ -72,7 +101,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "unit/test_commands_mesh_topology.py",
         "unit/test_config.py",
         "unit/test_configuration.py",
-        "unit/test_error_handling.py",
         "unit/test_odps_errors.py",
         "unit/test_output_formatting.py",
         "unit/test_phase118a_endpoint_param_fixes.py",
@@ -97,10 +125,21 @@ def _string_literals(tree: ast.Module) -> list[tuple[int, str]]:
                 and isinstance(body[0].value.value, str)
             ):
                 docstring_nodes.add(id(body[0].value))
+
+    # A string in dict-key position names a payload field, never a
+    # resource — ``{"asset_id": asset_id}`` must flag the value, not the
+    # key.
+    dict_key_nodes: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key in node.keys:
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    dict_key_nodes.add(id(key))
+
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if id(node) in docstring_nodes:
+            if id(node) in docstring_nodes or id(node) in dict_key_nodes:
                 continue
             out.append((node.lineno, node.value))
     return out
@@ -114,7 +153,7 @@ def _scan_file(path: Path) -> list[tuple[int, str]]:
     # Per-line noqa annotations exempt a single line.
     src_lines = src.splitlines()
     for lineno, value in _string_literals(tree):
-        if FORBIDDEN_RE.match(value):
+        if FORBIDDEN_RE.match(value) and not _is_schema_name(value):
             line = src_lines[lineno - 1] if 0 <= lineno - 1 < len(src_lines) else ""
             if "PHASE216-STATIC-ID" in line:
                 continue
@@ -125,6 +164,51 @@ def _scan_file(path: Path) -> list[tuple[int, str]]:
 def _python_test_files() -> list[Path]:
     """Return every ``test_*.py`` under ``cli/tests/`` (recursive)."""
     return sorted(p for p in CLI_TESTS_DIR.rglob("test_*.py") if p.is_file())
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "asset-1",  # noqa: PHASE216-STATIC-ID — guard test vector
+        "contract_abc",  # noqa: PHASE216-STATIC-ID — guard test vector
+        "tenant_test",  # noqa: PHASE216-STATIC-ID — guard test vector
+        "asset-fixture-1",  # noqa: PHASE216-STATIC-ID — guard test vector
+        "user-42",  # noqa: PHASE216-STATIC-ID — guard test vector
+        "webhook-a",  # noqa: PHASE216-STATIC-ID — guard test vector
+    ],
+)
+def test_guard_flags_real_static_ids(literal: str) -> None:
+    """A literal ending in an opaque token is a static id and MUST flag."""
+    assert FORBIDDEN_RE.match(literal) is not None
+    assert not _is_schema_name(literal)
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "asset_id",
+        "contract_id",
+        "asset_ids",
+        "asset_count",
+        "asset-id",
+        "tenant_slug",
+        "user_name",
+        "asset_status",
+        "webhook_url",
+        "contract_type",
+    ],
+)
+def test_guard_ignores_schema_names(literal: str) -> None:
+    """Field/option names name no resource and MUST NOT flag."""
+    assert _is_schema_name(literal)
+
+
+def test_guard_ignores_dict_keys_but_flags_values() -> None:
+    """``{"asset_id": "asset-1"}`` must flag the value, never the key."""
+    tree = ast.parse('payload = {"asset_id": "asset-1"}')
+    values = [v for _, v in _string_literals(tree)]
+    assert "asset_id" not in values, "dict key was not excluded"
+    assert "asset-1" in values, "dict value was wrongly excluded"  # noqa: PHASE216-STATIC-ID
 
 
 def test_allowlist_has_no_stale_entries() -> None:

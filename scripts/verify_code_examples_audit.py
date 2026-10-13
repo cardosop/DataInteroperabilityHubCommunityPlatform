@@ -24,7 +24,7 @@ def verify_audit_report(report_file: str) -> bool:
     except json.JSONDecodeError as e:
         print(f"❌ Invalid JSON in report file: {e}")
         return False
-    except Exception as e:
+    except OSError as e:
         print(f"❌ Error reading report file: {e}")
         return False
 

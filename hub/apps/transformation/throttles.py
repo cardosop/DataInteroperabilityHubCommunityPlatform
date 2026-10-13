@@ -16,7 +16,7 @@ class TransformationTenantThrottle(SimpleRateThrottle):
 
     scope = "transformation"
 
-    def get_cache_key(self, request, view) -> str | None:
+    def get_cache_key(self, request, _view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         tenant_id = get_request_tenant_id(request)
@@ -27,8 +27,9 @@ class TransformationTenantThrottle(SimpleRateThrottle):
             "ident": str(tenant_id),
         }
 
-    def throttled(self, request, wait):
-        """Emit TRANSFORMATION_RATE_LIMIT_EXCEEDED audit event on 429 per Phase 273."""
+    def _on_throttled(self, request, wait):
+        """DRF 3.16: the throttled() override hook was removed;
+        this runs from allow_request's failure branch instead."""
         try:
             from hub.apps.audit.utils import create_audit_event
 
@@ -49,4 +50,9 @@ class TransformationTenantThrottle(SimpleRateThrottle):
             )
         except Exception:
             pass  # audit-DB outage must never block the 429 response
-        super().throttled(request, wait)
+
+    def allow_request(self, request, view):
+        allowed = super().allow_request(request, view)
+        if not allowed:
+            self._on_throttled(request, int(self.wait()))
+        return allowed

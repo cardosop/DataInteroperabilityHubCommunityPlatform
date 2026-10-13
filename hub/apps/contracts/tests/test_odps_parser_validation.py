@@ -24,8 +24,6 @@ import json
 from django.test import TestCase
 
 try:
-    import jsonschema
-
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
@@ -491,6 +489,7 @@ product:
         }
         # Empty version should raise ODPSValidationError with VERSION_NOT_FOUND
         from hub.apps.contracts.odps_parser import ODPSValidationError
+
         with self.assertRaises(ODPSValidationError):
             ODPSParser.validate(valid_odps, version="")
 
@@ -503,6 +502,7 @@ product:
         }
         # Invalid version should raise ODPSValidationError with SCHEMA_NOT_FOUND
         from hub.apps.contracts.odps_parser import ODPSValidationError
+
         with self.assertRaises(ODPSValidationError):
             ODPSParser.validate(valid_odps, version="invalid-version")
 
@@ -591,18 +591,21 @@ product:
     def test_parse_and_validate_with_none_input(self):
         """Test parse_and_validate with None input."""
         from hub.apps.contracts.odps_parser import ODPSValidationError
+
         with self.assertRaises(ODPSValidationError):
             ODPSParser.parse_and_validate(None, version="4.1")
 
     def test_parse_and_validate_with_empty_string(self):
         """Test parse_and_validate with empty string."""
         from hub.apps.contracts.odps_parser import ODPSValidationError
+
         with self.assertRaises(ODPSValidationError):
             ODPSParser.parse_and_validate("", version="4.1")
 
     def test_parse_and_validate_with_invalid_json_string(self):
         """Test parse_and_validate with invalid JSON string."""
         from hub.apps.contracts.odps_parser import ODPSValidationError
+
         invalid_json = '{"schema": "invalid}'
         with self.assertRaises((ODPSValidationError, json.JSONDecodeError)):
             ODPSParser.parse_and_validate(invalid_json, version="4.1")
@@ -610,6 +613,7 @@ product:
     def test_parse_and_validate_with_malformed_yaml(self):
         """Test parse_and_validate with malformed YAML."""
         from hub.apps.contracts.odps_parser import ODPSValidationError
+
         invalid_yaml = """
 schema: https://opendataproducts.org/schema/v4.1
 version: "4.1"
@@ -695,7 +699,7 @@ product:
     def test_parser_validation_handles_none_values(self):
         """Test that parser validation handles None values correctly."""
         # validate(None) should return failure (is_valid=False), not crash
-        is_valid, errors = ODPSParser.validate(None, version="4.1")  # type: ignore[misc]  # test: edge-case type exercise
+        is_valid, errors = ODPSParser.validate(None, version="4.1")  # test: edge-case type exercise
         self.assertFalse(is_valid)
         self.assertGreater(len(errors), 0)
 

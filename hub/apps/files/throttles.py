@@ -29,7 +29,7 @@ class FileInitUserThrottle(SimpleRateThrottle):
 
     scope = "file_init_user"
 
-    def get_cache_key(self, request, view) -> str | None:
+    def get_cache_key(self, request, view) -> str | None:  # DRF throttle contract
         if not request.user or not request.user.is_authenticated:
             return None
         return self.cache_format % {
@@ -43,7 +43,7 @@ class FileInitTenantThrottle(SimpleRateThrottle):
 
     scope = "file_init_tenant"
 
-    def get_cache_key(self, request, view) -> str | None:
+    def get_cache_key(self, request, view) -> str | None:  # DRF throttle contract
         if not request.user or not request.user.is_authenticated:
             return None
         from hub.apps.tenants.request_tenant import get_request_tenant_id
@@ -62,7 +62,7 @@ class FileScanStatusUserThrottle(SimpleRateThrottle):
 
     scope = "file_scan_status_user"
 
-    def get_cache_key(self, request, view) -> str | None:
+    def get_cache_key(self, request, view) -> str | None:  # DRF throttle contract
         if not request.user or not request.user.is_authenticated:
             return None
         return self.cache_format % {
@@ -76,7 +76,7 @@ class FileScanStatusTenantThrottle(SimpleRateThrottle):
 
     scope = "file_scan_status_tenant"
 
-    def get_cache_key(self, request, view) -> str | None:
+    def get_cache_key(self, request, view) -> str | None:  # DRF throttle contract
         if not request.user or not request.user.is_authenticated:
             return None
         from hub.apps.tenants.request_tenant import get_request_tenant_id

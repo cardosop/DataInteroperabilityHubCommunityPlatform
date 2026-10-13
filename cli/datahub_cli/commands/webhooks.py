@@ -72,7 +72,7 @@ def list_webhooks(status: str | None, limit: int, offset: int, output_format: st
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list webhooks: {e}")
+        raise click.ClickException(f"Failed to list webhooks: {e}") from e
 
 
 @webhooks.command("get")
@@ -104,7 +104,7 @@ def get_webhook(webhook_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get webhook: {e}")
+        raise click.ClickException(f"Failed to get webhook: {e}") from e
 
 
 @webhooks.command("create")
@@ -156,7 +156,7 @@ def create_webhook(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create webhook: {e}")
+        raise click.ClickException(f"Failed to create webhook: {e}") from e
 
 
 @webhooks.command("update")
@@ -185,7 +185,8 @@ def update_webhook(
     output_format: str,
 ):
     """Update webhook"""
-    try:
+
+    def _build_update_data() -> dict:
         data = {}
 
         if name:
@@ -203,6 +204,10 @@ def update_webhook(
 
         if not data:
             raise click.ClickException("At least one field must be provided for update")
+        return data
+
+    try:
+        data = _build_update_data()
 
         result = api_client.patch(f"webhooks/webhooks/{webhook_id}/", json_data=data)
 
@@ -215,7 +220,7 @@ def update_webhook(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update webhook: {e}")
+        raise click.ClickException(f"Failed to update webhook: {e}") from e
 
 
 @webhooks.command("delete")
@@ -223,10 +228,9 @@ def update_webhook(
 @click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
 def delete_webhook(webhook_id: str, confirm: bool):
     """Delete webhook"""
-    if not confirm:
-        if not click.confirm(f"Are you sure you want to delete webhook {webhook_id}?"):
-            click.echo("Cancelled.")
-            return
+    if not confirm and not click.confirm(f"Are you sure you want to delete webhook {webhook_id}?"):
+        click.echo("Cancelled.")
+        return
 
     try:
         api_client.delete(f"webhooks/webhooks/{webhook_id}/")
@@ -234,7 +238,7 @@ def delete_webhook(webhook_id: str, confirm: bool):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to delete webhook: {e}")
+        raise click.ClickException(f"Failed to delete webhook: {e}") from e
 
 
 @webhooks.command("event-types")
@@ -272,4 +276,4 @@ def list_event_types(odps_only: bool, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list event types: {e}")
+        raise click.ClickException(f"Failed to list event types: {e}") from e

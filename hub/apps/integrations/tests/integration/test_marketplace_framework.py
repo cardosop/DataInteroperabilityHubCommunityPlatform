@@ -42,7 +42,7 @@ from hub.apps.integrations.models import (
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import Role, User, UserStatus
+from hub.apps.users.models import Role, UserStatus
 from tests.utils.wait_helpers import wait_for_event_persistence
 
 User = get_user_model()
@@ -265,7 +265,7 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
 
     def tearDown(self):
         """Clean up non-DB state (connectors, signals) and call super().tearDown()."""
-        for mt in self.test_connectors.keys():
+        for mt in self.test_connectors:
             with contextlib.suppress(ValueError):
                 MarketplaceConnectorFactory.unregister_connector(mt)
 
@@ -738,10 +738,11 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
                 SyncStatus.PARTIAL.value,
             ),
             msg=f"Sync job should be in a valid non-FAILED state after create, "
-                f"got status={db_sync_job.status}",
+            f"got status={db_sync_job.status}",
         )
         self.assertNotEqual(
-            db_sync_job.status, SyncStatus.FAILED.value,
+            db_sync_job.status,
+            SyncStatus.FAILED.value,
             msg="Newly created sync job should never be FAILED before any work is done",
         )
 

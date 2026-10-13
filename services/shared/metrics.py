@@ -495,8 +495,6 @@ def track_request_metrics(service_name: str):
                         service=service_name, method=method, route=route, status_code=status_code
                     ).inc()
 
-                return response
-
             except Exception:
                 # Record error metrics
                 status_code = 500
@@ -517,6 +515,8 @@ def track_request_metrics(service_name: str):
                 ).inc()
 
                 raise
+            else:
+                return response
 
         return wrapper
 

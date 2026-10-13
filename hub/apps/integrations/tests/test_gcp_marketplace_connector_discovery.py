@@ -48,7 +48,7 @@ def get_test_credentials():
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping") from None
 
 
 class TestGCPMarketplaceConnectorDiscovery(TestCase):
@@ -70,12 +70,19 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
             cls._auth_ok = True
         except Exception:
             import logging
+
             logging.getLogger(__name__).warning(
                 "GCP auth failed in setUpClass — discovery tests will skip"
             )
 
     def setUp(self):
         """Set up test fixtures — reuse class-level auth result."""
+        # Enforce the file's stated contract: when setUpClass GCP auth
+        # failed (stale/absent credentials), the discovery tests SKIP —
+        # calling the Analytics Hub gRPC API unauthenticated produces
+        # UNAUTHENTICATED RPC errors instead of a skip.
+        if not self._auth_ok:
+            self.skipTest("GCP authentication failed in setUpClass — skipping discovery tests")
         self.connector = GCPMarketplaceConnector(
             project_id=self.project_id, credentials_json=self.credentials_json
         )
@@ -153,11 +160,11 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
 
         # Non-integer offset
         with self.assertRaises(ValueError):
-            self.connector.list_listings(offset="invalid")  # type: ignore[misc]  # test: edge-case type exercise
+            self.connector.list_listings(offset="invalid")  # test: edge-case type exercise
 
         # Non-integer limit
         with self.assertRaises(ValueError):
-            self.connector.list_listings(limit="invalid")  # type: ignore[misc]  # test: edge-case type exercise
+            self.connector.list_listings(limit="invalid")  # test: edge-case type exercise
 
     def test_get_listing_details(self):
         """Test _get_listing_details() retrieves listing details"""

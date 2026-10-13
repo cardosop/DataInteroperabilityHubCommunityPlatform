@@ -43,9 +43,11 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from django.core.cache import cache
 from django.db.models import Count, Q
@@ -223,41 +225,14 @@ def _aggregate_billing() -> dict[str, Any]:
     Surfaces revenue-health drift (a spike in PAST_DUE or UNPAID) and
     plan-tier distribution so ops can see how many tenants are on FREE
     vs PRO vs ENTERPRISE.
+
+    The aggregation resolves through the commercial hook (billing
+    registers the provider); core-only deployments get the zeroed
+    structure — no billing tables exist to aggregate.
     """
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.core.commercial_hooks import get_admin_billing_summary
 
-    status_counts = Subscription.objects.using("admin").aggregate(
-        active=Count("id", filter=Q(status=SubscriptionStatus.ACTIVE)),
-        past_due=Count("id", filter=Q(status=SubscriptionStatus.PAST_DUE)),
-        canceled=Count("id", filter=Q(status=SubscriptionStatus.CANCELED)),
-        trial=Count("id", filter=Q(status=SubscriptionStatus.TRIAL)),
-        incomplete=Count("id", filter=Q(status=SubscriptionStatus.INCOMPLETE)),
-        unpaid=Count("id", filter=Q(status=SubscriptionStatus.UNPAID)),
-    )
-
-    # 285.13.12.8 — Plan distribution by tier (FREE/PRO/ENTERPRISE)
-    active_subs = Subscription.objects.using("admin").filter(
-        status__in=[
-            SubscriptionStatus.ACTIVE,
-            SubscriptionStatus.TRIAL,
-        ],
-    )
-    plan_distribution = (
-        active_subs.values("plan__tier")
-        .annotate(
-            count=Count("id"),
-        )
-        .order_by("plan__tier")
-    )
-    by_tier = {row["plan__tier"]: row["count"] for row in plan_distribution}
-
-    return {
-        **status_counts,
-        "plan_distribution": {
-            "by_tier": by_tier,
-            "total_active": sum(by_tier.values()),
-        },
-    }
+    return get_admin_billing_summary()
 
 
 def _aggregate_governance() -> dict[str, Any]:
@@ -310,7 +285,6 @@ def _run_widget(name: str, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
             "admin_dashboard_widget_ok",
             extra={"widget": name, "duration_ms": round(duration_ms, 2)},
         )
-        return result
     except Exception as exc:
         duration_ms = (time.monotonic() - started) * 1000
         logger.exception(
@@ -322,6 +296,8 @@ def _run_widget(name: str, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
             },
         )
         return dict(_WIDGET_ERROR_SENTINEL)
+    else:
+        return result
 
 
 def build_dashboard_summary() -> dict[str, Any]:
@@ -369,7 +345,7 @@ class AdminDashboardSummaryView(APIView):
     entry.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     @extend_schema(
         operation_id="admin_dashboard_summary",

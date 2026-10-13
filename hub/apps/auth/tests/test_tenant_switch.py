@@ -23,7 +23,11 @@ from hub.apps.auth.middleware import TenantScopingMiddleware
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, UserTenantMembership
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.uc("UC-AUTH-007"), pytest.mark.journey("JOURNEY-AUTH-007")]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.uc("UC-AUTH-007"),
+    pytest.mark.journey("JOURNEY-AUTH-007"),
+]
 
 
 class MeTenantsEndpointTest(TestCase):

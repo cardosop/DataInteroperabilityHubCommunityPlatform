@@ -6,7 +6,6 @@ the scan_status of a File without requiring ClamAV or any external
 infrastructure (pure DB lookup).
 """
 
-import pytest
 from django.test import TestCase
 from rest_framework.test import APIClient
 

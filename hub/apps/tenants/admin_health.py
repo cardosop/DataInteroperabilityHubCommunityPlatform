@@ -27,9 +27,9 @@ class AdminHealthView(APIView):
     health with error messages for ops debugging during incidents.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
-    def get(self, request):
+    def get(self, _request):
         service = HealthService()
         result = service.get_overall_health_status()
         http_status = result.pop("http_status", status.HTTP_200_OK)

@@ -83,7 +83,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="consentpurpose",
-            constraint=models.UniqueConstraint(fields=("tenant", "key"), name="consent_purpose_tenant_key_uniq"),
+            constraint=models.UniqueConstraint(fields=["tenant", "key"], name="consent_purpose_tenant_key_uniq"),
         ),
         migrations.AddIndex(
             model_name="consentpurpose",
@@ -92,7 +92,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="consentrecord",
             constraint=models.UniqueConstraint(
-                fields=("tenant", "user", "purpose"),
+                fields=["tenant", "user", "purpose"],
                 name="consent_record_tenant_user_purpose_uniq",
             ),
         ),

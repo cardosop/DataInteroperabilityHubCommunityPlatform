@@ -36,7 +36,8 @@ POLL_TIMEOUT = int(os.getenv("SMOKE_PREFECT_POLL_TIMEOUT", "30"))
 POLL_INTERVAL = float(os.getenv("SMOKE_PREFECT_POLL_INTERVAL", "5"))
 
 _INTEGRATION_SERVICE_URL = os.getenv(
-    "SMOKE_PREFECT_INTEGRATION_URL", "http://localhost:8084"
+    "SMOKE_PREFECT_INTEGRATION_URL",
+    os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "http://localhost:8084"),
 ).rstrip("/")
 
 # Django API paths
@@ -95,7 +96,7 @@ def _poll_deployment_sync_status(
         # Stop early if we hit a terminal state that isn't the target
         if last_status in terminal:
             return last_data
-        time.sleep(poll_interval)  # INTENTIONAL: test-specific delay
+        time.sleep(poll_interval)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay
 
     # Timed out — return whatever we have; caller decides
     return last_data
@@ -117,13 +118,13 @@ class TestPrefectIntegrationLifecycle:
         removed (integration service returns 404 for it).
     """
 
-@pytest.mark.skip(reason="f'Prefect integration service unreachable at {url}. Set SMOKE_PREFECT_INTEGRATION_URL if not on localhost:8084.'")
     def test_integration_service_health(self) -> None:
         """(a) /health returns {"status": "healthy"}."""
         url = f"{_INTEGRATION_SERVICE_URL}/health"
         try:
             resp = requests.get(url, timeout=10)
         except (requests.ConnectionError, requests.Timeout):
+            pytest.skip(
                 f"Prefect integration service unreachable at {url}. "
                 "Set SMOKE_PREFECT_INTEGRATION_URL if not on localhost:8084."
             )
@@ -262,7 +263,7 @@ class TestPrefectIntegrationLifecycle:
                         if not dep_id:
                             cleared = True
                             break
-                    time.sleep(POLL_INTERVAL)  # INTENTIONAL: test-specific delay
+                    time.sleep(POLL_INTERVAL)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay
 
                 assert cleared, (
                     f"Prefect deployment {prefect_deployment_id} "

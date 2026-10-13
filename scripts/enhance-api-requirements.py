@@ -84,7 +84,7 @@ class EnhancedAPIExtractor:
             # Extract error responses
             self._extract_error_responses(content, spec_name)
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"Error processing {spec_path}: {e}")
 
     def _extract_explicit_endpoints(self, content: str, spec_name: str):
@@ -320,8 +320,8 @@ class EnhancedAPIExtractor:
         path: str,
         description: str,
         spec_name: str,
-        query_params: list[str] = None,
-        path_params: list[str] = None,
+        query_params: list[str] | None = None,
+        path_params: list[str] | None = None,
         auth_required: bool = True,
         tenant_required: bool = True,
     ):

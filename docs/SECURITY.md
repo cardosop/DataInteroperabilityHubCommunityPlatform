@@ -24,7 +24,7 @@ Meshant takes security seriously. If you discover a vulnerability, please:
 ## Scope
 
 - API endpoints (`/api/v1/*`)
-- Authentication and authorization (JWT, OAuth, SSO, MFA)
+- Authentication and authorization (JWT, OAuth, SSO)
 - Tenant isolation and RLS policies
 - Credential handling (AWS SM, Prefect, dlt secrets)
 - Container images and CI/CD pipeline
@@ -80,7 +80,7 @@ we will credit you in the release notes for the fixed version.
 | A04: Insecure Design | Threat modeling, security review per phase | ⚠️ Ongoing |
 | A05: Security Misconfiguration | CSP headers, PSS, CIS benchmarks | ⚠️ 285.8.2.5 planned |
 | A06: Vulnerable Components | `pip-audit`, `npm audit`, Dependabot | ✅ |
-| A07: Auth Failures | MFA (285.8.1.1), token rotation, rate limiting | ⚠️ 285.8.3.5 planned |
+| A07: Auth Failures | Token rotation, rate limiting | ⚠️ MFA is not shipped — the TOTP library was dead code and has been removed (oss-release-remediation W1.7); TOTP remains a planned capability |
 | A08: Software/Data Integrity | Cosign (285.8.1.3), artifact signing (285.8.4.3) | ⚠️ Cosign deferred |
 | A09: Logging/Monitoring Failures | Audit events, CloudTrail, SIEM (285.8.2.8) | ⚠️ SIEM deferred |
 | A10: SSRF | `ssrf_guard.is_safe_url()` on all external requests | ✅ |

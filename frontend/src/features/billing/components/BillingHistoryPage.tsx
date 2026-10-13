@@ -5,15 +5,16 @@
  * labeled by subscription category (BASE / ML_AI).
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { apiClient } from '../../../shared/api/client';
+import { billingService } from '../services/billingService';
 import type { Invoice } from '../../../shared/types/billing';
-
-const BASE = '/api/v1';
 
 function statusLabel(status: Invoice['status']): string {
   const map: Record<string, string> = {
-    paid: 'Paid', open: 'Open', draft: 'Draft',
-    uncollectible: 'Uncollectible', void: 'Void',
+    paid: 'Paid',
+    open: 'Open',
+    draft: 'Draft',
+    uncollectible: 'Uncollectible',
+    void: 'Void',
   };
   return map[status] || status;
 }
@@ -26,10 +27,10 @@ export const BillingHistoryPage: React.FC = () => {
   const fetchInvoices = useCallback(async () => {
     try {
       setLoading(true);
-      const resp = await apiClient.getClient().get<Invoice[]>(
-        `${BASE}/billing/invoices/`,
-      );
-      setInvoices(resp.data || []);
+      // The endpoint is paginated (DRF default envelope); getInvoices
+      // unwraps + normalizes at the service boundary — the raw fetch here
+      // previously typed the envelope as Invoice[] and unwrapped ad hoc.
+      setInvoices(await billingService.getInvoices());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load invoices');
     } finally {
@@ -37,7 +38,9 @@ export const BillingHistoryPage: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
 
   if (loading) return <div role="status">Loading billing history…</div>;
   if (error) return <div role="alert">{error}</div>;
@@ -64,18 +67,18 @@ export const BillingHistoryPage: React.FC = () => {
               <tr key={inv.id}>
                 <td>{inv.period_start ? new Date(inv.period_start).toLocaleDateString() : '—'}</td>
                 <td>
-                  ${((inv.amount_due_cents || 0) / 100).toFixed(2)}{' '}
-                  {inv.currency?.toUpperCase()}
+                  ${((inv.amount_due_cents || 0) / 100).toFixed(2)} {inv.currency?.toUpperCase()}
                 </td>
                 <td>
-                  <span className={`badge badge--${inv.status}`} aria-label={`Status: ${statusLabel(inv.status)}`}>
+                  <span
+                    className={`badge badge--${inv.status}`}
+                    aria-label={`Status: ${statusLabel(inv.status)}`}
+                  >
                     {statusLabel(inv.status)}
                   </span>
                 </td>
                 <td>
-                  <span className={`badge badge--category`}>
-                    {inv.category || 'BASE'}
-                  </span>
+                  <span className={`badge badge--category`}>{inv.category || 'BASE'}</span>
                 </td>
                 <td>
                   {inv.period_start && inv.period_end
@@ -84,7 +87,12 @@ export const BillingHistoryPage: React.FC = () => {
                 </td>
                 <td>
                   {inv.invoice_pdf_url ? (
-                    <a href={inv.invoice_pdf_url} target="_blank" rel="noopener noreferrer" aria-label={`Download PDF invoice for ${new Date(inv.period_start!).toLocaleDateString()}`}>
+                    <a
+                      href={inv.invoice_pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Download PDF invoice for ${new Date(inv.period_start!).toLocaleDateString()}`}
+                    >
                       PDF
                     </a>
                   ) : inv.hosted_invoice_url ? (

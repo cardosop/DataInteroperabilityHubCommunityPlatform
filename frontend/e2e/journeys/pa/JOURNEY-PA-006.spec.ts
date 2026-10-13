@@ -27,7 +27,7 @@ test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
       });
 
       if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Observability page not accessible to platform admin in this environment');
+        test.skip(page.url().includes('/403') || page.url().includes('/login'), 'Observability page not accessible to platform admin in this environment');
         return;
       }
 

@@ -133,7 +133,7 @@ class ValidateRateLimitsTest(TestCase):
     # GAP-0.2.3.3: validate_rate_limits tests
     def test_valid_rate_limits_for_each_category(self):
         """Test valid rate limits for each category"""
-        for category in PLATFORM_MAX_RATE_LIMITS.keys():
+        for category in PLATFORM_MAX_RATE_LIMITS:
             platform_max = PLATFORM_MAX_RATE_LIMITS[category]
             limits = {}
 
@@ -307,9 +307,7 @@ class GetPlatformDefaultsTest(TestCase):
         defaults = get_platform_defaults()
 
         self.assertEqual(defaults["default_dq_profile"], "intake_basic_gx")
-        self.assertEqual(
-            defaults["allowed_compliance_regimes"], list(VALID_COMPLIANCE_REGIMES)
-        )
+        self.assertEqual(defaults["allowed_compliance_regimes"], list(VALID_COMPLIANCE_REGIMES))
         self.assertEqual(defaults["default_compliance_regimes"], ["GDPR", "LGPD"])
         self.assertEqual(defaults["data_retention_days"], 2555)
         self.assertEqual(defaults["max_file_size_bytes"], 10737418240)

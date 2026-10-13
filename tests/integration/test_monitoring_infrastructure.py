@@ -36,9 +36,10 @@ class MonitoringInfrastructureTest(TestCase):
         """Check if a service is available"""
         try:
             response = requests.get(url, timeout=self.timeout)
-            return response.status_code in [200, 401, 403]  # 401/403 means service is up
         except (requests.exceptions.RequestException, requests.exceptions.Timeout):
             return False
+        else:
+            return response.status_code in [200, 401, 403]  # 401/403 means service is up
 
     def test_prometheus_available(self):
         """Test that Prometheus is available"""

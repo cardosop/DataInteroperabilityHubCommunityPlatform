@@ -53,8 +53,7 @@ class BreachServiceTests(TestCase):
 
         fields = {f.name for f in BreachIncident._meta.get_fields()}
         for required in ("tenant", "title", "status", "discovered_at"):
-            self.assertIn(required, fields,
-                          f"BreachIncident must have '{required}' field")
+            self.assertIn(required, fields, f"BreachIncident must have '{required}' field")
 
     def test_service_create(self):
         """create_breach_incident() creates incident + notifications + audit."""
@@ -187,8 +186,9 @@ class BreachFeatureFlagTests(TestCase):
             format="json",
         )
         # Should be denied with 403 when breach workflow is disabled
-        self.assertEqual(resp.status_code, 403,
-                         f"Expected 403, got {resp.status_code}: {resp.data}")
+        self.assertEqual(
+            resp.status_code, 403, f"Expected 403, got {resp.status_code}: {resp.data}"
+        )
         self.assertIn("error", resp.data)
         self.assertIn("disabled", resp.data["error"].lower())
 

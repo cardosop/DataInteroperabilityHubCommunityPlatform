@@ -6,6 +6,7 @@ All tests use real implementations: no mocks. A real in-memory connector
 is injected via ScheduledIngestionProcessor(..., connector_factory=...).
 """
 
+import logging
 import os
 import uuid
 from datetime import timedelta
@@ -141,18 +142,17 @@ class ScheduledIngestionProcessorTest(TestCase):
                 or "name resolution" in err
             ):
                 logging.getLogger(__name__).warning(
-                    "MinIO storage unavailable — storage-dependent tests "
-                    "will be skipped: %s", e
+                    "MinIO storage unavailable — storage-dependent tests will be skipped: %s", e
                 )
             # any other exception: leave storage_client None
 
     def test_discover_files_success(self):
         """Test successful file discovery using real in-memory connector."""
         files = self.processor._discover_files()
-        self.assertEqual(len(files), 3)
-        self.assertIn("data/file1.csv", files)
-        self.assertIn("data/file2.csv", files)
-        self.assertIn("data/file3.json", files)
+        assert len(files) == 3
+        assert "data/file1.csv" in files
+        assert "data/file2.csv" in files
+        assert "data/file3.json" in files
 
     def test_discover_files_none_pattern(self):
         """Test file discovery with None pattern (should use default)."""
@@ -164,8 +164,8 @@ class ScheduledIngestionProcessorTest(TestCase):
             connector_factory=InMemoryConnectorFactory(connector),
         )
         files = processor._discover_files()
-        self.assertEqual(len(files), 1)
-        self.assertIn("data/file1.csv", files)
+        assert len(files) == 1
+        assert "data/file1.csv" in files
 
     def test_discover_files_error(self):
         """Test file discovery with error (real connector raises)."""
@@ -176,7 +176,7 @@ class ScheduledIngestionProcessorTest(TestCase):
         )
         with self.assertRaises(ConnectionError) as cm:
             processor._discover_files()
-        self.assertIn("Failed to discover files", str(cm.exception))
+        assert "Failed to discover files" in str(cm.exception)
 
     def test_filter_files_skip_processed(self):
         """Test file filtering skips already processed files."""
@@ -190,10 +190,10 @@ class ScheduledIngestionProcessorTest(TestCase):
         )
         files = ["data/file1.csv", "data/file2.csv", "data/file3.csv"]
         filtered = processor._filter_files(files)
-        self.assertEqual(len(filtered), 1)
-        self.assertIn("data/file3.csv", filtered)
-        self.assertNotIn("data/file1.csv", filtered)
-        self.assertNotIn("data/file2.csv", filtered)
+        assert len(filtered) == 1
+        assert "data/file3.csv" in filtered
+        assert "data/file1.csv" not in filtered
+        assert "data/file2.csv" not in filtered
 
     def test_filter_files_timestamp_incremental(self):
         """Test file filtering with timestamp-based incremental ingestion."""
@@ -214,7 +214,7 @@ class ScheduledIngestionProcessorTest(TestCase):
         )
         files = ["data/file1.csv"]
         filtered = processor._filter_files(files)
-        self.assertEqual(len(filtered), 0)
+        assert len(filtered) == 0
 
     def test_filter_files_size_limit(self):
         """Test file filtering with size limits."""
@@ -231,7 +231,7 @@ class ScheduledIngestionProcessorTest(TestCase):
         )
         files = ["data/file1.csv"]
         filtered = processor._filter_files(files)
-        self.assertEqual(len(filtered), 0)
+        assert len(filtered) == 0
 
     def test_process_file_success(self):
         """
@@ -249,25 +249,24 @@ class ScheduledIngestionProcessorTest(TestCase):
             connector_factory=InMemoryConnectorFactory(connector),
         )
         dataset = processor._process_file("data/test.csv")
-        self.assertIsNotNone(dataset)
         assert dataset is not None
-        self.assertEqual(dataset.tenant, self.tenant)
-        self.assertEqual(dataset.format, "CSV")
+        assert dataset is not None
+        assert dataset.tenant == self.tenant
+        assert dataset.format == "CSV"
 
         file_obj = dataset.file
-        self.assertIsNotNone(file_obj)
-        self.assertEqual(file_obj.name, "test.csv")
-        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        assert file_obj is not None
+        assert file_obj.name == "test.csv"
+        assert file_obj.status == FileStatus.ACTIVE
 
-        self.assertIsNotNone(file_obj.storage_path)
+        assert file_obj.storage_path is not None
         assert self.storage_client is not None
-        self.assertTrue(
-            self.storage_client.file_exists(file_obj.storage_path),
-            "File should exist in storage",
+        assert self.storage_client.file_exists(file_obj.storage_path), (
+            "File should exist in storage"
         )
 
-        self.assertIsNotNone(dataset.asset)
-        self.assertEqual(dataset.asset.status, AssetStatus.ACTIVE)
+        assert dataset.asset is not None
+        assert dataset.asset.status == AssetStatus.ACTIVE
 
     def test_process_file_download_failure(self):
         """Test file processing with download failure (real connector returns FAILED)."""
@@ -278,7 +277,7 @@ class ScheduledIngestionProcessorTest(TestCase):
         )
         with self.assertRaises(Exception) as cm:
             processor._process_file("data/test.csv")
-        self.assertIn("Failed to download file", str(cm.exception))
+        assert "Failed to download file" in str(cm.exception)
 
     def test_process_file_unsupported_format(self):
         """
@@ -295,7 +294,7 @@ class ScheduledIngestionProcessorTest(TestCase):
         )
         with self.assertRaises(ValueError) as cm:
             processor._process_file("data/test.xyz")
-        self.assertIn("Unsupported file format", str(cm.exception))
+        assert "Unsupported file format" in str(cm.exception)
 
     def test_process_complete_ingestion(self):
         """
@@ -317,19 +316,18 @@ class ScheduledIngestionProcessorTest(TestCase):
         ):
             result = self.processor.process()
 
-        self.assertEqual(result["files_found"], 2)
-        self.assertEqual(result["files_processed"], 2)
-        self.assertEqual(result["datasets_created"], 2)
-        self.assertEqual(result["files_failed"], 0)
-        self.assertIn("ingestion_state", result)
+        assert result["files_found"] == 2
+        assert result["files_processed"] == 2
+        assert result["datasets_created"] == 2
+        assert result["files_failed"] == 0
+        assert "ingestion_state" in result
 
         datasets = Dataset.objects.filter(tenant=self.tenant)
-        self.assertEqual(datasets.count(), 2)
+        assert datasets.count() == 2
         for dataset in datasets:
-            self.assertIsNotNone(dataset.file.storage_path)
-            self.assertTrue(
-                self.storage_client.file_exists(dataset.file.storage_path),
-                f"File {dataset.file.storage_path} in storage",
+            assert dataset.file.storage_path is not None
+            assert self.storage_client.file_exists(dataset.file.storage_path), (
+                f"File {dataset.file.storage_path} in storage"
             )
 
     def test_process_ingestion_no_files(self):
@@ -342,9 +340,9 @@ class ScheduledIngestionProcessorTest(TestCase):
         ):
             result = self.processor.process()
 
-        self.assertEqual(result["files_found"], 0)
-        self.assertEqual(result["files_processed"], 0)
-        self.assertEqual(result["datasets_created"], 0)
+        assert result["files_found"] == 0
+        assert result["files_processed"] == 0
+        assert result["datasets_created"] == 0
 
     def test_process_ingestion_partial_failure(self):
         """Ingestion partial failure: first file OK, second raises (real connector)."""
@@ -372,30 +370,27 @@ class ScheduledIngestionProcessorTest(TestCase):
         ):
             result = self.processor.process()
 
-        self.assertEqual(result["files_found"], 2)
-        self.assertEqual(result["files_processed"], 1)
+        assert result["files_found"] == 2
+        assert result["files_processed"] == 1
         if result.get("files_failed") == 1:
             if "errors" in result:
-                self.assertEqual(len(result["errors"]), 1)
+                assert len(result["errors"]) == 1
         else:
             self.scheduled_ingestion.refresh_from_db()
             state = self.scheduled_ingestion.ingestion_state or {}
             failed_paths = [
                 f.get("file_path") for f in state.get("failed_files", []) if f.get("file_path")
             ]
-            self.assertIn(
-                "data/file2.csv",
-                failed_paths,
-                "Failed file should be in ingestion_state.failed_files when workflow returns files_failed=0",
+            assert "data/file2.csv" in failed_paths, (
+                "Failed file should be in ingestion_state.failed_files when workflow returns files_failed=0"
             )
 
         datasets = Dataset.objects.filter(tenant=self.tenant)
-        self.assertEqual(datasets.count(), 1)
+        assert datasets.count() == 1
         dataset = datasets.first()
-        self.assertIsNotNone(dataset)
+        assert dataset is not None
         if self.storage_client and dataset:
-            self.assertIsNotNone(dataset.file.storage_path)
-            self.assertTrue(
-                self.storage_client.file_exists(dataset.file.storage_path),
-                "Successful file in storage",
+            assert dataset.file.storage_path is not None
+            assert self.storage_client.file_exists(dataset.file.storage_path), (
+                "Successful file in storage"
             )

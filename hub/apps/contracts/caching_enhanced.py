@@ -46,8 +46,7 @@ def get_redis_client() -> redis.Redis | None:
         )
         # Test connection
         client.ping()
-        return client
-    except Exception as e:
+    except (redis.RedisError, ValueError) as e:
         logger.warning(
             "contract_cache_redis_unavailable",
             error=str(e),
@@ -55,6 +54,8 @@ def get_redis_client() -> redis.Redis | None:
             message="Cache tags will use Django cache backend only",
         )
         return None
+    else:
+        return client
 
 
 def _get_tag_key(tag: str) -> str:
@@ -135,7 +136,7 @@ def cache_contract_with_tags(
                     tags=tags,
                     message="Cached contract with tags",
                 )
-            except Exception as e:
+            except (redis.RedisError, TypeError) as e:
                 logger.warning(
                     "contract_cache_tag_error",
                     contract_id=contract_id,
@@ -263,7 +264,7 @@ def invalidate_contract_cache_by_tags(tags: list[str]) -> int:
     else:
         # Fallback: use pattern-based invalidation
         # This is less efficient but works without Redis
-        for tag in tags:
+        for _tag in tags:
             # Try to invalidate by pattern (limited support with LocMemCache)
             pattern = "contract:*"  # Would need tag info in key for better pattern
             invalidated = invalidate_cache_pattern(pattern)
@@ -356,16 +357,16 @@ def warm_frequently_accessed_contracts(
             limit=limit,
             message="Warmed cache for frequently accessed contracts",
         )
-
-        return warmed_count
     except Exception as e:
-        logger.error(
+        logger.exception(
             "contract_cache_warming_failed",
             tenant_id=tenant_id,
             error=str(e),
             message="Failed to warm contract cache",
         )
         return 0
+    else:
+        return warmed_count
 
 
 def get_contract_cache_metrics() -> dict[str, Any]:
@@ -387,10 +388,10 @@ def get_contract_cache_metrics() -> dict[str, Any]:
 
         total = hits + misses
         hit_rate = hits / total if total > 0 else 0.0
-
-        return {"hits": hits, "misses": misses, "total": total, "hit_rate": hit_rate}
     except Exception as e:
         logger.warning(
             "contract_cache_metrics_error", error=str(e), message="Failed to get cache metrics"
         )
         return {"hits": 0, "misses": 0, "total": 0, "hit_rate": 0.0}
+    else:
+        return {"hits": hits, "misses": misses, "total": total, "hit_rate": hit_rate}

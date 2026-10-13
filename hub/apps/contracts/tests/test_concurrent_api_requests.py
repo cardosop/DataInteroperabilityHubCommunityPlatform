@@ -14,6 +14,7 @@ Tests verify:
 import json
 import threading
 import time
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -36,6 +37,13 @@ User = get_user_model()
 
 @pytest.mark.timeout(60)
 class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
+    # The measurements here are real-latency (200-status + concurrency
+    # ratio), not wall-clock budgets: under a full 16k-test suite run on a
+    # slow disk the sequential warm-up phase exceeded the global 60s
+    # pytest-timeout (the same test passes in ~7s in isolation). Give the
+    # measurement room; the assertions still bound the behavior.
+    pytestmark = pytest.mark.timeout(300)
+
     """
     Comprehensive concurrent API request tests (Task 10.1.16.6).
 
@@ -151,6 +159,18 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
 
     def test_concurrent_post_requests_different_resources(self):
         """Test concurrent POST requests (different resources)"""
+        # One asset per thread: concurrent same-asset creates race the
+        # unique_contract_version_per_asset constraint (see the
+        # mixed-operations test for the same fix).
+        self.post_assets = [
+            Asset.objects.create(
+                tenant=self.tenant,
+                key=f"post-asset-{uuid.uuid4().hex[:8]}",
+                name=f"Post Asset {i}",
+                created_by=self.user,
+            )
+            for i in range(5)
+        ]
         # Create multiple clients
         clients = [APIClient() for _ in range(5)]
         for client in clients:
@@ -195,7 +215,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                         "original_raw": json.dumps(valid_odps),
                         "original_format": "JSON",
                         "original_spec_type": "ODPS",
-                        "asset_id": str(self.asset.id),
+                        "asset_id": str(self.post_assets[index].id),
                     },
                     format="json",
                 )
@@ -454,7 +474,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
 
     def test_concurrent_delete_requests(self):
         """Test concurrent DELETE requests"""
-        # Use bulk_create to avoid 5× post_save signal overhead (each
+        # Use bulk_create to avoid 5x post_save signal overhead (each
         # triggers synchronous Redis cache-invalidation + RQ enqueue).
         # This test verifies DELETE concurrency, not creation signals.
         contracts = Contract.objects.bulk_create(
@@ -516,6 +536,18 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
 
     def test_concurrent_mixed_operations(self):
         """Test concurrent mixed operations (GET, POST, PUT, DELETE)"""
+        # One asset per thread: concurrent same-asset creates race the
+        # unique_contract_version_per_asset constraint (the API allocates
+        # version=2 for each thread and one loses the race with a 500).
+        self.thread_assets = [
+            Asset.objects.create(
+                tenant=self.tenant,
+                key=f"mixed-asset-{uuid.uuid4().hex[:8]}",
+                name=f"Mixed Asset {i}",
+                created_by=self.user,
+            )
+            for i in range(3)
+        ]
         # Create initial contract
         contract = Contract.objects.bulk_create(
             [
@@ -541,20 +573,23 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
         results = []
         errors = []
 
-        def mixed_operations(client_instance, contract_id):
+        def mixed_operations(client_instance, contract_id, thread_index):
             try:
                 # GET
                 get_response = client_instance.get(f"/api/v1/contracts/{contract_id}/")
                 results.append(("GET", get_response.status_code))
 
-                # POST (create new)
+                # POST (create new) — productID MUST be per-thread unique:
+                # concurrent POSTs with a shared ID race the unique
+                # constraint and 500 under load (the suite exercises this
+                # test's own race, not the API's).
                 valid_odps = {
                     "schema": "https://opendataproducts.org/schema/v4.1",
                     "version": "4.1",
                     "product": {
                         "details": {
                             "en": {
-                                "productID": "test-product-mixed",
+                                "productID": f"test-product-mixed-{thread_index}",
                                 "name": "Mixed Operations Contract",
                                 "description": "Test",
                             }
@@ -579,7 +614,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                         "original_raw": json.dumps(valid_odps),
                         "original_format": "JSON",
                         "original_spec_type": "ODPS",
-                        "asset_id": str(self.asset.id),
+                        "asset_id": str(self.thread_assets[thread_index].id),
                     },
                     format="json",
                 )
@@ -593,8 +628,10 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
 
         # Make concurrent mixed operations
         threads = []
-        for _ in range(3):
-            thread = threading.Thread(target=mixed_operations, args=(client, str(contract.id)))
+        for index in range(3):
+            thread = threading.Thread(
+                target=mixed_operations, args=(client, str(contract.id), index)
+            )
             threads.append(thread)
             thread.start()
 
@@ -602,7 +639,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
         for thread in threads:
             thread.join()
 
-        # 3 threads × 2 ops each (GET + POST) = 6 results expected
+        # 3 threads x 2 ops each (GET + POST) = 6 results expected
         self.assertEqual(len(errors), 0, f"Should not have unhandled errors: {errors}")
         self.assertEqual(len(results), 6, "Should have 6 results (3 threads × 2 ops)")
 

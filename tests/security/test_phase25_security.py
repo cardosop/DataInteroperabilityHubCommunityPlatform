@@ -424,6 +424,9 @@ class Phase25ScheduledExportWorkerAPISecurityTest(TestCase):
 
     def test_worker_api_tenant_isolation(self):
         """Test that worker can only access exports for authorized tenant"""
+        # TICKET=PREPRO01-284 EXPIRES=2026-12-31 — worker API key
+        # provisioning flow is not implemented; the cross-tenant probe
+        # cannot run until it is.
         # Create worker API key (if API supports it)
         # This test verifies that even with worker key, tenant isolation is enforced
         # Worker should only be able to start runs for exports in their authorized tenant

@@ -409,10 +409,9 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         mock_dq_client_class.return_value = mock_dq_client
 
         # Create temp file
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(b"col1,col2\nval1,val2\n")
-        temp_path = temp_file.name
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(b"col1,col2\nval1,val2\n")
+            temp_path = temp_file.name
 
         try:
             instance = WorkflowInstance.objects.create(
@@ -458,10 +457,9 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         }
         mock_dq_client_class.return_value = mock_dq_client
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(b"col1,col2\nval1,val2\n")
-        temp_path = temp_file.name
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(b"col1,col2\nval1,val2\n")
+            temp_path = temp_file.name
 
         try:
             instance = WorkflowInstance.objects.create(
@@ -511,10 +509,9 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         mock_storage_class.return_value = mock_storage
 
         # Create temp file with content
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(b"col1,col2\nval1,val2\n")
-        temp_path = temp_file.name
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(b"col1,col2\nval1,val2\n")
+            temp_path = temp_file.name
 
         try:
             instance = WorkflowInstance.objects.create(

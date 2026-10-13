@@ -159,7 +159,6 @@ class SearchViewSetTest(TestCase):
             format="json",
         )
 
-
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("status", response.data)
         self.assertEqual(response.data["status"], "click tracked")
@@ -289,7 +288,10 @@ class SearchViewSetTest(TestCase):
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
 
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
+            # Default weak=True — the semantic handlers take no args;
+            # weak=False passes (sender, **kwargs) → TypeError that aborts
+            # post_save dispatch for every receiver after them.
+            post_save.connect(contract_saved, sender=Contract)
+            post_save.connect(asset_saved, sender=Asset)
         except (ImportError, AttributeError):
             pass

@@ -73,7 +73,7 @@ def reset_test_database():
             f"  psql -U {conn_params['user']} -d postgres -c 'DROP DATABASE IF EXISTS \"{test_db_name}\";'"
         )
         sys.exit(1)
-    except Exception as e:
+    except psycopg2.Error as e:
         print(f"Error resetting test database: {e}")
         import traceback
 

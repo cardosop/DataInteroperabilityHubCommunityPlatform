@@ -7,7 +7,7 @@ Backward-compatible — existing ``submit()``, ``status()``, ``verify_otp()``
 signatures preserved.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -20,7 +20,7 @@ class PublicDsarAPI:
 
     # ── Submit ──────────────────────────────────────────────────────────
 
-    async def submit(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def submit(self, data: dict[str, Any]) -> dict[str, Any]:
         """Submit a DSAR with a raw payload dict (backward-compat)."""
         return await self.client.post("public/dsar-requests/", data=data)
 
@@ -28,12 +28,12 @@ class PublicDsarAPI:
         self,
         email: str,
         request_type: str,
-        tenant_id: Optional[str] = None,
-        regimes: Optional[List[str]] = None,
-        hcaptcha_token: Optional[str] = None,
-        subject_tz: Optional[str] = None,
-        regulator_tz: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None,
+        regimes: list[str] | None = None,
+        hcaptcha_token: str | None = None,
+        subject_tz: str | None = None,
+        regulator_tz: str | None = None,
+    ) -> dict[str, Any]:
         """Submit a new data subject rights request.
 
         Args:
@@ -46,7 +46,7 @@ class PublicDsarAPI:
             subject_tz: IANA timezone for deadline presentation.
             regulator_tz: IANA timezone for regulator deadline.
         """
-        payload: Dict[str, Any] = {"email": email, "type": request_type}
+        payload: dict[str, Any] = {"email": email, "type": request_type}
         if tenant_id:
             payload["tenant_id"] = tenant_id
         if regimes:
@@ -61,7 +61,7 @@ class PublicDsarAPI:
 
     # ── OTP verification ────────────────────────────────────────────────
 
-    async def verify_otp(self, request_id: str, otp: str) -> Dict[str, Any]:
+    async def verify_otp(self, request_id: str, otp: str) -> dict[str, Any]:
         """Verify the one-time password sent to the subject's email.
 
         Returns ``{status, access_token}``.
@@ -73,11 +73,11 @@ class PublicDsarAPI:
 
     # ── Status ──────────────────────────────────────────────────────────
 
-    async def status(self, request_id: str) -> Dict[str, Any]:
+    async def status(self, request_id: str) -> dict[str, Any]:
         """Get current request status (backward-compat alias for get_status)."""
         return await self.get_status(request_id)
 
-    async def get_status(self, request_id: str) -> Dict[str, Any]:
+    async def get_status(self, request_id: str) -> dict[str, Any]:
         """Get the current status of a DSAR.
 
         Returns ``{request_id, status, type, ack_deadline, fulfil_deadline,
@@ -89,11 +89,11 @@ class PublicDsarAPI:
 
     async def list_requests(
         self,
-        status: Optional[str] = None,
-        request_type: Optional[str] = None,
+        status: str | None = None,
+        request_type: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List DSAR requests (authenticated, admin-only).
 
         Args:
@@ -102,7 +102,7 @@ class PublicDsarAPI:
             page: Page number (1-indexed).
             page_size: Items per page (max 100).
         """
-        params: Dict[str, Any] = {"page": page, "page_size": page_size}
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
         if status:
             params["status"] = status
         if request_type:
@@ -111,7 +111,7 @@ class PublicDsarAPI:
 
     # ── Cancel ──────────────────────────────────────────────────────────
 
-    async def cancel_request(self, request_id: str) -> Dict[str, Any]:
+    async def cancel_request(self, request_id: str) -> dict[str, Any]:
         """Cancel a pending DSAR.
 
         Only ``PENDING`` / ``VERIFIED`` requests can be cancelled.
@@ -127,7 +127,7 @@ class PublicDsarAPI:
         request_type: str,
         otp: str,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Submit a DSAR and verify the OTP in one call."""
         submit_resp = await self.submit_request(email, request_type, **kwargs)
         request_id = submit_resp.get("request_id") or submit_resp.get("id")

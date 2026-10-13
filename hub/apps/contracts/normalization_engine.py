@@ -173,9 +173,10 @@ def get_normalizer(
                 continue
             if isinstance(normalizer, ODCSNormalizerV3_0_2):
                 return normalizer
-            if normalizer.supports(spec_type, "3.0.2", contract_data):
-                if normalizer_class_name.startswith("ODCSNormalizerV"):
-                    return normalizer
+            if normalizer.supports(spec_type, "3.0.2", contract_data) and (
+                normalizer_class_name.startswith("ODCSNormalizerV")
+            ):
+                return normalizer
 
     return None
 
@@ -633,7 +634,7 @@ def _map_definitions(contract_data: dict[str, Any]) -> list | None:
             extra = {
                 k: v
                 for k, v in def_entry.items()
-                if k not in field_property_map and k != "properties" and k != "name" and k != "$id"
+                if k not in field_property_map and k not in {"properties", "name", "$id"}
             }
             if extra:
                 definition.setdefault("extensions", extra)
@@ -685,7 +686,7 @@ def _get_max_nesting_depth() -> int:
         from django.conf import settings as _dj_settings
 
         return int(getattr(_dj_settings, "CONTRACTS_MAX_NESTING_DEPTH", 20))
-    except Exception:
+    except (ValueError, TypeError):
         return 20
 
 
@@ -980,15 +981,20 @@ def _build_model_from_schema(
             if not isinstance(field, dict):
                 continue
             field_name = field.get("name", "")
-            if field.get("primaryKey") or field.get("primary_key") or field.get("is_primary_key"):
-                if field_name and field_name not in primary_key_fields:
-                    primary_key_fields.append(field_name)
-            if field.get("unique") or field.get("is_unique"):
-                if field_name and field_name not in unique_constraint_fields:
-                    unique_constraint_fields.append(field_name)
-            if field.get("is_indexed"):
-                if field_name and field_name not in indexed_fields:
-                    indexed_fields.append(field_name)
+            if (
+                (field.get("primaryKey") or field.get("primary_key") or field.get("is_primary_key"))
+                and field_name
+                and field_name not in primary_key_fields
+            ):
+                primary_key_fields.append(field_name)
+            if (
+                (field.get("unique") or field.get("is_unique"))
+                and field_name
+                and field_name not in unique_constraint_fields
+            ):
+                unique_constraint_fields.append(field_name)
+            if field.get("is_indexed") and field_name and field_name not in indexed_fields:
+                indexed_fields.append(field_name)
         if unique_constraint_fields and not unique_constraints:
             unique_constraints = [[field] for field in unique_constraint_fields]
 
@@ -1321,7 +1327,7 @@ def normalize_contract(
         if not spec_type:
             spec_type, spec_version = detect_spec_type(contract_data)
         # Use spec-specific version detection when type is known
-        elif spec_type == OriginalSpecType.ODCS or spec_type == "ODCS":
+        elif spec_type in (OriginalSpecType.ODCS, "ODCS"):
             from hub.apps.contracts.odcs_version_detection import detect_odcs_version
 
             spec_version = detect_odcs_version(contract_data)
@@ -1387,8 +1393,6 @@ def normalize_contract(
             if not hub_contract.get("hub_contract_version"):
                 hub_contract["hub_contract_version"] = get_default_version()
 
-        return hub_contract, spec_type, spec_version, status, errors, warnings
-
     except InvalidYAMLError as e:
         # Phase 227 L10 audit-3 — surface the catalog-promised
         # ``INVALID_YAML`` wire code via a discriminator prefix the
@@ -1414,6 +1418,8 @@ def normalize_contract(
             errors,
             [],
         )
+    else:
+        return hub_contract, spec_type, spec_version, status, errors, warnings
 
 
 def validate_hubcontract_schema(hub_contract: dict[str, Any]) -> tuple[bool, list]:

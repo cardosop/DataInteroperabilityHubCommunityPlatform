@@ -45,7 +45,9 @@ class EventSchemaVersionManager:
             )
         return True, None
 
-    def migrate_event(self, event: dict[str, Any], target_version: str = None) -> dict[str, Any]:
+    def migrate_event(
+        self, event: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Migrate event to target version.
 

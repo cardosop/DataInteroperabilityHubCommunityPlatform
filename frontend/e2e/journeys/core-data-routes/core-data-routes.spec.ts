@@ -95,13 +95,13 @@ test.describe('Core data routes — Assets and Datasets', () => {
           });
         } catch (_err) {
           if (page.url().includes('/login')) {
-            test.skip(true, 'Redirected to login — auth may have expired');
+            test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
             return;
           }
           throw _err;
         }
         if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
+          test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
           return;
         }
         await responsePromise;
@@ -114,12 +114,12 @@ test.describe('Core data routes — Assets and Datasets', () => {
         const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
         if (!hasErrorDisplay) {
           if (page.url().includes('/login')) {
-            test.skip(true, 'Redirected to login during error wait');
+            test.skip(page.url().includes('/login'), 'Redirected to login during error wait');
             return;
           }
           const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
           if (stillLoading) {
-            test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+            test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
             return;
           }
           const hasContent = (await page.locator('.asset-detail-page, [data-testid="asset-detail-page"]').first().count()) > 0;
@@ -199,13 +199,13 @@ test.describe('Core data routes — Assets and Datasets', () => {
           });
         } catch (_err) {
           if (page.url().includes('/login')) {
-            test.skip(true, 'Redirected to login — auth may have expired');
+            test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
             return;
           }
           throw _err;
         }
         if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
+          test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
           return;
         }
         await responsePromise;
@@ -218,12 +218,12 @@ test.describe('Core data routes — Assets and Datasets', () => {
         const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
         if (!hasErrorDisplay) {
           if (page.url().includes('/login')) {
-            test.skip(true, 'Redirected to login during error wait');
+            test.skip(page.url().includes('/login'), 'Redirected to login during error wait');
             return;
           }
           const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
           if (stillLoading) {
-            test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+            test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
             return;
           }
           const hasContent = (await page.locator('.dataset-detail-page, [data-testid="dataset-detail-page"]').first().count()) > 0;

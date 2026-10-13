@@ -45,7 +45,7 @@ class DocumentationImpactReportGenerator:
                 try:
                     with open(report_path, encoding="utf-8") as f:
                         reports[report_key] = json.load(f)
-                except Exception as e:
+                except (OSError, ValueError) as e:
                     print(f"Warning: Could not load {filename}: {e}", file=sys.stderr)
             else:
                 print(f"Warning: Audit report not found: {filename}", file=sys.stderr)
@@ -165,12 +165,10 @@ class DocumentationImpactReportGenerator:
             references["statistics"]["discrepancies"] = summary.get("discrepancies", 0)
 
         # Convert sets to lists for JSON serialization
-        references["documentation_files"] = sorted(list(references["documentation_files"]))
-        for endpoint_path, endpoint_info in references["endpoints"].items():
-            endpoint_info["methods"] = sorted(list(endpoint_info["methods"]))
-            endpoint_info["documentation_files"] = sorted(
-                list(endpoint_info["documentation_files"])
-            )
+        references["documentation_files"] = sorted(references["documentation_files"])
+        for _endpoint_path, endpoint_info in references["endpoints"].items():
+            endpoint_info["methods"] = sorted(endpoint_info["methods"])
+            endpoint_info["documentation_files"] = sorted(endpoint_info["documentation_files"])
 
         return references
 
@@ -361,7 +359,7 @@ class DocumentationImpactReportGenerator:
 
         f.write("\n---\n\n")
 
-    def _write_code_examples(self, f, references: dict[str, Any], updates: dict[str, Any]):
+    def _write_code_examples(self, f, _references: dict[str, Any], updates: dict[str, Any]):
         """Write code examples section"""
         f.write("## Code Examples\n\n")
 
@@ -394,7 +392,7 @@ class DocumentationImpactReportGenerator:
 
         f.write("\n---\n\n")
 
-    def _write_postman_collections(self, f, references: dict[str, Any], updates: dict[str, Any]):
+    def _write_postman_collections(self, f, _references: dict[str, Any], updates: dict[str, Any]):
         """Write Postman collections section"""
         f.write("## Postman Collections\n\n")
 

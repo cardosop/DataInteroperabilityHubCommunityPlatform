@@ -26,7 +26,7 @@ test.describe('JOURNEY-DEV-002: Integrate via SDK', () => {
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onDeveloper).toBe(true);
@@ -45,7 +45,7 @@ test.describe('JOURNEY-DEV-002: Integrate via SDK', () => {
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onBaas).toBe(true);

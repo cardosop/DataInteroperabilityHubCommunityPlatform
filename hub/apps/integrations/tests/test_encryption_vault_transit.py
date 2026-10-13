@@ -153,9 +153,7 @@ class FernetFallbackTest(TestCase):
         from hub.apps.integrations.encryption import _get_fernet as _gf
 
         fernet = _gf()
-        tampered = _base64.urlsafe_b64encode(
-            fernet.encrypt(b"not json")
-        ).decode()
+        tampered = _base64.urlsafe_b64encode(fernet.encrypt(b"not json")).decode()
         with self.assertRaises(EncryptionError):
             decrypt_json_field(tampered)
 

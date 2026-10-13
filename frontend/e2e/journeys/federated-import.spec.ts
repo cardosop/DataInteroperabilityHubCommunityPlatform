@@ -20,12 +20,12 @@ test.describe('Federated Import journey @e2e @federated-import', () => {
 
     // Wait for the page shell or unavailable page
     await page
-      .locator('[data-testid="federated-import-page"], [data-testid="unavailable-page"]')
+      .locator('[data-testid="federated-import-page"], [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 15_000 });
 
     // If capability is disabled, the test is a valid no-op (graceful skip)
-    const unavailable = await page.locator('[data-testid="unavailable-page"]').count();
+    const unavailable = await page.locator('[data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count();
     if (unavailable > 0) {
       console.log('Federated import capability disabled — graceful skip.');
       return;
@@ -57,11 +57,11 @@ test.describe('Federated Import journey @e2e @federated-import', () => {
     await page.goto('/federated-import', { waitUntil: 'domcontentloaded' });
 
     await page
-      .locator('[data-testid="federated-import-page"], [data-testid="unavailable-page"]')
+      .locator('[data-testid="federated-import-page"], [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 15_000 });
 
-    const unavailable = await page.locator('[data-testid="unavailable-page"]').count();
+    const unavailable = await page.locator('[data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count();
     if (unavailable > 0) return;
 
     // Submit with an invalid ARN
@@ -79,11 +79,11 @@ test.describe('Federated Import journey @e2e @federated-import', () => {
     await page.goto('/federated-import', { waitUntil: 'domcontentloaded' });
 
     await page
-      .locator('[data-testid="federated-import-page"], [data-testid="unavailable-page"]')
+      .locator('[data-testid="federated-import-page"], [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 15_000 });
 
-    const unavailable = await page.locator('[data-testid="unavailable-page"]').count();
+    const unavailable = await page.locator('[data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count();
     if (unavailable > 0) return;
 
     // Create a job that will be PENDING (test ARN)
@@ -95,6 +95,7 @@ test.describe('Federated Import journey @e2e @federated-import', () => {
 
     // If a job section appears and shows cancel button, test it
     const cancelBtn = page.locator('[data-testid="cancel-job-btn"]');
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     if (await cancelBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await cancelBtn.click();
       // Should transition to CANCELLED

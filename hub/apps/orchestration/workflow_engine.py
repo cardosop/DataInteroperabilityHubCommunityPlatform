@@ -187,7 +187,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                 f"Workflow definition {workflow_name!r} exists in the "
                 f"process cache but its DB row is gone (likely a stale "
                 f"cache entry from a rolled-back transaction)."
-            )
+            ) from None
 
         # Create workflow instance
         # Convert tenant_id to Tenant object if provided
@@ -403,6 +403,12 @@ class WorkflowEngine(WorkflowEventPublisher):
                 dsl = instance.workflow_definition.dsl_json
                 steps = dsl.get("steps", [])
 
+                # W3.6 (R2-P4/F13) — pre-run cancel checkpoint: a
+                # request landing between start_instance and here stops
+                # the run before the first step.
+                if self._consume_cancellation_request(instance):
+                    return self._abort_for_cancellation(instance, "before-first-step")
+
                 for i in range(instance.current_step_index, len(steps)):
                     # Note: We don't refresh_from_db() here because:
                     # 1. We're already in a transaction with select_for_update lock
@@ -424,6 +430,14 @@ class WorkflowEngine(WorkflowEventPublisher):
                             total_steps=len(steps),
                         )
 
+                    # W3.6 (R2-P4/F13) — the between-step cancel
+                    # checkpoint: the cancelling side writes the request
+                    # to its OWN row (a same-row write can never commit
+                    # under this loop's select_for_update lock), and
+                    # this lock-free read of the requests table sees it.
+                    if self._consume_cancellation_request(instance):
+                        return self._abort_for_cancellation(instance, step_name)
+
                     # Execute step
                     step_output = self._execute_step(instance, step, step_def)
 
@@ -434,7 +448,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                         instance.state_data.update(step_state)
                     # Also merge top-level step output keys into state_data
                     for key, value in step_output.items():
-                        if key != "state" and key != "output":
+                        if key not in {"state", "output"}:
                             instance.state_data[key] = value
                     # Merge keys from inside 'output' dict if present (task return values)
                     step_output_dict = step_output.get("output", {})
@@ -662,6 +676,38 @@ class WorkflowEngine(WorkflowEventPublisher):
                 if error:
                     span.record_exception(error)
 
+    def _consume_cancellation_request(self, instance: WorkflowInstance) -> bool:
+        """W3.6 (R2-P4/F13) — the between-step cancel checkpoint.
+
+        Returns True (and deletes the request) when a cancellation was
+        recorded for this instance.  The read is lock-free on the
+        REQUESTS table: the cancelling side inserts its OWN row, so it
+        commits while this loop holds the WorkflowInstance row lock —
+        a same-row status write could never be observed mid-run.
+        """
+        from hub.apps.orchestration.models import WorkflowCancellationRequest
+
+        deleted, _count = WorkflowCancellationRequest.objects.filter(
+            workflow_instance_id=instance.id
+        ).delete()
+        return bool(deleted)
+
+    def _abort_for_cancellation(
+        self, instance: WorkflowInstance, at_step_name: str
+    ) -> WorkflowInstance:
+        """W3.6 — stop the run: record the stop point and mark CANCELLED."""
+        instance.state_data = dict(instance.state_data or {})
+        instance.state_data["cancelled_at_step"] = at_step_name
+        instance.save(update_fields=["state_data", "updated_at"])
+        instance.mark_cancelled()
+        logger.info(
+            "workflow_cancelled_by_request",
+            workflow_instance_id=str(instance.id),
+            workflow_name=instance.workflow_name,
+            at_step=at_step_name,
+        )
+        return instance
+
     def _execute_step(
         self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
     ) -> dict[str, Any]:
@@ -833,7 +879,9 @@ class WorkflowEngine(WorkflowEventPublisher):
         step_start_time = time.time()
 
         sid = None
-        try:
+
+        def _run_step() -> dict[str, Any]:
+            nonlocal sid
             sid = transaction.savepoint()
 
             # Phase 250.1.A test-mode hook — when a step_failure_injector
@@ -982,6 +1030,8 @@ class WorkflowEngine(WorkflowEventPublisher):
 
             return {"output": output, "state": output.get("state", {})}
 
+        try:
+            result = _run_step()
         except Exception as e:
             # Controlled / expected business-outcome exceptions (fail-closed
             # gate rejections, deadline caps) are normal domain events, not
@@ -1144,6 +1194,8 @@ class WorkflowEngine(WorkflowEventPublisher):
             if not compensation_enabled:
                 raise
             return {"state": {}}
+        else:
+            return result
         finally:
             if step_span:
                 step_span.end()
@@ -1352,7 +1404,11 @@ class WorkflowEngine(WorkflowEventPublisher):
                         }
                         for s in prefetched_steps
                     ]
-            except Exception:
+            except (
+                AttributeError,
+                KeyError,
+                TypeError,
+            ):  # best-effort signature over prefetch cache
                 steps_signature = []
 
             workflow_state_result, workflow_state_cached = self._cached_orchestration_validation(
@@ -2139,8 +2195,19 @@ class WorkflowEngine(WorkflowEventPublisher):
                 if not created and temp_step.is_terminal():
                     continue
 
-                def _run_loop_step_compensation_and_break(error_msg: str) -> None:
-                    """Run compensation for failed loop step and break to next item."""
+                def _run_loop_step_compensation_and_break(
+                    error_msg: str,
+                    *,
+                    loop_step_def=loop_step_def,
+                    temp_step=temp_step,
+                    item=item,
+                ) -> None:
+                    """Run compensation for failed loop step and break to next item.
+
+                    The loop-scoped names are bound as same-name default
+                    arguments so the closure captures THIS iteration's
+                    values (late binding would see the final iteration's).
+                    """
                     if instance.state_data is None:
                         instance.state_data = {}
                     instance.state_data["last_error"] = error_msg
@@ -2440,8 +2507,6 @@ class WorkflowEngine(WorkflowEventPublisher):
                 if comp_span:
                     comp_span.set_attribute("workflow.compensation.status", "COMPLETED")
                     comp_span.set_attribute("workflow.compensation.duration_seconds", comp_duration)
-
-                return result
             except Exception as e:
                 # Record compensation failure
                 comp_duration = time.time() - comp_start_time
@@ -2464,6 +2529,8 @@ class WorkflowEngine(WorkflowEventPublisher):
                     comp_span.set_attribute("workflow.compensation.duration_seconds", comp_duration)
                     comp_span.record_exception(e)
                 raise
+            else:
+                return result
             finally:
                 if comp_span:
                     comp_span.end()
@@ -2674,7 +2741,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                             schema = doc.get("schema", "")
                             if "v4.1" in schema or "v4.0" in schema:
                                 return "4.1"
-            except Exception:
+            except (KeyError, TypeError, ValueError):  # best-effort ODPS version extraction
                 pass
 
         return None
@@ -2706,11 +2773,11 @@ class WorkflowEngine(WorkflowEventPublisher):
                 tenant_id=tenant_id_str,
                 user_id=user_id_str,
             )
-
-            return odps_publisher
         except Exception as e:
             logger.warning(f"Failed to create ODPSEventPublisher: {e}")
             return None
+        else:
+            return odps_publisher
 
     def _publish_odps_workflow_event_if_applicable(
         self, instance: WorkflowInstance, event_type: str, **kwargs

@@ -54,10 +54,7 @@ def should_process_file(file_path: Path) -> bool:
             return False
 
     # Only process markdown files
-    if not file_path.suffix == ".md":
-        return False
-
-    return True
+    return file_path.suffix == ".md"
 
 
 def find_old_patterns(content: str) -> list[tuple[int, str, str]]:
@@ -67,14 +64,16 @@ def find_old_patterns(content: str) -> list[tuple[int, str, str]]:
 
     for line_num, line in enumerate(lines, 1):
         # Check for old compliance patterns
-        if "/compliance-runs/" in line or "/compliance/compliance-runs" in line:
-            if "/api/v1/compliance/runs/" not in line:  # Not already correct
-                issues.append((line_num, line, "compliance-runs"))
+        if (
+            "/compliance-runs/" in line or "/compliance/compliance-runs" in line
+        ) and "/api/v1/compliance/runs/" not in line:
+            # Not already correct
+            issues.append((line_num, line, "compliance-runs"))
 
         # Check for old DQ patterns
-        if "/dq-runs/" in line or "/dq/dq-runs" in line:
-            if "/api/v1/dq/runs/" not in line:  # Not already correct
-                issues.append((line_num, line, "dq-runs"))
+        if ("/dq-runs/" in line or "/dq/dq-runs" in line) and ("/api/v1/dq/runs/" not in line):
+            # Not already correct
+            issues.append((line_num, line, "dq-runs"))
 
     return issues
 
@@ -115,11 +114,11 @@ def process_file(
         # Write back
         file_path.write_text(updated_content, encoding="utf-8")
 
-        return True, replacements_count, issues
-
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"Error processing {file_path}: {e}", file=sys.stderr)
         return False, 0, []
+    else:
+        return True, replacements_count, issues
 
 
 def main():
@@ -165,7 +164,7 @@ def main():
 
             if dry_run:
                 print(f"⚠️  {relative_path}: {len(issues)} issues found")
-                for line_num, line, pattern in issues[:3]:  # Show first 3
+                for line_num, line, _pattern in issues[:3]:  # Show first 3
                     print(f"   Line {line_num}: {line.strip()[:80]}")
                 if len(issues) > 3:
                     print(f"   ... and {len(issues) - 3} more")
@@ -181,7 +180,7 @@ def main():
         print(f"📊 Total issues found: {len(all_issues)}")
         if all_issues:
             print("\n⚠️  Issues found:")
-            for file_path, line_num, line, pattern in all_issues[:10]:
+            for file_path, line_num, _line, _pattern in all_issues[:10]:
                 print(f"  - {file_path}:{line_num} ({pattern})")
             if len(all_issues) > 10:
                 print(f"  ... and {len(all_issues) - 10} more")

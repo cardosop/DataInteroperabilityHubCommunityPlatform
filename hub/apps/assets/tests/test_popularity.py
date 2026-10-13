@@ -144,9 +144,7 @@ class AssetPopularityServiceTest(TestCase):
         self.asset.view_count = 50
         self.asset.download_count = 25
         self.asset.save()
-        score_with_recency = AssetPopularityService.calculate_popularity_score(
-            self.asset
-        )
+        score_with_recency = AssetPopularityService.calculate_popularity_score(self.asset)
 
         # Control asset: same counts + status, no SearchAnalytics clicks.
         control = Asset.objects.create(
@@ -158,9 +156,7 @@ class AssetPopularityServiceTest(TestCase):
             download_count=25,
             created_by=self.user,
         )
-        score_without_recency = AssetPopularityService.calculate_popularity_score(
-            control
-        )
+        score_without_recency = AssetPopularityService.calculate_popularity_score(control)
 
         self.assertGreater(
             score_with_recency,

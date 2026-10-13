@@ -68,8 +68,9 @@ class TestStructuredLoggingFormat(TestCase):
         """Log entries contain timestamp field via structlog processors."""
         import json
         import logging
-        import structlog
         from io import StringIO
+
+        import structlog
 
         # Capture log output to verify structured fields
         stream = StringIO()
@@ -95,8 +96,7 @@ class TestStructuredLoggingFormat(TestCase):
                 except json.JSONDecodeError:
                     # If output is not JSON, timestamp may be in text form
                     self.assertIn(
-                        "timestamp_test", output,
-                        "Log output should contain the test message"
+                        "timestamp_test", output, "Log output should contain the test message"
                     )
         finally:
             test_logger.removeHandler(handler)

@@ -87,6 +87,7 @@ ALL_HUB_APPS: tuple[str, ...] = (
     "hub.apps.transformation",
     "hub.apps.versioning",
     "hub.apps.warehouses.apps.WarehousesConfig",
+    "hub.apps.databricks_admin.apps.DatabricksAdminConfig",
     "hub.apps.security",
 )
 
@@ -113,6 +114,31 @@ PAID_MIDDLEWARE: frozenset[str] = frozenset(
     {
         "hub.apps.rate_limiting.middleware.RateLimitMiddleware",
         "hub.apps.baas.middleware.BaaSUsageRecordingMiddleware",
+    }
+)
+
+# Canonical paid URL prefixes — the single source of truth for paid-path
+# gating (CLI-side _core_gates mirrors this set; drift is enforced by
+# cli/tests/test_core_gates_drift_sync.py).  Includes NESTED paid paths
+# hosted under a CORE app's prefix: ``api/v1/integrations/marketplace/``
+# is core-routed (the integrations app is core) but functionally paid —
+# the first-URL-segment heuristic cannot see it.
+#
+# Keep in sync with the paid apps' ``register_paid_urlpatterns`` calls
+# (AppConfig.ready()) plus the core-hosted paid sub-paths.
+PAID_URL_PREFIXES: frozenset[str] = frozenset(
+    {
+        "api/v1/marketplace/",
+        "api/v1/integrations/marketplace/",
+        "api/v1/billing/",
+        "api/v1/admin/connect/review-queue/",
+        "api/v1/baas/",
+        "api/v1/ml/",
+        "api/v1/ai/",
+        "api/v1/semantic/",
+        "api/v1/social/",
+        "graphql/",
+        "graphql-graphene/",
     }
 )
 

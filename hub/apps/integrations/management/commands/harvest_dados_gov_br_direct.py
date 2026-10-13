@@ -89,7 +89,7 @@ class Command(BaseCommand):
             help="Wait for workflow to complete (synchronous mode)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         instance_name = "dados.gov.br"
         limit = options["limit"]
         tenant_spec = options.get("tenant")
@@ -124,7 +124,7 @@ class Command(BaseCommand):
                 else:
                     tenant = Tenant.objects.get(slug=tenant_spec)
             except Tenant.DoesNotExist:
-                raise CommandError(f"Tenant '{tenant_spec}' not found")
+                raise CommandError(f"Tenant '{tenant_spec}' not found") from None
         else:
             tenant = Tenant.objects.first()
             if not tenant:
@@ -141,7 +141,7 @@ class Command(BaseCommand):
                 else:
                     user = User.objects.get(email=user_spec)
             except User.DoesNotExist:
-                raise CommandError(f"User '{user_spec}' not found")
+                raise CommandError(f"User '{user_spec}' not found") from None
         else:
             user = User.objects.filter(tenant_id=tenant.id).first()
             if not user:
@@ -302,4 +302,4 @@ class Command(BaseCommand):
                 )
 
         except Exception as e:
-            raise CommandError(f"Harvest failed: {e}")
+            raise CommandError(f"Harvest failed: {e}") from e

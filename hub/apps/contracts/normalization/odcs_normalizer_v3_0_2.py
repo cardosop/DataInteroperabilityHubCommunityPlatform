@@ -57,10 +57,7 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
             return True
 
         # Support patch versions starting with "3.0.2" (e.g., "3.0.2.1", "3.0.2.5")
-        if isinstance(spec_version, str) and spec_version.startswith("3.0.2"):
-            return True
-
-        return False
+        return bool(isinstance(spec_version, str) and spec_version.startswith("3.0.2"))
 
     def _map_version_specific_fields(
         self,
@@ -87,8 +84,7 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
         if not (
             spec_version
             and (
-                spec_version == "3.0.2"
-                or spec_version == "3.0.2+"
+                spec_version in {"3.0.2", "3.0.2+"}
                 or (isinstance(spec_version, str) and spec_version.startswith("3.0.2"))
             )
         ):

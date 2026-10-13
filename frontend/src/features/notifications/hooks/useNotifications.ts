@@ -129,7 +129,12 @@ export function useNotificationStream(): void {
     };
     source.addEventListener('notification.created', handler);
     source.addEventListener('error', () => {
-      // Let the browser retry; if it can't, polling fallback covers us.
+      // EventSource cannot attach the Bearer token, so in token-auth mode
+      // the stream 401s on every connect and the browser's auto-retry loops
+      // forever — hundreds of 401s per session (observed: 332 per E2E batch
+      // run). Close on the first error; the 60s polling fallback
+      // (useUnreadNotificationCount) keeps the inbox fresh.
+      source?.close();
     });
 
     return () => {

@@ -127,7 +127,7 @@ def check_file_sizes(max_lines: int = MAX_FILE_LINES) -> list[dict]:
 
         try:
             line_count = len(py_file.read_text().split("\n"))
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         if line_count > threshold:

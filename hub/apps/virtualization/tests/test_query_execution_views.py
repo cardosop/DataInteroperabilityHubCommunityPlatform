@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,
@@ -1032,8 +1032,10 @@ class VirtualDatasetQueryExecutionTest(TestCase):
         with override_settings(PARAMETERIZED_VIRTUAL_QUERIES=False):
             response = self.client.post(
                 f"/api/v1/virtualization/datasets/{self.virtual_dataset.id}/queries/",
-                {"parameters": {"min_age": 25, "status": "active"},
-                 "execution_mode": QueryExecutionMode.SYNC},
+                {
+                    "parameters": {"min_age": 25, "status": "active"},
+                    "execution_mode": QueryExecutionMode.SYNC,
+                },
                 format="json",
             )
 

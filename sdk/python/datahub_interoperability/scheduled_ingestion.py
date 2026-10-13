@@ -4,7 +4,7 @@ Scheduled ingestion operations for DataHub SDK.
 Provides methods for managing scheduled data ingestion workflows.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -29,12 +29,12 @@ class ScheduledIngestionAPI:
         self,
         name: str,
         source_type: str,
-        source_config: Dict[str, Any],
+        source_config: dict[str, Any],
         schedule: str,
-        asset_id: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        asset_id: str | None = None,
+        filters: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create scheduled ingestion.
 
@@ -50,7 +50,7 @@ class ScheduledIngestionAPI:
         Returns:
             Created scheduled ingestion data
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "name": name,
             "source_type": source_type,
             "source_config": source_config,
@@ -62,15 +62,27 @@ class ScheduledIngestionAPI:
             data["filters"] = filters
         data.update(kwargs)
 
+        # Translate to the server's current contract: source_type values are
+        # UPPERCASE TextChoices (HTTP, not http) and the schedule is expressed
+        # as schedule_type=CUSTOM_CRON + schedule_config={"cron": ...} (the
+        # server's ScheduledIngestion model has no bare "schedule" field).
+        # Callers that already pass schedule_type via kwargs are untouched.
+        if isinstance(data.get("source_type"), str):
+            data["source_type"] = data["source_type"].upper()
+        if "schedule" in data and "schedule_type" not in data:
+            cron_expr = data.pop("schedule")
+            data["schedule_type"] = "CUSTOM_CRON"
+            data["schedule_config"] = {"cron": cron_expr}
+
         return await self.client.post("scheduled-ingestions/", data=data)
 
     async def list(
         self,
         page: int = 1,
         page_size: int = 50,
-        status: Optional[str] = None,
-        asset_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        status: str | None = None,
+        asset_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         List scheduled ingestions.
 
@@ -83,7 +95,7 @@ class ScheduledIngestionAPI:
         Returns:
             Paginated response with scheduled ingestions
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -94,7 +106,7 @@ class ScheduledIngestionAPI:
 
         return await self.client.get("scheduled-ingestions/", params=params)
 
-    async def get(self, ingestion_id: str) -> Dict[str, Any]:
+    async def get(self, ingestion_id: str) -> dict[str, Any]:
         """
         Get scheduled ingestion by ID.
 
@@ -110,7 +122,7 @@ class ScheduledIngestionAPI:
         self,
         ingestion_id: str,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update scheduled ingestion (partial update supported).
 
@@ -132,7 +144,7 @@ class ScheduledIngestionAPI:
         """
         await self.client.delete(f"scheduled-ingestions/{ingestion_id}/")
 
-    async def trigger(self, ingestion_id: str) -> Dict[str, Any]:
+    async def trigger(self, ingestion_id: str) -> dict[str, Any]:
         """
         Manually trigger scheduled ingestion.
 
@@ -149,7 +161,7 @@ class ScheduledIngestionAPI:
         ingestion_id: str,
         page: int = 1,
         page_size: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get run history for scheduled ingestion.
 
@@ -167,7 +179,7 @@ class ScheduledIngestionAPI:
         }
         return await self.client.get(f"scheduled-ingestions/{ingestion_id}/runs/", params=params)
 
-    async def get_run(self, ingestion_id: str, run_id: str) -> Dict[str, Any]:
+    async def get_run(self, ingestion_id: str, run_id: str) -> dict[str, Any]:
         """
         Get specific run details.
 

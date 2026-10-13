@@ -65,7 +65,7 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace) @critical', (
       const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       if (onLogin) {
-        test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
+        test.skip(onLogin, 'Auth session lost during navigation — token refresh likely failed under E2E load');
         return;
       }
       expect(hasError).toBe(true);

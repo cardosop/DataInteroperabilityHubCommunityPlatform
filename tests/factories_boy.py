@@ -100,7 +100,7 @@ class JobFactory(DjangoModelFactory):
     type = JobType.DQ_RUN
     status = JobStatus.PENDING
     resource_type = "CONTRACT"
-    resource_id = factory.LazyFunction(lambda: uuid.uuid4())
+    resource_id = factory.LazyFunction(uuid.uuid4)
     created_by = factory.SubFactory(UserFactory)
     result_json = factory.LazyFunction(dict)
     details_json = factory.LazyFunction(dict)
@@ -202,7 +202,7 @@ class DatasetSnapshotFactory(DjangoModelFactory):
         model = None  # Will be set when model exists
         abstract = True
 
-    snapshot_id = factory.LazyFunction(lambda: uuid.uuid4())
+    snapshot_id = factory.LazyFunction(uuid.uuid4)
     created_at = factory.LazyAttribute(lambda obj: timezone.now())
     metadata_json = factory.LazyFunction(dict)
 

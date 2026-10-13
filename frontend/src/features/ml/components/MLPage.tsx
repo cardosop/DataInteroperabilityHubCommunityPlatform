@@ -95,6 +95,7 @@ export function MLPage() {
                 value={modelTypeFilter}
                 onChange={(e) => setModelTypeFilter(e.target.value as ModelType | '')}
                 className="filter-select"
+                aria-label="Filter by model type"
               >
                 <option value="">All Types</option>
                 {Object.values(ModelType).map(type => (
@@ -105,6 +106,7 @@ export function MLPage() {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as ModelStatus | '')}
                 className="filter-select"
+                aria-label="Filter by model status"
               >
                 <option value="">All Status</option>
                 {Object.values(ModelStatus).map(status => (
@@ -159,6 +161,7 @@ export function MLPage() {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as TrainingJobStatus | '')}
                 className="filter-select"
+                aria-label="Filter by training job status"
               >
                 <option value="">All Status</option>
                 {Object.values(TrainingJobStatus).map(status => (
@@ -221,6 +224,7 @@ export function MLPage() {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as InferenceDeploymentStatus | '')}
                 className="filter-select"
+                aria-label="Filter by deployment status"
               >
                 <option value="">All Status</option>
                 {Object.values(InferenceDeploymentStatus).map(status => (
@@ -238,16 +242,16 @@ export function MLPage() {
               <div className="inference-list">
                 {inferenceData.results.map(deployment => (
                   <div
-                    key={deployment.id}
+                    key={deployment.deployment_id}
                     className="deployment-card"
                     role="button"
                     tabIndex={0}
-                    onClick={() => handleInferenceClick(deployment.id)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleInferenceClick(deployment.id); }}
+                    onClick={() => handleInferenceClick(deployment.deployment_id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleInferenceClick(deployment.deployment_id); }}
                     style={{ cursor: 'pointer' }}
                   >
                     <div className="deployment-header">
-                      <h3>Deployment {deployment.id.substring(0, 8)}...</h3>
+                      <h3>Deployment {deployment.deployment_id.substring(0, 8)}...</h3>
                       <span className={`status-badge status-${deployment.status.toLowerCase()}`}>
                         {deployment.status}
                       </span>

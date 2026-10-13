@@ -18,7 +18,7 @@ interface TelemetryEvent {
   timestamp: number;
 }
 
-let eventQueue: TelemetryEvent[] = [];
+const eventQueue: TelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function flush(): void {

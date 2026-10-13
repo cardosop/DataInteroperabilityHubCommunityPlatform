@@ -16,6 +16,8 @@ import time
 
 import pytest
 
+from envpolicy import api_available
+
 pytestmark = pytest.mark.slow
 import asyncio
 import uuid
@@ -43,17 +45,6 @@ from datahub_interoperability.model_serving import ModelServingAPI
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get("http://localhost:8000/health/", timeout=2)
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
 def _check_ml_serving_available():
     """Check if ML serving endpoint is responsive (not just the main API).
 
@@ -70,23 +61,24 @@ def _check_ml_serving_available():
         )
         # Any response (200, 401, 403, 404) means the endpoint is routable.
         # Only a connection timeout / connection refused means it's truly down.
-        return True
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         return False
     except Exception:
         return True  # Non-connection errors mean the service is reachable
+    else:
+        return True
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Check if API is available before running tests"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip("API service not available at http://localhost:8000")
     return True
 
 
 @pytest.fixture(scope="module")
-def ml_serving_available(api_available):
+def ml_serving_available(api_service_available):
     """Check if ML serving infrastructure is responsive.
 
     Prevents each test from wasting 60s on the pytest timeout when the
@@ -100,7 +92,7 @@ def ml_serving_available(api_available):
 
 
 @pytest.fixture(scope="module")
-def e2e_api_key(api_available, django_db_blocker):
+def e2e_api_key(api_service_available, django_db_blocker):
     """Set up authentication for E2E tests - module-scoped fixture.
 
     Uses django_db_blocker.unblock() to allow DB access from module-scoped fixtures,
@@ -113,7 +105,7 @@ def e2e_api_key(api_available, django_db_blocker):
         try:
             with django_db_blocker.unblock():
                 from hub.apps.auth.models import APIKey as AuthAPIKey
-                from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+                from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
                 api_key_obj = (
                     AuthAPIKey.objects.filter(
@@ -142,9 +134,16 @@ def e2e_api_key(api_available, django_db_blocker):
                 defaults={"name": f"Model Serving E2E Test Tenant {unique_id}"},
             )
 
+            # ML endpoints are gated on the tenant's ml_enabled flag
+            # (MLFeatureFlagMixin). Enable it so the E2E flow can create
+            # models — mirrors the ODH E2E tenant setup.
+            if not tenant.ml_enabled:
+                tenant.ml_enabled = True
+                tenant.save(update_fields=["ml_enabled"])
+
             # Ensure tenant has unlimited plan limits (enterprise tier) so ML model
             # creation is never blocked by max_ml_models caps from prior test runs.
-            from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+            from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
             ensure_e2e_tenant_ready(tenant)
 
@@ -200,8 +199,8 @@ def runner(e2e_api_key, django_db_blocker):
         with django_db_blocker.unblock():
             from hub.apps.auth.models import APIKey as AuthAPIKey
             from hub.apps.auth.permissions import ROLE_SCOPE_MAP
+            from hub.apps.billing.test_support import ensure_e2e_tenant_ready
             from hub.apps.tenants.models import Tenant
-            from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
             from hub.apps.users.models import Role, User, UserRole, UserStatus
 
             key_hash = AuthAPIKey.hash_key(e2e_api_key)
@@ -210,6 +209,9 @@ def runner(e2e_api_key, django_db_blocker):
                     slug="model-serving-cli-test",
                     defaults={"name": "Model Serving CLI Test"},
                 )
+                if not tenant.ml_enabled:
+                    tenant.ml_enabled = True
+                    tenant.save(update_fields=["ml_enabled"])
                 ensure_e2e_tenant_ready(tenant)
                 user, _ = User.objects.get_or_create(
                     email="model-serving-cli@example.com",
@@ -238,13 +240,25 @@ def runner(e2e_api_key, django_db_blocker):
     except Exception:
         pass  # Best-effort; test will fail with 401 if this doesn't work
 
+    # The API test image's rootfs is read-only ($HOME/.datahub is not
+    # writable) — redirect the CLI config to a fresh temp dir before any
+    # set_* call (same class as batch 10-3d's test_odh_cli_sdk_e2e fix).
+    from tests.utils.cli_config import point_cli_config_at_tmpdir
+
+    point_cli_config_at_tmpdir()
     config.set_api_key(e2e_api_key)
-    config.set_api_base_url("http://localhost:8000/api/v1")
+    # Set both the config value and the env var — get_api_base_url() checks
+    # env vars first (DATAHUB_BASE_URL, MESHANT_API_URL, API_BASE_URL), and
+    # the Docker test environment sets API_BASE_URL without /api/v1 (the
+    # same trap documented in test_odh_cli_sdk_e2e.py's runner fixture).
+    api_url = "http://localhost:8000/api/v1"
+    config.set_api_base_url(api_url)
+    os.environ["API_BASE_URL"] = api_url
     return CliRunner()
 
 
 @pytest.fixture
-def test_model_id(api_available, e2e_api_key, django_db_blocker):
+def test_model_id(api_service_available, e2e_api_key, django_db_blocker):
     """Get or create a test model for CLI tests.
 
     Function-scoped: TransactionTestCase truncates all tables after each
@@ -262,9 +276,9 @@ def test_model_id(api_available, e2e_api_key, django_db_blocker):
                 django.setup()
 
             from hub.apps.auth.models import APIKey as AuthAPIKey
+            from hub.apps.billing.test_support import ensure_e2e_tenant_ready
             from hub.apps.ml.models import MLModel, ModelStatus, ModelType
             from hub.apps.tenants.models import Tenant
-            from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 
             # Find or recreate the tenant via API key
             tenant = None
@@ -346,14 +360,13 @@ def test_model_id(api_available, e2e_api_key, django_db_blocker):
                 "name": "E2E Test Asset for Model Serving",
                 "description": "Test asset for E2E model serving tests",
                 "domain": "ml",
-                "visibility": "INTERNAL",
             }
             asset_create_response = requests.post(
                 "http://localhost:8000/api/v1/assets/", json=asset_data, headers=headers, timeout=15
             )
             if asset_create_response.status_code in [200, 201]:
                 asset_id = asset_create_response.json().get("id")
-  # noqa: skip-in-body — runtime service dependency
+        # noqa: skip-in-body — runtime service dependency
         if not asset_id:
             pytest.skip("No assets available and failed to create test asset")
 
@@ -398,7 +411,7 @@ def test_model_id(api_available, e2e_api_key, django_db_blocker):
 
 
 @pytest.fixture
-def sdk_client(api_available, e2e_api_key, django_db_blocker):
+def sdk_client(api_service_available, e2e_api_key, django_db_blocker):
     """Create SDK client for E2E tests.
 
     ROOT CAUSE of previous 401 failures:
@@ -419,8 +432,8 @@ def sdk_client(api_available, e2e_api_key, django_db_blocker):
         with django_db_blocker.unblock():
             from hub.apps.auth.models import APIKey as AuthAPIKey
             from hub.apps.auth.permissions import ROLE_SCOPE_MAP
+            from hub.apps.billing.test_support import ensure_e2e_tenant_ready
             from hub.apps.tenants.models import Tenant
-            from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
             from hub.apps.users.models import Role, User, UserRole, UserStatus
 
             key_hash = AuthAPIKey.hash_key(api_key)
@@ -429,6 +442,9 @@ def sdk_client(api_available, e2e_api_key, django_db_blocker):
                     slug="model-serving-sdk-test",
                     defaults={"name": "Model Serving SDK Test"},
                 )
+                if not tenant.ml_enabled:
+                    tenant.ml_enabled = True
+                    tenant.save(update_fields=["ml_enabled"])
                 ensure_e2e_tenant_ready(tenant)
                 user, _ = User.objects.get_or_create(
                     email="model-serving-sdk@example.com",
@@ -588,7 +604,7 @@ class TestMLServingCLIWorkflow:
             )
             if predict_result.exit_code == 0:
                 break
-            time.sleep(2)
+            time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         assert predict_result.exit_code == 0, (
             f"Predict failed after retries (exit_code={predict_result.exit_code}):\n"

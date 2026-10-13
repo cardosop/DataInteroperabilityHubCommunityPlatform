@@ -762,7 +762,7 @@ class DataQualityCheckWorkflowIntegrationTest(TestCase):
         DataQualityCheckWorkflow.register_workflow(registry)
         DataQualityCheckWorkflow.register_tasks(engine)
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):  # execute raises ValueError when the workflow fails
             DataQualityCheckWorkflow.execute(
                 tenant_id="00000000-0000-0000-0000-000000000000",  # Invalid UUID
                 asset_id=str(self.asset.id),
@@ -900,7 +900,9 @@ class DataQualityCheckWorkflowE2ETest(TestCase):
 
         # Verify all workflow steps completed
         workflow_instance_id = result["workflow_instance_id"]
-        from hub.apps.orchestration.models import WorkflowInstance
+        # (WorkflowInstance is already imported at module level; the
+        # local re-import made it a function-local name and broke the
+        # earlier reference with UnboundLocalError.)
 
         workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
         self.assertEqual(workflow_instance.status, WorkflowStatus.COMPLETED)

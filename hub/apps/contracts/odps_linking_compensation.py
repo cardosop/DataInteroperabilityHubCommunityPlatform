@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from hub.apps.contracts.models import Contract
@@ -93,11 +93,13 @@ class ODPSLinkingCompensation:
                         # Only store previous link if not already set (should be set before linking)
                         # Don't overwrite if it was already captured during linking
                         current_link = x_odps.get("odcs_link")
-                        if state.previous_odcs_link is None:
+                        if (
+                            state.previous_odcs_link is None
+                            and current_link != state.odcs_contract_id
+                        ):
                             # Only store if it's different from the ODCS being unlinked
                             # (to avoid storing the link we're about to remove)
-                            if current_link != state.odcs_contract_id:
-                                state.previous_odcs_link = current_link
+                            state.previous_odcs_link = current_link
 
                         # Remove link
                         del x_odps["odcs_link"]
@@ -114,7 +116,7 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.exception(
-                    f"Failed to remove ODPS → ODCS link: odps_contract_id={state.odps_contract_id}, error={e!s}"
+                    f"Failed to remove ODPS → ODCS link: odps_contract_id={state.odps_contract_id}, error"
                 )
                 removal_results["status"] = "partial_failure"
                 removal_results["errors"] = removal_results.get("errors", [])
@@ -151,7 +153,7 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.exception(
-                    f"Failed to remove ODCS → ODPS link: odcs_contract_id={state.odcs_contract_id}, error={e!s}"
+                    f"Failed to remove ODCS → ODPS link: odcs_contract_id={state.odcs_contract_id}, error"
                 )
                 removal_results["status"] = "partial_failure"
                 removal_results["errors"] = removal_results.get("errors", [])
@@ -202,7 +204,7 @@ class ODPSLinkingCompensation:
                 logger.warning(
                     f"ODPS contract not found for deletion: contract_id={state.odps_contract_id}"
                 )
-            except Exception as e:
+            except (DatabaseError, AttributeError) as e:
                 logger.warning(
                     f"Failed to delete ODPS contract (non-critical): contract_id={state.odps_contract_id}, error={e!s}"
                 )
@@ -240,7 +242,7 @@ class ODPSLinkingCompensation:
                     f"Previous ODPS contract not found for restoration (may have been deleted): "
                     f"previous_odps_link={state.previous_odps_link}, odcs_contract_id={state.odcs_contract_id}"
                 )
-            except Exception as e:
+            except (DatabaseError, KeyError, AttributeError) as e:
                 logger.warning(
                     f"Failed to restore previous ODPS link (non-critical): odcs_contract_id={state.odcs_contract_id}, error={e!s}"
                 )
@@ -274,7 +276,7 @@ class ODPSLinkingCompensation:
                 logger.debug(
                     f"ODPS contract not found for state restoration (may have been deleted): contract_id={state.odps_contract_id}"
                 )
-            except Exception as e:
+            except (DatabaseError, KeyError, AttributeError) as e:
                 logger.warning(
                     f"Failed to restore previous ODCS link (non-critical): odps_contract_id={state.odps_contract_id}, error={e!s}"
                 )
@@ -396,7 +398,7 @@ class ODPSLinkingCompensation:
                 if removal_result.get("status") == "partial_failure":
                     compensation_result["status"] = "partial_failure"
             except Exception as e:
-                logger.exception(f"Link removal failed during compensation: error={e!s}")
+                logger.exception("Link removal failed during compensation: error")
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["remove_links"] = {
                     "status": "failed",
@@ -411,7 +413,7 @@ class ODPSLinkingCompensation:
                 if restore_result.get("status") == "partial_failure":
                     compensation_result["status"] = "partial_failure"
             except Exception as e:
-                logger.exception(f"State restoration failed during compensation: error={e!s}")
+                logger.exception("State restoration failed during compensation: error")
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["restore"] = {"status": "failed", "error": str(e)}
 
@@ -423,7 +425,7 @@ class ODPSLinkingCompensation:
                 )
                 compensation_result["operations"]["cleanup"] = cleanup_result
             except Exception as e:
-                logger.exception(f"Cleanup failed during compensation: error={e!s}")
+                logger.exception("Cleanup failed during compensation: error")
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["cleanup"] = {"status": "failed", "error": str(e)}
 

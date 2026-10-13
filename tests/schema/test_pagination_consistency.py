@@ -6,8 +6,9 @@ and handle edge cases correctly: page=0 → 400, page=-1 → 400,
 page_size=999999 → clamped to max, sort supports field and -field.
 """
 
+from typing import ClassVar
+
 import pytest
-from rest_framework.test import APIClient
 
 
 @pytest.mark.integration
@@ -15,21 +16,21 @@ from rest_framework.test import APIClient
 class TestPaginationParameters:
     """All list endpoints MUST support ?page= and ?page_size=."""
 
-    _PAGINATED_ENDPOINTS = [
+    _PAGINATED_ENDPOINTS: ClassVar[list] = [
         "/api/v1/assets/",
         "/api/v1/contracts/",
         "/api/v1/datasets/",
         "/api/v1/files/",
-        "/api/v1/audit/events/",
+        "/api/v1/audit/audit-events/",
         "/api/v1/jobs/",
         "/api/v1/governance/access-requests/",
     ]
 
     @pytest.mark.django_db
     @pytest.mark.parametrize("endpoint", _PAGINATED_ENDPOINTS)
-    def test_page_and_page_size_accepted(self, endpoint):
+    def test_page_and_page_size_accepted(self, authenticated_client, endpoint):
         """Endpoints accept ?page=1&page_size=10 without error."""
-        client = APIClient()
+        client = authenticated_client
         response = client.get(f"{endpoint}?page=1&page_size=10")
         if response.status_code >= 500:
             pytest.skip(f"Backend unavailable for {endpoint}")  # noqa: skip-in-body — runtime service dependency
@@ -38,9 +39,9 @@ class TestPaginationParameters:
         )
 
     @pytest.mark.django_db
-    def test_page_zero_returns_400(self):
+    def test_page_zero_returns_400(self, authenticated_client):
         """page=0 MUST return 400 or clamp to page 1."""
-        client = APIClient()
+        client = authenticated_client
         for endpoint in self._PAGINATED_ENDPOINTS[:3]:
             response = client.get(f"{endpoint}?page=0")
             if response.status_code >= 500:
@@ -51,9 +52,9 @@ class TestPaginationParameters:
             )
 
     @pytest.mark.django_db
-    def test_page_negative_returns_400(self):
+    def test_page_negative_returns_400(self, authenticated_client):
         """page=-1 MUST return 400."""
-        client = APIClient()
+        client = authenticated_client
         for endpoint in self._PAGINATED_ENDPOINTS[:3]:
             response = client.get(f"{endpoint}?page=-1")
             if response.status_code >= 500:
@@ -63,9 +64,9 @@ class TestPaginationParameters:
             )
 
     @pytest.mark.django_db
-    def test_page_size_excessive_is_clamped(self):
+    def test_page_size_excessive_is_clamped(self, authenticated_client):
         """page_size=999999 MUST be clamped to max (100 by default)."""
-        client = APIClient()
+        client = authenticated_client
         response = client.get(f"{self._PAGINATED_ENDPOINTS[0]}?page_size=999999")
         if response.status_code >= 500:
             pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
@@ -77,9 +78,9 @@ class TestPaginationParameters:
                 )
 
     @pytest.mark.django_db
-    def test_page_size_zero_returns_400(self):
+    def test_page_size_zero_returns_400(self, authenticated_client):
         """page_size=0 MUST return 400."""
-        client = APIClient()
+        client = authenticated_client
         for endpoint in self._PAGINATED_ENDPOINTS[:2]:
             response = client.get(f"{endpoint}?page_size=0")
             if response.status_code >= 500:
@@ -95,9 +96,9 @@ class TestSortParameters:
     """Sort parameter MUST accept field and -field descending notation."""
 
     @pytest.mark.django_db
-    def test_sort_ascending_descending_accepted(self):
+    def test_sort_ascending_descending_accepted(self, authenticated_client):
         """?sort=name and ?sort=-name are both accepted."""
-        client = APIClient()
+        client = authenticated_client
         for sort_val in ("name", "-name", "created_at", "-created_at"):
             response = client.get(f"/api/v1/assets/?sort={sort_val}")
             if response.status_code >= 500:
@@ -108,9 +109,9 @@ class TestSortParameters:
             )
 
     @pytest.mark.django_db
-    def test_invalid_sort_field_returns_400_or_ignores(self):
+    def test_invalid_sort_field_returns_400_or_ignores(self, authenticated_client):
         """Invalid sort field returns 400 or silently ignores."""
-        client = APIClient()
+        client = authenticated_client
         response = client.get("/api/v1/assets/?sort=nonexistent_field_xyz")
         if response.status_code >= 500:
             pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency

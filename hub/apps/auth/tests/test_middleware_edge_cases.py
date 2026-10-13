@@ -424,13 +424,18 @@ class MiddlewareDirectUnitTests(TestCase):
         mock_user.tenant = None
         request.user = mock_user
 
-        # Patch User.objects.only().get() to return a user with fake tenant_id
+        # Patch the user DB lookup to return a user with fake tenant_id.
+        # W1.20 — the middleware's chain is
+        # User.objects.using(user_lookup_alias()).only("tenant_id").get(...);
+        # the patch therefore intercepts at .using() (the first hop).
         mock_db_user = MagicMock()
         mock_db_user.tenant_id = fake_tenant_id
         with patch.object(
             User.objects,
-            "only",
-            return_value=MagicMock(get=MagicMock(return_value=mock_db_user)),
+            "using",
+            return_value=MagicMock(
+                only=MagicMock(return_value=MagicMock(get=MagicMock(return_value=mock_db_user)))
+            ),
         ):
             result = mw.process_request(request)
 

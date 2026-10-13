@@ -31,15 +31,15 @@ Coverage
 No mocks of internal code paths — the service is called with real DB
 rows and the engine runs.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from django.test import TestCase
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -58,7 +58,7 @@ def _unique_tenant():
 
 
 @pytest.fixture
-def odcs_with_fields() -> Dict[str, Any]:
+def odcs_with_fields() -> dict[str, Any]:
     """A minimal valid ODCS v3.0.2 contract that satisfies the floor."""
     return {
         "kind": "DataContract",
@@ -77,7 +77,7 @@ def odcs_with_fields() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def odcs_no_schema() -> Dict[str, Any]:
+def odcs_no_schema() -> dict[str, Any]:
     """ODCS contract missing ``schema``/``models`` entirely → ODCS_NO_SCHEMA."""
     return {
         "kind": "DataContract",
@@ -91,7 +91,7 @@ def odcs_no_schema() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def odps_no_ports() -> Dict[str, Any]:
+def odps_no_ports() -> dict[str, Any]:
     """ODPS contract with empty outputPorts → ODPS_NO_PORTS."""
     return {
         "schema": "https://opendataproducts.org/schema/v3.0",
@@ -126,7 +126,7 @@ REQUIRED_DETAIL_KEYS = (
 COLLECT_ERROR_KEYS = ("code", "subcode", "message", "remediation_url")
 
 
-def _assert_full_payload_shape(details: Dict[str, Any]) -> None:
+def _assert_full_payload_shape(details: dict[str, Any]) -> None:
     """Assert every required detail key is present and non-empty."""
     missing = [k for k in REQUIRED_DETAIL_KEYS if k not in details]
     assert not missing, f"missing details keys: {missing} (got {details})"
@@ -206,9 +206,9 @@ class TestEnforceStructuralFloorSubcodes:
 
     def test_odps_no_ports_subcode_full_payload_shape(self):
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
-            SUBCODE_ODPS_NO_PORTS,
             ERROR_CODE,
+            SUBCODE_ODPS_NO_PORTS,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -234,9 +234,9 @@ class TestEnforceStructuralFloorSubcodes:
 
     def test_odcs_no_schema_subcode_full_payload_shape(self):
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
-            SUBCODE_ODCS_NO_SCHEMA,
             ERROR_CODE,
+            SUBCODE_ODCS_NO_SCHEMA,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -259,8 +259,8 @@ class TestEnforceStructuralFloorSubcodes:
         enforcer reports that cause specifically — operators need to fix
         the cycle, not just "add fields"."""
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
             SUBCODE_CYCLIC_PORTS,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -269,9 +269,7 @@ class TestEnforceStructuralFloorSubcodes:
                 {"models": []},
                 spec_type="ODPS",
                 spec_version="bitol-1.0.0",
-                warnings=[
-                    "STRUCTURELESS_CYCLIC_PORTS: outputPort A->B->A intercepted"
-                ],
+                warnings=["STRUCTURELESS_CYCLIC_PORTS: outputPort A->B->A intercepted"],
             )
         _assert_full_payload_shape(exc.value.details)
         assert exc.value.details["subcode"] == SUBCODE_CYCLIC_PORTS
@@ -280,8 +278,8 @@ class TestEnforceStructuralFloorSubcodes:
         """Cyclic warning wins even when spec_type would otherwise pick a
         different subcode — the cycle is the actionable cause."""
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
             SUBCODE_CYCLIC_PORTS,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -296,8 +294,8 @@ class TestEnforceStructuralFloorSubcodes:
 
     def test_generic_subcode_for_unknown_spec(self):
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
             SUBCODE_GENERIC,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -313,8 +311,8 @@ class TestEnforceStructuralFloorSubcodes:
     def test_generic_subcode_for_none_spec_type(self):
         """``spec_type=None`` (auto-detect failure path) → GENERIC."""
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
             SUBCODE_GENERIC,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -334,11 +332,7 @@ class TestEnforceStructuralFloorSubcodes:
 
         # No exception expected when at least one model has at least one field.
         enforce_structural_floor(
-            {
-                "models": [
-                    {"name": "m", "fields": [{"name": "id", "type": "string"}]}
-                ]
-            },
+            {"models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}]},
             spec_type="ODCS",
             spec_version="3.0.2",
         )
@@ -358,8 +352,8 @@ class TestEnforceStructuralFloorSubcodes:
         """``models=[{"fields": []}]`` is structureless even though
         ``models`` is technically populated."""
         from hub.apps.contracts.structural_floor import (
-            enforce_structural_floor,
             SUBCODE_ODCS_NO_SCHEMA,
+            enforce_structural_floor,
         )
         from hub.apps.core.services.base import ValidationError
 
@@ -427,11 +421,7 @@ class TestCollectStructuralFloorErrors:
         from hub.apps.contracts.structural_floor import collect_structural_floor_errors
 
         errors = collect_structural_floor_errors(
-            {
-                "models": [
-                    {"name": "m", "fields": [{"name": "id", "type": "string"}]}
-                ]
-            },
+            {"models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}]},
             spec_type="ODCS",
             spec_version="3.0.2",
         )
@@ -439,9 +429,9 @@ class TestCollectStructuralFloorErrors:
 
     def test_returns_one_error_dict_when_floor_violated(self):
         from hub.apps.contracts.structural_floor import (
-            collect_structural_floor_errors,
             ERROR_CODE,
             SUBCODE_ODPS_NO_PORTS,
+            collect_structural_floor_errors,
         )
 
         errors = collect_structural_floor_errors(
@@ -470,6 +460,7 @@ class TestCreateContractRejectsStructureless(TestCase):
 
     def _service(self, tenant):
         from hub.apps.contracts.services import ContractService
+
         return ContractService(tenant_id=str(tenant.id))
 
     def test_create_rejects_odcs_without_schema(self):
@@ -497,9 +488,7 @@ class TestCreateContractRejectsStructureless(TestCase):
         # Full payload shape — frontend depends on every key.
         for key in REQUIRED_DETAIL_KEYS:
             assert key in exc.value.details, f"missing {key!r}"
-        assert Contract.objects.count() == before, (
-            "No row should be persisted on rejection"
-        )
+        assert Contract.objects.count() == before, "No row should be persisted on rejection"
 
     def test_create_rejects_odps_with_empty_outputports(self):
         from hub.apps.contracts.models import Contract
@@ -577,6 +566,7 @@ class TestUpdateContractMirrorsStructuralFloor(TestCase):
 
     def _service(self, tenant):
         from hub.apps.contracts.services import ContractService
+
         return ContractService(tenant_id=str(tenant.id))
 
     def _create_ok_contract(self, service):
@@ -587,9 +577,7 @@ class TestUpdateContractMirrorsStructuralFloor(TestCase):
             "name": "ok",
             "version": "1.0.0",
             "status": "active",
-            "schema": [
-                {"name": "customers", "fields": [{"name": "id", "type": "string"}]}
-            ],
+            "schema": [{"name": "customers", "fields": [{"name": "id", "type": "string"}]}],
         }
         return service.create_contract(
             original_raw=json.dumps(ok_odcs),
@@ -690,7 +678,7 @@ class TestValidatorConsolidation:
     This test pins that they no longer disagree.
     """
 
-    def _legacy_ok(self, hub_contract: Dict[str, Any]) -> bool:
+    def _legacy_ok(self, hub_contract: dict[str, Any]) -> bool:
         from hub.apps.contracts.normalization_engine import (
             validate_hubcontract_schema,
         )
@@ -698,19 +686,19 @@ class TestValidatorConsolidation:
         ok, _ = validate_hubcontract_schema(hub_contract)
         return ok
 
-    def _pydantic_ok(self, hub_contract: Dict[str, Any]) -> bool:
+    def _pydantic_ok(self, hub_contract: dict[str, Any]) -> bool:
         from hub.apps.contracts.typed_models import validate_hub_contract_dict
 
         model, errors = validate_hub_contract_dict(hub_contract)
         return model is not None and not errors
 
-    def _pydantic_errors(self, hub_contract: Dict[str, Any]) -> List[str]:
+    def _pydantic_errors(self, hub_contract: dict[str, Any]) -> list[str]:
         from hub.apps.contracts.typed_models import validate_hub_contract_dict
 
         _model, errors = validate_hub_contract_dict(hub_contract)
         return errors
 
-    def _legacy_errors(self, hub_contract: Dict[str, Any]) -> List[str]:
+    def _legacy_errors(self, hub_contract: dict[str, Any]) -> list[str]:
         from hub.apps.contracts.normalization_engine import (
             validate_hubcontract_schema,
         )
@@ -718,7 +706,7 @@ class TestValidatorConsolidation:
         _ok, errors = validate_hubcontract_schema(hub_contract)
         return errors
 
-    def _both_validators_agree(self, hub_contract: Dict[str, Any]) -> bool:
+    def _both_validators_agree(self, hub_contract: dict[str, Any]) -> bool:
         return self._legacy_ok(hub_contract) == self._pydantic_ok(hub_contract)
 
     def test_well_formed_minimal_contract_agrees(self):
@@ -727,9 +715,7 @@ class TestValidatorConsolidation:
             "id": "ok",
             "info": {"name": "ok"},
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
-            "models": [
-                {"name": "customers", "fields": [{"name": "id", "data_type": "string"}]}
-            ],
+            "models": [{"name": "customers", "fields": [{"name": "id", "data_type": "string"}]}],
         }
         assert self._both_validators_agree(hub_contract)
         # Both should accept.
@@ -787,13 +773,9 @@ class TestValidatorConsolidation:
             "id": "x",
             "info": {"name": "x"},
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
-            "models": [
-                {"name": "m", "fields": [{"name": "id", "data_type": "string"}]}
-            ],
+            "models": [{"name": "m", "fields": [{"name": "id", "data_type": "string"}]}],
         }
-        assert self._pydantic_ok(hub_contract), (
-            "Pydantic accepts arbitrary version string"
-        )
+        assert self._pydantic_ok(hub_contract), "Pydantic accepts arbitrary version string"
         assert not self._legacy_ok(hub_contract), (
             "Legacy validator must reject mismatched hub_contract_version"
         )
@@ -809,9 +791,7 @@ class TestValidatorConsolidation:
         legacy = set(self._legacy_errors(hub_contract))
         pyd = set(self._pydantic_errors(hub_contract))
         # Every Pydantic error appears in the legacy error set.
-        assert pyd.issubset(legacy), (
-            f"Pydantic errors not propagated: missing {pyd - legacy}"
-        )
+        assert pyd.issubset(legacy), f"Pydantic errors not propagated: missing {pyd - legacy}"
 
 
 # ---------------------------------------------------------------------------
@@ -854,7 +834,7 @@ class TestAlternateODPSWritePathsEnforceFloor(TestCase):
 
         return ContractService(tenant_id=str(tenant.id))
 
-    def _structureless_odps(self) -> Dict[str, Any]:
+    def _structureless_odps(self) -> dict[str, Any]:
         return {
             "schema": "https://opendataproducts.org/schema/v3.0",
             "version": "3.0",
@@ -901,12 +881,9 @@ class TestAlternateODPSWritePathsEnforceFloor(TestCase):
             "BUSINESS_RULES_VALIDATION",
             "ODPS_VALIDATION_FAILED",
             "ODPS_PARSE_FAILED",
-        ), (
-            f"Expected a recognised rejection code; got {exc.value.code!r}"
-        )
+        ), f"Expected a recognised rejection code; got {exc.value.code!r}"
         assert Contract.objects.count() == before, (
-            "create_odps must NOT persist a structureless row "
-            "(silent-nullify regression)"
+            "create_odps must NOT persist a structureless row (silent-nullify regression)"
         )
 
     def test_link_odps_to_odcs_rejects_structureless_odps_raw(self):
@@ -926,9 +903,7 @@ class TestAlternateODPSWritePathsEnforceFloor(TestCase):
             "name": "ok",
             "version": "1.0.0",
             "status": "active",
-            "schema": [
-                {"name": "customers", "fields": [{"name": "id", "type": "string"}]}
-            ],
+            "schema": [{"name": "customers", "fields": [{"name": "id", "type": "string"}]}],
         }
         odcs_contract = contract_service.create_contract(
             original_raw=json.dumps(ok_odcs),

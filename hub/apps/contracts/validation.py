@@ -28,9 +28,10 @@ def validate_email(email: str) -> tuple[bool, str | None]:
     validator = EmailValidator()
     try:
         validator(email)
-        return True, None
     except DjangoValidationError as e:
         return False, str(e)
+    else:
+        return True, None
 
 
 def validate_url(url: str) -> tuple[bool, str | None]:
@@ -49,9 +50,10 @@ def validate_url(url: str) -> tuple[bool, str | None]:
     validator = URLValidator()
     try:
         validator(url)
-        return True, None
     except DjangoValidationError as e:
         return False, str(e)
+    else:
+        return True, None
 
 
 def validate_and_enrich_contacts(
@@ -245,15 +247,14 @@ def validate_and_enrich_roles(
                 enriched_role["accessType"] = type_map.get(access_type, access_type)
 
         # Validate approvers (should be list)
-        if "approvers" in enriched_role:
-            if not isinstance(enriched_role["approvers"], list):
-                if isinstance(enriched_role["approvers"], str):
-                    # Convert comma-separated string to list
-                    enriched_role["approvers"] = [
-                        a.strip() for a in enriched_role["approvers"].split(",")
-                    ]
-                else:
-                    errors.append(f"role[{idx}].approvers must be a list")
+        if "approvers" in enriched_role and not isinstance(enriched_role["approvers"], list):
+            if isinstance(enriched_role["approvers"], str):
+                # Convert comma-separated string to list
+                enriched_role["approvers"] = [
+                    a.strip() for a in enriched_role["approvers"].split(",")
+                ]
+            else:
+                errors.append(f"role[{idx}].approvers must be a list")
 
         enriched.append(enriched_role)
 
@@ -301,13 +302,13 @@ def validate_and_enrich_team(team: list[dict[str, Any]]) -> tuple[list[dict[str,
             r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$"
         )
 
-        if enriched_member.get("dateIn"):
-            if not date_pattern.match(str(enriched_member["dateIn"])):
-                errors.append(f"team[{idx}].dateIn must be ISO 8601 format")
+        if enriched_member.get("dateIn") and not date_pattern.match(str(enriched_member["dateIn"])):
+            errors.append(f"team[{idx}].dateIn must be ISO 8601 format")
 
-        if enriched_member.get("dateOut"):
-            if not date_pattern.match(str(enriched_member["dateOut"])):
-                errors.append(f"team[{idx}].dateOut must be ISO 8601 format")
+        if enriched_member.get("dateOut") and not date_pattern.match(
+            str(enriched_member["dateOut"])
+        ):
+            errors.append(f"team[{idx}].dateOut must be ISO 8601 format")
 
         enriched.append(enriched_member)
 
@@ -408,14 +409,15 @@ def validate_and_enrich_lineage(
         if "transform_source_objects" in enriched_entry and "inputFields" not in enriched_entry:
             enriched_entry["inputFields"] = enriched_entry.pop("transform_source_objects")
 
-        if "transformations" in enriched_entry:
-            if isinstance(enriched_entry["transformations"], list):
-                for _t_idx, transform in enumerate(enriched_entry["transformations"]):
-                    if isinstance(transform, dict):
-                        if "logic" not in transform and "transformLogic" in transform:
-                            transform["logic"] = transform.pop("transformLogic")
-                        if "description" not in transform and "transformDescription" in transform:
-                            transform["description"] = transform.pop("transformDescription")
+        if "transformations" in enriched_entry and isinstance(
+            enriched_entry["transformations"], list
+        ):
+            for _t_idx, transform in enumerate(enriched_entry["transformations"]):
+                if isinstance(transform, dict):
+                    if "logic" not in transform and "transformLogic" in transform:
+                        transform["logic"] = transform.pop("transformLogic")
+                    if "description" not in transform and "transformDescription" in transform:
+                        transform["description"] = transform.pop("transformDescription")
 
         # Validate inputFields structure
         if "inputFields" in enriched_entry:

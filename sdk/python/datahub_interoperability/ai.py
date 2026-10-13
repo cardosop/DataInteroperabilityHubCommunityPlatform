@@ -2,7 +2,7 @@
 AI operations for DataHub SDK.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -14,19 +14,19 @@ class AIAPI:
     async def search(
         self,
         query: str,
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {"query": query}
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"query": query}
         if filters:
             data["filters"] = filters
         return await self.client.post("ai/search/", data=data)
 
     async def schema_matching(
         self,
-        source_schema: Dict[str, Any],
-        target_schema: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+        source_schema: dict[str, Any],
+        target_schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {
             "source_schema": source_schema,
             "target_schema": target_schema,
         }

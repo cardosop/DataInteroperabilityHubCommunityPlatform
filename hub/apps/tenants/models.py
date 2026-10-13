@@ -22,7 +22,9 @@ from hub.apps.integrations.encryption import (
 
 # Phase 231.2 — thresholds exclude UNKNOWN (fail-closed sentinel on runs only).
 _COMPLIANCE_RISK_THRESHOLD_CHOICES = tuple(
-    (value, label) for value, label in RiskLevel.choices if value != RiskLevel.UNKNOWN.value
+    (value, label)
+    for value, label in RiskLevel.choices
+    if value != RiskLevel.UNKNOWN.value
 )
 
 
@@ -124,10 +126,22 @@ class KYCStatus(models.TextChoices):
 
 
 class PlanTier(models.TextChoices):
-    """Plan tier enumeration"""
+    """Plan tier enumeration.
 
+    R2-B7 (W2.7) — extended with the tiers the canonical
+    ``plan_defaults.py`` catalog declares (SANDBOX/STARTER/GROWTH/SCALE).
+    Pre-fix the enum only had FREE/PRO/ENTERPRISE, so the canonical
+    module CRASHED AT IMPORT (``PlanTier.SANDBOX`` AttributeError) —
+    which is exactly why ``seed_default_plans`` drifted to an inline
+    plan list with divergent limits (the free-plan divergence class).
+    """
+
+    SANDBOX = "SANDBOX", "Sandbox"
     FREE = "FREE", "Free"
+    STARTER = "STARTER", "Starter"
+    GROWTH = "GROWTH", "Growth"
     PRO = "PRO", "Pro"
+    SCALE = "SCALE", "Scale"
     ENTERPRISE = "ENTERPRISE", "Enterprise"
 
 
@@ -196,6 +210,13 @@ class TenantPlan(models.Model):
             "max_transformation_runs_per_month",
             # ── ODPS limits (Phase 117A) ──
             "max_odps_documents",
+            # ── Databricks compute limits (Phase 3.4) ──
+            # Per-tenant SQL-warehouse cap (the databricks.warehouse.create
+            # chain's quota step). Counted through the core resource-counter
+            # registry (databricks_admin.DatabricksSqlWarehouse, DELETING
+            # excluded). Seed defaults + the 0110 backfill migration carry
+            # the tier caps: FREE=2, PRO=10, ENTERPRISE=null (unlimited).
+            "max_databricks_warehouses",
         }
     )
 
@@ -211,7 +232,9 @@ class TenantPlan(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
-        max_length=255, unique=True, help_text="Plan name (e.g., 'Free Plan', 'Pro Plan')"
+        max_length=255,
+        unique=True,
+        help_text="Plan name (e.g., 'Free Plan', 'Pro Plan')",
     )
     slug = models.SlugField(
         max_length=255,
@@ -219,7 +242,9 @@ class TenantPlan(models.Model):
         help_text="URL-safe plan identifier (e.g., 'free', 'pro', 'enterprise')",
     )
     tier = models.CharField(
-        max_length=20, choices=PlanTier.choices, help_text="Plan tier: FREE, PRO, or ENTERPRISE"
+        max_length=20,
+        choices=PlanTier.choices,
+        help_text="Plan tier (the plan_defaults.py canonical catalog spans SANDBOX…ENTERPRISE)",
     )
     category = models.CharField(
         max_length=20,
@@ -229,7 +254,12 @@ class TenantPlan(models.Model):
     )
     order = models.IntegerField(
         default=0,
-        help_text="Tier ordering for upgrade/downgrade validation (FREE=0, PRO=1, ENTERPRISE=2)",
+        help_text=(
+            "Tier ordering for upgrade/downgrade validation — the "
+            "plan_defaults.py canonical scheme: sandbox=-1, free=0, "
+            "starter=1, growth=2, pro=3, scale=4, enterprise=5, "
+            "ML=10/11/12 (W2.2)"
+        ),
     )
     limits_json = models.JSONField(
         default=default_empty_dict,
@@ -308,7 +338,9 @@ class TenantPlan(models.Model):
     marketplace_take_rate_bps = models.IntegerField(
         default=0, help_text="Marketplace take rate in basis points"
     )
-    markup_bps = models.IntegerField(null=True, blank=True, help_text="Markup in basis points")
+    markup_bps = models.IntegerField(
+        null=True, blank=True, help_text="Markup in basis points"
+    )
 
     class Meta:
         db_table = "tenant_plans"
@@ -354,7 +386,11 @@ class Tenant(models.Model):
     )
     slug = models.SlugField(
         max_length=255,
-        unique=True,
+        # W4.3 (R2-I3/E5) — uniqueness is enforced by the partial unique
+        # index ``uniq_tenant_slug_active`` (WHERE deleted_at IS NULL) in
+        # Meta.constraints: a soft-deleted tenant's slug may be taken by a
+        # NEW tenant (re-create is legitimate), while two ACTIVE tenants
+        # can never share a slug.
         validators=[
             RegexValidator(
                 regex=r"^[a-z0-9-]+$",
@@ -376,7 +412,10 @@ class Tenant(models.Model):
         help_text="KYC verification status: UNVERIFIED, PENDING_REVIEW (submission with provider), or VERIFIED",
     )
     region = models.CharField(
-        max_length=100, null=True, blank=True, help_text="Cloud region (e.g., us-east-1, eu-west-1)"
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Cloud region (e.g., us-east-1, eu-west-1)",
     )
     # Phase 228 X (REQ-LIN-X-004 / 228.X.4.1) — data residency.
     # When set, lineage cross-region access for THIS tenant is gated
@@ -749,7 +788,9 @@ class Tenant(models.Model):
     # Phase 232.4 — Record of Processing Activities (RoPA) generator.
     compliance_ropa_enabled = models.BooleanField(
         default=False,
-        help_text=("When True, RoPA generation APIs and artefacts are enabled for this tenant."),
+        help_text=(
+            "When True, RoPA generation APIs and artefacts are enabled for this tenant."
+        ),
     )
     # Phase 232.5 — DPIA register & review workflow.
     compliance_dpia_enabled = models.BooleanField(
@@ -762,7 +803,7 @@ class Tenant(models.Model):
     compliance_processor_agreements_enabled = models.BooleanField(
         default=False,
         help_text=(
-            "When True, processor registry, agreement records, asset–processor links, "
+            "When True, processor registry, agreement records, asset–processor links, "  # noqa: RUF003 — en dash pinned by migration 0078 help_text
             "and expiry notification jobs are enabled per this tenant."
         ),
     )
@@ -858,6 +899,83 @@ class Tenant(models.Model):
         default=False,
         help_text="Phase 275 — enable Athena warehouse connector.",
     )
+    databricks_control_plane_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-control-plane P0 — enable the Databricks control-plane endpoints.",
+    )
+    databricks_workspaces_kill_switch = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-control-plane P0 — emergency kill switch for the Databricks control plane.",
+    )
+    databricks_sso_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-control-plane P0b — enable Sign-in with Databricks (U2M SSO).",
+    )
+    databricks_obo_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-control-plane P0b — enable On-Behalf-Of execution for interactive Databricks paths.",
+    )
+    databricks_sso_kill_switch = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-control-plane P0b — emergency kill switch for Databricks SSO.",
+    )
+    databricks_obo_kill_switch = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-control-plane P0b — emergency kill switch for Databricks OBO execution.",
+    )
+    databricks_workspace_provisioning_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-account-plane P8 (design D3) — allow platform "
+        "admins to provision workspaces for this tenant through the account plane. "
+        "Provisioning requires BOTH this flag AND a recorded DPO/Legal signoff on "
+        "the account row; registration-first stays the default.",
+    )
+    databricks_uc_destructive_ddl_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-uc-write P2 — allow the destructive DDL family (DROP) through the UC change guards.",
+    )
+    databricks_jobs_python_tasks_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-jobs P4 — allow Python tasks through the jobs client allowlist.",
+    )
+    databricks_dlt_pipelines_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-dlt-pipelines P10 — the DLT management surface "
+        "(the U5 page + the `dlt` CLI) is inert while off.",
+    )
+    databricks_ml_assets_enabled = models.BooleanField(
+        default=False,
+        help_text="openspec add-databricks-ml-assets P12 — the ML-assets surface "
+        "(models/versions/aliases/feature tables + the flag-gated serving/vector "
+        "endpoints) is inert while off (403 DATABRICKS_ML_ASSETS_DISABLED).",
+    )
+
+    databricks_staging_volume_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "openspec wire-databricks-dlt-movement P6 — the UC managed staging volume "
+            "name; blank = the auto default `_dlt_staging_load_volume`."
+        ),
+    )
+    databricks_s3_external_location_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "openspec wire-databricks-dlt-movement P6 — allow dlt staging through the "
+            "S3 external-location path (opt-in; off by default — managed volume only)."
+        ),
+    )
+    databricks_staging_schema_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "openspec wire-databricks-dlt-movement P6 — the per-tenant staging schema "
+            "override; blank = the destination's target schema."
+        ),
+    )
+
     warehouse_dq_enabled = models.BooleanField(
         default=False,
         help_text="Enable DQ warehouse integration.",
@@ -867,10 +985,14 @@ class Tenant(models.Model):
         help_text="Enable compliance warehouse integration.",
     )
     tenant_dq_warehouse_profile = models.JSONField(
-        default=dict, blank=True, help_text="DQ warehouse profile assigned to this tenant."
+        default=dict,
+        blank=True,
+        help_text="DQ warehouse profile assigned to this tenant.",
     )
     notification_opt_outs = models.JSONField(
-        default=dict, blank=True, help_text="Per-tenant notification opt-out configuration."
+        default=dict,
+        blank=True,
+        help_text="Per-tenant notification opt-out configuration.",
     )
     pipeline_dependency_enabled = models.BooleanField(
         default=False,
@@ -907,10 +1029,6 @@ class Tenant(models.Model):
     developer_enabled = models.BooleanField(
         default=False,
         help_text="Enable developer features.",
-    )
-    mfa_required = models.BooleanField(
-        default=False,
-        help_text="Require MFA for this tenant.",
     )
     ux_v2_enabled = models.BooleanField(
         default=_default_ux_v2_enabled,
@@ -1354,11 +1472,20 @@ class Tenant(models.Model):
         ordering = ["name"]
         default_manager_name = "all_objects"
         indexes = [
-            models.Index(fields=["slug"]),
             models.Index(fields=["status"]),
             models.Index(fields=["kyc_status"]),
             models.Index(fields=["region"]),
             models.Index(fields=["plan"]),
+        ]
+        constraints = [
+            # W4.3 (R2-I3/E5) — slug uniqueness scoped to non-deleted
+            # tenants (the partial index replaces the plain ``slug``
+            # index for lookups too).
+            models.UniqueConstraint(
+                fields=["slug"],
+                condition=models.Q(deleted_at__isnull=True),
+                name="uniq_tenant_slug_active",
+            ),
         ]
 
     def __str__(self):
@@ -1380,9 +1507,7 @@ class Tenant(models.Model):
         """Check if tenant can publish to marketplace (requires valid KYC)"""
         if self.kyc_status != KYCStatus.VERIFIED or not self.is_active():
             return False
-        if self.kyc_expires_at and self.kyc_expires_at < timezone.now():
-            return False
-        return True
+        return not (self.kyc_expires_at and self.kyc_expires_at < timezone.now())
 
     def save(self, *args, **kwargs):
         """Default Phase 260.3.E sample PII redaction from KYC on tenant creation."""
@@ -1442,10 +1567,27 @@ class Tenant(models.Model):
         self.save(update_fields=["status", "updated_at"])
 
     def soft_delete(self):
-        """Mark tenant for deletion (soft delete)"""
+        """Mark tenant for deletion (soft delete).
+
+        W4.3 — stamps ``scheduled_for_deletion_at`` alongside
+        ``deleted_at`` so every soft-delete path (service AND admin
+        endpoint) anchors the 90-day grace window the hard-delete
+        sweep keys on. Pre-fix the service path left the anchor NULL
+        and the sweep never matched those tenants — soft-deleted
+        tenants lingered forever instead of reaching erasure.
+        """
+        now = timezone.now()
         self.status = TenantStatus.DELETED
-        self.deleted_at = timezone.now()
-        self.save(update_fields=["status", "deleted_at", "updated_at"])
+        self.deleted_at = now
+        self.scheduled_for_deletion_at = now
+        self.save(
+            update_fields=[
+                "status",
+                "deleted_at",
+                "scheduled_for_deletion_at",
+                "updated_at",
+            ]
+        )
 
     def restore(self):
         """Restore a soft-deleted tenant.
@@ -1522,7 +1664,9 @@ class TenantConfig(models.Model):
         blank=True,
         validators=[
             MinValueValidator(90, message="Data retention must be at least 90 days"),
-            MaxValueValidator(3650, message="Data retention cannot exceed 3650 days (10 years)"),
+            MaxValueValidator(
+                3650, message="Data retention cannot exceed 3650 days (10 years)"
+            ),
         ],
         help_text="Data retention period in days (90-3650)",
     )
@@ -1721,19 +1865,29 @@ class TenantUsageSummary(models.Model):
     period_start = models.DateTimeField(
         help_text="Start of the usage period (typically start of month)"
     )
-    period_end = models.DateTimeField(help_text="End of the usage period (typically end of month)")
+    period_end = models.DateTimeField(
+        help_text="End of the usage period (typically end of month)"
+    )
 
     # Usage metrics
-    api_calls_count = models.BigIntegerField(default=0, help_text="Total API calls in period")
-    asset_count = models.IntegerField(default=0, help_text="Total assets (current count)")
-    dataset_count = models.IntegerField(default=0, help_text="Total datasets (current count)")
+    api_calls_count = models.BigIntegerField(
+        default=0, help_text="Total API calls in period"
+    )
+    asset_count = models.IntegerField(
+        default=0, help_text="Total assets (current count)"
+    )
+    dataset_count = models.IntegerField(
+        default=0, help_text="Total datasets (current count)"
+    )
     scheduled_ingestion_runs_count = models.IntegerField(
         default=0, help_text="Total scheduled ingestion runs in period"
     )
     scheduled_export_runs_count = models.IntegerField(
         default=0, help_text="Total scheduled export runs in period"
     )
-    storage_bytes = models.BigIntegerField(default=0, help_text="Total storage used in bytes")
+    storage_bytes = models.BigIntegerField(
+        default=0, help_text="Total storage used in bytes"
+    )
 
     # Cost metrics (optional, for billing)
     ingestion_cost = models.DecimalField(
@@ -1770,7 +1924,7 @@ class TenantUsageSummary(models.Model):
             models.UniqueConstraint(
                 fields=["tenant", "period_start", "period_end"],
                 name="unique_tenant_period_usage_summary",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -2099,7 +2253,9 @@ class LimitDimension(models.Model):
         help_text="Machine-readable limit key (e.g. 'max_assets')",
     )
     display_name = models.CharField(max_length=200, help_text="Human-readable name")
-    description = models.TextField(blank=True, default="", help_text="What this limit controls")
+    description = models.TextField(
+        blank=True, default="", help_text="What this limit controls"
+    )
     category = models.CharField(
         max_length=64,
         default="base",
@@ -2134,7 +2290,9 @@ class TierProfile(models.Model):
         help_text="Short marketing headline (e.g. 'For growing teams')",
     )
     description_markdown = models.TextField(
-        blank=True, default="", help_text="Long-form markdown description for the pricing page"
+        blank=True,
+        default="",
+        help_text="Long-form markdown description for the pricing page",
     )
     features_highlight = models.TextField(
         blank=True, default="", help_text="Bullet list of key features (markdown)"
@@ -2160,7 +2318,9 @@ class TierProfile(models.Model):
         default=False,
         help_text="When True, this tier is only available through sales (enterprise)",
     )
-    sort_order = models.IntegerField(default=0, help_text="Display ordering on pricing page")
+    sort_order = models.IntegerField(
+        default=0, help_text="Display ordering on pricing page"
+    )
     plan = models.OneToOneField(
         "tenants.TenantPlan",
         on_delete=models.CASCADE,
@@ -2250,7 +2410,9 @@ class PlanPriceChangeApproval(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["tenant_plan", "status"], name="ppca_plan_status_idx"),
-            models.Index(fields=["status", "created_at"], name="ppca_status_created_idx"),
+            models.Index(
+                fields=["status", "created_at"], name="ppca_status_created_idx"
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -2269,3 +2431,10 @@ class PlanPriceChangeApproval(models.Model):
 
 # Module-level alias for the nested Status choices class.
 PriceChangeApprovalStatus = PlanPriceChangeApproval.Status
+
+# Phase 313 verification — register the sandbox model (Phase 281.B.7) so the
+# tenant_sandbox table ships via migrations with its RLS policy (CLAUDE.md
+# tenant-isolation contract). The module was previously unregistered.
+from hub.apps.tenants.sandbox import (
+    TenantSandbox,
+)  # noqa: F401 — model registration re-export

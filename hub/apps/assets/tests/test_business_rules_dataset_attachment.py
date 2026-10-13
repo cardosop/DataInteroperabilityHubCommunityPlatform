@@ -409,9 +409,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(
-            result.details["validation_checks"]["tenant_ownership"]["tenants_match"]
-        )
+        self.assertTrue(result.details["validation_checks"]["tenant_ownership"]["tenants_match"])
 
 
 class AssetsBusinessRulesDatasetAttachmentIntegrationTest(TestCase):

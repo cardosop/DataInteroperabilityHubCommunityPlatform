@@ -37,7 +37,7 @@ test.describe('Feature: Virtualization', () => {
             type: 'backend-not-deployed',
             description: `Virtualization backend endpoint not available: ${errMsg.slice(0, 200)}`,
           });
-          test.skip(true, 'Virtualization backend returns NOT_FOUND — feature not deployed on staging');
+          test.skip(errMsg.includes('NOT_FOUND') || errMsg.includes('not found'), 'Virtualization backend returns NOT_FOUND — feature not deployed on staging');
           return;
         }
         throw err;

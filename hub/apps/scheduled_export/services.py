@@ -9,6 +9,7 @@ import contextlib
 import logging
 from typing import Any
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 
 from hub.apps.audit.utils import create_audit_event
@@ -17,6 +18,7 @@ from hub.apps.core.transaction_safe import run_side_effect
 from hub.apps.scheduled_export.business_rules import ScheduledExportBusinessRules
 from hub.apps.scheduled_export.models import (
     DestinationType,
+    ExportRunStateMachine,
     ScheduledExport,
     ScheduledExportRun,
     ScheduledExportRunStatus,
@@ -120,9 +122,19 @@ class ScheduledExportService(BaseService):
             raise NotFoundError(
                 f"Export run {run_id} not found",
                 details={"resource_type": "SCHEDULED_EXPORT_RUN", "resource_id": run_id},
-            )
+            ) from None
 
         scheduled_export = export_run.scheduled_export
+
+        # W3.1 (R2-P1) — the worker honors CANCELLED: no export item is
+        # processed for a cancelled run (checked before any item lookup so
+        # the terminal state is the first thing the worker observes).
+        if export_run.status == ScheduledExportRunStatus.CANCELLED:
+            raise ValidationError(
+                "Export run was cancelled; no further items are processed",
+                code="RUN_CANCELLED",
+                details={"run_id": run_id, "status": export_run.status},
+            )
 
         # Validate scheduled export is active
         if scheduled_export.status != ScheduledExportStatus.ACTIVE:
@@ -154,11 +166,9 @@ class ScheduledExportService(BaseService):
         if user_id:
             from hub.apps.users.models import User
 
-            try:
+            # User not found - this is OK for worker API
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id, tenant_id=tenant_id)
-            except User.DoesNotExist:
-                # User not found - this is OK for worker API
-                pass
 
         # Resolve item first so "not found" yields NotFoundError before scope check
         source_scope = scheduled_export.source_scope
@@ -176,7 +186,7 @@ class ScheduledExportService(BaseService):
                 raise NotFoundError(
                     f"Dataset {dataset_id} not found",
                     details={"resource_type": "DATASET", "resource_id": dataset_id},
-                )
+                ) from None
         else:
             from hub.apps.files.models import File
 
@@ -186,7 +196,7 @@ class ScheduledExportService(BaseService):
                 raise NotFoundError(
                     f"File {file_id} not found",
                     details={"resource_type": "FILE", "resource_id": file_id},
-                )
+                ) from None
 
         # Validate item is in source_scope
         in_scope = False
@@ -332,7 +342,7 @@ class ScheduledExportService(BaseService):
         destination_config: dict[str, Any],
         schedule_config: dict[str, Any],
         source_scope: dict[str, Any],
-        **kwargs,
+        **_kwargs,
     ) -> ScheduledExport:
         """
         Create a scheduled export. Validates via ScheduledExportBusinessRules before mutation.
@@ -386,15 +396,15 @@ class ScheduledExportService(BaseService):
         )
 
         # Create scheduled export
-        create_kw = dict(
-            tenant=tenant,
-            name=name,
-            destination_type=destination_type,
-            destination_config=destination_config,
-            schedule_config=schedule_config,
-            source_scope=source_scope,
-            status=ScheduledExportStatus.ACTIVE,
-        )
+        create_kw = {
+            "tenant": tenant,
+            "name": name,
+            "destination_type": destination_type,
+            "destination_config": destination_config,
+            "schedule_config": schedule_config,
+            "source_scope": source_scope,
+            "status": ScheduledExportStatus.ACTIVE,
+        }
         scheduled_export = ScheduledExport.objects.create(**create_kw)
 
         # Emit audit event
@@ -427,7 +437,7 @@ class ScheduledExportService(BaseService):
         schedule_config: dict[str, Any] | None = None,
         source_scope: dict[str, Any] | None = None,
         status: str | None = None,
-        **kwargs,
+        **_kwargs,
     ) -> ScheduledExport:
         """
         Update a scheduled export. Validates via ScheduledExportBusinessRules before mutation.
@@ -599,6 +609,31 @@ class ScheduledExportService(BaseService):
         # Delete scheduled export
         scheduled_export.delete()
 
+    def _find_existing_export_run(
+        self,
+        scheduled_export: ScheduledExport,
+        *,
+        prefect_flow_run_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> ScheduledExportRun | None:
+        """The shared idempotency lookup (6.11) — one source of truth for
+        the replay contract, used by both ``create_export_run`` and
+        ``execute_export``."""
+        if prefect_flow_run_id:
+            existing = ScheduledExportRun.objects.filter(
+                scheduled_export=scheduled_export,
+                prefect_flow_run_id=prefect_flow_run_id,
+            ).first()
+            if existing:
+                return existing
+        if idempotency_key:
+            for r in ScheduledExportRun.objects.filter(scheduled_export=scheduled_export).order_by(
+                "-created_at"
+            )[:100]:
+                if (r.result_json or {}).get("idempotency_key") == idempotency_key:
+                    return r
+        return None
+
     def create_export_run(
         self,
         scheduled_export_id: str,
@@ -636,22 +671,14 @@ class ScheduledExportService(BaseService):
             tenant_id=effective_tenant_id,
         )
 
-        # Check idempotency by prefect_flow_run_id
-        if prefect_flow_run_id:
-            existing = ScheduledExportRun.objects.filter(
-                scheduled_export=scheduled_export,
-                prefect_flow_run_id=prefect_flow_run_id,
-            ).first()
-            if existing:
-                return existing
-
-        # Check idempotency by idempotency_key
-        if idempotency_key:
-            for r in ScheduledExportRun.objects.filter(scheduled_export=scheduled_export).order_by(
-                "-created_at"
-            )[:100]:
-                if (r.result_json or {}).get("idempotency_key") == idempotency_key:
-                    return r
+        # Check idempotency by prefect_flow_run_id / idempotency_key
+        existing = self._find_existing_export_run(
+            scheduled_export,
+            prefect_flow_run_id=prefect_flow_run_id,
+            idempotency_key=idempotency_key,
+        )
+        if existing:
+            return existing
 
         # Check plan limit for export runs per month (Phase 25.4.1)
         from hub.apps.tenants.services import PlanLimitService
@@ -677,11 +704,117 @@ class ScheduledExportService(BaseService):
 
         return run
 
+    def execute_export(
+        self,
+        scheduled_export_id: str,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        prefect_flow_run_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """6.2 (wire-databricks-dlt-movement) — the dlt dispatch spine
+        (design D1): create the run through the canonical lifecycle,
+        dispatch the ``execute_dlt_export`` entrypoint with the export
+        row's id, and record the write outcome on the run's terminal
+        state. The entrypoint stays the single canonical seam — the
+        worker-run lifecycles (the manual trigger + the internal
+        run-create) both route through here."""
+        effective_tenant_id = tenant_id or self.tenant_id
+        if not effective_tenant_id:
+            raise ValidationError("tenant_id is required", code="TENANT_REQUIRED", details={})
+
+        scheduled_export = self.get_resource_or_raise(
+            ScheduledExport, scheduled_export_id, tenant_id=effective_tenant_id
+        )
+
+        # 6.11 — the service-level no-double-dispatch contract: a replay
+        # returns the existing run WITHOUT re-dispatching (the view layer
+        # guards the HTTP surface; this guard covers direct seam callers).
+        existing = self._find_existing_export_run(
+            scheduled_export,
+            prefect_flow_run_id=prefect_flow_run_id,
+            idempotency_key=idempotency_key,
+        )
+        if existing:
+            return {
+                "run_id": str(existing.id),
+                "run_status": existing.status,
+                "items_found": existing.items_found or 0,
+                "items_exported": existing.items_exported or 0,
+                "items_failed": existing.items_failed or 0,
+                "error_message": None,
+                "replayed": True,
+            }
+
+        run = self.create_export_run(
+            str(scheduled_export.id),
+            tenant_id=effective_tenant_id,
+            user_id=user_id,
+            prefect_flow_run_id=prefect_flow_run_id,
+            idempotency_key=idempotency_key,
+        )
+
+        from hub.data_movement.export_execution import execute_dlt_export
+
+        result = execute_dlt_export(str(scheduled_export.id))
+
+        # W3.1 (R2-P1) — the spine honors CANCELLED: a run cancelled while
+        # the entrypoint executed keeps its terminal state; the dlt
+        # outcome is recorded without overwriting it.
+        run.refresh_from_db()
+        if run.status == ScheduledExportRunStatus.CANCELLED:
+            run.result_json = {**(run.result_json or {}), "dlt_outcome": result}
+            run.save(update_fields=["result_json", "updated_at"])
+            return {
+                **result,
+                "run_id": str(run.id),
+                "run_status": ScheduledExportRunStatus.CANCELLED,
+            }
+
+        failed = bool(result.get("error_message"))
+        new_status = (
+            ScheduledExportRunStatus.FAILED if failed else ScheduledExportRunStatus.COMPLETED
+        )
+
+        self.update_export_run(
+            str(run.id),
+            tenant_id=effective_tenant_id,
+            status=new_status,
+            items_found=result.get("items_found") or 0,
+            items_exported=result.get("items_exported") or 0,
+            items_failed=result.get("items_failed") or 0,
+            result_json={**(run.result_json or {}), "dlt_outcome": result},
+        )
+
+        # W3.2 (R2-P5) — uniform completion: the spine routes completion
+        # through the canonical side-effect contract exactly once (the
+        # same contract as the internal PATCH). A side-effect failure
+        # must never roll back the run's terminal state — the outbox
+        # retries them (Phase 76).
+        run.refresh_from_db()
+        try:
+            from .worker_run_lifecycle import apply_run_completion_side_effects
+
+            apply_run_completion_side_effects(run, new_status)
+        except Exception as e:
+            logger.error(
+                "dlt_export_side_effects_failed",
+                run_id=str(run.id),
+                error=str(e),
+                exc_info=True,
+            )
+
+        return {
+            **result,
+            "run_id": str(run.id),
+            "run_status": new_status,
+        }
+
     def update_export_run(
         self,
         run_id: str,
         tenant_id: str | None = None,
-        user_id: str | None = None,
+        user_id: str | None = None,  # internal API contract — callers pass by keyword
         status: str | None = None,
         items_found: int | None = None,
         items_exported: int | None = None,
@@ -689,6 +822,7 @@ class ScheduledExportService(BaseService):
         result_json: dict[str, Any] | None = None,
         completed_at: str | None = None,
         prefect_flow_run_id: str | None = None,
+        heartbeat_at: str | None = None,
     ) -> ScheduledExportRun:
         """
         Update a scheduled export run. Used by internal API.
@@ -725,7 +859,27 @@ class ScheduledExportService(BaseService):
             raise NotFoundError(
                 f"Export run {run_id} not found",
                 details={"resource_type": "SCHEDULED_EXPORT_RUN", "resource_id": run_id},
-            )
+            ) from None
+
+        # W3.1 (R2-P1) — status writes through the service seam are
+        # validated against the shared guarded matrix: a terminal run can
+        # never be re-opened (no FAILED→COMPLETED re-fire) and a worker
+        # completion can never overwrite CANCELLED. The model-level guard
+        # (ScheduledExportRun.clean) is the backstop for every other
+        # writer.
+        if status is not None and status != run.status:
+            try:
+                ExportRunStateMachine.validate_transition(run.status, status)
+            except DjangoValidationError as e:
+                raise ValidationError(
+                    str(e),
+                    code="INVALID_TRANSITION",
+                    details={
+                        "run_id": run_id,
+                        "from_status": run.status,
+                        "to_status": status,
+                    },
+                ) from e
 
         # Update fields
         update_fields = []
@@ -754,6 +908,14 @@ class ScheduledExportService(BaseService):
         if prefect_flow_run_id is not None:
             run.prefect_flow_run_id = prefect_flow_run_id
             update_fields.append("prefect_flow_run_id")
+        # W3.5 (R2-P4) — the worker's heartbeat (liveness lease)
+        if heartbeat_at is not None:
+            from django.utils.dateparse import parse_datetime
+
+            parsed_heartbeat = parse_datetime(heartbeat_at)
+            if parsed_heartbeat:
+                run.heartbeat_at = parsed_heartbeat
+                update_fields.append("heartbeat_at")
 
         # Save updates
         if update_fields:

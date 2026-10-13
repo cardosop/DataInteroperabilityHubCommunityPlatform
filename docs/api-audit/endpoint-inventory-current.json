@@ -2021,28 +2021,6 @@
       },
       {
         "type": "path",
-        "pattern": "^(?P<id>[^/.]+)/share/$",
-        "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-        "name": "dataset-share",
-        "service": "datasets",
-        "methods": [
-          "get"
-        ],
-        "callback": "DatasetViewSet"
-      },
-      {
-        "type": "path",
-        "pattern": "^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-        "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-        "name": "dataset-share",
-        "service": "datasets",
-        "methods": [
-          "get"
-        ],
-        "callback": "DatasetViewSet"
-      },
-      {
-        "type": "path",
         "pattern": "^(?P<id>[^/.]+)/versions/$",
         "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
         "name": "dataset-versions",
@@ -13825,28 +13803,6 @@
       },
       {
         "type": "path",
-        "pattern": "share/<uuid:asset_id>/",
-        "full_path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-        "name": "",
-        "service": "warehouses",
-        "methods": [
-          "get"
-        ],
-        "callback": "DeltaShareView"
-      },
-      {
-        "type": "path",
-        "pattern": "share/<uuid:asset_id>/query/",
-        "full_path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
-        "name": "",
-        "service": "warehouses",
-        "methods": [
-          "get"
-        ],
-        "callback": "DeltaShareView"
-      },
-      {
-        "type": "path",
         "pattern": "dashboard/",
         "full_path": "/api/v1/breach/dashboard/",
         "name": "breach-dashboard",
@@ -17585,28 +17541,6 @@
           "pattern": "^(?P<id>[^/.]+)/schema-evolution\\.(?P<format>[a-z0-9]+)/?$",
           "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/schema-evolution\\.(?P<format>[a-z0-9]+)/?$",
           "name": "dataset-schema-evolution",
-          "service": "datasets",
-          "methods": [
-            "get"
-          ],
-          "callback": "DatasetViewSet"
-        },
-        {
-          "type": "path",
-          "pattern": "^(?P<id>[^/.]+)/share/$",
-          "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-          "name": "dataset-share",
-          "service": "datasets",
-          "methods": [
-            "get"
-          ],
-          "callback": "DatasetViewSet"
-        },
-        {
-          "type": "path",
-          "pattern": "^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-          "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-          "name": "dataset-share",
           "service": "datasets",
           "methods": [
             "get"
@@ -29046,28 +28980,6 @@
             "get"
           ],
           "callback": "LiveQueryViewSet"
-        },
-        {
-          "type": "path",
-          "pattern": "share/<uuid:asset_id>/",
-          "full_path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-          "name": "",
-          "service": "warehouses",
-          "methods": [
-            "get"
-          ],
-          "callback": "DeltaShareView"
-        },
-        {
-          "type": "path",
-          "pattern": "share/<uuid:asset_id>/query/",
-          "full_path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
-          "name": "",
-          "service": "warehouses",
-          "methods": [
-            "get"
-          ],
-          "callback": "DeltaShareView"
         }
       ],
       "breach": [
@@ -33937,35 +33849,6 @@
             "pattern": "^(?P<id>[^/.]+)/schema-evolution\\.(?P<format>[a-z0-9]+)/?$",
             "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/schema-evolution\\.(?P<format>[a-z0-9]+)/?$",
             "name": "dataset-schema-evolution",
-            "service": "datasets",
-            "methods": [
-              "get"
-            ],
-            "callback": "DatasetViewSet"
-          }
-        ]
-      },
-      {
-        "type": "duplicate_name",
-        "name": "dataset-share",
-        "count": 2,
-        "endpoints": [
-          {
-            "type": "path",
-            "pattern": "^(?P<id>[^/.]+)/share/$",
-            "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "name": "dataset-share",
-            "service": "datasets",
-            "methods": [
-              "get"
-            ],
-            "callback": "DatasetViewSet"
-          },
-          {
-            "type": "path",
-            "pattern": "^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "name": "dataset-share",
             "service": "datasets",
             "methods": [
               "get"
@@ -49816,28 +49699,6 @@
           },
           {
             "type": "path",
-            "pattern": "^(?P<id>[^/.]+)/share/$",
-            "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share/$",
-            "name": "dataset-share",
-            "service": "datasets",
-            "methods": [
-              "get"
-            ],
-            "callback": "DatasetViewSet"
-          },
-          {
-            "type": "path",
-            "pattern": "^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/share\\.(?P<format>[a-z0-9]+)/?$",
-            "name": "dataset-share",
-            "service": "datasets",
-            "methods": [
-              "get"
-            ],
-            "callback": "DatasetViewSet"
-          },
-          {
-            "type": "path",
             "pattern": "^(?P<id>[^/.]+)/versions/$",
             "full_path": "/api/v1/datasets/^(?P<id>[^/.]+)/versions/$",
             "name": "dataset-versions",
@@ -61235,28 +61096,6 @@
               "get"
             ],
             "callback": "LiveQueryViewSet"
-          },
-          {
-            "type": "path",
-            "pattern": "share/<uuid:asset_id>/",
-            "full_path": "/api/v1/warehouses/share/<uuid:asset_id>/",
-            "name": "",
-            "service": "warehouses",
-            "methods": [
-              "get"
-            ],
-            "callback": "DeltaShareView"
-          },
-          {
-            "type": "path",
-            "pattern": "share/<uuid:asset_id>/query/",
-            "full_path": "/api/v1/warehouses/share/<uuid:asset_id>/query/",
-            "name": "",
-            "service": "warehouses",
-            "methods": [
-              "get"
-            ],
-            "callback": "DeltaShareView"
           }
         ]
       },

@@ -102,10 +102,9 @@
 
 .resource-picker-browse-link {
   color: var(--color-primary);
-  text-decoration: none;
-}
-
-.resource-picker-browse-link:hover {
+  /* WCAG 1.4.1 (link-in-text-block): same contract as
+     ``asset-picker-browse-link`` — persistent underline so the link is
+     distinguishable from the muted hint text without color/hover. */
   text-decoration: underline;
 }
 

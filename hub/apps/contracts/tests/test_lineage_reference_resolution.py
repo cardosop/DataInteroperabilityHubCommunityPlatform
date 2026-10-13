@@ -270,8 +270,10 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         # the resolver actually finds them — previous version only tested
         # the "not found" branch, making the else-branch dead code.
         tenant = Tenant.objects.create(
-            name=f"sc-{uuid.uuid4().hex[:8]}", slug=f"sc-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"sc-{uuid.uuid4().hex[:8]}",
+            slug=f"sc-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         Contract.objects.create(
             tenant=tenant,
@@ -295,8 +297,10 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
     def test_resolve_contract_with_unicode_characters(self):
         """Contract resolution with unicode characters must resolve successfully."""
         tenant = Tenant.objects.create(
-            name=f"uc-{uuid.uuid4().hex[:8]}", slug=f"uc-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"uc-{uuid.uuid4().hex[:8]}",
+            slug=f"uc-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         Contract.objects.create(
             tenant=tenant,

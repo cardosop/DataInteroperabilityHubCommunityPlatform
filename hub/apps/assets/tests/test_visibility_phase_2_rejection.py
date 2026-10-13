@@ -87,12 +87,15 @@ def _seed_tenant_user_asset() -> tuple[Tenant, User, Asset]:
         status=UserStatus.ACTIVE,
     )
     ensure_user_has_data_provider_role(user)
+    # NOTE: no ``visibility=...`` kwarg — phase-2 tests model
+    # POST-migration callers (visibility is derived from status:
+    # DRAFT → INTERNAL). The legacy-kwarg construction path is pinned
+    # in test_visibility_deprecation.py.
     asset = Asset.objects.create(
         tenant=tenant,
         key=f"asset-{uid}",
         name="VisPhase2 Asset",
         status=AssetStatus.DRAFT,
-        visibility=AssetVisibility.INTERNAL,
         created_by=user,
     )
     return tenant, user, asset
@@ -138,15 +141,18 @@ class TestPhase2RejectionFlagOff(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_visibility_in_body_does_not_return_400_FIELD_REMOVED(self):
-        response = _patch_visibility(
-            self.client,
-            self.asset,
-            visibility=AssetVisibility.PUBLIC,
-        )
         # With the flag OFF, the phase-2 rejection branch is
         # unreachable. The PATCH must succeed (200) regardless of
         # whether the visibility write is a no-op (phase-1 deprecation)
-        # or actually applied (pre-phase-1 legacy).
+        # or actually applied (pre-phase-1 legacy) — AND the phase-1
+        # deprecation signal must still fire (the telemetry the
+        # 3-release-cycle gate depends on).
+        with pytest.warns(DeprecationWarning, match="Asset.visibility"):
+            response = _patch_visibility(
+                self.client,
+                self.asset,
+                visibility=AssetVisibility.PUBLIC,
+            )
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,

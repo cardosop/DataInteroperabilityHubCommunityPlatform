@@ -26,9 +26,9 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from hub.apps.auth.permissions import HasAnyRole, HasScope
+from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
-from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 from .business_rules import DataMeshBusinessRules
@@ -109,10 +109,10 @@ class DomainViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(detail=result.data)
         super().initial(request, *args, **kwargs)
 
-    filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ["name", "status", "created_at", "updated_at"]
-    ordering = ["-created_at"]  # Default ordering
-    search_fields = ["name", "description"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    ordering_fields = ("name", "status", "created_at", "updated_at")
+    ordering = "-created_at"  # Default ordering
+    search_fields = ("name", "description")
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
@@ -201,7 +201,9 @@ class DomainViewSet(viewsets.ModelViewSet):
             try:
                 uuid.UUID(str(lookup_value))
             except (ValueError, TypeError, AttributeError):
-                raise DRFValidationError({"id": [f'"{lookup_value}" is not a valid UUID.']})
+                raise DRFValidationError(
+                    {"id": [f'"{lookup_value}" is not a valid UUID.']}
+                ) from None
         # Ensure tenant_id is set on request if not already set
         # This is important for custom actions where middleware might not have run
         if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
@@ -264,7 +266,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         return None
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """Create a new data mesh domain"""
         # Check rate limiting
         allowed, rate_limit_results = check_rate_limit(request)
@@ -285,7 +287,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 if str(req_uuid) != str(tenant_id):
                     raise DRFValidationError("Cannot create domain in another tenant")
             except (ValueError, TypeError):
-                raise DRFValidationError("Invalid tenant_id format")
+                raise DRFValidationError("Invalid tenant_id format") from None
 
         # Validate request data
         serializer = DomainCreateSerializer(data=request.data)
@@ -317,7 +319,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         except ConflictError as e:
             return handle_service_exception(e)
         except DjangoValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -327,7 +329,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         response_serializer = DomainSerializer(domain)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    def list(self, request, *args, **kwargs):
+    def list(self, request, *_args, **_kwargs):
         """List domains with pagination"""
         # Check rate limiting
         allowed, rate_limit_results = check_rate_limit(request)
@@ -378,7 +380,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             headers=headers,
         )
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *_args, **_kwargs):
         """Retrieve a specific domain"""
         # Check rate limiting
         allowed, rate_limit_results = check_rate_limit(request)
@@ -396,7 +398,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, headers=headers)
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """Update a domain (full update)"""
         # Check rate limiting
         allowed, rate_limit_results = check_rate_limit(request)
@@ -444,7 +446,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         except ConflictError as e:
             return handle_service_exception(e)
         except DjangoValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -455,7 +457,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, headers=headers)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """Delete a domain"""
         # Check rate limiting
         allowed, rate_limit_results = check_rate_limit(request)
@@ -565,11 +567,11 @@ class DomainViewSet(viewsets.ModelViewSet):
         except NotFoundError as e:
             return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
         except ConflictError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
         except DjangoValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -690,9 +692,9 @@ class DomainViewSet(viewsets.ModelViewSet):
         except NotFoundError as e:
             return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
         except ConflictError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
         return Response(DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK)
@@ -1099,9 +1101,9 @@ class DomainViewSet(viewsets.ModelViewSet):
         except NotFoundError as e:
             return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
         except DjangoValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -1226,7 +1228,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         except PolicyApplication.DoesNotExist:
             raise NotFound(
                 f"Policy application for policy {policy_id} not found on domain {instance.id}"
-            )
+            ) from None
 
         # Initialize service
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
@@ -1241,9 +1243,9 @@ class DomainViewSet(viewsets.ModelViewSet):
         except NotFoundError as e:
             return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
         except DjangoValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -1303,9 +1305,9 @@ class DomainViewSet(viewsets.ModelViewSet):
         except NotFoundError as e:
             return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
         except DjangoValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -1433,7 +1435,9 @@ class DomainViewSet(viewsets.ModelViewSet):
                 id=report_id, domain=instance, domain__tenant_id=tenant_id
             )
         except ComplianceReport.DoesNotExist:
-            raise NotFound(f"Compliance report {report_id} not found for domain {instance.id}")
+            raise NotFound(
+                f"Compliance report {report_id} not found for domain {instance.id}"
+            ) from None
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -1564,7 +1568,7 @@ class TopologyViewSet(viewsets.ViewSet):
                 include_health_metrics=include_health_metrics,
             )
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            raise DRFValidationError(str(e)) from e
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -1602,7 +1606,7 @@ class TopologyViewSet(viewsets.ViewSet):
         try:
             domain = DataMeshDomain.objects.get(id=pk, tenant_id=tenant_id)
         except DataMeshDomain.DoesNotExist:
-            raise NotFound("Domain not found")
+            raise NotFound("Domain not found") from None
 
         # Initialize service and get full topology
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
@@ -1798,7 +1802,7 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
     def get_tenant_id_from_request(self):
         return get_request_tenant_id(self.request)
 
-    def list(self, request):
+    def list(self, _request):
         """
         Get mesh governance summary.
 
@@ -1824,7 +1828,7 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
         )
 
     @action(detail=False, methods=["get"], url_path="policies")
-    def policies(self, request):
+    def policies(self, _request):
         """
         List governance policies applied to mesh domains.
 
@@ -1857,7 +1861,7 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
         return Response({"results": data}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="compliance")
-    def compliance(self, request):
+    def compliance(self, _request):
         """
         List mesh governance compliance status.
 
@@ -1894,7 +1898,7 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
         return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="reports")
-    def reports(self, request):
+    def reports(self, _request):
         """
         List mesh governance reports.
 

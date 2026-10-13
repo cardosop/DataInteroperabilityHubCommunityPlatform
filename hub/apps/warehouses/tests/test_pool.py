@@ -39,38 +39,38 @@ class WarehouseConnectionPoolTests(SimpleTestCase):
 
     def test_acquire_reuses_idle_connector(self):
         """Releasing then acquiring again returns the same connector."""
-        conn1 = self.pool.acquire("t1", "snowflake", lambda: object())
+        conn1 = self.pool.acquire("t1", "snowflake", object)
         self.pool.release("t1", "snowflake")
-        conn2 = self.pool.acquire("t1", "snowflake", lambda: object())
+        conn2 = self.pool.acquire("t1", "snowflake", object)
         assert conn1 is conn2
 
     def test_acquire_different_tenants_different_connectors(self):
         """Different tenant/warehouse combos produce different connectors."""
-        conn1 = self.pool.acquire("t1", "snowflake", lambda: object())
-        conn2 = self.pool.acquire("t2", "snowflake", lambda: object())
+        conn1 = self.pool.acquire("t1", "snowflake", object)
+        conn2 = self.pool.acquire("t2", "snowflake", object)
         assert conn1 is not conn2
 
     def test_acquire_different_warehouse_types_different_connectors(self):
         """Different warehouse types for same tenant produce different connectors."""
-        conn1 = self.pool.acquire("t1", "snowflake", lambda: object())
-        conn2 = self.pool.acquire("t1", "bigquery", lambda: object())
+        conn1 = self.pool.acquire("t1", "snowflake", object)
+        conn2 = self.pool.acquire("t1", "bigquery", object)
         assert conn1 is not conn2
 
     def test_acquire_exhausted_pool_raises(self):
         """When all slots are active, further acquires raise."""
         pool = WarehouseConnectionPool(max_connections=2)
-        pool.acquire("t1", "snowflake", lambda: object())
-        pool.acquire("t2", "snowflake", lambda: object())
+        pool.acquire("t1", "snowflake", object)
+        pool.acquire("t2", "snowflake", object)
         with self.assertRaises(WarehouseConnectionError) as ctx:
-            pool.acquire("t3", "snowflake", lambda: object())
+            pool.acquire("t3", "snowflake", object)
         assert "exhausted" in str(ctx.exception).lower()
 
     def test_release_marks_idle(self):
         """After release, the connector is marked not in_use."""
-        self.pool.acquire("t1", "snowflake", lambda: object())
+        self.pool.acquire("t1", "snowflake", object)
         self.pool.release("t1", "snowflake")
         # acquirable again without exhausting
-        self.pool.acquire("t1", "snowflake", lambda: object())
+        self.pool.acquire("t1", "snowflake", object)
 
     def test_release_unknown_key_no_error(self):
         """Releasing an unregistered key does not raise."""
@@ -99,7 +99,7 @@ class WarehouseConnectionPoolTests(SimpleTestCase):
         pool.release("t1", "snowflake")
         pool.release("t2", "bigquery")
         # Next acquire triggers purge of all expired
-        pool.acquire("t3", "snowflake", lambda: object())
+        pool.acquire("t3", "snowflake", object)
         assert mock1.close.called
         assert mock2.close.called
 
@@ -114,7 +114,7 @@ class WarehouseConnectionPoolTests(SimpleTestCase):
         pool.release("t1", "snowflake")
         pool.release("t2", "bigquery")
         # Should not raise despite bad.close() error
-        pool.acquire("t3", "athena", lambda: object())
+        pool.acquire("t3", "athena", object)
         assert good.close.called
 
 

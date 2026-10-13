@@ -19,7 +19,7 @@ class Command(BaseCommand):
             "--verbose", action="store_true", default=False, help="Show additional key details."
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         verbose = options["verbose"]
 
         jwt_key = getattr(settings, "JWT_SIGNING_KEY", None)

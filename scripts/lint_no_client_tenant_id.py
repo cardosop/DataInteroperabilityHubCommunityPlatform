@@ -36,13 +36,18 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 try:
     import yaml
 except ImportError as exc:  # pragma: no cover - resolved by `pip install pyyaml`
-    raise SystemExit("lint_no_client_tenant_id.py requires PyYAML — `pip install pyyaml`") from exc
+    raise SystemExit(
+        "lint_no_client_tenant_id.py requires PyYAML — `pip install pyyaml`"
+    ) from exc
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -50,15 +55,28 @@ DEFAULT_SEARCH_ROOT = REPO_ROOT / "hub" / "apps"
 DEFAULT_ALLOWLIST = REPO_ROOT / "lint" / "no-client-tenant-id-allowlist.yml"
 
 # Each pattern matches a python source line that reads tenant_id out of
-# the HTTP request envelope. The set is deliberately small — broaden
+# a client-supplied envelope. The set is deliberately small — broaden
 # only if a new attack-surface variant appears.
+#
+# W1.2b (oss-release-remediation): the serializer.validated_data envelope
+# is the same class — the register JOIN (auth/views.py), the event-replay
+# endpoint (core/events/views.py) and the public DSAR form read a
+# client-supplied tenant_id straight out of the validated payload.
 _PATTERN_RE = re.compile(
     r"""
-    (?:self\.)?request          # request or self.request
+    (?:self\.)?request                          # request or self.request
     \.
-    (?:data|query_params)       # the HTTP envelope
+    (?:data|query_params)                       # the HTTP envelope
     \.get\(\s*
-    ['"]tenant_id['"]           # the field we forbid clients from setting
+    ['"]tenant_id['"]                           # the field we forbid clients from setting
+    |
+    (?:\w+\.)*validated_data                    # the DRF validated payload
+    \.get\(\s*                                  # (serializer. / ser. / bare)
+    ['"]tenant_id['"]
+    |
+    (?:\w+\.)*validated_data                    # the subscript form
+    \[\s*
+    ['"]tenant_id['"]\s*\]
     """,
     re.VERBOSE,
 )
@@ -77,7 +95,13 @@ _SKIP_GLOBS = (
 
 def _iter_python_files(search_root: Path) -> Iterable[Path]:
     for path in search_root.rglob("*.py"):
-        rel = path.relative_to(REPO_ROOT)
+        # The skip globs match repo-relative paths; fixture trees outside
+        # the repo (pins run the lint against tmp trees) match against
+        # the search-root-relative form instead.
+        try:
+            rel = path.relative_to(REPO_ROOT)
+        except ValueError:
+            rel = path.relative_to(search_root)
         skip = False
         for glob in _SKIP_GLOBS:
             if rel.match(glob):
@@ -151,18 +175,39 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    allowed = _load_allowlist(args.allowlist)
+    # Phase U triage — a RELATIVE --root (the CI invocation passes
+    # ``hub/apps``) made every rglob path relative, and
+    # ``relative_to(REPO_ROOT)`` (an absolute path) raised ValueError.
+    # Resolve both at entry so rel-path computation is CWD-independent.
+    root = args.root.resolve()
+    allowlist = args.allowlist.resolve()
+
+    allowed = _load_allowlist(allowlist)
     violations: list[str] = []
 
-    for path in _iter_python_files(args.root):
+    for path in _iter_python_files(root):
         hits = _scan_file(path)
         if not hits:
             continue
-        rel = str(path.relative_to(REPO_ROOT))
+        # Repo-relative for the live tree (the allowlist contract);
+        # root-relative for fixture trees outside the repo (the pins).
+        try:
+            rel = str(path.relative_to(REPO_ROOT))
+        except ValueError:
+            rel = str(path.relative_to(root))
         for line_no, line_text in hits:
             if (rel, line_no) in allowed:
                 continue
             violations.append(f"{rel}:{line_no}: {line_text.strip()}")
+
+    # Display paths relative to the repo where possible; fixture trees
+    # outside the repo (the pins) print as-is.
+    try:
+        allowlist_disp = str(allowlist.relative_to(REPO_ROOT))
+        root_disp = str(root.relative_to(REPO_ROOT))
+    except ValueError:
+        allowlist_disp = str(allowlist)
+        root_disp = str(root)
 
     if violations:
         print(
@@ -172,7 +217,7 @@ def main() -> int:
             "`request.data` / `request.query_params`. If a site is a "
             "legitimate cross-tenant rejection guard (defence-in-depth) "
             "or an explicit tenant switch flow, add it to "
-            f"{args.allowlist.relative_to(REPO_ROOT)} with a written "
+            f"{allowlist_disp} with a written "
             "reason. Otherwise remove the read.",
             file=sys.stderr,
         )
@@ -181,7 +226,7 @@ def main() -> int:
         return 1
 
     print(
-        f"lint-no-client-tenant-id: scanned {args.root.relative_to(REPO_ROOT)}; "
+        f"lint-no-client-tenant-id: scanned {root_disp}; "
         f"no violations outside the allowlist ({len(allowed)} allowed entries)."
     )
     return 0

@@ -16,7 +16,13 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+_baas_models = pytest.importorskip("hub.apps.baas.models")
 hub = pytest.importorskip("hub")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import uuid
 from datetime import timedelta
 
@@ -27,9 +33,13 @@ from django.contrib.auth import get_user_model
 from django.test import LiveServerTestCase
 from django.utils import timezone
 
-from hub.apps.baas.models import APIKey, APITierModel
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, UserRole, UserStatus
+
+# GATE-29 — no static paid import: reuse the importorskip'd module object
+# above (its skip-in-public-tree behaviour stays intact).
+APIKey = _baas_models.APIKey
+APITierModel = _baas_models.APITierModel
 
 User = get_user_model()
 

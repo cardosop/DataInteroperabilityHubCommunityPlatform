@@ -3,8 +3,7 @@
  *
  * Covers PENDING → PENDING_NEXT_APPROVER → APPROVED chain.
  */
-import { expect, test } from '../../fixtures/test-data-cleanup';
-import { getTestUser } from '../../fixtures/auth';
+import { test } from '../../fixtures/test-data-cleanup';
 
 test.describe('276.B.107 @deferred', () => {
   test.skip('multi-step approval: PENDING → PENDING_NEXT_APPROVER → APPROVED', async () => {

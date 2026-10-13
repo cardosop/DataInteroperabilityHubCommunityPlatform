@@ -10,6 +10,7 @@ rather than testing live log output.
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -26,7 +27,7 @@ _REQUIRED_TRACE_FIELDS = {"trace_id", "span_id"}
 class TestStructlogConfiguration:
     """All services configure structlog or JSON logging with required fields."""
 
-    _SERVICE_NAMES = [
+    _SERVICE_NAMES: ClassVar[list] = [
         "semantic-service",
         "compliance-service",
         "dq-service",
@@ -114,10 +115,11 @@ class TestRequiredLogFields:
                     continue
                 try:
                     content = py_file.read_text()
-                    if "structlog" in content or "logging" in content:
-                        # Check that timestamp configuration exists
-                        if any(kw in content for kw in ("timestamp", "TimeStamper", "%(asctime)")):
-                            break
+                    # Check that timestamp configuration exists
+                    if ("structlog" in content or "logging" in content) and any(
+                        kw in content for kw in ("timestamp", "TimeStamper", "%(asctime)")
+                    ):
+                        break
                 except Exception:
                     pass
 

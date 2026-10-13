@@ -7,8 +7,16 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
+from urllib.parse import urlparse
 
 import click
+
+# Imported at module scope, under an explicit alias, so it is a patchable
+# seam: ``/health/`` sits outside the API prefix, so this is the one place
+# the CLI bypasses ``api_client`` and talks to ``requests`` directly.
+# While the import lived inside the function body the attribute did not
+# exist on the module and every test patching it errored at setup.
+import requests as _requests  # alias marks the patchable test seam
 
 from ..api_client import api_client
 
@@ -36,10 +44,6 @@ def check_health(output_format: str):
         # The health endpoint lives at the server root, outside the API
         # prefix.  Use raw ``requests`` to avoid the base_url prefix that
         # ``api_client._request`` applies.
-        from urllib.parse import urlparse
-
-        import requests as _requests
-
         base = api_client._get_base_url()
         parsed = urlparse(base)
         health_url = f"{parsed.scheme}://{parsed.netloc}/health/"
@@ -60,7 +64,7 @@ def check_health(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to check health: {e}")
+        raise click.ClickException(f"Failed to check health: {e}") from e
 
 
 @health.command("components")
@@ -88,7 +92,7 @@ def check_components(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to check components: {e}")
+        raise click.ClickException(f"Failed to check components: {e}") from e
 
 
 @health.command("circuit-breakers")
@@ -113,19 +117,23 @@ def check_circuit_breakers(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to check circuit breakers: {e}")
+        raise click.ClickException(f"Failed to check circuit breakers: {e}") from e
 
 
 @health.command("live")
 def check_liveness():
     """Check liveness probe (process is up, no DB/Redis)"""
-    try:
-        data = api_client.get("/health/live/")
+
+    def _report_liveness(data) -> None:
         status = data.get("status", "unknown")
         click.echo(f"Liveness: {status}")
         if status != "ok":
             raise click.ClickException(f"Liveness check failed: {status}")
+
+    try:
+        data = api_client.get("/health/live/")
+        _report_liveness(data)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to check liveness: {e}")
+        raise click.ClickException(f"Failed to check liveness: {e}") from e

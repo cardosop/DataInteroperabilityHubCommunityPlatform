@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from hub.apps.consent.models import ConsentRecord
 from hub.apps.webhooks.models import WebhookEventType
 from hub.apps.webhooks.service import WebhookDeliveryService
+
+if TYPE_CHECKING:
+    from hub.apps.consent.models import ConsentRecord
 
 logger = structlog.get_logger(__name__)
 

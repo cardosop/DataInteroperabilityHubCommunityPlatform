@@ -52,6 +52,9 @@ import logging
 import os
 from typing import Any
 
+import redis
+from django.template.exceptions import TemplateDoesNotExist, TemplateSyntaxError
+
 from hub.apps.api.capabilities import is_capability_enabled
 from hub.apps.contracts.lineage_severity import (
     ContractDiff,
@@ -149,7 +152,7 @@ def handle_contract_updated(
 
     # Step 3 — REQ-LIN-F3-005: walk downstream LineageEdge rows from
     # the changed contract to enumerate AFFECTED contracts, then
-    # collect subscriptions for the union {source} ∪ {downstream}.
+    # collect subscriptions for the union {source} U {downstream}.
     # The walk is bounded (max depth + max nodes) to keep dispatcher
     # cost predictable on dense lineage graphs.
     affected_contract_ids = _walk_downstream_contracts(
@@ -526,7 +529,7 @@ def _enqueue_email(*, user, title: str, body: str, severity: Severity, contract)
                 "notifications/emails/lineage_impact.html",
                 context,
             )
-        except Exception:
+        except (TemplateDoesNotExist, TemplateSyntaxError):
             html = body
         send_mail(
             subject=title,
@@ -604,7 +607,7 @@ def _debounce_holds(client, key: str) -> bool:
         return False
     try:
         return bool(client.exists(key))
-    except Exception:
+    except redis.RedisError:
         return False
 
 
@@ -614,7 +617,7 @@ def _debounce_set(client, key: str, ttl_seconds: int) -> None:
         return
     try:
         client.setex(key, ttl_seconds, "1")
-    except Exception as exc:
+    except redis.RedisError as exc:
         logger.warning(
             "lineage_impact_debounce_set_failed key=%s error=%s",
             key,
@@ -631,7 +634,7 @@ def _rate_limit_exceeded(client, key: str) -> bool:
         if current is None:
             return False
         return int(current) >= F3_PER_TENANT_RATE_LIMIT
-    except Exception:
+    except (redis.RedisError, ValueError):
         return False
 
 
@@ -648,7 +651,7 @@ def _rate_limit_bump(client, key: str, ttl_seconds: int) -> None:
         new_value = client.incr(key)
         if int(new_value) == 1:
             client.expire(key, ttl_seconds)
-    except Exception as exc:
+    except (redis.RedisError, ValueError) as exc:
         logger.warning(
             "lineage_impact_rate_limit_bump_failed key=%s error=%s",
             key,

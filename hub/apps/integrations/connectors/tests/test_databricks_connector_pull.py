@@ -74,12 +74,12 @@ class TestDatabricksConnectorSyncPull(TestCase):
         result = self.connector.sync_pull(listing_ids=["test_share"])
 
         # Assertions
-        self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertEqual(result.total_items, 1)
-        self.assertEqual(result.successful_items, 1)
-        self.assertEqual(result.failed_items, 0)
-        self.assertIn("mappings", result.metadata)
-        self.assertEqual(len(result.metadata["mappings"]), 1)
+        assert result.status == SyncStatus.COMPLETED
+        assert result.total_items == 1
+        assert result.successful_items == 1
+        assert result.failed_items == 0
+        assert "mappings" in result.metadata
+        assert len(result.metadata["mappings"]) == 1
         mock_get_listing.assert_called_once_with("test_share")
         mock_list_resources.assert_called_once_with("test_share")
         mock_map.assert_called_once()
@@ -125,10 +125,10 @@ class TestDatabricksConnectorSyncPull(TestCase):
         result = self.connector.sync_pull(filters={}, options={"limit": 10})
 
         # Assertions
-        self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertEqual(result.total_items, 2)
-        self.assertEqual(result.successful_items, 2)
-        self.assertEqual(result.failed_items, 0)
+        assert result.status == SyncStatus.COMPLETED
+        assert result.total_items == 2
+        assert result.successful_items == 2
+        assert result.failed_items == 0
         # list_listings is called without offset when not provided
         mock_list_listings.assert_called_once_with(filters={}, limit=10)
 
@@ -143,11 +143,11 @@ class TestDatabricksConnectorSyncPull(TestCase):
 
         # Assertions
         # When listing is not found, it's skipped, not failed - status should be COMPLETED
-        self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertEqual(result.total_items, 0)
-        self.assertEqual(result.successful_items, 0)
-        self.assertEqual(result.skipped_items, 1)
-        self.assertEqual(len(result.errors), 1)
+        assert result.status == SyncStatus.COMPLETED
+        assert result.total_items == 0
+        assert result.successful_items == 0
+        assert result.skipped_items == 1
+        assert len(result.errors) == 1
 
     @patch.object(DatabricksConnector, "_request_with_retry")
     @patch.object(DatabricksConnector, "get_listing")
@@ -167,11 +167,11 @@ class TestDatabricksConnectorSyncPull(TestCase):
 
         # Assertions
         # When all items fail (0 successful, 1 failed), status should be FAILED
-        self.assertEqual(result.status, SyncStatus.FAILED)
-        self.assertEqual(result.total_items, 1)
-        self.assertEqual(result.successful_items, 0)
-        self.assertEqual(result.failed_items, 1)
-        self.assertEqual(len(result.errors), 1)
+        assert result.status == SyncStatus.FAILED
+        assert result.total_items == 1
+        assert result.successful_items == 0
+        assert result.failed_items == 1
+        assert len(result.errors) == 1
 
     @patch.object(DatabricksConnector, "_request_with_retry")
     @patch.object(DatabricksConnector, "list_listings")
@@ -183,10 +183,10 @@ class TestDatabricksConnectorSyncPull(TestCase):
         result = self.connector.sync_pull()
 
         # Assertions
-        self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertEqual(result.total_items, 0)
-        self.assertEqual(result.successful_items, 0)
-        self.assertEqual(result.failed_items, 0)
+        assert result.status == SyncStatus.COMPLETED
+        assert result.total_items == 0
+        assert result.successful_items == 0
+        assert result.failed_items == 0
 
     @patch.object(DatabricksConnector, "_request_with_retry")
     @patch.object(DatabricksConnector, "list_listings")
@@ -217,7 +217,7 @@ class TestDatabricksConnectorSyncPull(TestCase):
         result = self.connector.sync_pull(options={"include_resources": False})
 
         # Assertions
-        self.assertEqual(result.status, SyncStatus.COMPLETED)
+        assert result.status == SyncStatus.COMPLETED
         mock_list_resources.assert_not_called()
 
 
@@ -258,15 +258,15 @@ class TestDatabricksConnectorMapToHubAsset(TestCase):
         mapping = self.connector.map_to_hub_asset(listing)
 
         # Assertions
-        self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
-        self.assertEqual(mapping.asset_data["name"], "Test Share")
-        self.assertEqual(mapping.asset_data["description"], "Test description")
-        self.assertEqual(mapping.asset_data["domain"], "test_category")
-        self.assertEqual(mapping.asset_data["tags"], ["tag1", "tag2"])
-        self.assertEqual(mapping.source_metadata["marketplace_type"], "DATABRICKS_MARKETPLACE")
-        self.assertEqual(mapping.source_metadata["listing_id"], "test_share")
-        self.assertIsNotNone(mapping.odps_metadata)
-        self.assertIsNotNone(mapping.odcs_metadata)
+        assert mapping.source_type == AssetSourceType.FEDERATED
+        assert mapping.asset_data["name"] == "Test Share"
+        assert mapping.asset_data["description"] == "Test description"
+        assert mapping.asset_data["domain"] == "test_category"
+        assert mapping.asset_data["tags"] == ["tag1", "tag2"]
+        assert mapping.source_metadata["marketplace_type"] == "DATABRICKS_MARKETPLACE"
+        assert mapping.source_metadata["listing_id"] == "test_share"
+        assert mapping.odps_metadata is not None
+        assert mapping.odcs_metadata is not None
 
     def test_map_to_hub_asset_with_resources(self):
         """Test mapping with resources."""
@@ -292,12 +292,12 @@ class TestDatabricksConnectorMapToHubAsset(TestCase):
         mapping = self.connector.map_to_hub_asset(listing)
 
         # Assertions
-        self.assertEqual(len(mapping.resources), 1)
+        assert len(mapping.resources) == 1
         resource = mapping.resources[0]
-        self.assertEqual(resource.resource_id, "table1")
-        self.assertTrue(resource.metadata.get("external"))
-        self.assertEqual(resource.metadata.get("share_name"), "test_share")
-        self.assertEqual(resource.metadata.get("table_name"), "table1")
+        assert resource.resource_id == "table1"
+        assert resource.metadata.get("external")
+        assert resource.metadata.get("share_name") == "test_share"
+        assert resource.metadata.get("table_name") == "table1"
 
     def test_map_to_hub_asset_with_sync_job_id(self):
         """Test mapping with sync_job_id."""
@@ -312,7 +312,7 @@ class TestDatabricksConnectorMapToHubAsset(TestCase):
         mapping = self.connector.map_to_hub_asset(listing, sync_job_id="job-123")
 
         # Assertions
-        self.assertEqual(mapping.source_metadata["sync_job_id"], "job-123")
+        assert mapping.source_metadata["sync_job_id"] == "job-123"
 
     def test_map_to_hub_asset_no_listing(self):
         """Test mapping with None listing raises ValueError."""
@@ -332,6 +332,6 @@ class TestDatabricksConnectorMapToHubAsset(TestCase):
         mapping = self.connector.map_to_hub_asset(listing)
 
         # Assertions
-        self.assertEqual(mapping.asset_data["name"], "Test Share")
-        self.assertIsNone(mapping.odps_metadata)
-        self.assertIsNone(mapping.odcs_metadata)
+        assert mapping.asset_data["name"] == "Test Share"
+        assert mapping.odps_metadata is None
+        assert mapping.odcs_metadata is None

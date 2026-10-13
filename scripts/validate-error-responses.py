@@ -78,7 +78,7 @@ class ErrorResponseValidator:
                     if endpoint_results["warnings"]:
                         results["warnings"].extend(endpoint_results["warnings"])
 
-        except Exception as e:
+        except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e:
             results["errors"].append(f"Error reading spec: {e}")
             results["valid"] = False
 

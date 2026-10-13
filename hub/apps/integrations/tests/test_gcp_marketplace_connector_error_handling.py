@@ -12,6 +12,7 @@ These tests validate:
 - Structured logging with correlation IDs
 """
 
+import contextlib
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
@@ -25,7 +26,7 @@ from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarket
 
 # Optional Google Cloud imports - skip tests if not available
 try:
-    from google.api_core import exceptions as google_exceptions
+    from google.api_core import exceptions as google_exceptions  # type: ignore[import-untyped]
 
     GoogleAPIError = google_exceptions.GoogleAPIError
     GOOGLE_CLOUD_AVAILABLE = True
@@ -34,7 +35,6 @@ except ImportError:
     GoogleAPIError = Exception  # Fallback
     GOOGLE_CLOUD_AVAILABLE = False
 
-import contextlib
 
 import pytest
 
@@ -45,6 +45,24 @@ pytestmark = pytest.mark.skipif(
 
 class TestGCPMarketplaceConnectorRetryLogic(TestCase):
     """Test retry logic for transient failures"""
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional Google Cloud SDK gets
+            # imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
 
     def setUp(self):
         """Set up test fixtures"""
@@ -308,12 +326,11 @@ class TestGCPMarketplaceConnectorCircuitBreaker(TestCase):
 
         with patch("time.sleep"):
             for _ in range(6):  # More than failure_threshold (5)
-                try:
+                with contextlib.suppress(GoogleAPIError, ConnectionError, CircuitBreakerError):
+                    # Expected — operation fails, then breaker opens
                     self.connector._execute_with_retry(
                         always_failing_operation, "test_operation", "test context"
                     )
-                except (GoogleAPIError, ConnectionError, CircuitBreakerError):
-                    pass  # Expected — operation fails, then breaker opens
 
 
 class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
@@ -398,7 +415,7 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
         def failing_operation():
             call_count[0] += 1
             error = GoogleAPIError("Service unavailable")
-            error.code = 503  # type: ignore[attr-defined]  # test: edge-case type exercise
+            error.code = 503  # test: edge-case type exercise
             raise error
 
         # Set max_retries to 3 for this test
@@ -423,7 +440,7 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
         def failing_operation():
             call_count[0] += 1
             error = GoogleAPIError("Bad request")
-            error.code = 400  # type: ignore[attr-defined]  # test: edge-case type exercise
+            error.code = 400  # test: edge-case type exercise
             raise error
 
         with self.assertRaises(ValueError):
@@ -438,7 +455,7 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
         """Test _map_google_error() maps NotFound to NotFoundError"""
         if not GOOGLE_CLOUD_AVAILABLE:
             self.skipTest("Google Cloud libraries not available")
-        from google.api_core.exceptions import NotFound
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
 
         error = NotFound("Resource not found")
         mapped_error = self.connector._map_google_error(error, context="test", operation="test")

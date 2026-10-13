@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 def api_error_response(
     message: str,
     status_code: int,
-    code: str = None,
-    details: dict = None,
+    code: str | None = None,
+    details: dict | None = None,
 ) -> Response:
     """
     Create a standardized API error response (per perfect1 API contract).
@@ -82,8 +82,8 @@ def api_error_response(
 def error_response(
     error: str,
     code: str,
-    details: dict = None,
-    http_status: int = None,
+    details: dict | None = None,
+    http_status: int | None = None,
 ) -> Response:
     """
     Create a standardized error response (legacy format for backward compatibility).

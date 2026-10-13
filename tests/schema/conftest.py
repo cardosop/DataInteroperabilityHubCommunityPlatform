@@ -28,7 +28,7 @@ def _uid() -> str:
     return uuid.uuid4().hex[:8]
 
 
-@pytest.fixture()
+@pytest.fixture
 def schema_tenant(db):
     """Create a tenant with active subscription for schema tests."""
     t = Tenant.objects.create(
@@ -40,7 +40,7 @@ def schema_tenant(db):
     return t
 
 
-@pytest.fixture()
+@pytest.fixture
 def schema_user(schema_tenant):
     """Create an active user with DATA_PROVIDER + TENANT_ADMIN roles."""
     u = User.objects.create_user(
@@ -54,7 +54,7 @@ def schema_user(schema_tenant):
     return u
 
 
-@pytest.fixture()
+@pytest.fixture
 def authenticated_client(schema_user):
     """Authenticated APIClient using a real JWT token.
 

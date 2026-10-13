@@ -156,6 +156,12 @@ class TestCKANDadosGovBrIntegration(TestCase):
                 os.environ["DADOS_GOV_BR_API_KEY"] = original_primary
             if original_deprecated is not None:
                 os.environ["CKAN_DADOS_GOV_BR_API_KEY"] = original_deprecated
+            elif "CKAN_DADOS_GOV_BR_API_KEY" in os.environ:
+                # The key did not exist before this test — remove it, or the
+                # test key leaks into every later test in the process
+                # (flipped the Dados live-class envpolicy guard into a real
+                # 401 HTTP call, batch 6-4 broad run).
+                del os.environ["CKAN_DADOS_GOV_BR_API_KEY"]
 
     def test_dados_gov_br_in_fallback_list(self):
         """Test that dados.gov.br is in test helpers fallback list."""

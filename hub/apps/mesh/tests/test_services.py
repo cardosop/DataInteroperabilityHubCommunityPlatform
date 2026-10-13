@@ -860,7 +860,8 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         # Test with invalid overrides (non-dict) — should raise ValidationError
         with self.assertRaises(ValidationError):
             self.service.apply_policy(
-                domain_id=str(self.domain.id), policy_id=str(self.policy.id),
+                domain_id=str(self.domain.id),
+                policy_id=str(self.policy.id),
                 overrides="not-a-dict",
             )
 
@@ -877,8 +878,9 @@ class DataMeshServicePolicyOperationsTest(TestCase):
 
         # Verify a compliance report was created
         count_after = ComplianceReport.objects.filter(domain=self.domain).count()
-        self.assertGreater(count_after, count_before,
-                           "apply_policy should create at least one compliance report")
+        self.assertGreater(
+            count_after, count_before, "apply_policy should create at least one compliance report"
+        )
         self.assertIsNotNone(application)
 
     @override_settings(

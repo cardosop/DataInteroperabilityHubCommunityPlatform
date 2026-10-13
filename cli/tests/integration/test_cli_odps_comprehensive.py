@@ -24,24 +24,13 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 @pytest.fixture(autouse=True)
@@ -124,8 +113,8 @@ print(api_key_value)
             # Extract API key from output
             # Look for lines that match API key pattern (long alphanumeric strings)
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 # Skip log lines, JSON lines, and other noise
                 if (
                     line
@@ -307,10 +296,10 @@ def created_odps_contract(sample_odps_json_file, setup_config):
                         pytest.skip(
                             f"Workflow {status_result.get('status')}: {status_result.get('message', 'Unknown error')}"
                         )
-                    time.sleep(2)  # noqa: sleep-needed — polling loop
+                    time.sleep(2)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 except Exception as e:
                     if "not found" not in str(e).lower():
-                        time.sleep(2)  # noqa: sleep-needed — polling loop
+                        time.sleep(2)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                     raise
             pytest.skip(f"Workflow did not complete within {max_wait} seconds")
@@ -347,9 +336,9 @@ def created_odps_contract(sample_odps_json_file, setup_config):
                         pytest.skip(
                             f"Workflow {status_result.get('status')}: {status_result.get('message', 'Unknown error')}"
                         )
-                    time.sleep(2)  # noqa: sleep-needed — polling loop
+                    time.sleep(2)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 except Exception:
-                    time.sleep(2)  # noqa: sleep-needed — polling loop
+                    time.sleep(2)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
             pytest.skip(f"Workflow did not complete within {max_wait} seconds")
         # Try to find ODPS contract ID directly
@@ -413,7 +402,7 @@ def created_odcs_contract(setup_config):
 class TestODPSCommandsComprehensive:
     """Comprehensive tests for all ODPS CLI commands"""
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_create_odps_with_extract_odcs(self, sample_odps_json_file, setup_config):
         """Test `contracts create-odps --extract-odcs` command"""
         runner = CliRunner()
@@ -454,7 +443,7 @@ class TestODPSCommandsComprehensive:
         assert result_table.exit_code == 0
         assert "ODPS Contract" in result_table.output or "Contract created" in result_table.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_create_odps_with_link_odcs(
         self, sample_odps_json_file, created_odcs_contract, setup_config
     ):
@@ -513,7 +502,7 @@ class TestODPSCommandsComprehensive:
         output_data = json.loads(result.output)
         assert "id" in output_data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_create_odps_with_version(self, sample_odps_json_file, setup_config):
         """Test `contracts create-odps --version` option"""
         runner = CliRunner()
@@ -535,7 +524,7 @@ class TestODPSCommandsComprehensive:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_create_odps_with_no_resolve_external_refs(self, sample_odps_json_file, setup_config):
         """Test `contracts create-odps --no-resolve-external-refs` option"""
         runner = CliRunner()
@@ -556,7 +545,7 @@ class TestODPSCommandsComprehensive:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_create_odps_yaml_format(self, sample_odps_yaml_file, setup_config):
         """Test `contracts create-odps` with YAML file"""
         runner = CliRunner()
@@ -578,7 +567,7 @@ class TestODPSCommandsComprehensive:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_export_odps_format(self, created_odps_contract, setup_config):
         """Test `contracts export <id> --format odps` command"""
         runner = CliRunner()
@@ -630,7 +619,7 @@ class TestODPSCommandsComprehensive:
         assert result_yaml.exit_code == 0
         assert "schema" in result_yaml.output or "product" in result_yaml.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_download_odps_format(self, created_odps_contract, setup_config):
         """Test `contracts download <id> --format odps` command"""
         runner = CliRunner()
@@ -665,7 +654,7 @@ class TestODPSCommandsComprehensive:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_link_odps_command(self, created_odcs_contract, sample_odps_json_file, setup_config):
         """Test `contracts link-odps <odcs_id> <odps_id>` command"""
         runner = CliRunner()
@@ -732,7 +721,7 @@ class TestODPSCommandsComprehensive:
 
         assert result.exit_code == 0, f"Link command failed: {result.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_unlink_odps_command(self, created_odcs_contract, sample_odps_json_file, setup_config):
         """Test `contracts unlink-odps <odcs_id>` command"""
         runner = CliRunner()
@@ -793,7 +782,7 @@ class TestODPSCommandsComprehensive:
 
         assert result.exit_code == 0, f"Unlink command failed: {result.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_list_links_command(self, created_odps_contract, setup_config):
         """Test `contracts list-links <id>` command"""
         runner = CliRunner()
@@ -816,7 +805,7 @@ class TestODPSCommandsComprehensive:
 
         assert result_table.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_get_contract_with_show_odps(self, created_odps_contract, setup_config):
         """Test `contracts get <id> --show-odps` command"""
         runner = CliRunner()
@@ -838,7 +827,7 @@ class TestODPSCommandsComprehensive:
         assert result_table.exit_code == 0
         assert "ODPS" in result_table.output or "pricing" in result_table.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_get_pricing_command(self, created_odps_contract, setup_config):
         """Test `contracts get-pricing <id>` command"""
         runner = CliRunner()
@@ -860,7 +849,7 @@ class TestODPSCommandsComprehensive:
 
         assert result_table.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_get_access_methods_command(self, created_odps_contract, setup_config):
         """Test `contracts get-access-methods <id>` command"""
         runner = CliRunner()
@@ -881,7 +870,7 @@ class TestODPSCommandsComprehensive:
 
         assert result_table.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_cli_error_handling_invalid_file(self, setup_config):
         """Test CLI error handling for invalid file path"""
         runner = CliRunner()
@@ -893,7 +882,7 @@ class TestODPSCommandsComprehensive:
         assert result.exit_code != 0
         assert "file" in result.output.lower() or "not found" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_cli_error_handling_missing_options(self, sample_odps_json_file, setup_config):
         """Test CLI error handling when required options are missing"""
         runner = CliRunner()
@@ -904,7 +893,7 @@ class TestODPSCommandsComprehensive:
         assert result.exit_code != 0
         assert "extract-odcs" in result.output.lower() or "link-odcs" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_cli_error_handling_invalid_contract_id(self, setup_config):
         """Test CLI error handling for invalid contract ID"""
         runner = CliRunner()
@@ -916,7 +905,7 @@ class TestODPSCommandsComprehensive:
         # Should fail or return appropriate error
         assert result.exit_code != 0 or "not found" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_cli_error_handling_both_options_provided(
         self, sample_odps_json_file, created_odcs_contract, setup_config
     ):

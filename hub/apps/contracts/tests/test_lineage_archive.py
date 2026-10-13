@@ -269,6 +269,7 @@ class TestArchiveLineageEdgesS3Target(TransactionTestCase):
     def setUp(self):
         """Purge any archive rows left by a previous --reuse-db run."""
         from hub.apps.contracts.models import LineageEdgeArchive
+
         LineageEdgeArchive.objects.all().delete()
 
     def test_target_s3_exports_then_deletes_archive_row(self):

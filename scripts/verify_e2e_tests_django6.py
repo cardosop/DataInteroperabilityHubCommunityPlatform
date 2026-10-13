@@ -137,7 +137,7 @@ def check_django6_compatibility(file_path: Path) -> dict[str, Any]:
 
     except SyntaxError as e:
         issues.append(f"Syntax error in file: {e}")
-    except Exception as e:
+    except (OSError, ValueError) as e:
         warnings.append(f"Could not parse file: {e}")
 
     return {

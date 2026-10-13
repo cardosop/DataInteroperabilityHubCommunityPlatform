@@ -62,7 +62,7 @@ class Command(BaseCommand):
             help="Output asset_id as JSON for scripting",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         listing_id = options["listing_id"]
         tenant_spec = options.get("tenant")
         user_spec = options.get("user")
@@ -90,7 +90,7 @@ class Command(BaseCommand):
                 else:
                     tenant = Tenant.objects.get(slug=tenant_spec)
             except Tenant.DoesNotExist:
-                raise CommandError(f"Tenant '{tenant_spec}' not found")
+                raise CommandError(f"Tenant '{tenant_spec}' not found") from None
         else:
             tenant = Tenant.objects.first()
             if not tenant:
@@ -105,7 +105,7 @@ class Command(BaseCommand):
                 else:
                     user = User.objects.get(email=user_spec)
             except User.DoesNotExist:
-                raise CommandError(f"User '{user_spec}' not found")
+                raise CommandError(f"User '{user_spec}' not found") from None
         else:
             user = User.objects.filter(tenant_id=tenant.id).first()
             if not user:
@@ -124,7 +124,9 @@ class Command(BaseCommand):
         try:
             listing = connector.get_listing(listing_id)
         except Exception as e:
-            raise CommandError(f"Failed to get listing '{listing_id}' from demo.ckan.org: {e}")
+            raise CommandError(
+                f"Failed to get listing '{listing_id}' from demo.ckan.org: {e}"
+            ) from e
 
         # Map to hub asset
         mapping = connector.map_to_hub_asset(listing)
@@ -160,12 +162,11 @@ class Command(BaseCommand):
                 data_strategy="METADATA_ONLY",
             )
         except Exception as e:
-            raise CommandError(f"Failed to create federated asset: {e}")
+            raise CommandError(f"Failed to create federated asset: {e}") from e
 
         if output_json:
             self.stdout.write(
-                '{"asset_id": "%s", "listing_id": "%s", "asset_name": "%s"}'
-                % (
+                '{{"asset_id": "{}", "listing_id": "{}", "asset_name": "{}"}}'.format(
                     str(asset.id),
                     listing_id,
                     (asset.name or "").replace('"', '\\"'),

@@ -50,8 +50,8 @@ def render_csv_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
 
 def render_pdf_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
     try:
-        from weasyprint import (
-            HTML,  # type: ignore[import-untyped]  # optional dependency; has no stubs package
+        from weasyprint import (  # type: ignore[import-untyped]
+            HTML,  # optional dependency; has no stubs package
         )
     except Exception as exc:
         raise RuntimeError(
@@ -66,7 +66,7 @@ def render_pdf_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
 
 def render_docx_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
     from docx import (
-        Document,  # type: ignore[import-untyped]  # optional dependency; has no stubs package
+        Document,  # optional dependency; has no stubs package
     )
 
     doc = Document()

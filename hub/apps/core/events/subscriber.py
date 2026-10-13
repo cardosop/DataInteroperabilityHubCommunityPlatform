@@ -35,6 +35,13 @@ class EventSubscriber:
         self.event_bus = event_bus or get_event_bus()
         self.handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
 
+        # W4.1 (R2-B3/B4): register for worker-listener dispatch.  The
+        # worker starts one Redis pub/sub thread per registered subscriber
+        # (lazy import keeps the module graph acyclic).
+        from .listener import register_listener_subscriber
+
+        register_listener_subscriber(self)
+
     def subscribe(
         self,
         event_type_pattern: str,
@@ -80,7 +87,7 @@ class EventSubscriber:
                 # Don't raise - registration will happen later when database is available
                 return
 
-            logger.error(
+            logger.exception(
                 "event_subscription_failed",
                 subscriber_name=self.subscriber_name,
                 event_type_pattern=event_type_pattern,
@@ -99,7 +106,7 @@ class EventSubscriber:
             return
 
         # Use first handler as default (in production, use proper routing)
-        default_handler = list(self.handlers.values())[0]
+        default_handler = next(iter(self.handlers.values()))
         self.event_bus.start_listening(self.subscriber_name, default_handler)
 
     def _wrap_handler(
@@ -154,7 +161,7 @@ class EventSubscriber:
                 event_type_pattern=event_type_pattern,
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "event_unsubscribe_error",
                 subscriber_name=self.subscriber_name,
                 event_type_pattern=event_type_pattern,
@@ -196,10 +203,11 @@ def event_subscriber(subscriber_name: str, event_type_pattern: str):
                         event_type_pattern=event_type_pattern,
                         reason="async_context_detected",
                     )
-                    return
                 except RuntimeError:
                     # No running event loop - we're in sync context, safe to proceed
                     pass
+                else:
+                    return
 
                 subscriber = EventSubscriber(subscriber_name)
                 subscriber.subscribe(event_type_pattern, func)

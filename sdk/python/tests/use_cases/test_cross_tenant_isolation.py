@@ -289,7 +289,7 @@ def test_compliance_run_invisible_across_tenants():
         f"{base}/compliance/runs/",
         headers=_auth_headers(creds.api_key, tenant_a),
         json={
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
         },
         timeout=15,
     )

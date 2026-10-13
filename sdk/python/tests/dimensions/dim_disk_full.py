@@ -31,8 +31,11 @@ def test_write_to_readonly_dir_raises_os_error(tmp_path):
 def test_write_to_nonexistent_path_raises_error():
     """Writing to a path whose parent doesn't exist must raise FileNotFoundError."""
     bad_path = "/tmp/nonexistent_dir_meshant_test/subdir/output.bin"
-    with pytest.raises(FileNotFoundError):
-        open(bad_path, "wb").write(b"test")
+    with (
+        pytest.raises(FileNotFoundError),
+        open(bad_path, "wb") as f,
+    ):
+        f.write(b"test")
 
 
 def test_simulated_disk_full_with_small_tmpfs(tmp_path):

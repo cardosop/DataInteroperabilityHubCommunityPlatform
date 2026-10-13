@@ -205,7 +205,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     }
 
     if (page.url().includes('/login') || page.url().includes('/403')) {
-      test.skip(true, 'Redirected from ODPS link page — user lacks permission');
+      test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Redirected from ODPS link page — user lacks permission');
       return;
     }
 
@@ -224,7 +224,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
         (await page.locator('.odps-link-page').count()) > 0;
       if (!pageLoaded) {
         test.skip(
-          true,
+          !pageLoaded,
           'ODPS link page did not load and ContractPicker not found — API or routing issue'
         );
         return;

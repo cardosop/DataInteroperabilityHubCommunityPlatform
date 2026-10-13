@@ -26,14 +26,16 @@ project_root = Path(__file__).resolve().parent.parent.parent
 
 # ── Environment detection ────────────────────────────────────────────────
 
+
 def _running_inside_docker() -> bool:
     """True when we can reach traefik-test on port 80 (Docker test network)."""
     try:
         s = socket.create_connection(("traefik-test", 80), timeout=1)
         s.close()
-        return True
     except OSError:
         return False
+    else:
+        return True
 
 
 def _traefik_base_url() -> str:
@@ -58,6 +60,7 @@ def _use_tls() -> bool:
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def traefik_base():
     """Base URL for Traefik, skipping if unreachable."""
@@ -66,6 +69,7 @@ def traefik_base():
     # Host mode: require TRAEFIK_BASE_URL or Docker CLI
     if not os.environ.get("TRAEFIK_BASE_URL", "").strip():
         from tests.integration.test_docker_compose_deployment import _docker_available
+
         if not _docker_available():
             pytest.skip(
                 "Traefik tests require Docker CLI on host. "
@@ -75,6 +79,7 @@ def traefik_base():
 
 
 # ── Tests ────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.integration
 @pytest.mark.requires_db
@@ -88,9 +93,7 @@ class TestTraefikRouting:
             timeout=15,
             verify=not _use_tls(),
         )
-        assert resp.status_code == 200, (
-            f"GET / via Traefik must return 200, got {resp.status_code}"
-        )
+        assert resp.status_code == 200, f"GET / via Traefik must return 200, got {resp.status_code}"
         content_type = resp.headers.get("Content-Type", "")
         assert (
             "text/html" in content_type

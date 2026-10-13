@@ -148,7 +148,7 @@ class RopaGenerationViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     @action(detail=True, methods=["get"], url_path="download")
-    def download(self, request, pk=None):
+    def download(self, _request, pk=None):
         tenant = self._tenant()
         if tenant is None:
             return Response({"detail": "Tenant context required"}, status=400)
@@ -167,6 +167,11 @@ class RopaGenerationViewSet(viewsets.ReadOnlyModelViewSet):
             key=gen.object_key,
             expires_in=3600,
             filename=fname,
+            # for_browser: the download is consumed by host-side browsers /
+            # test clients; in the test stack the storage hostname is a
+            # Docker service name (minio-test:9000) they cannot resolve.
+            # Same contract as files/views.py and gdpr/services.py.
+            for_browser=True,
         )
         return Response({"download_url": url, "expires_in": 3600})
 

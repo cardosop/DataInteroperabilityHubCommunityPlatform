@@ -29,3 +29,18 @@ helm install datahub-core ./helm/community -n datahub \
   values.
 - This chart targets the core images published by the public CI
   (`ci-core.yml`, GHCR, built from the public tree).
+
+## Relationship to the full chart (Phase P.8)
+
+`helm/` is the FULL-mode chart: it adds paid service deployments
+(`semantic-service`, `dq-service`, `datacontract-service`,
+`compliance-service`, `prefect-*`, fuseki, …) on top of the same core
+services this community chart provides. This chart is NOT a trimmed copy —
+it is the deliberate OSS deployment surface.
+
+The same asymmetry applies to Compose:
+`docker-compose.production.yml` intentionally omits
+semantic / dq / datacontract — in production those are Helm-deployed from
+the full chart, and Compose is the dev/test/staging path that stops at the
+core-plus-fuseki boundary. Do not "complete" the production compose file
+with paid services: two deployment sources of truth drift.

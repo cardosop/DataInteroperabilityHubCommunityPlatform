@@ -1103,8 +1103,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         # Should have warnings about type incompatibility
         self.assertIn("cross_source_checks", result.details)
         checks = result.details["cross_source_checks"]
-        self.assertIn("type_compatibility_issues", checks,
-                      "Type compatibility issues key must be present in checks")
+        self.assertIn(
+            "type_compatibility_issues",
+            checks,
+            "Type compatibility issues key must be present in checks",
+        )
         self.assertGreater(len(checks["type_compatibility_issues"]), 0)
 
     def test_validate_cross_source_compatibility_cross_tenant_access(self):
@@ -1931,8 +1934,7 @@ class CrossTenantAccessValidationTest(TestCase):
         # Should fail - cross-tenant source without permission
         self.assertIn("cross_tenant_access_checks", result.details)
         self.assertFalse(
-            result.is_valid,
-            "Cross-tenant source without permission should fail validation"
+            result.is_valid, "Cross-tenant source without permission should fail validation"
         )
 
     def test_validate_cross_tenant_access_query_execution_authorization(self):

@@ -29,9 +29,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis.RedisError):
         return None
+    else:
+        return client
 
 
 class TestCacheResultDecorator(TestCase):
@@ -49,7 +50,7 @@ class TestCacheResultDecorator(TestCase):
             keys = self.redis_client.keys("decorator:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def tearDown(self):
@@ -58,7 +59,7 @@ class TestCacheResultDecorator(TestCase):
             keys = self.redis_client.keys("decorator:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_cache_result_basic(self):
@@ -211,7 +212,7 @@ class TestCacheViewDecorator(TestCase):
             keys = self.redis_client.keys("view:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def tearDown(self):
@@ -220,7 +221,7 @@ class TestCacheViewDecorator(TestCase):
             keys = self.redis_client.keys("view:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_cache_view_basic(self):
@@ -403,7 +404,7 @@ class TestCacheDecoratorsIntegration(TestCase):
             keys = self.redis_client.keys("integration:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_decorator_cache_invalidation(self):

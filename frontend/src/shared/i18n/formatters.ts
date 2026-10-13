@@ -33,7 +33,7 @@ export function formatDateTime(
     dateStyle: 'medium',
     timeStyle: 'short',
   },
-  locale?: string,
+  locale?: string
 ): string {
   const date = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(date.getTime())) return String(iso);
@@ -45,10 +45,7 @@ export function formatDateTime(
 }
 
 /** Locale-aware short-relative formatting ("2 hours ago", "in 3 days"). */
-export function formatRelative(
-  iso: string | Date,
-  locale?: string,
-): string {
+export function formatRelative(iso: string | Date, locale?: string): string {
   const date = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(date.getTime())) return String(iso);
   const diffMs = date.getTime() - Date.now();
@@ -81,7 +78,7 @@ export function formatRelative(
 export function formatNumber(
   value: number,
   options: Intl.NumberFormatOptions = {},
-  locale?: string,
+  locale?: string
 ): string {
   if (!Number.isFinite(value)) return String(value);
   try {
@@ -94,21 +91,54 @@ export function formatNumber(
 /**
  * Locale-aware currency formatting.
  *
- * Returns a formatted currency string (e.g. "$1,234.56") using the
- * user's locale. When `currency` is omitted it defaults to "USD".
+ * Returns a formatted currency string (e.g. "$9.99") using the user's
+ * locale. Amounts are MINOR units (cents) by default — the wire contract
+ * every backend amount field follows (``amount_cents``,
+ * ``price_amount * 100``). Pass ``{ unit: 'major' }`` for major-unit
+ * amounts. Currency codes are normalised (uppercase; ``€``/``£``/``$``
+ * symbols map to their ISO codes) so symbol inputs never throw.
  */
-export function formatCurrency(amount: number, currency: string = 'USD', locale?: string): string {
+const CURRENCY_SYMBOL_MAP: Record<string, string> = {
+  '€': 'EUR',
+  '£': 'GBP',
+  $: 'USD',
+};
+
+export function formatCurrency(
+  amount: number,
+  currency: string = 'USD',
+  options: { unit?: 'major' | 'minor'; locale?: string } = {}
+): string {
   if (!Number.isFinite(amount)) return String(amount);
+  const code = CURRENCY_SYMBOL_MAP[currency] ?? currency.toUpperCase();
+  const major = options.unit === 'major' ? amount : amount / 100;
   try {
-    return new Intl.NumberFormat(resolveLocale(locale), {
+    return new Intl.NumberFormat(resolveLocale(options.locale), {
       style: 'currency',
-      currency,
-    }).format(amount);
+      currency: code,
+    }).format(major);
   } catch {
     return new Intl.NumberFormat(FALLBACK_LOCALE, {
       style: 'currency',
-      currency,
-    }).format(amount);
+      currency: code,
+    }).format(major);
+  }
+}
+
+/**
+ * Locale-aware compact number formatting (e.g. "1.2K", "3.4M") via
+ * ``Intl.NumberFormat`` with ``notation: 'compact'``.
+ */
+export function formatCompactNumber(value: number, locale?: string): string {
+  if (!Number.isFinite(value)) return String(value);
+  try {
+    return new Intl.NumberFormat(resolveLocale(locale), {
+      notation: 'compact',
+    }).format(value);
+  } catch {
+    return new Intl.NumberFormat(FALLBACK_LOCALE, {
+      notation: 'compact',
+    }).format(value);
   }
 }
 

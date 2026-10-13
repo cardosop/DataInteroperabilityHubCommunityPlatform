@@ -1,0 +1,51 @@
+# Phase 10 (openspec add-databricks-dlt-pipelines task 10.6) — Databricks
+# DLT pipeline-fleet alerts.
+#
+# Metrics emitted by hub/apps/databricks_admin/metrics.py (the 10.6
+# terminal-transition chokepoint records the outcome):
+#   databricks_dlt_updates_total{outcome, tenant_id, workspace_id}
+#
+# Alert definitions:
+#   DatabricksDltUpdateFailed      — a DLT update reached a terminal
+#                                    FAILED state in the last 15m
+#   DatabricksDltUpdateRateAnomaly — a 30m window whose failure share
+#                                    exceeds 25% (the jobs ratio
+#                                    precedent)
+
+groups:
+  - name: databricks_dlt
+    rules:
+      # ------------------------------------------------------------------
+      # DatabricksDltUpdateFailed
+      # A DLT update that terminated FAILED (the updates API's reported
+      # state). The 10.6 terminal transition records the outcome —
+      # any failure in the window pages the operator.
+      # ------------------------------------------------------------------
+      - alert: DatabricksDltUpdateFailed
+        expr: |
+          increase(databricks_dlt_updates_total{outcome="FAILED"}[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks DLT update failed"
+          description: "Workspace {{ $labels.workspace_id }} (tenant {{ $labels.tenant_id }}) had {{ $value | humanize }} failed DLT updates in the last 15m. Check the update's error state in the DLT mirror and the databricks.dlt.update.failed webhook deliveries."
+
+      # ------------------------------------------------------------------
+      # DatabricksDltUpdateRateAnomaly
+      # A 30-minute window whose terminal DLT updates are more than a
+      # quarter FAILED — a fleet-level health regression, not a single
+      # update (the jobs ratio precedent).
+      # ------------------------------------------------------------------
+      - alert: DatabricksDltUpdateRateAnomaly
+        expr: |
+          sum(rate(databricks_dlt_updates_total{outcome="FAILED"}[30m]))
+          /
+          sum(rate(databricks_dlt_updates_total[30m]))
+          > 0.25
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks DLT update failure rate anomaly"
+          description: "Workspace {{ $labels.workspace_id }} (tenant {{ $labels.tenant_id }}) failed {{ $value | humanizePercentage }} of its DLT updates in the last 30m (threshold: 25%). Check the workspace's compute health and the DLT mirror."

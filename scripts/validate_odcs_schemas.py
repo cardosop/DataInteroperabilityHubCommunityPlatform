@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError
 
     JSONSCHEMA_AVAILABLE = True
@@ -222,7 +221,7 @@ def validate_odcs_file(
             contract_data = json.load(f)
     except json.JSONDecodeError as e:
         return False, [f"Invalid JSON: {e}"], "unknown"
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return False, [f"Error reading file: {e}"], "unknown"
 
     # Detect version
@@ -273,7 +272,7 @@ def find_odcs_contracts(contracts_dir: Path) -> list[Path]:
                     "kind" in data and data.get("kind") == "DataContract"
                 ):
                     contracts.append(json_file)
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             # Skip files that can't be parsed
             pass
 

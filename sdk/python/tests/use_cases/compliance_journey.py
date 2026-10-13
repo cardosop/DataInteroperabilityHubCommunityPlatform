@@ -117,7 +117,7 @@ def test_compliance_run_has_status():
     assert get_resp.status_code == 200
     body = get_resp.json()
 
-    keys_lower = {k.lower() for k in body.keys()}
+    keys_lower = {k.lower() for k in body}
     has_status = any(k in keys_lower for k in ("status", "state", "run_status", "execution_status"))
     assert has_status, f"Compliance run missing status field: {list(body.keys())}"
 

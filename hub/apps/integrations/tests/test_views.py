@@ -427,8 +427,6 @@ class MarketplaceConnectionViewSetTest(TestCase):
         from hub.apps.integrations.base import (
             DataMarketplaceConnector,
             MarketplaceListing,
-            MarketplaceResource,
-            SyncDirection,
             SyncResult,
             SyncStatus,
         )
@@ -436,6 +434,7 @@ class MarketplaceConnectionViewSetTest(TestCase):
 
         class _SuccessConnector(DataMarketplaceConnector):
             """Connector that reports successful connection tests."""
+
             __test__ = False
 
             @property
@@ -495,10 +494,26 @@ class MarketplaceConnectionViewSetTest(TestCase):
                 )
 
             def sync_push(self, asset_ids, options=None):
-                return SyncResult(status=SyncStatus.COMPLETED, total_items=0, successful_items=0, failed_items=0, skipped_items=0, errors=[], metadata={})
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=0,
+                    successful_items=0,
+                    failed_items=0,
+                    skipped_items=0,
+                    errors=[],
+                    metadata={},
+                )
 
             def sync_pull(self, listing_ids=None, filters=None, options=None):
-                return SyncResult(status=SyncStatus.COMPLETED, total_items=0, successful_items=0, failed_items=0, skipped_items=0, errors=[], metadata={})
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=0,
+                    successful_items=0,
+                    failed_items=0,
+                    skipped_items=0,
+                    errors=[],
+                    metadata={},
+                )
 
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, _SuccessConnector
@@ -744,9 +759,7 @@ class MarketplaceConnectionViewSetTest(TestCase):
         self.client.credentials()
         self.client.force_authenticate(user=regular_user)
 
-        response = self.client.delete(
-            f"/api/v1/integrations/marketplace/mappings/{mapping.id}/"
-        )
+        response = self.client.delete(f"/api/v1/integrations/marketplace/mappings/{mapping.id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_pagination(self):
@@ -1303,6 +1316,8 @@ class MarketplaceConnectorInfoTest(TestCase):
             DataMarketplaceConnector,
             MarketplaceListing,
             SyncResult,
+        )
+        from hub.apps.integrations.base import (
             SyncStatus as _SyncStatus,
         )
 
@@ -1336,11 +1351,11 @@ class MarketplaceConnectorInfoTest(TestCase):
             def list_resources(self, lid):
                 return []
 
-            def create_listing(self, l):
-                return l
+            def create_listing(self, listing):
+                return listing
 
-            def update_listing(self, lid, l):
-                return l
+            def update_listing(self, lid, listing):
+                return listing
 
             def publish_resource(self, lid, r):
                 return r
@@ -1368,15 +1383,23 @@ class MarketplaceConnectorInfoTest(TestCase):
             def sync_push(self, aids, **kw):
                 return SyncResult(
                     status=_SyncStatus.COMPLETED,
-                    total_items=0, successful_items=0, failed_items=0,
-                    skipped_items=0, errors=[], metadata={},
+                    total_items=0,
+                    successful_items=0,
+                    failed_items=0,
+                    skipped_items=0,
+                    errors=[],
+                    metadata={},
                 )
 
             def sync_pull(self, lids=None, filters=None, **kw):
                 return SyncResult(
                     status=_SyncStatus.COMPLETED,
-                    total_items=0, successful_items=0, failed_items=0,
-                    skipped_items=0, errors=[], metadata={},
+                    total_items=0,
+                    successful_items=0,
+                    failed_items=0,
+                    skipped_items=0,
+                    errors=[],
+                    metadata={},
                 )
 
         return _MinimalConnector
@@ -1441,9 +1464,7 @@ class MarketplaceConnectorInfoTest(TestCase):
 
     def test_get_connector_info_invalid_type(self):
         """GET /connectors/{invalid}/ → 404."""
-        response = self.client.get(
-            "/api/v1/integrations/marketplace/connectors/NONEXISTENT_TYPE/"
-        )
+        response = self.client.get("/api/v1/integrations/marketplace/connectors/NONEXISTENT_TYPE/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_get_connector_info_unsupported_type(self):
@@ -1451,9 +1472,7 @@ class MarketplaceConnectorInfoTest(TestCase):
         # If a connector type is a valid enum but not registered, the view
         # returns either 404 (is_supported=False) or 200 with unavailable.
         # Either is a valid design choice; we verify the response is not 500.
-        response = self.client.get(
-            "/api/v1/integrations/marketplace/connectors/AWS_DATA_EXCHANGE/"
-        )
+        response = self.client.get("/api/v1/integrations/marketplace/connectors/AWS_DATA_EXCHANGE/")
         self.assertIn(
             response.status_code,
             [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],

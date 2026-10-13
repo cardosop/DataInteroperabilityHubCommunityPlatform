@@ -43,7 +43,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -110,7 +113,7 @@ class Command(BaseCommand):
 
     # ------------------------------------------------------------------
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options.get("dry_run", False)
         tenant_arg = options.get("tenant_id")
         resume_from = options.get("resume_from", "auto")

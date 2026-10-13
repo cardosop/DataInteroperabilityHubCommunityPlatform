@@ -88,7 +88,7 @@ test.describe('226.G2 — Compliance scan retry after failure @critical @lifecyc
     });
     if (!firstRunRes.ok()) {
       test.skip(
-        true,
+        !firstRunRes.ok(),
         `Could not create first compliance run (status=${firstRunRes.status()}). ` +
           `Likely missing tenant compliance config — unblock by ensuring tenant default regimes are seeded.`,
       );

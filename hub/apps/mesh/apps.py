@@ -6,5 +6,8 @@ class MeshConfig(AppConfig):
     name = "hub.apps.mesh"
 
     def ready(self):
-        import hub.apps.mesh.signals  # noqa: F401
-        from . import business_rules  # noqa: F401 — preload @register_rule
+        import hub.apps.mesh.signals
+
+        from . import (
+            business_rules,
+        )

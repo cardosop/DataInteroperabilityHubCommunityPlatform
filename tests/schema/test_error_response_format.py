@@ -7,6 +7,7 @@ contain stack traces, DB errors, internal IPs, or hostnames.
 """
 
 import json
+from typing import ClassVar
 
 import pytest
 from django.test import override_settings
@@ -18,7 +19,7 @@ from rest_framework.test import APIClient
 class TestErrorResponseStructure:
     """Every error response MUST have 'error' or 'detail' field."""
 
-    _ERROR_ENDPOINTS = [
+    _ERROR_ENDPOINTS: ClassVar[list] = [
         ("/api/v1/assets/nonexistent-id-12345/", "GET"),
         ("/api/v1/contracts/nonexistent-id-12345/", "GET"),
         ("/api/v1/assets/", "POST"),  # Missing body
@@ -56,7 +57,7 @@ class TestErrorResponseStructure:
                 pass
 
     @pytest.mark.django_db
-    @pytest.mark.parametrize("endpoint,method", _ERROR_ENDPOINTS)
+    @pytest.mark.parametrize(("endpoint", "method"), _ERROR_ENDPOINTS)
     def test_error_responses_are_json(self, endpoint, method):
         """Error responses MUST be JSON (Content-Type: application/json)."""
         client = APIClient()
@@ -84,7 +85,7 @@ class TestErrorResponseSanitization:
     """Error responses MUST NOT contain internal details."""
 
     # Patterns that must NOT appear in production error responses
-    _BLOCKED_PATTERNS = [
+    _BLOCKED_PATTERNS: ClassVar[list] = [
         "Traceback (most recent call last)",
         'File "',
         "django/db/",
@@ -107,7 +108,7 @@ class TestErrorResponseSanitization:
                 body = response.content.decode()
                 for pattern in self._BLOCKED_PATTERNS[:2]:  # Check traceback patterns
                     assert pattern not in body, f"Error response contains '{pattern}': {body[:200]}"
-            except Exception:
+            except UnicodeDecodeError:
                 # Non-JSON body, check raw
                 body = response.content.decode(errors="replace")
                 for pattern in self._BLOCKED_PATTERNS[:2]:

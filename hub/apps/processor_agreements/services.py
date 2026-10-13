@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.notifications.models import NotificationCategory, NotificationType
 from hub.apps.notifications.utils import create_user_notification
-from hub.apps.processor_agreements.models import ProcessorAgreement
 from hub.apps.users.models import UserRole
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from hub.apps.processor_agreements.models import ProcessorAgreement
 
 
 def subprocessor_fingerprint(rows: Iterable[dict[str, Any]]) -> str:

@@ -184,6 +184,5 @@ class AssetOperationsCounterTests(TestCase):
             self.assertEqual(
                 mock_inc.call_args.kwargs["attributes"]["status"],
                 status_label,
-                f"status={status_label}: attribute must be passed "
-                "to asset_operations_total.inc().",
+                f"status={status_label}: attribute must be passed to asset_operations_total.inc().",
             )

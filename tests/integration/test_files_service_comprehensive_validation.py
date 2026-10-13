@@ -18,7 +18,9 @@ import time
 import uuid
 from io import BytesIO
 
+from botocore.exceptions import ClientError, EndpointConnectionError
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TransactionTestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -27,7 +29,6 @@ from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient, StorageError
-from botocore.exceptions import ClientError, EndpointConnectionError
 from hub.apps.files.validators import validate_file_size, validate_file_type
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
@@ -37,9 +38,11 @@ User = get_user_model()
 
 
 @override_settings(
+    # NOTE: do NOT hardcode AWS_ACCESS_KEY_ID/SECRET here — the MinIO
+    # instance's root creds come from .env (MINIO_ROOT_USER), and the
+    # compose "minioadmin/minio123" defaults only match a fresh default
+    # stack. Inheriting the real settings keeps PutObject working.
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
-    AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
@@ -81,11 +84,9 @@ class FileUploadTest(TransactionTestCase):
 
         # Initialize storage client for real operations
         self.storage_client = S3StorageClient()
-        try:
-            self.storage_client._ensure_bucket_exists()
-        except (StorageError, ClientError, EndpointConnectionError, OSError):
+        with contextlib.suppress(StorageError, ClientError, EndpointConnectionError, OSError):
             # Storage may not be available in test environment
-            pass
+            self.storage_client._ensure_bucket_exists()
 
     def _create_test_file_content(self, format: str, size: int = 1024) -> bytes:
         """Create test file content in specified format"""
@@ -275,13 +276,35 @@ class FileUploadTest(TransactionTestCase):
 
         self.assertEqual(init_response.status_code, status.HTTP_201_CREATED)
 
-        # Test file exceeding browser limit
+        # Phase 260.3.F — a browser upload above the multipart threshold
+        # (100MB) goes through the resumable multipart engine, so the
+        # single-PUT browser cap no longer applies; the tenant/platform
+        # effective limit governs instead. 150MB is therefore ACCEPTED.
         init_response = self.client.post(
             "/api/v1/files/init/",
             {
                 "name": "large.csv",
                 "content_type": "text/csv",
-                "size": 150 * 1024 * 1024,  # 150MB - exceeds browser limit
+                "size": 150 * 1024 * 1024,  # 150MB - multipart path, under 10GB limit
+                "upload_method": "browser",
+            },
+            format="json",
+        )
+        self.assertEqual(
+            init_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Expected 201 for multipart-path upload under the tenant limit, got "
+            f"{init_response.status_code}",
+        )
+
+        # Size enforcement still applies at the platform limit (10GB) —
+        # reject an init above it.
+        init_response = self.client.post(
+            "/api/v1/files/init/",
+            {
+                "name": "too-large.csv",
+                "content_type": "text/csv",
+                "size": 11 * 1024 * 1024 * 1024,  # 11GB - exceeds 10GB platform limit
                 "upload_method": "browser",
             },
             format="json",
@@ -548,9 +571,11 @@ class FileUploadTest(TransactionTestCase):
 
 
 @override_settings(
+    # NOTE: do NOT hardcode AWS_ACCESS_KEY_ID/SECRET here — the MinIO
+    # instance's root creds come from .env (MINIO_ROOT_USER), and the
+    # compose "minioadmin/minio123" defaults only match a fresh default
+    # stack. Inheriting the real settings keeps PutObject working.
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
-    AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
@@ -750,9 +775,11 @@ class FileDownloadTest(TransactionTestCase):
 
 
 @override_settings(
+    # NOTE: do NOT hardcode AWS_ACCESS_KEY_ID/SECRET here — the MinIO
+    # instance's root creds come from .env (MINIO_ROOT_USER), and the
+    # compose "minioadmin/minio123" defaults only match a fresh default
+    # stack. Inheriting the real settings keeps PutObject working.
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
-    AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
@@ -862,7 +889,7 @@ class FileStorageTest(TransactionTestCase):
             total_size += len(file_content)
 
         # Verify all files exist
-        for file_id, storage_path in file_ids:
+        for _file_id, storage_path in file_ids:
             self.assertTrue(self.storage_client.file_exists(storage_path))
             stored_size = self.storage_client.get_file_size(storage_path)
             self.assertEqual(stored_size, 1024 * 1024)
@@ -897,14 +924,18 @@ class FileStorageTest(TransactionTestCase):
         self.assertFalse(self.storage_client.file_exists(nonexistent_path))
 
         # Try to get size of nonexistent file
-        with self.assertRaises(Exception):
+        with self.assertRaises(
+            StorageError
+        ):  # StorageObjectNotFoundError / StorageReadError subclass StorageError
             self.storage_client.get_file_size(nonexistent_path)
 
 
 @override_settings(
+    # NOTE: do NOT hardcode AWS_ACCESS_KEY_ID/SECRET here — the MinIO
+    # instance's root creds come from .env (MINIO_ROOT_USER), and the
+    # compose "minioadmin/minio123" defaults only match a fresh default
+    # stack. Inheriting the real settings keeps PutObject working.
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
-    AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
@@ -948,7 +979,7 @@ class FileValidationTest(TransactionTestCase):
         validate_file_type("data.csv", "text/csv")
 
         # Invalid extension
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             validate_file_type("data.exe", "application/x-msdownload")
 
     def test_file_validation_format_json(self):
@@ -972,9 +1003,14 @@ class FileValidationTest(TransactionTestCase):
         # Valid size
         validate_file_size(1024, "browser", str(self.tenant.id))
 
-        # Size exceeding browser limit
-        with self.assertRaises(Exception):
-            validate_file_size(150 * 1024 * 1024, "browser", str(self.tenant.id))
+        # Phase 260.3.F — browser uploads above the multipart threshold
+        # (100MB) are governed by the tenant/platform effective limit, so
+        # 150MB no longer trips the single-PUT browser cap.
+        validate_file_size(150 * 1024 * 1024, "browser", str(self.tenant.id))
+
+        # Size exceeding the platform limit (10GB) is still rejected
+        with self.assertRaises(ValidationError):
+            validate_file_size(11 * 1024 * 1024 * 1024, "browser", str(self.tenant.id))
 
         # Size within SDK limit
         validate_file_size(2 * 1024 * 1024 * 1024, "sdk", str(self.tenant.id))
@@ -1004,14 +1040,16 @@ class FileValidationTest(TransactionTestCase):
 
     def test_file_validation_error_handling_invalid_size(self):
         """Test validation error handling - invalid size"""
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):  # negative size rejected
             validate_file_size(-1, "browser", str(self.tenant.id))
 
 
 @override_settings(
+    # NOTE: do NOT hardcode AWS_ACCESS_KEY_ID/SECRET here — the MinIO
+    # instance's root creds come from .env (MINIO_ROOT_USER), and the
+    # compose "minioadmin/minio123" defaults only match a fresh default
+    # stack. Inheriting the real settings keeps PutObject working.
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minioadmin",
-    AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
@@ -1055,7 +1093,7 @@ class FilesODPSIntegrationTest(TransactionTestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(  # noqa: sleep-needed — polling loop
+                    time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         retry_delay * (2**attempt)
                     )  # INTENTIONAL: test-specific delay  # Exponential backoff
 
@@ -1267,7 +1305,7 @@ class FilesODPSIntegrationTest(TransactionTestCase):
         # Note: YAML validation would require YAML parser
 
         # Invalid ODPS file type
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             validate_file_type("product.odps.exe", "application/x-msdownload")
 
     def test_odps_file_versioning(self):

@@ -197,6 +197,37 @@ class S3StorageClientTest(FilesTestBase):
         self.assertIsNotNone(download_url)
         self.assertIn("http", download_url)
 
+    def test_generate_presigned_download_url_for_browser(self):
+        """Regression pin (b6 GDPR export EHOSTUNREACH): for_browser=True
+        must regenerate the download URL against the host-published endpoint
+        when the storage endpoint is a Docker service hostname."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+        endpoint = self.storage_client.endpoint_url or ""
+        if "minio-test" not in endpoint and "minio" not in endpoint:
+            self.skipTest("non-Docker storage endpoint — rewrite not applicable")
+
+        storage_path = f"{self.tenant.id}/{self.file.id}/export.zip"
+        download_url = self.storage_client.generate_presigned_download_url(
+            key=storage_path,
+            expires_in=86400,
+            for_browser=True,
+        )
+
+        self.assertTrue(
+            "localhost:9010" in download_url or "localhost:9000" in download_url,
+            f"for_browser download URL must use the host-published endpoint, got: {download_url}",
+        )
+        # The non-browser path stays on the internal endpoint (SDK in-container).
+        sdk_url = self.storage_client.generate_presigned_download_url(
+            key=storage_path,
+            expires_in=86400,
+        )
+        self.assertTrue(
+            "localhost:9010" not in sdk_url and "localhost:9000" not in sdk_url,
+            f"sdk download URL must keep the internal endpoint, got: {sdk_url}",
+        )
+
     def test_initiate_multipart_upload_success(self):
         """Test initiating multipart upload."""
         if not self.storage_available:

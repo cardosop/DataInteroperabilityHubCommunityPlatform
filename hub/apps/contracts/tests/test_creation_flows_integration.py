@@ -13,6 +13,8 @@ All tests verify bidirectional linking between ODPS and ODCS contracts.
 import json
 import uuid
 
+import pytest
+from django.conf import settings as _settings
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -132,6 +134,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
     # ========== PRODUCT-FIRST FLOW TESTS ==========
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_creates_contracts(self):
         """Test Product-First flow creates both ODPS and ODCS contracts"""
         # Arrange
@@ -153,6 +163,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
         self.assertIn("odps_contract", response.data)
         self.assertIn("odcs_contract", response.data)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_contract_types(self):
         """Test Product-First flow creates contracts with correct spec types"""
         # Arrange
@@ -177,6 +195,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
         self.assertEqual(odcs_contract.original_spec_type, OriginalSpecType.ODCS)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_normalization_status(self):
         """Test Product-First flow contracts have valid normalization status"""
         # Arrange
@@ -207,6 +233,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
             f"ODCS contract normalization status should be OK or WITH_WARNINGS, got {odcs_contract.normalization_status}",
         )
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_bidirectional_linking(self):
         """Test Product-First flow creates bidirectional links between ODPS and ODCS contracts"""
         # Arrange
@@ -245,6 +279,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
                 "ODCS contract should link to ODPS contract",
             )
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_contracts_accessible_via_api(self):
         """Test Product-First flow contracts are accessible via API"""
         # Arrange
@@ -269,6 +311,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
         self.assertEqual(odps_get_response.status_code, status.HTTP_200_OK)
         self.assertEqual(odcs_get_response.status_code, status.HTTP_200_OK)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_with_asset(self):
         """Test Product-First flow with asset linking"""
         self.client.force_authenticate(user=self.user)
@@ -781,6 +831,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
     # ========== ODPS LINKING TESTS (ALL FLOWS) ==========
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_odps_linking_bidirectional_all_flows(self):
         """Test that ODPS linking works bidirectionally in all flows"""
         self.client.force_authenticate(user=self.user)
@@ -919,6 +977,14 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
     # ========== ERROR SCENARIOS ==========
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_product_first_flow_invalid_odps(self):
         """Test Product-First flow with invalid ODPS document"""
         self.client.force_authenticate(user=self.user)
@@ -934,7 +1000,10 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
         self.assertIn(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]  # FIXME: 500 is a known bug - ODPSValidationError not caught by exception handler,
+            [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ],  # FIXME: 500 is a known bug - ODPSValidationError not caught by exception handler,
         )
 
     def test_technical_first_flow_link_invalid_odps(self):
@@ -960,7 +1029,10 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
         self.assertIn(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]  # FIXME: 500 is a known bug - ODPSValidationError not caught by exception handler,
+            [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ],  # FIXME: 500 is a known bug - ODPSValidationError not caught by exception handler,
         )
 
     def test_link_odps_to_non_odcs_contract(self):

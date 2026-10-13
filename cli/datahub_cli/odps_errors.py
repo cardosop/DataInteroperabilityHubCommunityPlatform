@@ -11,8 +11,8 @@ from typing import Any
 
 import click
 
-from ._mvp_detection import detect_mvp_gated_feature, extract_environment_url
 from ._core_gates import detect_core_gated_feature
+from ._mvp_detection import detect_mvp_gated_feature, extract_environment_url
 from ._mvp_gates import (
     MVP_FEATURE_GATED_CODE,
     MVP_GATED_MESSAGE_TEMPLATE,
@@ -50,6 +50,32 @@ class ODPSCLIError(click.ClickException):
         self.context = context or {}
         self.suggestion = suggestion
         self.original_error = original_error
+
+    def show(self, file: Any = None) -> None:
+        """Render the error to stderr, including the machine-readable code.
+
+        ``ClickException.show()`` prints only the message. Structured API
+        codes (e.g. ``DATABRICKS_AUTH_FAILED``) are what operators search
+        docs/runbooks by, so they get their own line. Generic fallbacks
+        (``ODPS_CLI_ERROR``, ``ODPS_ERROR``, ``HTTP_*``) carry no lookup
+        value and are omitted to keep output clean.
+
+        ``str()``/``format_message()`` are deliberately unchanged — the
+        plain-message contract is pinned by ``test_odps_errors.py``.
+        """
+        import click
+
+        click.echo(f"Error: {self.format_message()}", err=True, file=file)
+        if (
+            self.error_code
+            and not self.error_code.startswith("HTTP_")
+            and self.error_code
+            not in (
+                "ODPS_CLI_ERROR",
+                "ODPS_ERROR",
+            )
+        ):
+            click.echo(f"Code: {self.error_code}", err=True, file=file)
 
     def format_message(self) -> str:
         """Format error message with context and suggestions"""
@@ -149,6 +175,7 @@ class ODPSFeatureGatedError(ODPSCLIError):
         self.endpoint = endpoint
         self.environment_url = environment_url
 
+
 class CoreFeatureUnavailableError(ODPSCLIError):
     """
     Raised when a CLI request hits a paid-layer group on a core-only backend
@@ -185,7 +212,6 @@ class CoreFeatureUnavailableError(ODPSCLIError):
         self.environment_url = environment_url
 
 
-
 def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
     """
     Parse API error response and convert to appropriate ODPS CLI error.
@@ -205,7 +231,10 @@ def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
         error_info = {"message": error_info}
 
     error_code = (
-        error_info.get("code") or error_info.get("error_code") or error_data.get("error_code")
+        error_info.get("code")
+        or error_info.get("error_code")
+        or error_data.get("code")
+        or error_data.get("error_code")
     )
     error_message = (
         error_info.get("message")
@@ -222,6 +251,8 @@ def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
     error_info.get("recovery_strategy") or error_data.get("recovery_strategy")
 
     # Map error codes to specific error types
+    error_cls: type[ODPSCLIError] | None = None
+    suggestion: str | None = None
     if error_code:
         error_code_upper = error_code.upper()
 
@@ -237,13 +268,10 @@ def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
                 "VERSION_MISMATCH",
             ]
         ):
+            error_cls = ODPSValidationError
             suggestion = _get_validation_suggestion(error_code, context)
-            return ODPSValidationError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-
         # Reference resolution errors
-        if any(
+        elif any(
             error_code_upper.startswith(code)
             for code in [
                 "REF_RESOLUTION",
@@ -255,13 +283,10 @@ def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
                 "SECURITY_VIOLATION",
             ]
         ):
+            error_cls = ODPSRefResolutionError
             suggestion = _get_ref_resolution_suggestion(error_code, context)
-            return ODPSRefResolutionError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-
         # Normalization errors
-        if any(
+        elif any(
             error_code_upper.startswith(code)
             for code in [
                 "NORMALIZATION",
@@ -270,23 +295,17 @@ def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
                 "MISSING_REQUIRED_FIELD",
             ]
         ):
+            error_cls = ODPSNormalizationError
             suggestion = _get_normalization_suggestion(error_code, context)
-            return ODPSNormalizationError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-
         # Export errors
-        if any(
+        elif any(
             error_code_upper.startswith(code)
             for code in ["EXPORT", "SERIALIZATION", "FORMAT_NOT_SUPPORTED", "FILE_WRITE"]
         ):
+            error_cls = ODPSExportError
             suggestion = _get_export_suggestion(error_code, context)
-            return ODPSExportError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-
         # Linking errors
-        if any(
+        elif any(
             error_code_upper.startswith(code)
             for code in [
                 "LINKING",
@@ -296,10 +315,13 @@ def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
                 "INVALID_LINK",
             ]
         ):
+            error_cls = ODPSLinkingError
             suggestion = _get_linking_suggestion(error_code, context)
-            return ODPSLinkingError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
+
+    if error_cls is not None:
+        return error_cls(
+            message=error_message, error_code=error_code, context=context, suggestion=suggestion
+        )
 
     # Default to generic ODPS error
     return ODPSCLIError(
@@ -330,7 +352,25 @@ def handle_api_error(
     """
     # Phase 313.4 — intercept paid-group 404s (core-only backend) BEFORE
     # the MVP interception and any generic JSON-error fall-through.
+    # A structured API error envelope (``error`` object or a top-level
+    # code) means the backend actually answered — the MVP/core gates return
+    # a bare Http404 (DRF renders it as ``{"detail": ...}``, no envelope),
+    # so a structured 404 is a genuine not-found and MUST be surfaced as-is
+    # instead of being re-branded as an MVP feature gate.  Found by the paid
+    # BaaS CLI/SDK E2E parity run: ``baas api-keys get <uuid>`` against a
+    # non-MVP backend returned 404 {"error": {"code": "NOT_FOUND", ...}} but
+    # the CLI reported "feature is not available in the current MVP release".
+    _structured_404 = False
     if status_code == 404:
+        try:
+            _body = json.loads(response_text) if response_text else None
+        except (json.JSONDecodeError, ValueError):
+            _body = None
+        _structured_404 = isinstance(_body, dict) and (
+            isinstance(_body.get("error"), dict) or "code" in _body or "error_code" in _body
+        )
+
+    if status_code == 404 and not _structured_404:
         detection_input = endpoint or request_url or ""
         core_hit = detect_core_gated_feature(detection_input)
         if core_hit is not None:
@@ -345,7 +385,7 @@ def handle_api_error(
     # We try ``endpoint`` first (which is already the post-/api/v1/ relative
     # path computed by the api_client) and fall back to ``request_url`` so
     # callers can pass either or both.
-    if status_code == 404:
+    if status_code == 404 and not _structured_404:
         detection_input = endpoint or request_url or ""
         detected = detect_mvp_gated_feature(detection_input)
         if detected is not None:
@@ -382,8 +422,19 @@ def handle_api_error(
     if isinstance(error_info, str):
         error_info = {"message": error_info}
 
-    error_message = error_info.get("message", response_text or "Unknown error")
-    error_code = error_info.get("code") or error_data.get("error_code") or f"HTTP_{status_code}"
+    # Some API families (e.g. the Databricks control plane, task 0.15) answer
+    # with the envelope AT THE TOP LEVEL — ``{"code": ..., "message": ...}``
+    # with no nested ``error`` object. Honor both shapes: nested wins, then
+    # top-level, then the HTTP fallback.
+    error_message = (
+        error_info.get("message") or error_data.get("message") or response_text or "Unknown error"
+    )
+    error_code = (
+        error_info.get("code")
+        or error_data.get("code")
+        or error_data.get("error_code")
+        or f"HTTP_{status_code}"
+    )
 
     suggestion = _get_http_error_suggestion(status_code, endpoint)
 
@@ -526,7 +577,7 @@ def validate_file_format(file_path: str, allowed_formats: list[str] | None = Non
     # Detect format from extension
     if file_path.endswith(".json"):
         format_type = "JSON"
-    elif file_path.endswith(".yaml") or file_path.endswith(".yml"):
+    elif file_path.endswith((".yaml", ".yml")):
         format_type = "YAML"
     else:
         # Try to detect from content (basic check)
@@ -550,7 +601,7 @@ def validate_file_format(file_path: str, allowed_formats: list[str] | None = Non
                 error_code="FILE_NOT_FOUND",
                 context={"file_path": file_path},
                 suggestion="Check that the file exists and the path is correct",
-            )
+            ) from None
         except OSError as e:
             raise ODPSParameterError(
                 message=f"Cannot read file to detect format: {e}",
@@ -558,7 +609,7 @@ def validate_file_format(file_path: str, allowed_formats: list[str] | None = Non
                 context={"file_path": file_path},
                 suggestion="Ensure file exists and is readable",
                 original_error=e,
-            )
+            ) from e
 
     if format_type not in allowed_formats:
         raise ODPSParameterError(
@@ -670,9 +721,11 @@ def _get_ref_resolution_suggestion(error_code: str, context: dict[str, Any]) -> 
 
     if "RATE_LIMIT" in error_code_upper:
         retry_after = context.get("retry_after_seconds")
-        if retry_after:
-            return f"Rate limit exceeded. Wait {retry_after} seconds before retrying, or use --no-resolve-external-refs to skip external references"
-        return "Rate limit exceeded. Wait before retrying, or use --no-resolve-external-refs to skip external references"
+        wait_hint = f"Wait {retry_after} seconds" if retry_after else "Wait"
+        return (
+            f"Rate limit exceeded. {wait_hint} before retrying, or use "
+            "--no-resolve-external-refs to skip external references"
+        )
 
     if "SECURITY_VIOLATION" in error_code_upper:
         return "External reference is not allowed due to security restrictions. Use --no-resolve-external-refs to skip external references"
@@ -680,7 +733,7 @@ def _get_ref_resolution_suggestion(error_code: str, context: dict[str, Any]) -> 
     return "Check that all references in your ODPS document are valid and accessible"
 
 
-def _get_normalization_suggestion(error_code: str, context: dict[str, Any]) -> str:
+def _get_normalization_suggestion(_error_code: str, context: dict[str, Any]) -> str:
     """Get suggestion for normalization errors"""
     field_path = context.get("field_path") or context.get("source_path", "field")
     return f"Check the field '{field_path}' in your ODPS document. Normalization may require specific data types or formats"
@@ -720,24 +773,22 @@ def _get_linking_suggestion(error_code: str, context: dict[str, Any]) -> str:
     return "Check that the contracts exist and are in a valid state for linking"
 
 
+_HTTP_ERROR_SUGGESTIONS: dict[int, str] = {
+    400: "Check your request parameters and ensure they are valid",
+    401: "Authentication failed. Run 'datahub login' to authenticate",
+    403: "You don't have permission to perform this operation",
+    409: "Conflict: The resource may already exist or be in an invalid state",
+    422: "Validation failed. Check your input data",
+    429: "Rate limit exceeded. Wait before retrying",
+}
+
+
 def _get_http_error_suggestion(status_code: int, endpoint: str | None = None) -> str:
     """Get suggestion for HTTP errors"""
-    if status_code == 400:
-        return "Check your request parameters and ensure they are valid"
-    elif status_code == 401:
-        return "Authentication failed. Run 'datahub login' to authenticate"
-    elif status_code == 403:
-        return "You don't have permission to perform this operation"
-    elif status_code == 404:
+    if status_code == 404:
         if endpoint and "contract" in endpoint.lower():
             return "Contract not found. Check that the contract ID is correct"
         return "Resource not found. Check that the ID is correct"
-    elif status_code == 409:
-        return "Conflict: The resource may already exist or be in an invalid state"
-    elif status_code == 422:
-        return "Validation failed. Check your input data"
-    elif status_code == 429:
-        return "Rate limit exceeded. Wait before retrying"
-    elif status_code >= 500:
+    if status_code >= 500:
         return "Server error. Please try again later or contact support"
-    return "Check your request and try again"
+    return _HTTP_ERROR_SUGGESTIONS.get(status_code, "Check your request and try again")

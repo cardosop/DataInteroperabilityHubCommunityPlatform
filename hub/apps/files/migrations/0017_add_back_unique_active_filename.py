@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
             model_name="file",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("status", "ACTIVE")),
-                fields=("tenant", "name"),
+                fields=["tenant", "name"],
                 name="unique_active_filename_per_tenant",
             ),
         ),

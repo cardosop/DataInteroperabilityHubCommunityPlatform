@@ -26,6 +26,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
@@ -78,7 +79,7 @@ class BatchVerifier:
     """Verifies batch fixes and runs test batches."""
 
     # Batches with signal fixes applied
-    SIGNAL_FIX_BATCHES = [
+    SIGNAL_FIX_BATCHES: ClassVar[list[tuple[str, str]]] = [
         ("hub/apps/developer", "Developer App"),
         ("hub/apps/audit", "Audit App"),
         ("hub/apps/graphql", "GraphQL App"),
@@ -87,7 +88,7 @@ class BatchVerifier:
     ]
 
     # Other FAILED batches (sorted by size - smallest first)
-    OTHER_FAILED_BATCHES = [
+    OTHER_FAILED_BATCHES: ClassVar[list[tuple[str, str]]] = [
         ("hub/apps/rate_limiting", "Rate Limiting App"),
         ("hub/apps/files", "Files App"),
         ("hub/apps/dq", "Data Quality App"),
@@ -209,7 +210,7 @@ class BatchVerifier:
             result.error_summary.append(f"Test execution timed out after {timeout} seconds")
             print(f"⏱️  {batch_name}: TIMEOUT (exceeded {timeout}s)")
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             result.end_time = time.time()
             result.duration = result.end_time - result.start_time
             result.exit_code = 1
@@ -407,8 +408,8 @@ def main():
     custom_batches = None
     if args.batches:
         batch_list = []
-        for batch_str in args.batches.split(","):
-            batch_str = batch_str.strip()
+        for raw_batch_str in args.batches.split(","):
+            batch_str = raw_batch_str.strip()
             # Convert app path to batch name
             batch_name = batch_str.split("/")[-1].replace("_", " ").title()
             batch_list.append((batch_str, batch_name))

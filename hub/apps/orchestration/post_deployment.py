@@ -271,7 +271,7 @@ class PostDeploymentMetricsCollector:
             if name in by_name and row.get("avg_duration"):
                 td = row["avg_duration"]
                 by_name[name]["avg_duration_seconds"] = td.total_seconds()
-        for name, data in by_name.items():
+        for _name, data in by_name.items():
             if "avg_duration_seconds" not in data:
                 data["avg_duration_seconds"] = None
 

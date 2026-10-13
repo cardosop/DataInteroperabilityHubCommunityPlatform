@@ -87,9 +87,9 @@ class TestPhase2ObjectsIntegration(TestCase):
             raw_contract=raw_contract, format="JSON", spec_type=OriginalSpecType.ODCS
         )
 
-        assert (
-            status == NormalizationStatus.NORMALIZED_OK
-            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
         assert spec_type == OriginalSpecType.ODCS
         assert hub_contract is not None

@@ -17,7 +17,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# Phase 8.6: five new security test modules (added in 8.6.1–8.6.5)
+# Phase 8.6: five new security test modules (added in 8.6.1-8.6.5)
 PHASE8_SECURITY_MODULES = [
     "test_ai_security.py",
     "test_ml_security.py",
@@ -34,7 +34,7 @@ PHASE8_CROSS_CUTTING_SPECS = [
     "concurrent-operations.spec.ts",
 ]
 
-EXPECTED_FEATURE_SPEC_COUNT = 29
+EXPECTED_FEATURE_SPEC_COUNT = 65
 
 
 class TestPhase8_9ScenarioMatrix:
@@ -53,7 +53,7 @@ class TestPhase8_9ScenarioMatrix:
 
 
 class TestPhase8_9FeatureSpecs:
-    """8.9: 28 feature specs exist in frontend/e2e/features/."""
+    """8.9: feature specs exist in frontend/e2e/features/ (count pinned by EXPECTED_FEATURE_SPEC_COUNT)."""
 
     def test_feature_specs_directory_exists(self):
         """frontend/e2e/features/ must exist."""
@@ -61,7 +61,7 @@ class TestPhase8_9FeatureSpecs:
         assert path.is_dir(), f"frontend/e2e/features not found at {path}"
 
     def test_feature_spec_count_is_28(self):
-        """Exactly 28 feature .spec.ts files (8.3)."""
+        """Exactly EXPECTED_FEATURE_SPEC_COUNT feature .spec.ts files (8.3)."""
         features_dir = REPO_ROOT / "frontend" / "e2e" / "features"
         spec_files = list(features_dir.glob("*.spec.ts"))
         names = [f.name for f in spec_files]

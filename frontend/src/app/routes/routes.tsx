@@ -17,6 +17,7 @@ import { AcceptInvitationPage } from '../../features/auth/components/AcceptInvit
 import { LoginPage } from '../../features/auth/components/LoginPage';
 import { VerifyEmailPage } from '../../features/auth/components/VerifyEmailPage';
 // OrgOnboardingPage removed — org creation is now a Platform Admin function in /admin
+import { TenantSignupPage } from '../../features/onboarding/components/TenantSignupPage';
 import { PasswordResetConfirmPage } from '../../features/auth/components/PasswordResetConfirmPage';
 import { PasswordResetPage } from '../../features/auth/components/PasswordResetPage';
 import { PublicResourcesPage } from '../../features/auth/components/PublicResourcesPage';
@@ -56,6 +57,45 @@ function EB({ fallbackMsg, children }: { fallbackMsg: string; children: ReactNod
 }
 
 // Lazy load non-critical routes for code splitting
+const DatabricksCatalogBrowserPage = lazy(() =>
+  import('../../features/databricks/components/CatalogBrowserPage').then((m) => ({
+    default: m.CatalogBrowserPage,
+  }))
+);
+
+const DatabricksWorkspaceManagementPage = lazy(() =>
+  import('../../features/databricks/components/WorkspaceManagementPage').then((m) => ({
+    default: m.WorkspaceManagementPage,
+  }))
+);
+
+const DatabricksWarehouseLifecyclePage = lazy(() =>
+  import('../../features/databricks/components/WarehouseLifecyclePage').then((m) => ({
+    default: m.WarehouseLifecyclePage,
+  }))
+);
+
+const DatabricksJobsPage = lazy(() =>
+  import('../../features/databricks/components/JobsPage').then((m) => ({
+    default: m.JobsPage,
+  }))
+);
+const DatabricksDltPipelinesPage = lazy(() =>
+  import('../../features/databricks/components/DltPipelinesPage').then((m) => ({
+    default: m.DltPipelinesPage,
+  }))
+);
+const DatabricksMlAssetsPage = lazy(() =>
+  import('../../features/databricks/components/MlAssetsPage').then((m) => ({
+    default: m.MlAssetsPage,
+  }))
+);
+
+const DatabricksBudgetPage = lazy(() =>
+  import('../../features/databricks/components/BudgetPage').then((m) => ({
+    default: m.BudgetPage,
+  }))
+);
 const AISearchPage = lazy(() =>
   import('../../features/ai/components/AISearchPage').then((m) => ({ default: m.AISearchPage }))
 );
@@ -318,6 +358,11 @@ const PurposeManagerPage = lazy(() =>
 const ConsentDashboardPage = lazy(() =>
   import('../../features/governance/components/ConsentDashboardPage').then((m) => ({
     default: m.ConsentDashboardPage,
+  }))
+);
+const MyApprovalsInbox = lazy(() =>
+  import('../../features/governance/components/MyApprovalsInbox').then((m) => ({
+    default: m.MyApprovalsInbox,
   }))
 );
 const PublicDsarSubmitPage = lazy(() =>
@@ -592,6 +637,11 @@ const EntitlementDetailPage = lazy(() =>
     default: m.EntitlementDetailPage,
   }))
 );
+const SavedSearchListPage = lazy(() =>
+  import('../../features/marketplace/components/SavedSearchListPage').then((m) => ({
+    default: m.SavedSearchListPage,
+  }))
+);
 const MarketplaceConnectionListPage = lazy(() =>
   import('../../features/integrations/components/MarketplaceConnectionListPage').then((m) => ({
     default: m.MarketplaceConnectionListPage,
@@ -691,10 +741,22 @@ const HomePage = lazy(() =>
     default: m.HomePage,
   }))
 );
+const PricingPage = lazy(() =>
+  import('../../features/pricing/PricingPage').then((m) => ({
+    default: m.PricingPage,
+  }))
+);
+const ProductTourGate = lazy(() =>
+  import('../../features/onboarding/components/ProductTourGate').then((m) => ({
+    default: m.ProductTourGate,
+  }))
+);
+// Reuse the styled placeholder (class not-found-page + role=alert +
+// data-testid="not-found") instead of a bare inline div — keeps the 404
+// semantically consistent with ForbiddenPage below and addressable for
+// E2E/a11y selectors (error-pages.spec.ts, axe-interactive-states.spec.ts).
 const NotFoundPage = lazy(() =>
-  Promise.resolve({
-    default: () => <div>404 - Page Not Found</div>,
-  })
+  import('../pages/PlaceholderPages').then((m) => ({ default: m.NotFoundPage }))
 );
 const ForbiddenPage = lazy(() =>
   import('../pages/PlaceholderPages').then((m) => ({ default: m.ForbiddenPage }))
@@ -755,6 +817,31 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         <RegisterPage />
       </RegistrationRoute>
     ),
+  },
+  {
+    // close-test-coverage-gaps 3.0 checkpoint (verified 2026-09-28, user
+    // decision per design D6): org creation is PLATFORM_ADMIN-only on
+    // EVERY backend surface — POST /api/v1/admin/tenants/ is
+    // [IsAuthenticated, IsPlatformAdmin] (AdminTenantCreateView), the
+    // same pairing on POST /api/v1/tenants/ (TenantViewSet) and
+    // POST /api/v1/tenants/onboarding/ (after this checkpoint's
+    // layer-coherence fix). A PUBLIC self-service /signup would 403 on
+    // submit, so the route is the PLATFORM_ADMIN tenant-provisioning
+    // page: the guard bounces anonymous visitors to /login and
+    // authenticated non-admins to /403 — the backend stays the
+    // enforcement point; the FE gate is UX-grade on top of it.
+    path: '/signup',
+    element: (
+      <ProtectedRoute requiredRole={['PLATFORM_ADMIN']}>
+        <TenantSignupPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // 285.13.11.2 — the pricing page is explicitly public
+    // (logged-in and logged-out states are both first-class).
+    path: '/pricing',
+    element: <EB fallbackMsg="Loading…"><PricingPage /></EB>,
   },
   // /onboard-org removed — org creation is now a Platform Admin function in /admin
   {
@@ -832,6 +919,18 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         element: (
           <EB fallbackMsg="Loading dashboard...">
             <HomePage />
+          </EB>
+        ),
+      },
+      {
+        // close-test-coverage-gaps 3.1 — the product tour is a DEDICATED
+        // authenticated route (inherits the RootRoute shell), NOT
+        // auto-mounted on the HomePage: the gate renders the overlay
+        // only when navigated to directly (ux-v2 + !has_seen_tour).
+        path: 'product-tour',
+        element: (
+          <EB fallbackMsg="Loading product tour...">
+            <ProductTourGate />
           </EB>
         ),
       },
@@ -1014,7 +1113,17 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         ],
       },
       {
+        // 313.H.4 — the marketplace subtree is a PAID surface. The
+        // capability gate resolves from OpenAPI path presence, so
+        // core-only deployments (schema without /api/v1/marketplace/*)
+        // redirect to /unavailable instead of rendering against an
+        // absent API. Same wrapper pattern as /datasets and /dq.
         path: 'marketplace',
+        element: (
+          <CapabilityRoute capability="marketplace">
+            <Outlet />
+          </CapabilityRoute>
+        ),
         children: [
           {
             index: true,
@@ -1090,15 +1199,34 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
               },
             ],
           },
+          {
+            // Phase 278.R.7 — saved searches management. The page component
+            // shipped with 278.R.7 but its route registration was never
+            // added to the marketplace children; the dedicated E2E spec
+            // (journeys/marketplace-dc/saved-searches-management.spec.ts)
+            // timed out on the NotFound page until this was wired up.
+            path: 'saved-searches',
+            element: (
+              <EB fallbackMsg="Loading saved searches...">
+                <SavedSearchListPage />
+              </EB>
+            ),
+          },
         ],
       },
       {
         path: 'integrations',
         element: (
           <MvpGatedRoute>
-            <EB fallbackMsg="Loading...">
-              <IntegrationsLayout />
-            </EB>
+            {/* 313.H.4 — marketplace integrations are a PAID surface
+                (connections/sync-jobs/mappings all target the
+                marketplace app). MvpGatedRoute stays outermost per the
+                drift-test convention. */}
+            <CapabilityRoute capability="integrations.marketplace">
+              <EB fallbackMsg="Loading...">
+                <IntegrationsLayout />
+              </EB>
+            </CapabilityRoute>
           </MvpGatedRoute>
         ),
         children: [
@@ -1595,23 +1723,49 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           { path: 'access-requests/create', element: <EB fallbackMsg="Loading..."><AccessRequestCreatePage /></EB> },
           { path: 'access-requests/:id', element: <EB fallbackMsg="Loading..."><AccessRequestDetailPage /></EB> },
           {
+            // 313.H.4 review — the DSAR handler queue gates on the
+            // compliance_dsar runtime capability (default False on the
+            // backend: explicit opt-in). The PUBLIC dsar ingress under
+            // /legal/dsar stays ungated (backend gates it server-side).
             path: 'dsar-requests',
             element: (
-              <EB fallbackMsg="Loading...">
-                <DsarQueuePage />
-              </EB>
+              <CapabilityRoute capability="compliance_dsar">
+                <EB fallbackMsg="Loading...">
+                  <DsarQueuePage />
+                </EB>
+              </CapabilityRoute>
             ),
           },
           {
             path: 'dsar-requests/:id',
             element: (
-              <EB fallbackMsg="Loading...">
-                <DsarDetailPage />
-              </EB>
+              <CapabilityRoute capability="compliance_dsar">
+                <EB fallbackMsg="Loading...">
+                  <DsarDetailPage />
+                </EB>
+              </CapabilityRoute>
             ),
           },
-          { path: 'consent/purposes', element: <EB fallbackMsg="Loading..."><PurposeManagerPage /></EB> },
-          { path: 'consent/dashboard', element: <EB fallbackMsg="Loading..."><ConsentDashboardPage /></EB> },
+          {
+            // 313.H.4 review — consent routes gate on the
+            // compliance_consent runtime capability (default False on
+            // the backend: explicit opt-in) — same convention as the
+            // dpia/breach/processor siblings below.
+            path: 'consent/purposes',
+            element: (
+              <CapabilityRoute capability="compliance_consent">
+                <EB fallbackMsg="Loading..."><PurposeManagerPage /></EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'consent/dashboard',
+            element: (
+              <CapabilityRoute capability="compliance_consent">
+                <EB fallbackMsg="Loading..."><ConsentDashboardPage /></EB>
+              </CapabilityRoute>
+            ),
+          },
           {
             path: 'dpia/review-queue',
             element: (
@@ -1691,6 +1845,15 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
                 </EB>
               </CapabilityRoute>
             ),
+          },
+          {
+            // close-test-coverage-gaps 2.1 — the unified "waiting on me"
+            // inbox (278.I.1). Role INHERITED from the /governance parent
+            // ProtectedRoute (TENANT_ADMIN/DPO/LEGAL_ADMIN/SECURITY_ADMIN/
+            // PLATFORM_ADMIN) — no per-route guard or capability of its
+            // own: the inbox aggregates items the role can already see.
+            path: 'my-approvals',
+            element: <EB fallbackMsg="Loading my approvals..."><MyApprovalsInbox /></EB>,
           },
           {
             path: 'retention/dashboard',
@@ -1852,6 +2015,129 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         ),
       },
       {
+        // openspec add-databricks-control-plane task 0.15 — workspace
+        // registry management (JOURNEY-DB-001/002). MVP-gated: the backend
+        // omits /api/v1/databricks/ from MVP OpenAPI (task 0.13), so the
+        // capability resolves unavailable under MVP and MvpGatedRoute
+        // redirects to /coming-soon. The backend enforces TENANT_ADMIN
+        // (HasRole) — the FE gate is UX-grade on top of it.
+        path: 'databricks',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading Databricks workspaces...">
+                  <DatabricksWorkspaceManagementPage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
+        // openspec add-databricks-control-plane task 1.9 — the U3 Unity
+        // Catalog browser (JOURNEY-DB-005). Same gates as the registry:
+        // MVP-gated + capability + TENANT_ADMIN (the backend enforces the
+        // role; the FE gate is UX-grade).
+        path: 'databricks/workspaces/:workspaceId/catalog',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading the catalog browser...">
+                  <DatabricksCatalogBrowserPage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
+        // openspec add-databricks-sql-warehouses task 3.7 — the U5 SQL
+        // warehouse lifecycle page (JOURNEY-DB-010 surface). Same gates
+        // as the catalog browser: MVP-gated + capability + TENANT_ADMIN.
+        path: 'databricks/workspaces/:workspaceId/warehouses',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading SQL warehouses...">
+                  <DatabricksWarehouseLifecyclePage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
+        // openspec add-databricks-jobs task 4.5 — the U5 jobs fleet
+        // page (JOURNEY-DB-011 surface). Same gates as the warehouse
+        // lifecycle page: MVP-gated + capability + TENANT_ADMIN.
+        path: 'databricks/workspaces/:workspaceId/jobs',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading Databricks jobs...">
+                  <DatabricksJobsPage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
+        // openspec add-databricks-cost-guardrails task 7.6 — the U9 cost
+        // budget page (JOURNEY-DB-015 surface). Same gates as the jobs
+        // page: MVP-gated + capability + TENANT_ADMIN.
+        // openspec add-databricks-dlt-pipelines task 10.7 — the U5 DLT
+        // pipeline management page (JOURNEY-DB-017 surface). Same gates
+        // as the jobs page: MVP-gated + capability + TENANT_ADMIN.
+        path: 'databricks/workspaces/:workspaceId/dlt-pipelines',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading DLT pipelines...">
+                  <DatabricksDltPipelinesPage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
+        // openspec add-databricks-ml-assets task 12.6 — the U5 ML-assets
+        // management page (JOURNEY-DB-019 surface). Same gates as the
+        // DLT page: MVP-gated + capability + TENANT_ADMIN.
+        path: 'databricks/workspaces/:workspaceId/ml-assets',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading ML assets...">
+                  <DatabricksMlAssetsPage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
+        path: 'databricks/budgets',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="databricks">
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading cost budgets...">
+                  <DatabricksBudgetPage />
+                </EB>
+              </ProtectedRoute>
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
+      },
+      {
         path: 'admin/users/:id/edit',
         element: (
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
@@ -1952,9 +2238,12 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         path: 'admin/connect',
         element: (
           <ProtectedRoute requiredRole={['PLATFORM_ADMIN']}>
-            <EB fallbackMsg="Loading KYB review queue...">
-              <KYBReviewQueuePage />
-            </EB>
+            {/* 313.H.4 — the KYB review queue is Stripe Connect (paid). */}
+            <CapabilityRoute capability="billing.stripe_connect">
+              <EB fallbackMsg="Loading KYB review queue...">
+                <KYBReviewQueuePage />
+              </EB>
+            </CapabilityRoute>
           </ProtectedRoute>
         ),
       },
@@ -1982,7 +2271,11 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             element: (
               <EB fallbackMsg="Loading cost overview...">
                 <ProtectedRoute requiredRole={['PLATFORM_ADMIN']}>
-                  <CpoCostOverviewPage />
+                  {/* 313.H.4 — the CPO cost overview is the paid billing
+                      admin router (admin/cost-overview). */}
+                  <CapabilityRoute capability="billing">
+                    <CpoCostOverviewPage />
+                  </CapabilityRoute>
                 </ProtectedRoute>
               </EB>
             ),
@@ -1992,7 +2285,12 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             element: (
               <EB fallbackMsg="Loading RoPA...">
                 <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN', 'DPO']}>
-                  <RopaListPage />
+                  {/* 313.H.4 review — RoPA gates on the compliance_ropa
+                      runtime capability (default False on the backend:
+                      explicit opt-in), same convention as dpia/breach. */}
+                  <CapabilityRoute capability="compliance_ropa">
+                    <RopaListPage />
+                  </CapabilityRoute>
                 </ProtectedRoute>
               </EB>
             ),
@@ -2040,9 +2338,12 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             path: 'subscription',
             element: (
               <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-                <EB fallbackMsg="Loading subscription...">
-                  <SubscriptionPage />
-                </EB>
+                {/* 313.H.4 — the subscription page is the paid billing app. */}
+                <CapabilityRoute capability="billing">
+                  <EB fallbackMsg="Loading subscription...">
+                    <SubscriptionPage />
+                  </EB>
+                </CapabilityRoute>
               </ProtectedRoute>
             ),
           },
@@ -2074,9 +2375,12 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             path: 'revenue',
             element: (
               <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-                <EB fallbackMsg="Loading revenue...">
-                  <ProviderRevenuePage />
-                </EB>
+                {/* 313.H.4 — Stripe Connect payouts are the paid billing app. */}
+                <CapabilityRoute capability="billing.stripe_connect">
+                  <EB fallbackMsg="Loading revenue...">
+                    <ProviderRevenuePage />
+                  </EB>
+                </CapabilityRoute>
               </ProtectedRoute>
             ),
           },

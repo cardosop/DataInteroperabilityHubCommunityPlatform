@@ -817,7 +817,9 @@ class PipelineExecutionTest(TestCase):
     @patch("hub.apps.files.storage.S3StorageClient")
     @patch("hub.apps.dq.service_client.DQServiceClient")
     @patch("hub.apps.compliance.service_client.ComplianceServiceClient")
-    def test_execute_pipeline_async_with_mocked_services(self, mock_compliance_client, mock_dq_client, mock_storage):
+    def test_execute_pipeline_async_with_mocked_services(
+        self, mock_compliance_client, mock_dq_client, mock_storage
+    ):
         """Test execute_pipeline() async mode with mocked storage/compliance/DQ services."""
         from hub.apps.transformation.models import ExecutionMode, ExecutionStatus
 
@@ -1090,6 +1092,8 @@ class PreviewTransformationTest(TestCase):
 
         # Check DQ service availability
         try:
+            from hub.apps.dq.service_client import DQServiceClient
+
             dq_client = DQServiceClient()
             is_healthy, _ = dq_client.health_check()
             self.dq_service_available = is_healthy

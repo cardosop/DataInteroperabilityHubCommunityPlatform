@@ -16,7 +16,6 @@ Following TDD approach and engineering best practices:
 
 import uuid
 
-from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
@@ -36,7 +35,6 @@ from hub.apps.mesh.models import (
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
-
 
 
 class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):

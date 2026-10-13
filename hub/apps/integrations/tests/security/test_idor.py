@@ -261,7 +261,7 @@ class AuditorMutationDenyTest(TestCase):
         resp = client.get(f"/api/v1/assets/{asset.id}/external-resources/")
         assert resp.status_code == 200, resp.content
         body = resp.json()
-        assert isinstance(body, dict) or isinstance(body, list)
+        assert isinstance(body, (dict, list))
 
 
 # ---------------------------------------------------------------------------

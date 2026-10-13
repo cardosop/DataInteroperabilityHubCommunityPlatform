@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
-from django.db import transaction
+from django.db import DatabaseError, InterfaceError, transaction
 from django.utils import timezone
 
 from hub.apps.audit import event_types as audit_event_types
@@ -18,9 +17,13 @@ from hub.apps.consent.signing import (
     verify_proof_hmac,
 )
 from hub.apps.core.services.base import ValidationError
-from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import tenant_context
-from hub.apps.users.models import User
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from hub.apps.tenants.models import Tenant
+    from hub.apps.users.models import User
 
 logger = structlog.get_logger(__name__)
 
@@ -255,7 +258,7 @@ def _publish_granted_webhook(*, record_id: str, tenant_id: str) -> None:
             row = ConsentRecord.objects.filter(pk=record_id).first()
         if row:
             publish_consent_granted(row)
-    except Exception as exc:
+    except (DatabaseError, InterfaceError) as exc:
         logger.warning(
             "consent_granted_webhook_failed",
             record_id=record_id,
@@ -273,7 +276,7 @@ def _publish_revoked_webhook(*, record_id: str, tenant_id: str) -> None:
             row = ConsentRecord.objects.filter(pk=record_id).first()
         if row:
             publish_consent_revoked(row)
-    except Exception as exc:
+    except (DatabaseError, InterfaceError) as exc:
         logger.warning(
             "consent_revoked_webhook_failed",
             record_id=record_id,

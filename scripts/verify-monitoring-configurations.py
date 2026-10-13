@@ -37,7 +37,7 @@ STANDARDIZED_PATTERNS = [
 ]
 
 
-def find_old_patterns_in_content(content: str, file_path: Path) -> list[tuple[int, str, str]]:
+def find_old_patterns_in_content(content: str, _file_path: Path) -> list[tuple[int, str, str]]:
     """Find old patterns in content"""
     issues = []
     lines = content.split("\n")
@@ -48,7 +48,7 @@ def find_old_patterns_in_content(content: str, file_path: Path) -> list[tuple[in
             if old_pattern in line:
                 # Check if it's in a comment or documentation
                 stripped = line.strip()
-                if stripped.startswith("#") or stripped.startswith("//"):
+                if stripped.startswith(("#", "//")):
                     # Might be documentation - check context
                     if (
                         "deprecated" in line.lower()
@@ -187,7 +187,7 @@ def check_log_patterns(log_config_dir: Path) -> dict:
             pattern_issues = find_old_patterns_in_content(content, log_file)
             if pattern_issues:
                 issues.extend([(str(log_file), issue) for issue in pattern_issues])
-        except Exception:
+        except (OSError, ValueError):
             pass  # Skip files that can't be read
 
     return {

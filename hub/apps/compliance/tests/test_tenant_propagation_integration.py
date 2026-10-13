@@ -168,7 +168,7 @@ class TenantPropagationIntegrationTest(TestCase):
         try:
             with httpx.Client(timeout=10.0) as http_client:
                 response = http_client.get(metrics_url)
-        except Exception as e:
+        except (httpx.RequestError, httpx.InvalidURL) as e:
             self.skipTest(f"Cannot reach compliance-service metrics: {e}")
 
         self.assertEqual(

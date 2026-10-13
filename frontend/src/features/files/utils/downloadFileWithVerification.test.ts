@@ -49,7 +49,7 @@ function setupHttpMocks(opts: {
 }) {
   const httpMock = vi.mocked(apiClient.getClient());
   vi.mocked(httpMock.get).mockImplementation(((url: string) => {
-    if (url.match(/files\/[^/]+\/download\/$/)) {
+    if (url.match(/files\/[^/]+\/download-payload\/$/)) {
       return Promise.resolve({
         data: {
           download_url: 'https://s3.example.com/presigned',
@@ -62,7 +62,7 @@ function setupHttpMocks(opts: {
     throw new Error(`unexpected GET ${url}`);
   }) as never);
   vi.mocked(httpMock.post).mockImplementation(((url: string, body?: unknown) => {
-    if (url.match(/files\/[^/]+\/download\/checksum-mismatch\/$/)) {
+    if (url.match(/files\/[^/]+\/report-checksum-mismatch\/$/)) {
       opts.recordSpy?.(body);
       return Promise.resolve({ data: { recorded: true } }) as never;
     }
@@ -156,10 +156,12 @@ describe('downloadFileWithVerification — mismatch path', () => {
         downloadFileWithVerification('file-mismatch', { s3Fetch: fakeFetch })
       ).rejects.toBeInstanceOf(ChecksumMismatchError);
       // The console.error path is load-bearing: it MUST fire so the
-      // production observability hook is exercised.
+      // production observability hook is exercised (the debugLogger's
+      // structured event — the env-gated logger delegates to
+      // console.error outside production).
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to report checksum mismatch for file-mismatch'),
-        expect.any(Error),
+        'checksum_mismatch_report_failed',
+        expect.objectContaining({ file_id: 'file-mismatch' }),
       );
     } finally {
       consoleErrorSpy.mockRestore();

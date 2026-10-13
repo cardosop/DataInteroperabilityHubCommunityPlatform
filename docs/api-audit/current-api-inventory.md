@@ -1,7 +1,7 @@
 # Current API Inventory from Codebase
 
 **Document Version**: 2.0.0
-**Last Updated**: 2026-06-22
+**Last Updated**: 2026-10-04
 **Source**: Static analysis of Django URL patterns and ViewSets
 **Task**: 9.6.3.3.2 - Update API inventory files
 
@@ -15,7 +15,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 3. Extracting function-based views
 4. Verifying endpoint patterns match standardized conventions
 
-**Total Endpoints Found**: 884
+**Total Endpoints Found**: 917
 
 ---
 
@@ -344,7 +344,39 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/data_movement/internal/config/<str:direction>/<uuid:resource_id>/` | `internal_pipeline_config` | internal_pipeline_config | Function-based |
 | POST | `/api/v1/data_movement/internal/config/<str:direction>/<uuid:resource_id>/` | `internal_pipeline_config` | internal_pipeline_config | Function-based |
 
-### Developer (40 endpoints)
+### Databricks_admin (25 endpoints)
+
+**Base Route**: `/api/v1/databricks_admin/`
+
+| Method | Path | View | Action | Type |
+|--------|------|------|--------|------|
+| GET | `/api/v1/databricks_admin/accounts/` | `AccountProvisioningViewSet.list` | list | Standard |
+| POST | `/api/v1/databricks_admin/accounts/` | `AccountProvisioningViewSet.create` | create | Standard |
+| DELETE | `/api/v1/databricks_admin/accounts/{id}/` | `AccountProvisioningViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/databricks_admin/accounts/{id}/` | `AccountProvisioningViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/databricks_admin/accounts/{id}/` | `AccountProvisioningViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/databricks_admin/accounts/{id}/` | `AccountProvisioningViewSet.update` | update | Standard |
+| GET | `/api/v1/databricks_admin/estate-summary/` | `AccountEstateViewSet.list` | list | Standard |
+| POST | `/api/v1/databricks_admin/estate-summary/` | `AccountEstateViewSet.create` | create | Standard |
+| DELETE | `/api/v1/databricks_admin/estate-summary/{id}/` | `AccountEstateViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/databricks_admin/estate-summary/{id}/` | `AccountEstateViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/databricks_admin/estate-summary/{id}/` | `AccountEstateViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/databricks_admin/estate-summary/{id}/` | `AccountEstateViewSet.update` | update | Standard |
+| GET | `/api/v1/databricks_admin/sso/` | `DatabricksSSOViewSet.list` | list | Standard |
+| POST | `/api/v1/databricks_admin/sso/` | `DatabricksSSOViewSet.create` | create | Standard |
+| DELETE | `/api/v1/databricks_admin/sso/{id}/` | `DatabricksSSOViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/databricks_admin/sso/{id}/` | `DatabricksSSOViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/databricks_admin/sso/{id}/` | `DatabricksSSOViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/databricks_admin/sso/{id}/` | `DatabricksSSOViewSet.update` | update | Standard |
+| GET | `/api/v1/databricks_admin/workspaces/` | `WorkspaceViewSet.list` | list | Standard |
+| POST | `/api/v1/databricks_admin/workspaces/` | `WorkspaceViewSet.create` | create | Standard |
+| DELETE | `/api/v1/databricks_admin/workspaces/{id}/` | `WorkspaceViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/databricks_admin/workspaces/{id}/` | `WorkspaceViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/databricks_admin/workspaces/{id}/` | `WorkspaceViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/databricks_admin/workspaces/{id}/` | `WorkspaceViewSet.update` | update | Standard |
+| POST | `/api/v1/databricks_admin/workspaces/{id}/test/` | `WorkspaceViewSet.test` | test | Custom |
+
+### Developer (38 endpoints)
 
 **Base Route**: `/api/v1/developer/`
 
@@ -356,12 +388,6 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.update` | update | Standard |
-| GET | `/api/v1/developer/api-usage/` | `APIUsageViewSet.list` | list | Standard |
-| POST | `/api/v1/developer/api-usage/` | `APIUsageViewSet.create` | create | Standard |
-| DELETE | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.destroy` | destroy | Standard |
-| GET | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.retrieve` | retrieve | Standard |
-| PATCH | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.partial_update` | partial_update | Standard |
-| PUT | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.update` | update | Standard |
 | GET | `/api/v1/developer/documentation/` | `DocumentationViewSet.list` | list | Standard |
 | POST | `/api/v1/developer/documentation/` | `DocumentationViewSet.create` | create | Standard |
 | DELETE | `/api/v1/developer/documentation/{id}/` | `DocumentationViewSet.destroy` | destroy | Standard |
@@ -377,7 +403,11 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.update` | update | Standard |
+| POST | `/api/v1/developer/plugins/{id}/deploy/` | `PluginViewSet.deploy_plugin` | deploy_plugin | Custom |
 | POST | `/api/v1/developer/plugins/{id}/execute/` | `PluginViewSet.execute` | execute | Custom |
+| POST | `/api/v1/developer/plugins/{id}/publish/` | `PluginViewSet.publish_plugin` | publish_plugin | Custom |
+| POST | `/api/v1/developer/plugins/{id}/test/` | `PluginViewSet.test_plugin` | test_plugin | Custom |
+| POST | `/api/v1/developer/plugins/{id}/validate/` | `PluginViewSet.validate_plugin` | validate_plugin | Custom |
 | GET | `/api/v1/developer/portal/` | `PortalViewSet.list` | list | Standard |
 | POST | `/api/v1/developer/portal/` | `PortalViewSet.create` | create | Standard |
 | DELETE | `/api/v1/developer/portal/{id}/` | `PortalViewSet.destroy` | destroy | Standard |
@@ -488,7 +518,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/gdpr/export-jobs/{id}/` | `DataExportJobViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/gdpr/export-jobs/{id}/` | `DataExportJobViewSet.update` | update | Standard |
 
-### Governance (32 endpoints)
+### Governance (44 endpoints)
 
 **Base Route**: `/api/v1/governance/`
 
@@ -520,6 +550,18 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/governance/certifications/{id}/` | `AccessCertificationViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/governance/certifications/{id}/` | `AccessCertificationViewSet.update` | update | Standard |
 | POST | `/api/v1/governance/certifications/{id}/review/` | `AccessCertificationViewSet.review` | review | Custom |
+| GET | `/api/v1/governance/compliance-reports/` | `ComplianceReportViewSet.list` | list | Standard |
+| POST | `/api/v1/governance/compliance-reports/` | `ComplianceReportViewSet.create` | create | Standard |
+| DELETE | `/api/v1/governance/compliance-reports/{id}/` | `ComplianceReportViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/governance/compliance-reports/{id}/` | `ComplianceReportViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/governance/compliance-reports/{id}/` | `ComplianceReportViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/governance/compliance-reports/{id}/` | `ComplianceReportViewSet.update` | update | Standard |
+| GET | `/api/v1/governance/delegations/` | `DelegationViewSet.list` | list | Standard |
+| POST | `/api/v1/governance/delegations/` | `DelegationViewSet.create` | create | Standard |
+| DELETE | `/api/v1/governance/delegations/{id}/` | `DelegationViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/governance/delegations/{id}/` | `DelegationViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/governance/delegations/{id}/` | `DelegationViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/governance/delegations/{id}/` | `DelegationViewSet.update` | update | Standard |
 | GET | `/api/v1/governance/retention-policies/` | `RetentionPolicyViewSet.list` | list | Standard |
 | POST | `/api/v1/governance/retention-policies/` | `RetentionPolicyViewSet.create` | create | Standard |
 | DELETE | `/api/v1/governance/retention-policies/{id}/` | `RetentionPolicyViewSet.destroy` | destroy | Standard |
@@ -702,7 +744,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/mesh/topology/{id}/` | `TopologyViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/mesh/topology/{id}/` | `TopologyViewSet.update` | update | Standard |
 
-### Ml (32 endpoints)
+### Ml (34 endpoints)
 
 **Base Route**: `/api/v1/ml/`
 
@@ -737,20 +779,18 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/ml/models/{id}/` | `MLModelViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/ml/models/{id}/` | `MLModelViewSet.update` | update | Standard |
 | GET | `/api/v1/ml/models/{id}/datasets/` | `MLModelViewSet.get_datasets` | get_datasets | Custom |
+| POST | `/api/v1/ml/models/{id}/link-asset/` | `MLModelViewSet.link_asset` | link_asset | Custom |
 | POST | `/api/v1/ml/models/{id}/link-dataset/` | `MLModelViewSet.link_dataset` | link_dataset | Custom |
 | POST | `/api/v1/ml/models/{id}/predict/` | `MLModelViewSet.predict` | predict | Custom |
 | POST | `/api/v1/ml/models/{id}/sync-from-odh/` | `MLModelViewSet.sync_from_odh` | sync_from_odh | Custom |
+| GET | `/api/v1/ml/models/{id}/versions/` | `MLModelViewSet.versions` | versions | Custom |
 
-### Notifications (13 endpoints)
+### Notifications (9 endpoints)
 
 **Base Route**: `/api/v1/notifications/`
 
 | Method | Path | View | Action | Type |
 |--------|------|------|--------|------|
-| GET | `/api/v1/notifications/unsubscribe/` | `marketing_unsubscribe` | marketing_unsubscribe | Function-based |
-| POST | `/api/v1/notifications/unsubscribe/` | `marketing_unsubscribe` | marketing_unsubscribe | Function-based |
-| GET | `/api/v1/notifications/unsubscribe/<str:token>/` | `marketing_unsubscribe` | marketing_unsubscribe | Function-based |
-| POST | `/api/v1/notifications/unsubscribe/<str:token>/` | `marketing_unsubscribe` | marketing_unsubscribe | Function-based |
 | GET | `/api/v1/notifications/user-notifications/` | `UserNotificationViewSet.list` | list | Standard |
 | POST | `/api/v1/notifications/user-notifications/` | `UserNotificationViewSet.create` | create | Standard |
 | POST | `/api/v1/notifications/user-notifications/read-all/` | `UserNotificationViewSet.mark_all_read` | mark_all_read | Custom |
@@ -1194,18 +1234,18 @@ This document inventories all API endpoints extracted from the Django codebase b
 
 ## Summary Statistics
 
-- **Total Endpoints**: 884
-- **Standard CRUD Actions**: 588
-- **Custom Actions**: 186
-- **Function-based Views**: 110
+- **Total Endpoints**: 917
+- **Standard CRUD Actions**: 618
+- **Custom Actions**: 193
+- **Function-based Views**: 106
 
 ### Methods Breakdown
 
-- **DELETE**: 100 endpoints
-- **GET**: 349 endpoints
-- **PATCH**: 106 endpoints
-- **POST**: 230 endpoints
-- **PUT**: 99 endpoints
+- **DELETE**: 105 endpoints
+- **GET**: 358 endpoints
+- **PATCH**: 111 endpoints
+- **POST**: 239 endpoints
+- **PUT**: 104 endpoints
 
 ## Notes
 
@@ -1225,4 +1265,4 @@ All endpoints follow standardized patterns:
 ---
 
 **Document Status**: ✅ Complete
-**Total Endpoints Extracted**: 884
+**Total Endpoints Extracted**: 917

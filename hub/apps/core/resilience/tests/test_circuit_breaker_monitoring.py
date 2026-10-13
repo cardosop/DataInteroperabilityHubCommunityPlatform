@@ -14,6 +14,7 @@ import contextlib
 import uuid
 from unittest.mock import MagicMock
 
+import redis
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from structlog.testing import capture_logs
@@ -57,7 +58,7 @@ class TestCircuitBreakerMetrics(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_circuit_breaker_has_metrics(self):
@@ -155,7 +156,7 @@ class TestCircuitBreakerStructuredLogging(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_state_change_logs_event(self):
@@ -180,9 +181,11 @@ class TestCircuitBreakerStructuredLogging(TestCase):
         def failing_func():
             raise ValueError("Test error")
 
-        with capture_logs() as cap_logs:
-            with contextlib.suppress(ValueError, CircuitBreakerError):
-                self.circuit_breaker.call(failing_func)
+        with (
+            capture_logs() as cap_logs,
+            contextlib.suppress(ValueError, CircuitBreakerError),
+        ):
+            self.circuit_breaker.call(failing_func)
 
         # Verify failure was recorded
         self.assertGreater(self.circuit_breaker._get_failure_count(), 0)

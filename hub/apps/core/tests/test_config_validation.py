@@ -12,9 +12,23 @@ from hub.apps.core.config_validation import (
     validate_all,
     validate_allowed_hosts,
     validate_database_config,
+    validate_paid_service_config,
     validate_production_secrets,
     validate_redis_config,
 )
+
+# Realistic paid-service settings: what a full-mode prod/staging deploy
+# must provide for the paid apps to work (Phase P.8 D6).
+PAID_OK = {
+    "STRIPE_SECRET_KEY": "sk_live_set-via-env",
+    "BAAS_DATABASE_URL": "postgresql://baas:baas@baas-db:5432/baas",
+    "BAAS_REDIS_URL": "redis://baas-redis:6383/0",
+    "FUSEKI_URL": "http://fuseki:3030",
+    "SEMANTIC_SERVICE_URL": "http://semantic-service:8081",
+    "ODH_TRAINING_OPERATOR_URL": "http://odh-training-operator:8080",
+    "ODH_SERVICE_URL": "http://odh-training-operator:8080",
+    "ODH_INFERENCE_SCHEDULER_URL": "http://odh-inference-scheduler:8082",
+}
 
 
 class ValidateDatabaseConfigTests(SimpleTestCase):
@@ -174,6 +188,190 @@ class ValidateProductionSecretsTests(SimpleTestCase):
         self.assertIn("JWT_SECRET_KEY", str(ctx.exception))
 
 
+class ValidatePaidServiceConfigTests(SimpleTestCase):
+    """Phase P.8 D6 — a full-mode prod/staging deploy missing payment,
+    triple-store, BaaS or ML configuration must fail at boot, naming the
+    setting and the capability it powers; core-only boots are unaffected."""
+
+    def test_core_only_skips_paid_requirements(self):
+        """HUB_CORE_ONLY=1 → paid settings SHALL NOT be required."""
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=True,
+            INSTALLED_APPS=[],
+            STRIPE_SECRET_KEY=None,
+            BAAS_DATABASE_URL=None,
+            BAAS_REDIS_URL=None,
+            FUSEKI_URL="",
+            SEMANTIC_SERVICE_URL="",
+            ODH_TRAINING_OPERATOR_URL="",
+            ODH_SERVICE_URL="",
+            ODH_INFERENCE_SCHEDULER_URL="",
+        ):
+            validate_paid_service_config()
+
+    def test_development_skips_paid_requirements(self):
+        with override_settings(
+            ENVIRONMENT="development",
+            HUB_CORE_ONLY=False,
+            STRIPE_SECRET_KEY=None,
+            BAAS_DATABASE_URL=None,
+            BAAS_REDIS_URL=None,
+            FUSEKI_URL="",
+            SEMANTIC_SERVICE_URL="",
+            ODH_TRAINING_OPERATOR_URL="",
+            ODH_SERVICE_URL="",
+            ODH_INFERENCE_SCHEDULER_URL="",
+        ):
+            validate_paid_service_config()
+
+    def test_billing_installed_requires_stripe_secret(self):
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.billing"],
+            STRIPE_SECRET_KEY=None,
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            self.assertIn("STRIPE_SECRET_KEY", str(ctx.exception))
+            self.assertIn("billing", str(ctx.exception).lower())
+
+    def test_staging_requires_stripe_secret(self):
+        with override_settings(
+            ENVIRONMENT="staging",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.marketplace"],
+            STRIPE_SECRET_KEY="",
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            self.assertIn("STRIPE_SECRET_KEY", str(ctx.exception))
+
+    def test_baas_installed_requires_baas_urls(self):
+        """Fail-fast on the first missing var (module contract: one setting
+        per exception); each BaaS var is validated."""
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.baas"],
+            BAAS_DATABASE_URL=None,
+            BAAS_REDIS_URL=None,
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            message = str(ctx.exception)
+            self.assertIn("BAAS_DATABASE_URL", message)
+            self.assertIn("baas", message.lower())
+
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.baas"],
+            BAAS_DATABASE_URL="postgresql://baas:baas@baas-db:5432/baas",
+            BAAS_REDIS_URL=None,
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            self.assertIn("BAAS_REDIS_URL", str(ctx.exception))
+
+    def test_baas_urls_required_only_when_baas_installed(self):
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.billing"],
+            BAAS_DATABASE_URL=None,
+            BAAS_REDIS_URL=None,
+            STRIPE_SECRET_KEY="sk_live_set-via-env",
+        ):
+            validate_paid_service_config()
+
+    def test_semantic_installed_requires_triple_store_urls(self):
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.semantic"],
+            FUSEKI_URL="",
+            SEMANTIC_SERVICE_URL="",
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            message = str(ctx.exception)
+            self.assertIn("FUSEKI_URL", message)
+            self.assertIn("semantic", message.lower())
+
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.semantic"],
+            FUSEKI_URL="http://fuseki:3030",
+            SEMANTIC_SERVICE_URL="",
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            self.assertIn("SEMANTIC_SERVICE_URL", str(ctx.exception))
+
+    def test_semantic_urls_must_have_http_scheme(self):
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.semantic"],
+            FUSEKI_URL="ftp://fuseki:3030",
+            SEMANTIC_SERVICE_URL="http://semantic-service:8081",
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            self.assertIn("FUSEKI_URL", str(ctx.exception))
+
+    def test_ml_installed_requires_odh_urls(self):
+        """Each ODH var is validated (fail-fast: one per exception)."""
+        odh_vars = (
+            "ODH_TRAINING_OPERATOR_URL",
+            "ODH_SERVICE_URL",
+            "ODH_INFERENCE_SCHEDULER_URL",
+        )
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=["hub.apps.ml"],
+            ODH_TRAINING_OPERATOR_URL=None,
+            ODH_SERVICE_URL=None,
+            ODH_INFERENCE_SCHEDULER_URL=None,
+        ):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                validate_paid_service_config()
+            message = str(ctx.exception)
+            self.assertIn("ODH_TRAINING_OPERATOR_URL", message)
+            self.assertIn("ml", message.lower())
+        for missing in odh_vars:
+            overrides = dict(
+                ENVIRONMENT="production",
+                HUB_CORE_ONLY=False,
+                INSTALLED_APPS=["hub.apps.ml"],
+                **PAID_OK,
+            )
+            overrides[missing] = None
+            with override_settings(**overrides):
+                with self.assertRaises(ImproperlyConfigured) as ctx:
+                    validate_paid_service_config()
+                self.assertIn(missing, str(ctx.exception))
+
+    def test_full_mode_with_all_paid_vars_set_passes(self):
+        with override_settings(
+            ENVIRONMENT="production",
+            HUB_CORE_ONLY=False,
+            INSTALLED_APPS=[
+                "hub.apps.billing",
+                "hub.apps.marketplace",
+                "hub.apps.baas",
+                "hub.apps.semantic",
+                "hub.apps.ml",
+            ],
+            **PAID_OK,
+        ):
+            validate_paid_service_config()
+
+
 class ValidateAllTests(SimpleTestCase):
     """Tests for validate_all integration."""
 
@@ -207,6 +405,7 @@ class ValidateAllTests(SimpleTestCase):
         ALLOWED_HOSTS=["api.example.com"],
         SECRET_KEY="prod-secret",
         JWT_SECRET_KEY="prod-jwt-secret",
+        **PAID_OK,
     )
     def test_passes_with_valid_production_config(self):
         validate_all()

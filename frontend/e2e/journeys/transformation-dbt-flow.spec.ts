@@ -54,6 +54,7 @@ test.describe('Transformation dbt Flow — E2E Journey', () => {
     await page.waitForLoadState('domcontentloaded');
     // Contract page should load without error
     const errorAlert = page.locator('[role="alert"]');
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     const errorVisible = await errorAlert.isVisible().catch(() => false);
     if (!errorVisible) {
       // Page loaded successfully

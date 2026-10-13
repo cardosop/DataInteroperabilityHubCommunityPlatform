@@ -28,7 +28,7 @@ from hub.apps.governance.models import AccessPolicy
 from hub.apps.tenants.models import Tenant
 from hub.apps.transformation.exceptions import TransformationExecutionError
 from hub.apps.transformation.services import TransformationService
-from hub.apps.users.models import Role, User, UserStatus
+from hub.apps.users.models import Role, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -143,8 +143,9 @@ class TransformationPerformanceTest(TestCase):
             preview_time = time.time() - start_time
 
             # Preview generation should complete within 10 seconds for small samples
-            self.assertIsNotNone(preview_result,
-                "preview_transformation returned None — preview generation failed")
+            self.assertIsNotNone(
+                preview_result, "preview_transformation returned None — preview generation failed"
+            )
             self.assertLess(
                 preview_time,
                 10.0,

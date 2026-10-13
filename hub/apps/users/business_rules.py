@@ -128,7 +128,10 @@ class UserBusinessRules(BusinessRules):
         return UserCreationValidationResult(is_valid=True)
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs  # noqa: ARG002
+        self,
+        context: RuleExecutionContext | None = None,
+        *_args,
+        **kwargs,
     ) -> ValidationResult:
         """Abstract method required by :class:`BusinessRules`.
 

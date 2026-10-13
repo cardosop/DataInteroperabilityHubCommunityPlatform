@@ -24,7 +24,9 @@ export function QuickPreviewModal({ listingId, listingTitle, onClose }: QuickPre
   const [preview, setPreview] = useState<ListingPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const mountTimeRef = useRef(Date.now());
+  // The mount effect below stamps the real open-time; the initial value
+  // is a placeholder (Date.now() must NOT run during render — react-hooks/purity).
+  const mountTimeRef = useRef(0);
   const resultRef = useRef<PreviewDetail['result']>('dismissed');
   const hasEmittedOpened = useRef(false);
 

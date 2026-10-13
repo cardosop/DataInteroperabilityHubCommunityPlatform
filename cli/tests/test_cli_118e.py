@@ -116,7 +116,7 @@ class TestTransformation:
         )
         assert r.exit_code == 0
         assert "Submit a new transformation run" in r.output
-        assert "PIPELINE_ID" in r.output
+        assert "--pipeline-id" in r.output
 
     def test_runs_cancel_help(self, runner):
         r = runner.invoke(

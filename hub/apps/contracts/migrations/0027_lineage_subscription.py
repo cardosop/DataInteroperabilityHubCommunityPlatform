@@ -98,7 +98,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="lineagesubscription",
             constraint=models.UniqueConstraint(
-                fields=("user", "source_contract", "source_asset"),
+                fields=["user", "source_contract", "source_asset"],
                 name="lineage_sub_unique_user_source",
             ),
         ),

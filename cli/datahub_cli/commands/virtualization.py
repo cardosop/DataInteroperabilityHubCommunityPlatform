@@ -40,7 +40,7 @@ def virtualization_info(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get virtualization info: {e}")
+        raise click.ClickException(f"Failed to get virtualization info: {e}") from e
 
 
 @virtualization.group("datasets")
@@ -172,7 +172,7 @@ def list_datasets(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list virtual datasets: {e}")
+        raise click.ClickException(f"Failed to list virtual datasets: {e}") from e
 
 
 @datasets.command("create")
@@ -192,7 +192,8 @@ def list_datasets(
 )
 def create_dataset(file_path: str, output_format: str):
     """Create a new virtual dataset from a JSON file"""
-    try:
+
+    def _load_and_validate() -> dict[str, Any]:
         # Read and parse dataset definition file
         if not os.path.exists(file_path):
             raise click.ClickException(f"File not found: {file_path}")
@@ -201,9 +202,9 @@ def create_dataset(file_path: str, output_format: str):
             with open(file_path, encoding="utf-8") as f:
                 dataset_data = json.load(f)
         except json.JSONDecodeError as e:
-            raise click.ClickException(f"Invalid JSON in file: {e}")
+            raise click.ClickException(f"Invalid JSON in file: {e}") from e
         except Exception as e:
-            raise click.ClickException(f"Failed to read file: {e}")
+            raise click.ClickException(f"Failed to read file: {e}") from e
 
         # Validate dataset_data structure
         if not isinstance(dataset_data, dict):
@@ -224,12 +225,16 @@ def create_dataset(file_path: str, output_format: str):
             raise click.ClickException(
                 f"Invalid query_type: {query_type}. Must be one of: {', '.join(valid_query_types)}"
             )
+        return dataset_data
+
+    try:
+        dataset_data = _load_and_validate()
 
         # Build request data
         data: dict[str, Any] = {
             "name": dataset_data["name"].strip(),
             "query": dataset_data["query"],
-            "query_type": query_type,
+            "query_type": dataset_data["query_type"].upper(),
         }
 
         # Add optional fields
@@ -263,7 +268,7 @@ def create_dataset(file_path: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create virtual dataset: {e}")
+        raise click.ClickException(f"Failed to create virtual dataset: {e}") from e
 
 
 @datasets.command("get")
@@ -305,7 +310,7 @@ def get_dataset(dataset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get virtual dataset: {e}")
+        raise click.ClickException(f"Failed to get virtual dataset: {e}") from e
 
 
 @datasets.command("update")
@@ -326,7 +331,8 @@ def get_dataset(dataset_id: str, output_format: str):
 )
 def update_dataset(dataset_id: str, file_path: str, output_format: str):
     """Update an existing virtual dataset from a JSON file"""
-    try:
+
+    def _load_and_validate() -> dict[str, Any]:
         # Read and parse dataset definition file
         if not os.path.exists(file_path):
             raise click.ClickException(f"File not found: {file_path}")
@@ -335,9 +341,9 @@ def update_dataset(dataset_id: str, file_path: str, output_format: str):
             with open(file_path, encoding="utf-8") as f:
                 dataset_data = json.load(f)
         except json.JSONDecodeError as e:
-            raise click.ClickException(f"Invalid JSON in file: {e}")
+            raise click.ClickException(f"Invalid JSON in file: {e}") from e
         except Exception as e:
-            raise click.ClickException(f"Failed to read file: {e}")
+            raise click.ClickException(f"Failed to read file: {e}") from e
 
         # Validate dataset_data structure
         if not isinstance(dataset_data, dict):
@@ -351,7 +357,9 @@ def update_dataset(dataset_id: str, file_path: str, output_format: str):
                 raise click.ClickException(
                     f"Invalid query_type: {query_type}. Must be one of: {', '.join(valid_query_types)}"
                 )
+        return dataset_data
 
+    def _build_request_data() -> dict[str, Any]:
         # Build request data (only include provided fields)
         data: dict[str, Any] = {}
 
@@ -374,6 +382,11 @@ def update_dataset(dataset_id: str, file_path: str, output_format: str):
 
         if not data:
             raise click.ClickException("At least one field must be provided for update")
+        return data
+
+    try:
+        dataset_data = _load_and_validate()
+        data = _build_request_data()
 
         # API endpoint: /api/v1/virtualization/datasets/{id}/
         result = api_client.patch(f"virtualization/datasets/{dataset_id}/", json_data=data)
@@ -394,7 +407,7 @@ def update_dataset(dataset_id: str, file_path: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to update virtual dataset: {e}")
+        raise click.ClickException(f"Failed to update virtual dataset: {e}") from e
 
 
 @datasets.command("delete")
@@ -422,7 +435,7 @@ def delete_dataset(dataset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to delete virtual dataset: {e}")
+        raise click.ClickException(f"Failed to delete virtual dataset: {e}") from e
 
 
 @virtualization.group("queries")
@@ -468,8 +481,8 @@ def execute_query(
     output_format: str,
 ):
     """Execute a query on a virtual dataset"""
-    try:
-        # Build request data
+
+    def _build_request_data() -> dict[str, Any]:
         data: dict[str, Any] = {}
 
         if query_string:
@@ -478,7 +491,7 @@ def execute_query(
             try:
                 data["parameters"] = json.loads(parameters)
             except json.JSONDecodeError:
-                raise click.ClickException(f"Invalid JSON in --parameters: {parameters}")
+                raise click.ClickException(f"Invalid JSON in --parameters: {parameters}") from None
         if execution_mode:
             data["execution_mode"] = execution_mode
         if force_async:
@@ -487,6 +500,11 @@ def execute_query(
             if timeout_seconds < 1 or timeout_seconds > 86400:
                 raise click.ClickException("Timeout must be between 1 and 86400 seconds")
             data["timeout_seconds"] = timeout_seconds
+        return data
+
+    try:
+        # Build request data
+        data = _build_request_data()
 
         # API endpoint: /api/v1/virtualization/datasets/{id}/queries/
         result = api_client.post(f"virtualization/datasets/{dataset_id}/queries/", json_data=data)
@@ -505,7 +523,7 @@ def execute_query(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to execute query: {e}")
+        raise click.ClickException(f"Failed to execute query: {e}") from e
 
 
 @queries.command("list")
@@ -604,7 +622,7 @@ def list_queries(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list query executions: {e}")
+        raise click.ClickException(f"Failed to list query executions: {e}") from e
 
 
 @queries.command("get")
@@ -645,7 +663,7 @@ def get_query(execution_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get query execution: {e}")
+        raise click.ClickException(f"Failed to get query execution: {e}") from e
 
 
 @queries.command("cancel")
@@ -677,7 +695,7 @@ def cancel_query(execution_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to cancel query execution: {e}")
+        raise click.ClickException(f"Failed to cancel query execution: {e}") from e
 
 
 @queries.command("result")
@@ -705,18 +723,8 @@ def get_result(
     output_file: str | None,
 ):
     """Get query execution result in specified format"""
-    try:
-        # Build query parameters
-        params: dict[str, Any] = {"output_format": output_format}
 
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
-
-        # API endpoint: /api/v1/virtualization/queries/{id}/result/
-        result = api_client.get(f"virtualization/queries/{execution_id}/result/", params=params)
-
+    def _emit_result(result: Any, output_format: str, output_file: str | None) -> None:
         # Handle different output formats
         if output_format == "json":
             # JSON format - output directly
@@ -784,11 +792,11 @@ def get_result(
                         with open(output_file, "wb") as f:
                             f.write(decoded_data)
                         click.echo(f"Result saved to {output_file}")
-                    except Exception:
+                    except (ValueError, OSError):
                         # If not base64, treat as file path or error
                         raise click.ClickException(
                             f"Failed to decode parquet data: {parquet_data[:100]}"
-                        )
+                        ) from None
                 else:
                     # If bytes, write directly
                     with open(output_file, "wb") as f:
@@ -798,10 +806,24 @@ def get_result(
                 raise click.ClickException(
                     "Parquet format not supported or result format unexpected"
                 )
+
+    try:
+        # Build query parameters
+        params: dict[str, Any] = {"output_format": output_format}
+
+        if page:
+            params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
+
+        # API endpoint: /api/v1/virtualization/queries/{id}/result/
+        result = api_client.get(f"virtualization/queries/{execution_id}/result/", params=params)
+
+        _emit_result(result, output_format, output_file)
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get query result: {e}")
+        raise click.ClickException(f"Failed to get query result: {e}") from e
 
 
 @virtualization.group("topology")
@@ -906,7 +928,7 @@ def get_topology(include_health_metrics: bool, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get virtualization topology: {e}")
+        raise click.ClickException(f"Failed to get virtualization topology: {e}") from e
 
 
 @topology.command("get-dataset")
@@ -998,4 +1020,4 @@ def get_dataset_topology(dataset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get dataset topology: {e}")
+        raise click.ClickException(f"Failed to get dataset topology: {e}") from e

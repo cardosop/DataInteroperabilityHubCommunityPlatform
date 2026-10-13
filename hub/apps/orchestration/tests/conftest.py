@@ -53,4 +53,3 @@ def _clean_stale_workflow_data():
         # still clean.  If stale data causes a UniqueConstraint
         # violation in setUp, that test will fail with a clear error.
         pass
-    yield

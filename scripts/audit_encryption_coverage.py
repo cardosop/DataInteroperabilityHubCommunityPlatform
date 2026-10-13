@@ -17,7 +17,7 @@ def audit() -> int:
             continue
         try:
             text = pyf.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
         for fn in _ENC_FNS:
             if fn in text:

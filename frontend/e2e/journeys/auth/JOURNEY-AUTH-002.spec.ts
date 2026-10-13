@@ -58,7 +58,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In @critical', () => {
       );
       if (transientNetwork || pageClosed) {
         test.skip(
-          true,
+          transientNetwork || pageClosed,
           `Cannot measure login latency: transient infrastructure failure during the timed window. ` +
             `Symptom: ${msg.slice(0, 200)}. ` +
             `This skip is NOT a regression — the perf budget only applies to successful logins.`,
@@ -91,7 +91,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In @critical', () => {
     } catch (err) {
       const msg = String(err);
       if (/ECONNRESET|ECONNREFUSED|connection error|connection refused|socket hang up/i.test(msg)) {
-        test.skip(true, `API connection error during login — transient infrastructure issue. Error: ${msg.slice(0, 150)}`);
+        test.skip(/ECONNRESET|ECONNREFUSED|connection error|connection refused|socket hang up/i.test(msg), `API connection error during login — transient infrastructure issue. Error: ${msg.slice(0, 150)}`);
         return;
       }
       throw err;
@@ -191,7 +191,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In @critical', () => {
       } catch (err) {
         const msg = String(err);
         if (/ECONNRESET|ECONNREFUSED|connection error|connection refused|socket hang up/i.test(msg)) {
-          test.skip(true, `API connection error during login — transient infrastructure issue. Error: ${msg.slice(0, 150)}`);
+          test.skip(/ECONNRESET|ECONNREFUSED|connection error|connection refused|socket hang up/i.test(msg), `API connection error during login — transient infrastructure issue. Error: ${msg.slice(0, 150)}`);
           return;
         }
         throw err;
@@ -324,7 +324,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In @critical', () => {
         // API was completely down (ECONNREFUSED) — no response will ever arrive.
         // Skip rather than reporting a misleading timeout failure.
         if (String(err).includes('Timeout') && page.url().includes('/login')) {
-          test.skip(true, 'API unavailable during special-characters email test; waitForResponse timed out. Transient infrastructure issue.');
+          test.skip(String(err).includes('Timeout') && page.url().includes('/login'), 'API unavailable during special-characters email test; waitForResponse timed out. Transient infrastructure issue.');
           return;
         }
         throw err;

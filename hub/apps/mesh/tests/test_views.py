@@ -123,7 +123,6 @@ class DomainViewSetTestCase(TestCase):
         )
 
 
-
 class DomainCreationEndpointTest(DomainViewSetTestCase):
     """Test domain creation endpoint"""
 

@@ -354,7 +354,7 @@ class DbtContractGenerator:
                         proj = yaml.safe_load(f)
                     if isinstance(proj, dict) and proj.get("name"):
                         return str(proj["name"])
-                except Exception:
+                except (OSError, UnicodeDecodeError, yaml.YAMLError):
                     pass
             current = current.parent
 

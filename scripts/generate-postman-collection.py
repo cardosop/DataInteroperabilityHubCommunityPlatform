@@ -71,10 +71,10 @@ class PostmanCollectionGenerator:
                 endpoints_by_tag[tag].append(request)
 
         # Create collection items grouped by tags
-        for tag, requests in sorted(endpoints_by_tag.items()):
+        for tag, tag_requests in sorted(endpoints_by_tag.items()):
             folder = {
                 "name": tag,
-                "item": requests,
+                "item": tag_requests,
                 "description": self._get_tag_description(tag),
             }
             self.collection["item"].append(folder)
@@ -106,7 +106,7 @@ class PostmanCollectionGenerator:
                 "url": {
                     "raw": url,
                     "host": ["{{base_url}}"],
-                    "path": ["api", "{{api_version}}"] + full_path.split("/")[1:],
+                    "path": ["api", "{{api_version}}", *full_path.split("/")[1:]],
                 },
                 "description": operation.get("description", ""),
             },
@@ -333,7 +333,7 @@ def fetch_openapi_spec(url: str) -> dict[str, Any]:
         response.raise_for_status()
 
         content_type = response.headers.get("Content-Type", "")
-        if "yaml" in content_type or url.endswith(".yaml") or url.endswith(".yml"):
+        if "yaml" in content_type or url.endswith((".yaml", ".yml")):
             return yaml.safe_load(response.text)
         else:
             return response.json()
@@ -370,10 +370,7 @@ def main():
     # Load OpenAPI spec
     if args.spec_file:
         with open(args.spec_file, encoding="utf-8") as f:
-            if args.spec_file.endswith((".yaml", ".yml")):
-                spec = yaml.safe_load(f)
-            else:
-                spec = json.load(f)
+            spec = yaml.safe_load(f) if args.spec_file.endswith((".yaml", ".yml")) else json.load(f)
     else:
         spec = fetch_openapi_spec(args.spec_url)
 

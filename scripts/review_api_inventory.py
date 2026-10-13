@@ -29,8 +29,9 @@ script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.insert(0, str(script_dir))
 
-try:
-    # Try importing with hyphen (actual filename)
+
+def _load_extractor_module():
+    """Load the Django API extractor from its hyphenated filename."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -39,10 +40,13 @@ try:
     if spec and spec.loader:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        DjangoAPIExtractor = module.DjangoAPIExtractor
-        APIEndpoint = module.APIEndpoint
-    else:
-        raise ImportError("Could not load module")
+        return module.DjangoAPIExtractor, module.APIEndpoint
+    raise ImportError("Could not load module")
+
+
+# Try importing with hyphen (actual filename)
+try:
+    DjangoAPIExtractor, APIEndpoint = _load_extractor_module()
 except (ImportError, AttributeError, FileNotFoundError):
     # Fallback: define minimal APIEndpoint if import fails
     from dataclasses import dataclass

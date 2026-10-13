@@ -47,10 +47,10 @@ class OptimizedAssetViewSet(viewsets.ModelViewSet):
     serializer_class = AssetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ["name", "key", "created_at", "updated_at"]
-    ordering = ["-created_at"]
-    search_fields = ["name", "key", "description"]
+    filter_backends = (OrderingFilter, SearchFilter)
+    ordering_fields = ("name", "key", "created_at", "updated_at")
+    ordering = "-created_at"
+    search_fields = ("name", "key", "description")
 
     def get_queryset(self):
         """Optimized queryset with select_related for tenant"""

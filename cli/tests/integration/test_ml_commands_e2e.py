@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -11,8 +13,8 @@ These tests verify complete workflows:
 These tests require a real API service running and will skip if not available.
 No mocks or stubs are used - all tests use real API endpoints.
 """
-import os
 import uuid
+from contextlib import suppress
 
 import pytest
 from click.testing import CliRunner
@@ -20,26 +22,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        # Health endpoint is at /health/ not /api/v1/health/
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
-            + "/health/",
-            timeout=2,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Check if API is available before running tests"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip(
             "API service not available at http://localhost:8000. Start with: docker-compose up -d api db redis"
         )
@@ -53,7 +39,7 @@ def runner():
 
 
 @pytest.fixture
-def test_asset_id(api_available):
+def test_asset_id(api_service_available):
     """
     Create a test asset via API for use in tests.
     This fixture creates an asset and returns its ID.
@@ -96,15 +82,13 @@ def test_asset_id(api_available):
             asset_id = response.json().get("id")
             yield asset_id
 
-            # Cleanup: delete the asset
-            try:
+            # Cleanup: delete the asset — ignore cleanup errors
+            with suppress(Exception):
                 requests.delete(
                     f"{os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1')}/assets/{asset_id}/",
                     headers=headers,
                     timeout=10,
                 )
-            except Exception:
-                pass  # Ignore cleanup errors
         else:
             pytest.skip(f"Failed to create test asset: {response.status_code} - {response.text}")
     except Exception as e:
@@ -114,7 +98,7 @@ def test_asset_id(api_available):
 class TestMLModelRegistryE2E:
     """End-to-end tests for ML model registry commands"""
 
-    def test_complete_model_workflow(self, runner, api_available, test_asset_id):
+    def test_complete_model_workflow(self, runner, api_service_available, test_asset_id):
         """
         Test complete workflow: create → list → get → update → versions → delete
 
@@ -223,7 +207,7 @@ class TestMLModelRegistryE2E:
             # The important thing is that commands are structured correctly
             pytest.skip(f"E2E test workflow incomplete (may need API setup): {e}")
 
-    def test_list_models_command(self, runner, api_available):
+    def test_list_models_command(self, runner, api_service_available):
         """Test ML models list command execution"""
         result = runner.invoke(cli, ["ml", "models", "list", "--format", "json"])
         # Should succeed even if no models exist (empty list)
@@ -240,7 +224,7 @@ class TestMLModelRegistryE2E:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_list_models_with_filters(self, runner, api_available, test_asset_id):
+    def test_list_models_with_filters(self, runner, api_service_available, test_asset_id):
         """Test ML models list command with filters"""
         result = runner.invoke(
             cli,
@@ -263,7 +247,7 @@ class TestMLModelRegistryE2E:
         # Should succeed or fail with expected errors (auth, not found, etc.)
         assert result.exit_code == 0, f"List with filters failed: {result.output}"
 
-    def test_get_model_command_structure(self, runner, api_available):
+    def test_get_model_command_structure(self, runner, api_service_available):
         """Test ML models get command structure"""
         # Use a valid UUID format (even if model doesn't exist)
         test_uuid = str(uuid.uuid4())
@@ -277,7 +261,7 @@ class TestMLModelRegistryE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_create_model_command_structure(self, runner, api_available, test_asset_id):
+    def test_create_model_command_structure(self, runner, api_service_available, test_asset_id):
         """Test ML models create command structure"""
         test_model_id = f"test-model-{uuid.uuid4().hex[:8]}"
         result = runner.invoke(
@@ -304,7 +288,7 @@ class TestMLModelRegistryE2E:
         # Not a command parsing error
         assert result.exit_code == 0, f"Create command failed: {result.output}"
 
-    def test_update_model_command_structure(self, runner, api_available):
+    def test_update_model_command_structure(self, runner, api_service_available):
         """Test ML models update command structure"""
         # Use a valid UUID format (even if model doesn't exist)
         test_uuid = str(uuid.uuid4())
@@ -320,7 +304,7 @@ class TestMLModelRegistryE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_delete_model_command_structure(self, runner, api_available):
+    def test_delete_model_command_structure(self, runner, api_service_available):
         """Test ML models delete command structure"""
         # Use a valid UUID format (even if model doesn't exist)
         test_uuid = str(uuid.uuid4())
@@ -334,7 +318,7 @@ class TestMLModelRegistryE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_versions_command_structure(self, runner, api_available):
+    def test_versions_command_structure(self, runner, api_service_available):
         """Test ML models versions command structure"""
         # Use a valid UUID format (even if model doesn't exist)
         test_uuid = str(uuid.uuid4())
@@ -348,7 +332,7 @@ class TestMLModelRegistryE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_table_format_output(self, runner, api_available):
+    def test_table_format_output(self, runner, api_service_available):
         """Test that table format works correctly"""
         result = runner.invoke(cli, ["ml", "models", "list", "--format", "table"])
         # Should succeed or fail with expected errors
@@ -358,7 +342,7 @@ class TestMLModelRegistryE2E:
             # Verify table format indicators
             assert "ID" in result.output or "No models found" in result.output
 
-    def test_json_format_output(self, runner, api_available):
+    def test_json_format_output(self, runner, api_service_available):
         """Test that JSON format works correctly"""
         result = runner.invoke(cli, ["ml", "models", "list", "--format", "json"])
         # Should succeed or fail with expected errors

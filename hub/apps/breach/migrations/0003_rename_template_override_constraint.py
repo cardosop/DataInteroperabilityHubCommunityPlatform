@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
                 migrations.AddConstraint(
                     model_name="breachtenanttemplateoverride",
                     constraint=models.UniqueConstraint(
-                        fields=("tenant", "regime"),
+                        fields=["tenant", "regime"],
                         name="br_tt_ovr_tnt_reg_uniq",
                     ),
                 ),

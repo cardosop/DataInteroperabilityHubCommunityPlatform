@@ -67,16 +67,16 @@ class DeadLetterQueueTest(TestCase):
         # Sync DLQ
         count = DeadLetterQueueManager.sync_from_ingestion_state(str(self.scheduled_ingestion.id))
 
-        self.assertEqual(count, 1)
+        assert count == 1
 
         # Verify DLQ item created
         dlq_item = DeadLetterQueueItem.objects.get(
             scheduled_ingestion=self.scheduled_ingestion, file_path="file1.csv"
         )
 
-        self.assertEqual(dlq_item.error_code, "TIMEOUT")
-        self.assertEqual(dlq_item.retry_count, 3)
-        self.assertEqual(dlq_item.resolution_status, "PENDING")
+        assert dlq_item.error_code == "TIMEOUT"
+        assert dlq_item.retry_count == 3
+        assert dlq_item.resolution_status == "PENDING"
 
     def test_retry_file(self):
         """Test retrying a failed file"""
@@ -98,8 +98,8 @@ class DeadLetterQueueTest(TestCase):
         state_manager.mark_file_failed(
             "file1.csv", "Connection timeout", retry_count=3, max_retries=3
         )
-        self.assertTrue(
-            state_manager.is_file_failed("file1.csv"), "File must be in failed state before retry"
+        assert state_manager.is_file_failed("file1.csv"), (
+            "File must be in failed state before retry"
         )
 
         # Retry file
@@ -107,21 +107,20 @@ class DeadLetterQueueTest(TestCase):
             dlq_item_id=str(dlq_item.id), user_id=str(self.user.id)
         )
 
-        self.assertTrue(success)
+        assert success
 
         # Verify DLQ item updated
         dlq_item.refresh_from_db()
-        self.assertEqual(dlq_item.resolution_status, "RETRYING")
-        self.assertEqual(dlq_item.retry_count, 4)
-        self.assertEqual(dlq_item.resolved_by, self.user)
+        assert dlq_item.resolution_status == "RETRYING"
+        assert dlq_item.retry_count == 4
+        assert dlq_item.resolved_by == self.user
 
         # Verify file cleared from ingestion state — retry_file creates a new
         # IncrementalStateManager internally, so we must refresh our view.
         state_manager.scheduled_ingestion.refresh_from_db()
         state_manager = IncrementalStateManager(self.scheduled_ingestion)
-        self.assertFalse(
-            state_manager.is_file_failed("file1.csv"),
-            "File must be cleared from failed state after retry",
+        assert not state_manager.is_file_failed("file1.csv"), (
+            "File must be cleared from failed state after retry"
         )
 
     def test_resolve_item(self):
@@ -149,10 +148,10 @@ class DeadLetterQueueTest(TestCase):
 
         # Verify DLQ item updated
         dlq_item.refresh_from_db()
-        self.assertEqual(dlq_item.resolution_status, "IGNORED")
-        self.assertEqual(dlq_item.resolution_notes, "File format is not supported")
-        self.assertEqual(dlq_item.resolved_by, self.user)
-        self.assertIsNotNone(dlq_item.resolved_at)
+        assert dlq_item.resolution_status == "IGNORED"
+        assert dlq_item.resolution_notes == "File format is not supported"
+        assert dlq_item.resolved_by == self.user
+        assert dlq_item.resolved_at is not None
 
     def test_get_dlq_dashboard(self):
         """Test getting DLQ dashboard"""
@@ -183,9 +182,9 @@ class DeadLetterQueueTest(TestCase):
 
         dashboard = DeadLetterQueueManager.get_dlq_dashboard(tenant_id=str(self.tenant.id))
 
-        self.assertIn("summary", dashboard)
-        self.assertEqual(dashboard["summary"]["total_items"], 2)
-        self.assertEqual(dashboard["summary"]["pending_items"], 1)
-        self.assertEqual(dashboard["summary"]["resolved_items"], 1)
-        self.assertIn("items", dashboard)
-        self.assertEqual(len(dashboard["items"]), 2)
+        assert "summary" in dashboard
+        assert dashboard["summary"]["total_items"] == 2
+        assert dashboard["summary"]["pending_items"] == 1
+        assert dashboard["summary"]["resolved_items"] == 1
+        assert "items" in dashboard
+        assert len(dashboard["items"]) == 2

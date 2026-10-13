@@ -25,9 +25,10 @@ def test_python_syntax(file_path):
         with open(file_path) as f:
             code = f.read()
         ast.parse(code)
-        return True, None
     except SyntaxError as e:
         return False, str(e)
+    else:
+        return True, None
 
 
 def test_json_syntax(file_path):
@@ -35,9 +36,10 @@ def test_json_syntax(file_path):
     try:
         with open(file_path) as f:
             json.load(f)
-        return True, None
     except json.JSONDecodeError as e:
         return False, str(e)
+    else:
+        return True, None
 
 
 def test_example_imports(file_path):
@@ -48,9 +50,10 @@ def test_example_imports(file_path):
             return False, "Could not create spec"
         importlib.util.module_from_spec(spec)
         # Don't execute, just check imports
-        return True, None
-    except Exception as e:
+    except (OSError, ImportError) as e:
         return False, str(e)
+    else:
+        return True, None
 
 
 def main():

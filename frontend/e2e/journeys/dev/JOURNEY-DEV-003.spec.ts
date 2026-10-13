@@ -10,30 +10,33 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getExternalDeveloperUser, loginAsPersona } from '../../fixtures/auth';
-import { hasLoginPrompt } from '../../fixtures/helpers';
+import { clearAuthStorage, getExternalDeveloperUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DEV-003: Integrate via CLI', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('developer page loads for CLI docs', async ({ page }) => {
-      await loginAsPersona(page, getExternalDeveloperUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.developer-portal-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], [role="status"]',
-        { timeout: 25000 }
-      );
-      await page.waitForTimeout(2000);
-      const onDeveloper = page.url().includes('/developer');
+      // Same fix as JOURNEY-DEV-001's developer-page test: the old
+      // waitForSelector included [role="status"], which the CapabilityRoute
+      // LoadingSpinner matches — the wait passed on the transient spinner
+      // and the content check failed before the portal mounted (batch b5).
+      // The disabled page is .disabled-capability-page, NOT .unavailable-page.
+      const developerUser = await getExternalDeveloperUser();
+      await loginAndNavigateToRoute(page, developerUser, '/developer', {
+        timeout: 60000,
+        contentSelector:
+          '.developer-portal-page, .app-main, [data-testid="app-main"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
+      });
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
-      if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+      const onUnavailable = page.url().includes('/unavailable');
+      if (onLogin || on403 || onUnavailable) {
+        test.skip(onLogin || on403 || onUnavailable, 'Auth/role/capability gated — skipping success assertion');
         return;
       }
-      expect(onDeveloper).toBe(true);
+      expect(page.url()).toContain('/developer');
       const hasContent =
         (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);

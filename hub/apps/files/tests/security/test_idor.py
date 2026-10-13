@@ -23,11 +23,11 @@ patterns as ``tests/security/base_idor.py`` and DQ IDOR suites. No mocks.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
-from django.test.client import Client
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -40,6 +40,9 @@ from hub.apps.files.tests.test_base import _ensure_tenant_has_active_subscriptio
 from hub.apps.tenants.models import KYCStatus
 from hub.apps.users.models import Role, UserRole, UserStatus, UserTenantMembership
 from tests.security.base_idor import IDORTestBase
+
+if TYPE_CHECKING:
+    from django.test.client import Client
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

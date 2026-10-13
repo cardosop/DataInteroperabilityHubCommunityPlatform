@@ -241,28 +241,43 @@ class DatasetViewSetTest(DatasetsAPITestBase):
     def test_list_datasets_ordering(self):
         """Ascending ordering returns earlier rows first; descending reverses."""
         from datetime import timedelta
+
         from django.utils import timezone
 
         # Create two datasets with explicitly staggered created_at so
         # ordering is deterministic.
         file_a = File.objects.create(
-            id=uuid.uuid4(), tenant=self.tenant, name="order-a.csv",
-            content_type="text/csv", size=10, status=FileStatus.ACTIVE,
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            name="order-a.csv",
+            content_type="text/csv",
+            size=10,
+            status=FileStatus.ACTIVE,
         )
         file_b = File.objects.create(
-            id=uuid.uuid4(), tenant=self.tenant, name="order-b.csv",
-            content_type="text/csv", size=10, status=FileStatus.ACTIVE,
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            name="order-b.csv",
+            content_type="text/csv",
+            size=10,
+            status=FileStatus.ACTIVE,
         )
         earlier = Dataset.objects.create(
-            tenant=self.tenant, file=file_a, format="CSV",
-            created_by=self.user, version=1,
+            tenant=self.tenant,
+            file=file_a,
+            format="CSV",
+            created_by=self.user,
+            version=1,
         )
         Dataset.objects.filter(id=earlier.id).update(
             created_at=timezone.now() - timedelta(hours=1),
         )
         later = Dataset.objects.create(
-            tenant=self.tenant, file=file_b, format="CSV",
-            created_by=self.user, version=1,
+            tenant=self.tenant,
+            file=file_b,
+            format="CSV",
+            created_by=self.user,
+            version=1,
         )
 
         # Ascending: earlier first
@@ -272,7 +287,8 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertIn(str(earlier.id), asc_ids)
         self.assertIn(str(later.id), asc_ids)
         self.assertLess(
-            asc_ids.index(str(earlier.id)), asc_ids.index(str(later.id)),
+            asc_ids.index(str(earlier.id)),
+            asc_ids.index(str(later.id)),
             "Ascending ordering must place earlier-created dataset first",
         )
 
@@ -283,7 +299,8 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertIn(str(earlier.id), desc_ids)
         self.assertIn(str(later.id), desc_ids)
         self.assertLess(
-            desc_ids.index(str(later.id)), desc_ids.index(str(earlier.id)),
+            desc_ids.index(str(later.id)),
+            desc_ids.index(str(earlier.id)),
             "Descending ordering must place later-created dataset first",
         )
 
@@ -626,6 +643,32 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertIn("id", response.data)
         self.assertEqual(response.data["semantic_version"], "1.1.0")
 
+    def test_create_version_preserves_schema_json(self):
+        """POST versions with schema_json stores the NEW schema on the version.
+
+        Regression pin for the b7 re-run versions-compare failure: the
+        create serializer lacked the schema_json field, DRF dropped it,
+        and every API-created version cloned the parent schema — the
+        diff endpoint then reported zero changes for a genuinely
+        extended payload.
+        """
+        base_fields = (self.dataset.schema_json or {}).get("fields", [])
+        region_field = {"name": "region", "data_type": "string", "nullable": True}
+        extended = {"fields": [*base_fields, region_field]}
+        data = {"semantic_version": "1.1.0", "schema_json": extended}
+
+        response = self.client.post(
+            f"/api/v1/datasets/{self.dataset.id}/versions/", data, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created = Dataset.objects.get(id=response.data["id"])
+        stored_fields = (created.schema_json or {}).get("fields", [])
+        self.assertTrue(
+            any(f.get("name") == "region" for f in stored_fields),
+            f"created version schema must contain the new 'region' field: {stored_fields}",
+        )
+
     def test_create_version_rejected_when_versioning_disabled(self):
         """Phase 12: Creating a version returns 403 when versioning_enabled=False."""
         TenantConfig.objects.update_or_create(
@@ -672,12 +715,13 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, dict,
-                              "Version comparison response must be a dict")
-        self.assertIn("version1", response.data,
-                      "Version comparison response must include 'version1'")
-        self.assertIn("version2", response.data,
-                      "Version comparison response must include 'version2'")
+        self.assertIsInstance(response.data, dict, "Version comparison response must be a dict")
+        self.assertIn(
+            "version1", response.data, "Version comparison response must include 'version1'"
+        )
+        self.assertIn(
+            "version2", response.data, "Version comparison response must include 'version2'"
+        )
 
     def test_compare_versions_missing_params(self):
         """Test comparing versions with missing parameters (error handling)"""
@@ -701,16 +745,12 @@ class DatasetViewSetTest(DatasetsAPITestBase):
     def test_destroy_dataset_unauthenticated(self):
         """Unauthenticated DELETE request must return 401."""
         self.client.force_authenticate(user=None)
-        response = self.client.delete(
-            f"/api/v1/datasets/{self.dataset.id}/"
-        )
+        response = self.client.delete(f"/api/v1/datasets/{self.dataset.id}/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_refresh_dataset_requires_tenant_admin(self):
         """A non-TENANT_ADMIN user gets 403 when calling refresh."""
-        response = self.client.post(
-            f"/api/v1/datasets/{self.dataset.id}/refresh/"
-        )
+        response = self.client.post(f"/api/v1/datasets/{self.dataset.id}/refresh/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     # ========== EDGE CASES ==========

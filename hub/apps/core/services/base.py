@@ -317,7 +317,7 @@ class BaseService:
             raise NotFoundError(
                 f"{model_class.__name__} with id '{resource_id}' not found",
                 code="NOT_FOUND",
-            )
+            ) from None
         actual_tenant_id = str(getattr(resource, tenant_field, None))
         if actual_tenant_id != str(expected_tenant_id):
             raise PermissionError(
@@ -353,17 +353,18 @@ class BaseService:
 
         try:
             filters["id"] = resource_id
-            if effective_tenant_id:
+            if effective_tenant_id and (
+                hasattr(model_class, "tenant_id") or hasattr(model_class, "tenant")
+            ):
                 # Try tenant_id field first
-                if hasattr(model_class, "tenant_id") or hasattr(model_class, "tenant"):
-                    filters["tenant_id"] = effective_tenant_id
+                filters["tenant_id"] = effective_tenant_id
 
             return model_class.objects.get(**filters)
         except ObjectDoesNotExist:
             raise NotFoundError(
                 f"{resource_type} with id {resource_id} not found",
                 details={"resource_type": resource_type, "resource_id": resource_id},
-            )
+            ) from None
         except DjangoValidationError as e:
             # Invalid UUID / bad field value — a client input error, not a
             # server fault.  Convert to our own ValidationError so callers
@@ -372,9 +373,9 @@ class BaseService:
                 str(e),
                 code="VALIDATION_ERROR",
                 details={"resource_type": resource_type, "resource_id": resource_id},
-            )
-        except Exception as e:
-            logger.error(f"Error retrieving {resource_type}: {e}")
+            ) from e
+        except Exception:
+            logger.exception(f"Error retrieving {resource_type}")
             raise
 
     def validate_tenant(self, tenant_id: str) -> None:
@@ -392,7 +393,7 @@ class BaseService:
             raise NotFoundError(
                 f"Tenant with id {tenant_id} not found",
                 code="NOT_FOUND",
-            )
+            ) from None
         if not tenant.is_active():
             raise PermissionError(
                 f"Tenant {tenant_id} is not active",
@@ -409,7 +410,7 @@ class BaseService:
             raise NotFoundError(
                 f"Tenant with id {tenant_id} not found",
                 code="NOT_FOUND",
-            )
+            ) from None
 
     @contextmanager
     def transaction_context(self):
@@ -466,7 +467,6 @@ class BaseService:
             duration = time.time() - start
             self._log_operation_success(operation, duration * 1000, **kwargs)
             self._record_metrics(operation, duration, success=True)
-            return result
         except ServiceError:
             duration = time.time() - start
             self._log_operation_error(operation, sys.exc_info()[1], duration * 1000, **kwargs)
@@ -501,6 +501,8 @@ class BaseService:
                 str(e),
                 code="INTERNAL_ERROR",
             ) from e
+        else:
+            return result
 
     def execute_with_transaction(
         self, operation: str, tenant_id: str | None = None, func: Callable | None = None, **kwargs
@@ -581,7 +583,6 @@ def instrument_service_call(service_name: str, endpoint: str, method: str = "GET
                     # Set success status
                     span.set_status(Status(StatusCode.OK))
 
-                    return result
                 except Exception as e:
                     # Record exception and add error attributes
                     span.record_exception(e)
@@ -590,6 +591,8 @@ def instrument_service_call(service_name: str, endpoint: str, method: str = "GET
                     span.set_attribute("error.message", str(e))
                     span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
+                else:
+                    return result
                 finally:
                     span.end()
             except Exception as e:

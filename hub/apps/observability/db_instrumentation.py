@@ -101,22 +101,10 @@ def extract_operation_from_query(sql: str) -> str:
     """
     sql_upper = sql.upper().strip()
 
-    if sql_upper.startswith("SELECT"):
-        return "SELECT"
-    elif sql_upper.startswith("INSERT"):
-        return "INSERT"
-    elif sql_upper.startswith("UPDATE"):
-        return "UPDATE"
-    elif sql_upper.startswith("DELETE"):
-        return "DELETE"
-    elif sql_upper.startswith("CREATE"):
-        return "CREATE"
-    elif sql_upper.startswith("ALTER"):
-        return "ALTER"
-    elif sql_upper.startswith("DROP"):
-        return "DROP"
-    else:
-        return "OTHER"
+    for operation in ("SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"):
+        if sql_upper.startswith(operation):
+            return operation
+    return "OTHER"
 
 
 class InstrumentedCursorWrapper(CursorWrapper):
@@ -142,7 +130,6 @@ class InstrumentedCursorWrapper(CursorWrapper):
             if duration_ms >= slow_threshold_ms:
                 _create_db_query_span(sql, duration_ms)
 
-            return result
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
@@ -157,6 +144,8 @@ class InstrumentedCursorWrapper(CursorWrapper):
                         pass
 
             raise
+        else:
+            return result
 
     def executemany(self, sql, param_list):
         """Execute SQL query multiple times with instrumentation."""
@@ -174,7 +163,6 @@ class InstrumentedCursorWrapper(CursorWrapper):
             if duration_ms >= slow_threshold_ms:
                 _create_db_query_span(sql, duration_ms, is_many=True)
 
-            return result
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
@@ -189,6 +177,8 @@ class InstrumentedCursorWrapper(CursorWrapper):
                         pass
 
             raise
+        else:
+            return result
 
 
 def _create_db_query_span(sql: str, duration_ms: float, is_many: bool = False):
@@ -211,10 +201,7 @@ def _create_db_query_span(sql: str, duration_ms: float, is_many: bool = False):
         table = extract_table_from_query(sql)
 
         # Create span name
-        if table:
-            span_name = f"db.{operation.lower()}.{table}"
-        else:
-            span_name = f"db.{operation.lower()}"
+        span_name = f"db.{operation.lower()}.{table}" if table else f"db.{operation.lower()}"
 
         if is_many:
             span_name = f"{span_name}.many"
@@ -250,10 +237,11 @@ def _create_db_query_span(sql: str, duration_ms: float, is_many: bool = False):
         # End span
         span.end()
 
-        return span
     except Exception as e:
         logger.debug(f"Failed to create DB query span: {e}")
         return None
+    else:
+        return span
 
 
 def instrument_database_connection():
@@ -266,7 +254,6 @@ def instrument_database_connection():
         return
 
     # Skip instrumentation in test mode to avoid connection issues
-    import sys
 
     if "test" in sys.argv or "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ:
         logger.debug("Skipping database instrumentation in test mode")
@@ -280,14 +267,12 @@ def instrument_database_connection():
             # Ensure connection is open before creating cursor
             # This handles cases where connections are closed between operations
             if hasattr(connection, "ensure_connection"):
-                try:
-                    # Always try to ensure connection is open
-                    # This will reopen if closed, or do nothing if already open
+                # Always try to ensure connection is open
+                # This will reopen if closed, or do nothing if already open
+                # If connection can't be opened, let the original cursor handle the error
+                # This allows Django's error handling to work properly
+                with contextlib.suppress(Exception):
                     connection.ensure_connection()
-                except Exception:
-                    # If connection can't be opened, let the original cursor handle the error
-                    # This allows Django's error handling to work properly
-                    pass
 
             try:
                 cursor = original_cursor()
@@ -306,7 +291,7 @@ def instrument_database_connection():
                         return InstrumentedCursorWrapper(cursor, connection)
                     except Exception:
                         # If retry fails, let the original error propagate
-                        raise e
+                        raise e from None
                 else:
                     raise
 

@@ -72,7 +72,7 @@ The script runs: (1) management command `test_connectors_e2e`, (2) pytest `test_
 
 For test stack, use `docker compose -f docker-compose.test.yml exec api-service-test` instead of `docker compose exec api-service`.
 
-All other providers (AWS, GCP, Databricks, custom CKAN) use the API flow above (create connection → sync → verify).
+All other providers (AWS, GCP, custom CKAN) use the API flow above (create connection → sync → verify). Databricks additionally has the env-gated **nightly live-CI workflow** (`.github/workflows/databricks-e2e-nightly.yml`) — see the Databricks section below.
 
 ---
 
@@ -130,7 +130,9 @@ All other providers (AWS, GCP, Databricks, custom CKAN) use the API flow above (
   - `DATABRICKS_CLUSTER_ID` — (optional) cluster ID if needed by the connector
 - **Connection `config` shape:**  
   `host` (required), `token` (required), `cluster_id` (optional).
-- **Steps:** Create connection → Test (optional) → PULL sync → Poll → Verify assets/mappings. PUSH: see connector (e.g. may raise `NotImplementedError` for push; document in gaps if so).
+- **Direction:** PULL only (harvest-only — the connector's push methods raise `NotImplementedError`; there is no PUSH path to validate).
+- **Steps:** Create connection → Test (optional) → PULL sync → Poll → Verify assets/mappings.
+- **Nightly live-CI path (the primary E2E run):** the env-gated workflow `.github/workflows/databricks-e2e-nightly.yml` provisions a disposable `meshant_e2e_*` sandbox workspace and runs the control-plane journey + contract suites (`tests/integration/databricks_e2e/`) with a hard budget pre-flight and an `always()` auto-destroy. Arm it with the repository variable `DATABRICKS_E2E=1` plus the OIDC-federated `DATABRICKS_E2E_*` secrets in the `databricks-e2e` GitHub Environment; the run's report (`report/e2e_report.json`) is the PASS/FAIL evidence. See [RB-SEC-003](RB-SEC-003-databricks-egress-credential-rotation.md) for the egress allowlist, the OIDC trust setup, and the rotation cadence.
 
 ---
 
@@ -174,7 +176,7 @@ Use this section to record **one successful real E2E run per provider** or a **d
 | AWS                  |                     | SKIP                      | Credentials unavailable. Use API flow: create connection → sync → verify. Env: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. |
 | GCP                  |                     | SKIP                      | Credentials unavailable. Use API flow. Env: `GCP_PROJECT_ID`, `GCP_CREDENTIALS_JSON` or ADC. |
 | Azure                 | 2026-03-04          | SKIP / OK                 | `python hub/manage.py test_connectors_e2e --source azure --limit N`. Env: `AZURE_MARKETPLACE_API_KEY` or `AZURE_CATALOG_API_KEY`. PULL only. |
-| Databricks            |                     | SKIP                      | Credentials unavailable. Use API flow. Env: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`. |
+| Databricks            |                     | SKIP → PASS               | The SKIP record is retired: the E2E run is the env-gated nightly workflow `.github/workflows/databricks-e2e-nightly.yml` (repository variable `DATABRICKS_E2E=1` + the OIDC `DATABRICKS_E2E_*` secrets). The first armed green run stamps **PASS** here — record its date and run id, with `report/e2e_report.json` as the evidence. Until the gate is armed the row stays SKIP → PASS (the migration is the event, not a claim). Manual fallback: API flow with env `DATABRICKS_HOST`, `DATABRICKS_TOKEN`. |
 | Snowflake             |                     | SKIP                      | `python hub/manage.py test_connectors_e2e --source snowflake --limit N`. Env: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_TOKEN`. |
 | CKAN (demo.ckan.org)  | 2026-03-04          | OK                        | `python hub/manage.py test_connectors_e2e --source ckan --limit 5 --verify-assets`. No API key. Connection → discovery → sync → assets verified. |
 | CKAN (dados.gov.br)   | 2026-03-04          | SKIP / OK                 | `python hub/manage.py test_connectors_e2e --source dados_gov_br --limit N`. Env: `DADOS_GOV_BR_API_KEY` (JWT). Record OK when key set. |
@@ -206,7 +208,7 @@ When running `test_connectors_e2e --source both`, sources without credentials ar
 | **AWS**    | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | No management command support; use API flow. Connector requires IAM credentials. |
 | **GCP**    | `GCP_PROJECT_ID`, `GCP_CREDENTIALS_JSON` or ADC | No management command support; use API flow. Connector requires project + service account or ADC. |
 | **Snowflake** | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_TOKEN` | snowflake-connector-python required. Real Snowflake Data Marketplace account needed. |
-| **Databricks** | `DATABRICKS_HOST`, `DATABRICKS_TOKEN` | No management command support; use API flow. Connector requires workspace host + PAT. |
+| **Databricks** | `DATABRICKS_HOST`, `DATABRICKS_TOKEN` | The E2E run is the env-gated nightly workflow `.github/workflows/databricks-e2e-nightly.yml` (sandbox provision → journey/contract suites → auto-destroy). Manual fallback: API flow (create connection → PULL sync → verify) with the workspace host + PAT. |
 
 ---
 

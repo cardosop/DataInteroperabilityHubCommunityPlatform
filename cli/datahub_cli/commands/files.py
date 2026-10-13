@@ -11,6 +11,25 @@ import requests
 from ..api_client import api_client
 
 
+def _rewrite_storage_host(upload_url: str) -> str:
+    """Rewrite a Docker-internal storage host to a host-reachable one.
+
+    Mirrors ``hub/apps/files/storage.py``'s browser-side rewrite: the API
+    signs presigned URLs against its own S3 endpoint, which is a Docker
+    service name (``minio-test:9000`` / ``minio:9000``) on the test/dev
+    stacks.  Host-side CLI/SDK processes cannot resolve those names and
+    every direct upload failed with ``Failed to establish a new
+    connection``.  The rewrite only fires on the known Docker-internal
+    hostnames, so production AWS S3 endpoints are byte-for-byte untouched.
+    """
+    if "minio-test:9000" in upload_url:
+        port = os.environ.get("MINIO_TEST_API_PORT", "9010")
+        return upload_url.replace("minio-test:9000", f"localhost:{port}")
+    if "minio:9000" in upload_url:
+        return upload_url.replace("minio:9000", "localhost:9000")
+    return upload_url
+
+
 @click.group()
 def files():
     """File management commands"""
@@ -29,7 +48,9 @@ def files():
 )
 def list_files(status: str | None, limit: int, offset: int, output_format: str):
     """List files"""
-    params = {"limit": limit, "offset": offset}
+    from typing import Any
+
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
     if status:
         params["status"] = status
 
@@ -66,7 +87,7 @@ def list_files(status: str | None, limit: int, offset: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list files: {e}")
+        raise click.ClickException(f"Failed to list files: {e}") from e
 
 
 @files.command("upload")
@@ -92,6 +113,11 @@ def upload_file(file_path: str, name: str | None, output_format: str):
     if not content_type:
         content_type = "application/octet-stream"
 
+    def _require_upload_url(url: str) -> str:
+        if not url:
+            raise click.ClickException("No upload URL received from server")
+        return url
+
     # Initialize upload
     try:
         # API endpoint: /api/v1/files/init/ (files/ from api/urls.py, router registered at "")
@@ -107,11 +133,17 @@ def upload_file(file_path: str, name: str | None, output_format: str):
         )
 
         file_id = init_data.get("file_id")
-        upload_url = init_data.get("upload_url")
+        upload_url = _require_upload_url(init_data.get("upload_url"))
         fields = init_data.get("fields", {})
 
-        if not upload_url:
-            raise click.ClickException("No upload URL received from server")
+        # The API signs presigned URLs against its own endpoint
+        # (``http://minio-test:9000`` / ``http://minio:9000`` inside the
+        # Docker network).  Host-side clients cannot resolve those names —
+        # the backend already rewrites them for browser uploads; do the
+        # same here for CLI/SDK-style uploads (test/dev stacks only: the
+        # rewrite is keyed on the Docker-internal hostname, so real AWS S3
+        # endpoints are untouched).
+        upload_url = _rewrite_storage_host(upload_url)
 
         # Upload file to S3
         click.echo(f"Uploading {file_name} ({file_size} bytes)...")
@@ -159,7 +191,7 @@ def upload_file(file_path: str, name: str | None, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to upload file: {e}")
+        raise click.ClickException(f"Failed to upload file: {e}") from e
 
 
 @files.command("download")
@@ -172,6 +204,12 @@ def upload_file(file_path: str, name: str | None, output_format: str):
 )
 def download_file(file_id: str, output_path: str | None):
     """Download a file"""
+
+    def _require_download_url(url: str) -> str:
+        if not url:
+            raise click.ClickException("No download URL received from server")
+        return url
+
     try:
         # Get file info
         # API endpoint structure: /api/v1/files/{id}/ (files/ from api/urls.py + files from router)
@@ -181,10 +219,7 @@ def download_file(file_id: str, output_path: str | None):
         # Get download URL
         # API endpoint: /api/v1/files/{id}/download/
         download_data = api_client.post(f"files/{file_id}/download/")
-        download_url = download_data.get("download_url")
-
-        if not download_url:
-            raise click.ClickException("No download URL received from server")
+        download_url = _require_download_url(download_data.get("download_url"))
 
         # Determine output path
         if not output_path:
@@ -203,7 +238,7 @@ def download_file(file_id: str, output_path: str | None):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to download file: {e}")
+        raise click.ClickException(f"Failed to download file: {e}") from e
 
 
 @files.command("delete")
@@ -222,4 +257,4 @@ def delete_file(file_id: str, confirm: bool):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to delete file: {e}")
+        raise click.ClickException(f"Failed to delete file: {e}") from e

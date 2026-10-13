@@ -16,7 +16,7 @@ All validation methods follow engineering best practices:
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from hub.apps.assets.models import Asset
 from hub.apps.core.business_rules.base import (
@@ -78,10 +78,10 @@ class VirtualizationBusinessRules(BusinessRules):
     """
 
     # Valid query types
-    VALID_QUERY_TYPES = {choice[0] for choice in QueryType.choices}
+    VALID_QUERY_TYPES: ClassVar[set] = {choice[0] for choice in QueryType.choices}
 
     # SQL forbidden keywords (write operations)
-    SQL_FORBIDDEN_KEYWORDS = [
+    SQL_FORBIDDEN_KEYWORDS: ClassVar[list] = [
         "DROP",
         "DELETE",
         "TRUNCATE",
@@ -94,16 +94,23 @@ class VirtualizationBusinessRules(BusinessRules):
     ]
 
     # SQL required keywords (at least one must be present)
-    SQL_REQUIRED_KEYWORDS = ["SELECT", "WITH", "INSERT", "UPDATE"]
+    SQL_REQUIRED_KEYWORDS: ClassVar[list] = ["SELECT", "WITH", "INSERT", "UPDATE"]
 
     # SPARQL forbidden keywords (write operations)
-    SPARQL_FORBIDDEN_KEYWORDS = ["INSERT", "DELETE", "DROP", "CREATE", "LOAD", "CLEAR"]
+    SPARQL_FORBIDDEN_KEYWORDS: ClassVar[list] = [
+        "INSERT",
+        "DELETE",
+        "DROP",
+        "CREATE",
+        "LOAD",
+        "CLEAR",
+    ]
 
     # SPARQL required keywords (at least one must be present)
-    SPARQL_REQUIRED_KEYWORDS = ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
+    SPARQL_REQUIRED_KEYWORDS: ClassVar[list] = ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
 
     # Supported source types (odps_contract: ODPS product/contract as source; no external connector)
-    SUPPORTED_SOURCE_TYPES = [
+    SUPPORTED_SOURCE_TYPES: ClassVar[list] = [
         "postgresql",
         "mysql",
         "sqlserver",
@@ -120,7 +127,7 @@ class VirtualizationBusinessRules(BusinessRules):
     ]
 
     # Source type compatibility with query types
-    QUERY_TYPE_SOURCE_COMPATIBILITY = {
+    QUERY_TYPE_SOURCE_COMPATIBILITY: ClassVar[dict] = {
         QueryType.SQL: [
             "postgresql",
             "mysql",
@@ -153,7 +160,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return "VirtualizationBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -596,10 +603,12 @@ class VirtualizationBusinessRules(BusinessRules):
 
                     # Check cross-tenant access if applicable
                     if self.tenant_id and str(asset.tenant_id) != self.tenant_id:
-                        # Cross-tenant access - check entitlements
-                        from hub.apps.marketplace.access_utils import check_entitlement
+                        # Cross-tenant access — the entitlement verification
+                        # resolves through the commercial hook (fail-closed
+                        # in core-only mode).
+                        from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
 
-                        has_access, error_code, _ = check_entitlement(
+                        has_access, error_code, _ = check_cross_tenant_entitlement(
                             consumer_tenant_id=self.tenant_id,
                             asset_id=str(asset_id),
                             provider_tenant_id=str(asset.tenant_id),
@@ -760,7 +769,9 @@ class VirtualizationBusinessRules(BusinessRules):
                             details["url_scheme_supported"] = False
                         else:
                             details["url_scheme_supported"] = True
-                except Exception as e:
+                except (
+                    ValueError
+                ) as e:  # urlparse raises ValueError on malformed URLs (e.g. invalid IPv6)
                     warnings.append(f"Failed to validate URL for source {source_index}: {e!s}")
                     details["url_format_valid"] = False
 
@@ -780,7 +791,9 @@ class VirtualizationBusinessRules(BusinessRules):
                         details["endpoint_format_valid"] = False
                     else:
                         details["endpoint_format_valid"] = True
-                except Exception as e:
+                except (
+                    ValueError
+                ) as e:  # urlparse raises ValueError on malformed URLs (e.g. invalid IPv6)
                     warnings.append(f"Failed to validate endpoint for source {source_index}: {e!s}")
                     details["endpoint_format_valid"] = False
 
@@ -1422,7 +1435,7 @@ class VirtualizationBusinessRules(BusinessRules):
                                 )
                         else:
                             details["schema_alignment_checks"]["columns_aligned"] = True
-            except Exception as e:
+            except (AttributeError, TypeError) as e:  # non-str query / malformed schema shapes
                 # Column extraction failed - not a critical error
                 logger.debug(f"Failed to extract columns from SQL query: {e}")
                 details["schema_alignment_checks"]["query_columns_extracted"] = False
@@ -1596,10 +1609,12 @@ class VirtualizationBusinessRules(BusinessRules):
 
                     # Check cross-tenant access if applicable
                     if self.tenant_id and str(asset.tenant_id) != self.tenant_id:
-                        # Cross-tenant access - check entitlements
-                        from hub.apps.marketplace.access_utils import check_entitlement
+                        # Cross-tenant access — the entitlement verification
+                        # resolves through the commercial hook (fail-closed
+                        # in core-only mode).
+                        from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
 
-                        has_access, error_code, _ = check_entitlement(
+                        has_access, error_code, _ = check_cross_tenant_entitlement(
                             consumer_tenant_id=self.tenant_id,
                             asset_id=str(asset_id),
                             provider_tenant_id=str(asset.tenant_id),
@@ -1987,16 +2002,20 @@ class VirtualizationBusinessRules(BusinessRules):
             # No tenant context - skip cross-tenant validation
             return errors
 
-        for i, (source_asset, _source_config) in enumerate(zip(source_assets, sources)):
+        for i, (source_asset, _source_config) in enumerate(
+            zip(source_assets, sources, strict=False)
+        ):
             if not source_asset:
                 continue  # Skip if no asset
 
             # Check if asset is from different tenant
             if str(source_asset.tenant_id) != self.tenant_id:
-                # Cross-tenant access - check entitlements
-                from hub.apps.marketplace.access_utils import check_entitlement
+                # Cross-tenant access — the entitlement verification
+                # resolves through the commercial hook (fail-closed in
+                # core-only mode).
+                from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
 
-                has_access, error_code, _ = check_entitlement(
+                has_access, error_code, _ = check_cross_tenant_entitlement(
                     consumer_tenant_id=self.tenant_id,
                     asset_id=str(source_asset.id),
                     provider_tenant_id=str(source_asset.tenant_id),
@@ -2012,7 +2031,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return errors
 
     def _validate_schema_alignment_across_sources(
-        self, source_schemas: list[dict[str, Any]], sources: list[dict[str, Any]]
+        self, source_schemas: list[dict[str, Any]], _sources: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """
         Validate schema alignment across multiple sources.
@@ -2095,7 +2114,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return {"errors": errors, "warnings": warnings, "details": details}
 
     def _validate_data_type_compatibility_across_sources(
-        self, source_schemas: list[dict[str, Any]], sources: list[dict[str, Any]]
+        self, source_schemas: list[dict[str, Any]], _sources: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """
         Validate data type compatibility across multiple sources.
@@ -2119,7 +2138,7 @@ class VirtualizationBusinessRules(BusinessRules):
         # Extract field types from each schema
         source_field_types: list[dict[str, str]] = []
 
-        for i, schema in enumerate(source_schemas):
+        for _i, schema in enumerate(source_schemas):
             if not schema:
                 continue
 
@@ -2178,13 +2197,39 @@ class VirtualizationBusinessRules(BusinessRules):
                     )
                     warnings.append(
                         f"Field '{field_name}' has incompatible types across sources: "
-                        f"{dict(zip(sources_with_field, types_found))}"
+                        f"{dict(zip(sources_with_field, types_found, strict=False))}"
                     )
 
         details["type_compatibility_issues"] = type_issues
         details["type_compatibility_valid"] = len(type_issues) == 0
 
         return {"errors": errors, "warnings": warnings, "details": details}
+
+    # Data type name -> normalized comparison type
+    TYPE_NORMALIZATION_MAP: ClassVar[dict[str, str]] = {
+        "int": "integer",
+        "integer": "integer",
+        "bigint": "integer",
+        "smallint": "integer",
+        "tinyint": "integer",
+        "float": "float",
+        "double": "float",
+        "decimal": "float",
+        "numeric": "float",
+        "real": "float",
+        "string": "string",
+        "text": "string",
+        "varchar": "string",
+        "char": "string",
+        "nvarchar": "string",
+        "boolean": "boolean",
+        "bool": "boolean",
+        "bit": "boolean",
+        "date": "datetime",
+        "datetime": "datetime",
+        "timestamp": "datetime",
+        "time": "datetime",
+    }
 
     def _normalize_type(self, field_type: str) -> str:
         """
@@ -2199,30 +2244,8 @@ class VirtualizationBusinessRules(BusinessRules):
         if not field_type:
             return "string"
 
-        field_type_lower = field_type.lower().strip()
-
-        # Integer types
-        if field_type_lower in ["int", "integer", "bigint", "smallint", "tinyint"]:
-            return "integer"
-
-        # Float types
-        if field_type_lower in ["float", "double", "decimal", "numeric", "real"]:
-            return "float"
-
-        # String types
-        if field_type_lower in ["string", "text", "varchar", "char", "nvarchar"]:
-            return "string"
-
-        # Boolean types
-        if field_type_lower in ["boolean", "bool", "bit"]:
-            return "boolean"
-
-        # Date/datetime types
-        if field_type_lower in ["date", "datetime", "timestamp", "time"]:
-            return "datetime"
-
         # Default to string for unknown types
-        return "string"
+        return self.TYPE_NORMALIZATION_MAP.get(field_type.lower().strip(), "string")
 
     def _are_types_compatible(self, types: list[str]) -> bool:
         """
@@ -2256,10 +2279,8 @@ class VirtualizationBusinessRules(BusinessRules):
             return True
 
         # String types are generally compatible (but warn)
-        if type_set.issubset(string_group):
-            return True  # Allow but will warn
-
-        return False
+        # Allow but will warn
+        return type_set.issubset(string_group)
 
     def validate_cross_tenant_access(
         self,
@@ -2457,10 +2478,11 @@ class VirtualizationBusinessRules(BusinessRules):
                     )
 
                     if not abac_result.allowed:
-                        # ABAC denied - check if there's an entitlement as fallback
-                        from hub.apps.marketplace.access_utils import check_entitlement
+                        # ABAC denied - check if there's an entitlement as
+                        # fallback (commercial hook; fail-closed in core).
+                        from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
 
-                        has_entitlement, error_code, _ = check_entitlement(
+                        has_entitlement, error_code, _ = check_cross_tenant_entitlement(
                             consumer_tenant_id=tenant_id,
                             asset_id=str(asset.id),
                             provider_tenant_id=source_tenant_id,
@@ -2747,9 +2769,10 @@ class VirtualizationBusinessRules(BusinessRules):
                             f"from tenant {source_tenant_id}"
                         )
                         details["tenant_isolation_checks"]["masking_required"] = True
-                        details["tenant_isolation_checks"]["masking_assets"] = details[
-                            "tenant_isolation_checks"
-                        ].get("masking_assets", []) + [asset_id]
+                        details["tenant_isolation_checks"]["masking_assets"] = [
+                            *details["tenant_isolation_checks"].get("masking_assets", []),
+                            asset_id,
+                        ]
 
             else:
                 # No cross-tenant sources - tenant isolation is naturally enforced
@@ -3080,7 +3103,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return result
 
     def _test_source_connection(
-        self, source_config: dict[str, Any], source_index: int, source_type: str
+        self, source_config: dict[str, Any], _source_index: int, source_type: str
     ) -> dict[str, Any]:
         """
         Test connection to a source using connector factory.
@@ -3093,6 +3116,10 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with 'success' (bool), 'error' (str, optional), 'warning' (str, optional)
         """
+
+        def timeout_handler(_signum, _frame):
+            raise TimeoutError("Connection test timed out after 10 seconds")
+
         try:
             # Try to import connector factory
             import os
@@ -3131,9 +3158,6 @@ class VirtualizationBusinessRules(BusinessRules):
             # Test connection with timeout protection
             import signal
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Connection test timed out after 10 seconds")
-
             # Set timeout (Unix only)
             timeout_set = False
             if hasattr(signal, "SIGALRM"):
@@ -3143,25 +3167,7 @@ class VirtualizationBusinessRules(BusinessRules):
 
             try:
                 test_result = connector.test_connection(source_config)
-
-                # Handle different return types
-                if isinstance(test_result, dict):
-                    success = test_result.get("success", False)
-                    error = test_result.get("error")
-                    if success:
-                        return {"success": True}
-                    else:
-                        return {"success": False, "error": error or "Connection test failed"}
-                elif isinstance(test_result, bool):
-                    if test_result:
-                        return {"success": True}
-                    else:
-                        return {"success": False, "error": "Connection test returned False"}
-                else:
-                    return {
-                        "success": False,
-                        "error": f"Unexpected return type from test_connection: {type(test_result)}",
-                    }
+                return self._normalize_connection_test_result(test_result)
             finally:
                 if timeout_set and hasattr(signal, "SIGALRM"):
                     signal.alarm(0)  # Cancel timeout
@@ -3176,6 +3182,46 @@ class VirtualizationBusinessRules(BusinessRules):
                 "warning": f"Connection test failed: {e!s}",
             }
 
+    @staticmethod
+    def _normalize_connection_test_result(test_result: Any) -> dict[str, Any]:
+        """Normalize the varied return types of connector test_connection() calls."""
+        # Handle different return types
+        if isinstance(test_result, dict):
+            success = test_result.get("success", False)
+            error = test_result.get("error")
+            if success:
+                return {"success": True}
+            return {"success": False, "error": error or "Connection test failed"}
+        if isinstance(test_result, bool):
+            if test_result:
+                return {"success": True}
+            return {"success": False, "error": "Connection test returned False"}
+        return {
+            "success": False,
+            "error": f"Unexpected return type from test_connection: {type(test_result)}",
+        }
+
+    # Hub source type -> connector factory type mapping.
+    # sparql/graphql/minio/unknown have no connector and map to None.
+    SOURCE_TYPE_CONNECTOR_MAP: ClassVar[dict[str, str]] = {
+        "postgresql": "DATABASE",
+        "mysql": "DATABASE",
+        "sqlserver": "DATABASE",
+        "mssql": "DATABASE",
+        "oracle": "DATABASE",
+        "sqlite": "DATABASE",
+        "odbc": "DATABASE",
+        "rest": "HTTP",
+        "http": "HTTP",
+        "https": "HTTP",
+        "s3": "S3",
+        "gcs": "GCS",
+        "azure_blob": "AZURE_BLOB",
+        "azureblob": "AZURE_BLOB",
+        "ftp": "FTP",
+        "sftp": "SFTP",
+    }
+
     def _map_source_type_to_connector_type(self, source_type: str) -> str | None:
         """
         Map source type to connector factory type.
@@ -3186,45 +3232,8 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Connector type string or None if not supported
         """
-        source_type_lower = source_type.lower()
-
-        # Database sources map to DATABASE connector
-        if source_type_lower in [
-            "postgresql",
-            "mysql",
-            "sqlserver",
-            "mssql",
-            "oracle",
-            "sqlite",
-            "odbc",
-        ]:
-            return "DATABASE"
-
-        # REST/HTTP sources
-        if source_type_lower in ["rest", "http", "https"]:
-            return "HTTP"
-
-        # S3 sources
-        if source_type_lower == "s3":
-            return "S3"
-
-        # GCS sources
-        if source_type_lower == "gcs":
-            return "GCS"
-
-        # Azure Blob sources
-        if source_type_lower in ["azure_blob", "azureblob"]:
-            return "AZURE_BLOB"
-
-        # FTP sources
-        if source_type_lower in ["ftp", "sftp"]:
-            return source_type_lower.upper()
-
         # SPARQL and GraphQL don't have connectors yet
-        if source_type_lower in ["sparql", "graphql"]:
-            return None
-
-        return None
+        return self.SOURCE_TYPE_CONNECTOR_MAP.get(source_type.lower())
 
 
 class QueryExecutionBusinessRules(BusinessRules):
@@ -3255,7 +3264,7 @@ class QueryExecutionBusinessRules(BusinessRules):
     DEFAULT_ASYNC_TIMEOUT = 3600  # 1 hour for ASYNC
 
     # Query complexity indicators
-    COMPLEX_KEYWORDS = [
+    COMPLEX_KEYWORDS: ClassVar[list] = [
         "JOIN",
         "UNION",
         "GROUP BY",
@@ -3265,14 +3274,14 @@ class QueryExecutionBusinessRules(BusinessRules):
         "WITH",
         "RECURSIVE",
     ]
-    FEDERATED_INDICATORS = ["SERVICE", "SILENT", "BIND", "VALUES"]
+    FEDERATED_INDICATORS: ClassVar[list] = ["SERVICE", "SILENT", "BIND", "VALUES"]
 
     def get_rule_name(self) -> str:
         """Return the rule name for metrics and logging."""
         return "QueryExecutionBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -3593,7 +3602,9 @@ class QueryExecutionBusinessRules(BusinessRules):
 
         if force_async:
             details["selection_criteria"]["force_async"] = True
-            return QueryExecutionMode.ASYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
+            return (
+                QueryExecutionMode.ASYNC
+            )  # enum member returned; mypy sees function return as str
 
         query = virtual_dataset.query or ""
         query_upper = query.upper()
@@ -3646,7 +3657,7 @@ class QueryExecutionBusinessRules(BusinessRules):
             details["selection_criteria"]["reason"] = (
                 "Simple query with single source and small result"
             )
-            return QueryExecutionMode.SYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
+            return QueryExecutionMode.SYNC  # enum member returned; mypy sees function return as str
 
         # Default to ASYNC for complex queries
         details["selection_criteria"]["selected_mode"] = "ASYNC"
@@ -3661,7 +3672,7 @@ class QueryExecutionBusinessRules(BusinessRules):
         else:
             details["selection_criteria"]["reason"] = "Default to async for safety"
 
-        return QueryExecutionMode.ASYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
+        return QueryExecutionMode.ASYNC  # enum member returned; mypy sees function return as str
 
     def validate_timeout(
         self,
@@ -3816,7 +3827,7 @@ class ResultBusinessRules(BusinessRules):
         return "ResultBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.

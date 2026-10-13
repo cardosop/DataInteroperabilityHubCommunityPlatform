@@ -55,9 +55,12 @@ from __future__ import annotations
 
 import ast
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # ---------------------------------------------------------------------------
 # Allow-list — Phase 250.1.G migration targets.
@@ -165,9 +168,7 @@ def _line_has_exemption(text: str, line_no: int) -> bool:
     lines = text.splitlines()
     if line_no - 1 < len(lines) and _PRAGMA_ALLOWED in lines[line_no - 1]:
         return True
-    if line_no - 2 >= 0 and _PRAGMA_ALLOWED in lines[line_no - 2]:
-        return True
-    return False
+    return bool(line_no - 2 >= 0 and _PRAGMA_ALLOWED in lines[line_no - 2])
 
 
 def scan_file(path: Path) -> list[Offence]:

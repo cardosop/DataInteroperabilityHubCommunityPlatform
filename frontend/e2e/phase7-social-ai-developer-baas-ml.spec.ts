@@ -20,13 +20,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML @deprecated', () =>
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/communities', {
       timeout: 60000,
-      contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     const communitiesPage = page.locator('.communities-page, .communities-tab');
-    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
+    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first();
     const hasCommunitiesContent = (await communitiesPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
@@ -43,13 +43,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML @deprecated', () =>
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/ai/search', {
       timeout: 60000,
-      contentSelector: '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     const aiPage = page.locator('.ai-search-page');
-    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
+    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first();
     const hasAIContent = (await aiPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
@@ -66,13 +66,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML @deprecated', () =>
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/developer', {
       timeout: 60000,
-      contentSelector: '.developer-portal-page, .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: '.developer-portal-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     const devPage = page.locator('.developer-portal-page');
-    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
+    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first();
     const hasDevContent = (await devPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
@@ -89,13 +89,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML @deprecated', () =>
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/baas', {
       timeout: 60000,
-      contentSelector: '.baas-page, .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     const baasPage = page.locator('.baas-page');
-    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
+    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first();
     const hasBaaSContent = (await baasPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
@@ -112,13 +112,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML @deprecated', () =>
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/ml', {
       timeout: 60000,
-      contentSelector: '.ml-page, .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: '.ml-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     const mlPage = page.locator('.ml-page');
-    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
+    const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first();
     const hasMLContent = (await mlPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
@@ -182,7 +182,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML @deprecated', () =>
       // Page must render some handled state (not a blank screen)
       const hasHandledState =
         (await page
-          .locator('.communities-page, .ai-search-page, .developer-portal-page, .baas-page, .ml-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1')
+          .locator('.communities-page, .ai-search-page, .developer-portal-page, .baas-page, .ml-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1, .disabled-capability-page, [data-testid="disabled-capability-page"]')
           .count()) > 0;
       expect(hasHandledState, 'Phase 7 route must render a handled UI state').toBe(true) /* acceptable states */;
     }

@@ -69,13 +69,17 @@ export function RetentionPolicyDetailPage() {
           ← Back to Retention Policies
         </Button>
         <div className="governance-detail-actions">
-          <Button variant="secondary" onClick={handleEdit}>
+          {/* data-testids are the E2E locator anchors (governance-retention-crud.spec.ts)
+              — the bare :has-text locators raced the skeleton/error states under
+              mid-batch churn (b7 #48). */}
+          <Button variant="secondary" onClick={handleEdit} data-testid="edit-button">
             Edit
           </Button>
           <Button
- variant="danger"
- onClick={handleDeleteClick}
- loading={deleteMutation.isPending}>
+            variant="danger"
+            onClick={handleDeleteClick}
+            loading={deleteMutation.isPending}
+            data-testid="delete-button">
             Delete
           </Button>
         </div>

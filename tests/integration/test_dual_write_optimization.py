@@ -262,9 +262,11 @@ class PersistenceRetryTest(TestCase):
         the lock before the second attempt, so the retry succeeds.
 
         The helper uses ``LOCK TABLE … NOWAIT`` so that if the lock cannot
-        be acquired immediately (e.g. another test's transaction still holds
-        a conflicting lock in a ``--reuse-db`` run), the test retries the
-        whole setup once rather than hanging.
+        be acquired immediately (e.g. another process's transaction holds a
+        conflicting lock on this shared test DB), the test retries the whole
+        setup up to five times rather than hanging, and finally defers to the
+        W16 environment policy (fail in CI, skip locally) when the shared DB
+        stays contended.
 
         No mocks — real PostgreSQL locking, real Django error handling, real
         retry loop.
@@ -307,33 +309,47 @@ class PersistenceRetryTest(TestCase):
             except Exception as exc:
                 helper_error[0] = exc
 
-        # Try the whole lock setup up to twice — the first attempt may fail
-        # when another test's transaction hasn't released its locks yet
-        # (common with --reuse-db).
-        for _attempt in range(2):
+        # Try the whole lock setup up to five times — an attempt fails fast
+        # (NOWAIT) when another transaction holds a conflicting lock on
+        # 'events'.  This shared test DB is used concurrently by other local
+        # sessions (e2e sweeps, second Claude session, the live gunicorn
+        # test server), so transient lock contention is expected; 5 bounded
+        # attempts with a pause absorb the typical case.  If the lock still
+        # cannot be acquired, the environment is genuinely contended — apply
+        # the W16 environment policy (fail loudly in CI, skip locally).
+        for _attempt in range(5):
             lock_acquired.clear()
             release_lock.clear()
             helper_error[0] = None
 
             locker = threading.Thread(target=_hold_table_lock, daemon=True)
             locker.start()
-            acquired = lock_acquired.wait(timeout=5)
-            if acquired:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if lock_acquired.is_set():
+                    break
+                if not locker.is_alive():
+                    # NOWAIT failed fast — the helper thread exited with
+                    # helper_error set; no point waiting the full deadline.
+                    break
+                time.sleep(0.05)  # noqa: sleep-needed — bounded poll  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
+            if lock_acquired.is_set():
                 break
-            locker.join(timeout=2)
-            # Brief pause to let stale transactions release their locks
-            time.sleep(1)
+            # Brief pause to let a concurrent transaction release its locks
+            time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
         else:
-            self.fail(
+            from envpolicy import skip_or_fail
+
+            skip_or_fail(
                 "Helper thread could not acquire EXCLUSIVE table lock on "
-                "'events' after 2 attempts (NOWAIT).  A concurrent "
-                "transaction may be holding a conflicting lock.  "
-                f"Last helper error: {helper_error[0]!r}"
+                "'events' after 5 attempts (NOWAIT) — a concurrent "
+                "transaction on the shared test DB is holding a conflicting "
+                f"lock.  Last helper error: {helper_error[0]!r}"
             )
 
         # ── Release thread: drop the lock while the retry loop sleeps ──
         def _release_after_delay(delay: float):
-            time.sleep(delay)
+            time.sleep(delay)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             release_lock.set()
 
         threading.Thread(target=_release_after_delay, args=(0.2,), daemon=True).start()
@@ -359,9 +375,7 @@ class PersistenceRetryTest(TestCase):
             with connection.cursor() as cursor:
                 cursor.execute("SET lock_timeout = '100ms'")
 
-            event_id = persist_event_async(
-                event_data, max_retries=1, retry_delay_seconds=0.5
-            )
+            event_id = persist_event_async(event_data, max_retries=1, retry_delay_seconds=0.5)
         finally:
             with connection.cursor() as cursor:
                 cursor.execute("SET lock_timeout = '0'")

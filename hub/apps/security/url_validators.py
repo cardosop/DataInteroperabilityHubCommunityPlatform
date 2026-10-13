@@ -38,14 +38,16 @@ existing behaviour.
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # Re-export the existing exception so callers have a single import
 # point.
-from hub.apps.webhooks.ssrf_guard import (  # noqa: F401
+from hub.apps.webhooks.ssrf_guard import (
     _ALLOWED_SCHEMES,
-    _BLOCKED_NETWORKS,
     SSRFViolationError,
     _is_private_ip,
     _resolve_and_check,

@@ -4,6 +4,7 @@ Rate Limiting Utilities
 Core utilities for rate limiting with sliding window algorithm.
 """
 
+import contextlib
 import time
 
 import structlog
@@ -182,21 +183,18 @@ def sliding_window_check(
     cache_key = f"rate_limit_cache:{key}"
     cache_ttl = 1  # 1 second cache
     cached_data = None
-    try:
-        cached_data = cache.get(cache_key)
-    except Exception:
+    with contextlib.suppress(Exception):  # pluggable cache backend; fail open on any cache failure
         # If cache is unavailable, continue without cache (fail open)
-        pass
+        cached_data = cache.get(cache_key)
 
     if cached_data:
         cached_count, cached_time, cached_reset = cached_data
         # Use cached data if less than 1 second old
-        if current_time - cached_time < cache_ttl:
+        if current_time - cached_time < cache_ttl and cached_count >= limit:
             # Still need to check if limit exceeded
-            if cached_count >= limit:
-                return False, cached_count, cached_reset
-            # If within limit, still need to add request (can't use cache for increment)
-            # But we can use it to avoid the initial count check
+            return False, cached_count, cached_reset
+        # If within limit, still need to add request (can't use cache for increment)
+        # But we can use it to avoid the initial count check
 
     # Use Redis sorted set for sliding window
     # Key: rate limit key
@@ -213,7 +211,12 @@ def sliding_window_check(
         redis_client = redis.Redis(
             connection_pool=pool, decode_responses=False
         )  # Keep binary for sorted sets
-    except (ImportError, Exception):
+    # Degrade boundary: pool/connection setup can fail in any number of
+    # ways (custom pool backends, connection errors); the pinned contract
+    # is "any acquisition failure → fall back to a direct connection,
+    # and if that fails too → fail OPEN". Rate limiting must never take
+    # the request down.
+    except Exception:  # noqa: BLE001
         # Fallback to direct connection if redis_pools not available
         try:
             from django.conf import settings
@@ -224,7 +227,7 @@ def sliding_window_check(
             redis_client = redis.from_url(
                 redis_url, decode_responses=False, socket_connect_timeout=0.1
             )  # Keep binary for sorted sets, short timeout
-        except Exception as e2:
+        except Exception as e2:  # noqa: BLE001
             logger.warning("rate_limit_redis_error", error=str(e2))
             # If Redis is unavailable, allow request (fail open)
             return True, 0, int(current_time + window)
@@ -234,7 +237,7 @@ def sliding_window_check(
         # Remove expired entries (outside window) - Atomic operation
         window_start = current_time - window
         redis_client.zremrangebyscore(key, 0, window_start)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — any Redis op failure must fail open
         logger.warning("rate_limit_redis_error", error=str(e))
         # If Redis operations fail, allow request (fail open)
         return True, 0, int(current_time + window)
@@ -253,10 +256,10 @@ def sliding_window_check(
             reset_time = int(current_time + window)
 
         # Cache the result (fail silently if cache unavailable)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # cache write is best-effort; rate limiting must not break on any cache failure
             cache.set(cache_key, (current_count, current_time, reset_time), cache_ttl)
-        except Exception:
-            pass  # Cache failure shouldn't break rate limiting
 
         return False, current_count, reset_time
 
@@ -279,10 +282,8 @@ def sliding_window_check(
         reset_time = int(current_time + window)
 
     # Cache the result (1 second TTL) - Phase 4.1.2 (fail silently if cache unavailable)
-    try:
+    with contextlib.suppress(Exception):
         cache.set(cache_key, (current_count, current_time, reset_time), cache_ttl)
-    except Exception:
-        pass  # Cache failure shouldn't break rate limiting
 
     return True, current_count, reset_time
 
@@ -312,7 +313,10 @@ def get_rate_limit_info(key: str, window: int, current_time: float | None = None
         redis_client = redis.Redis(
             connection_pool=pool, decode_responses=False
         )  # Keep binary for sorted sets
-    except (ImportError, Exception):
+    # Same degrade boundary as sliding_window_check: any pool/connection
+    # failure falls back to a direct connection; if that fails too, return
+    # benign defaults. Rate-limit introspection must never raise.
+    except Exception:  # noqa: BLE001
         # Fallback to direct connection if redis_pools not available
         try:
             import redis
@@ -324,7 +328,7 @@ def get_rate_limit_info(key: str, window: int, current_time: float | None = None
             redis_client = redis.from_url(
                 redis_url, decode_responses=False
             )  # Keep binary for sorted sets
-        except Exception:
+        except Exception:  # noqa: BLE001
             # If Redis is unavailable, return default values
             return {
                 "count": 0,

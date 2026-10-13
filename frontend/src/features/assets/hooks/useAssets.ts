@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse, isApiError } from '../../../shared/types/api';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import type {
   Asset,
   AssetCreateRequest,
@@ -15,18 +16,12 @@ import type {
 } from '../../../shared/types/assets';
 import { assetService } from '../services/assetService';
 
-export function useAssets(
-  filters: AssetListFilters = {},
-  options?: { enabled?: boolean }
-) {
+export function useAssets(filters: AssetListFilters = {}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['assets', 'list', filters],
     queryFn: async () => {
       const data = await assetService.list(filters);
-      if (data === undefined) {
-        return emptyPaginatedResponse<Asset>();
-      }
-      return data;
+      return normalizePaginated(data ?? emptyPaginatedResponse<Asset>());
     },
     enabled: options?.enabled !== false,
   });

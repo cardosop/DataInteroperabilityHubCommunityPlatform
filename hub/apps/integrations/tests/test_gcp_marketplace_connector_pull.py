@@ -32,6 +32,24 @@ from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarket
 class TestGCPMarketplaceConnectorMapToHubAsset(TestCase):
     """Test map_to_hub_asset() method"""
 
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional Google Cloud SDK gets
+            # imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
+
     def setUp(self):
         """Set up test fixtures"""
         reset_circuit_breaker_by_name("gcp-marketplace-connector")
@@ -198,7 +216,9 @@ class TestGCPMarketplaceConnectorMapToHubAsset(TestCase):
     ):
         """Test sync_pull() error handling with None listing_ids"""
         try:
-            result = self.connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]  # test: None listing_ids for full sync exercise
+            result = self.connector.sync_pull(
+                listing_ids=None
+            )  # test: None listing_ids for full sync exercise
             # Should handle None gracefully (may use default behavior)
             self.assertIsInstance(result, SyncResult)
         except (ValueError, TypeError):
@@ -247,6 +267,24 @@ class TestGCPMarketplaceConnectorMapToHubAsset(TestCase):
 
 class TestGCPMarketplaceConnectorSyncPull(TestCase):
     """Test sync_pull() method following metadata-first pattern"""
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional Google Cloud SDK gets
+            # imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
 
     def setUp(self):
         """Set up test fixtures"""
@@ -403,6 +441,24 @@ class TestGCPMarketplaceConnectorSyncPull(TestCase):
 class TestGCPMarketplaceConnectorMapBigQueryType(TestCase):
     """Test _map_bigquery_type() method"""
 
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional Google Cloud SDK gets
+            # imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
+
     def setUp(self):
         """Set up test fixtures"""
         reset_circuit_breaker_by_name("gcp-marketplace-connector")
@@ -449,6 +505,24 @@ class TestGCPMarketplaceConnectorMapBigQueryType(TestCase):
 
 class TestGCPMarketplaceConnectorExtractSchema(TestCase):
     """Test _extract_schema_from_bigquery_dataset() method"""
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional Google Cloud SDK gets
+            # imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
 
     def setUp(self):
         """Set up test fixtures"""
@@ -507,7 +581,9 @@ class TestGCPMarketplaceConnectorExtractSchema(TestCase):
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
-        from google.api_core.exceptions import NotFound as GoogleNotFound
+        from google.api_core.exceptions import (
+            NotFound as GoogleNotFound,  # type: ignore[import-untyped]
+        )
 
         mock_client.query.side_effect = GoogleNotFound("Table not found")
 
@@ -519,6 +595,24 @@ class TestGCPMarketplaceConnectorExtractSchema(TestCase):
 
 class TestGCPMarketplaceConnectorSubscribeToListing(TestCase):
     """Test _subscribe_to_listing() method"""
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional Google Cloud SDK gets
+            # imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
 
     def setUp(self):
         """Set up test fixtures"""

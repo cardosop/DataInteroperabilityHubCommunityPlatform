@@ -75,7 +75,7 @@ class Command(BaseCommand):
             help="ComplianceRuns stuck in QUEUED longer than this are detected (default: 60 min).",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run: bool = options["dry_run"]
         target_tenant_id = options.get("tenant_id")
         multiplier: float = options["threshold_multiplier"]
@@ -258,7 +258,7 @@ class Command(BaseCommand):
                         tenant=job.tenant,
                     )
                 except Exception as dlq_err:
-                    logger.error(
+                    logger.exception(
                         "stuck_dq_dlq_write_failed",
                         job_id=str(job.id),
                         error=str(dlq_err),
@@ -290,7 +290,7 @@ class Command(BaseCommand):
                 },
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "stuck_dq_run_audit_failed",
                 dq_run_id=str(run.id),
                 error=str(exc),
@@ -421,7 +421,7 @@ class Command(BaseCommand):
                         tenant=job.tenant,
                     )
                 except Exception as dlq_err:
-                    logger.error(
+                    logger.exception(
                         "stuck_compliance_dlq_write_failed",
                         job_id=str(job.id),
                         error=str(dlq_err),
@@ -450,7 +450,7 @@ class Command(BaseCommand):
                 },
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "stuck_compliance_run_audit_failed",
                 run_id=str(run.id),
                 error=str(exc),
@@ -581,7 +581,7 @@ class Command(BaseCommand):
                         tenant=job.tenant,
                     )
                 except Exception as dlq_err:
-                    logger.error(
+                    logger.exception(
                         "stale_queued_dlq_write_failed",
                         job_id=str(job.id),
                         error=str(dlq_err),
@@ -611,7 +611,7 @@ class Command(BaseCommand):
                 },
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "stale_queued_audit_failed",
                 run_id=str(run.id),
                 error=str(exc),

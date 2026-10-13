@@ -16,9 +16,10 @@ All tests use real API connections (no mocks/stubs) and follow TDD principles.
 Tests verify complete workflows, error handling, authentication, and retry logic.
 """
 
+import contextlib
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 
@@ -28,12 +29,12 @@ from datahub_interoperability.errors import (
     MarketplaceConnectionError,
     MarketplaceValidationError,
     NotFoundError,
+    ServerError,
     ValidationError,
 )
-import contextlib
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -53,7 +54,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Fall back to env-var keys
@@ -64,7 +65,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_marketplace_comprehensive_tenant_and_key() -> Optional[str]:
+def _create_marketplace_comprehensive_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``marketplace_integrations_enabled=True``."""
     # Try inside-Docker path (Method 2 from original code)
     if os.path.exists("/app"):
@@ -134,8 +135,8 @@ print(api_key_value)
                 cwd="/app/hub",
             )
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 if not line:
                     continue
                 if "imported" in line.lower() or "objects" in line.lower():
@@ -144,7 +145,7 @@ print(api_key_value)
                     continue
                 if len(line) >= 40 and all(c.isalnum() or c in "-_" for c in line):
                     return line
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
     return None
@@ -195,9 +196,39 @@ def marketplace_api(real_client):
 
 
 # Helper function for creating connections with conflict handling
+def _mapping_writes_sync_managed(error: Exception) -> bool:
+    """True when the server rejected a mapping write (405 Method Not Allowed).
+
+    The server's mapping viewset intentionally only accepts GET/DELETE —
+    mappings are created/updated by the sync flow.  The skip message must
+    say that, not "resource may not exist".
+    """
+    err_str = str(error).lower()
+    return "not allowed" in err_str or "405" in err_str
+
+
+async def _create_test_asset(marketplace_api: MarketplaceIntegrationAPI) -> str:
+    """Create a real DRAFT asset in the test tenant and return its id.
+
+    Mapping creation validates that the hub asset EXISTS (tenant-scoped),
+    so fake UUIDs can never exercise the write path.
+    """
+    asset = await marketplace_api.client.post(
+        "/assets/",
+        {
+            "name": f"Mapping Asset {uuid.uuid4().hex[:8]}",
+            "key": f"mapping-asset-{uuid.uuid4().hex[:8]}",
+            "status": "DRAFT",
+            "domain": "test",
+            "visibility": "INTERNAL",
+        },
+    )
+    return asset["id"]
+
+
 async def create_test_connection(
-    marketplace_api: MarketplaceIntegrationAPI, connection_name: Optional[str] = None
-) -> Dict[str, Any]:
+    marketplace_api: MarketplaceIntegrationAPI, connection_name: str | None = None
+) -> dict[str, Any]:
     """
     Helper function to create a test connection, handling conflicts.
     """
@@ -215,7 +246,6 @@ async def create_test_connection(
                 "token": "test-token",
             },
         )
-        return connection
     except ConflictError:
         # If connection already exists, try to find and delete it first
         connections = await marketplace_api.list_connections()
@@ -233,6 +263,8 @@ async def create_test_connection(
                 "token": "test-token",
             },
         )
+        return connection
+    else:
         return connection
 
 
@@ -451,8 +483,10 @@ async def test_sync_from_marketplace_comprehensive(marketplace_api):
 async def test_sync_bidirectional_comprehensive(marketplace_api):
     """Test bidirectional sync"""
     connection = await create_test_connection(marketplace_api)
+    asset = None
     try:
-        asset_ids = [str(uuid.uuid4())]
+        asset = await _create_test_asset(marketplace_api)
+        asset_ids = [asset]
         listing_ids = ["listing-1", "listing-2"]
 
         try:
@@ -466,6 +500,9 @@ async def test_sync_bidirectional_comprehensive(marketplace_api):
             pytest.skip(f"Bidirectional sync requires real assets/listings — not available: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
+        if asset:
+            with contextlib.suppress(Exception):
+                await marketplace_api.client.delete(f"/assets/{asset}/")
 
 
 @pytest.mark.asyncio
@@ -553,9 +590,11 @@ async def test_cancel_sync_job_comprehensive(marketplace_api):
 async def test_create_mapping_comprehensive(marketplace_api):
     """Test creating mapping"""
     connection = await create_test_connection(marketplace_api)
+    asset = None
     try:
-        # Create test asset ID and external listing ID
-        hub_asset_id = str(uuid.uuid4())
+        # Create a REAL asset — mapping creation validates the asset exists.
+        asset = await _create_test_asset(marketplace_api)
+        hub_asset_id = asset
         external_listing_id = f"TEST_LISTING_{uuid.uuid4()}"
 
         try:
@@ -576,9 +615,16 @@ async def test_create_mapping_comprehensive(marketplace_api):
             # Cleanup
             await marketplace_api.delete_mapping(mapping["id"])
         except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            if _mapping_writes_sync_managed(e):
+                pytest.skip(
+                    f"Mapping writes are sync-managed server-side (GET/DELETE only): {e}"
+                )
             pytest.skip(f"Mapping requires real asset — not available in test: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
+        if asset:
+            with contextlib.suppress(Exception):
+                await marketplace_api.client.delete(f"/assets/{asset}/")
 
 
 @pytest.mark.asyncio
@@ -586,8 +632,10 @@ async def test_create_mapping_comprehensive(marketplace_api):
 async def test_get_mapping_all_fields(marketplace_api):
     """Test getting mapping with all fields"""
     connection = await create_test_connection(marketplace_api)
+    asset = None
     try:
-        hub_asset_id = str(uuid.uuid4())
+        asset = await _create_test_asset(marketplace_api)
+        hub_asset_id = asset
         external_listing_id = f"TEST_LISTING_{uuid.uuid4()}"
 
         try:
@@ -607,9 +655,16 @@ async def test_get_mapping_all_fields(marketplace_api):
             # Cleanup
             await marketplace_api.delete_mapping(mapping_id)
         except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            if _mapping_writes_sync_managed(e):
+                pytest.skip(
+                    f"Mapping writes are sync-managed server-side (GET/DELETE only): {e}"
+                )
             pytest.skip(f"Mapping not accessible — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
+        if asset:
+            with contextlib.suppress(Exception):
+                await marketplace_api.client.delete(f"/assets/{asset}/")
 
 
 @pytest.mark.asyncio
@@ -644,8 +699,10 @@ async def test_list_mappings_all_filters(marketplace_api):
 async def test_update_mapping_comprehensive(marketplace_api):
     """Test updating mapping"""
     connection = await create_test_connection(marketplace_api)
+    asset = None
     try:
-        hub_asset_id = str(uuid.uuid4())
+        asset = await _create_test_asset(marketplace_api)
+        hub_asset_id = asset
         external_listing_id = f"TEST_LISTING_{uuid.uuid4()}"
 
         try:
@@ -664,9 +721,16 @@ async def test_update_mapping_comprehensive(marketplace_api):
             # Cleanup
             await marketplace_api.delete_mapping(mapping_id)
         except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            if _mapping_writes_sync_managed(e):
+                pytest.skip(
+                    f"Mapping writes are sync-managed server-side (GET/DELETE only): {e}"
+                )
             pytest.skip(f"Mapping update not testable — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
+        if asset:
+            with contextlib.suppress(Exception):
+                await marketplace_api.client.delete(f"/assets/{asset}/")
 
 
 @pytest.mark.asyncio
@@ -674,8 +738,10 @@ async def test_update_mapping_comprehensive(marketplace_api):
 async def test_delete_mapping_with_verification(marketplace_api):
     """Test deleting mapping and verifying deletion"""
     connection = await create_test_connection(marketplace_api)
+    asset = None
     try:
-        hub_asset_id = str(uuid.uuid4())
+        asset = await _create_test_asset(marketplace_api)
+        hub_asset_id = asset
         external_listing_id = f"TEST_LISTING_{uuid.uuid4()}"
 
         try:
@@ -691,9 +757,16 @@ async def test_delete_mapping_with_verification(marketplace_api):
             with pytest.raises(NotFoundError):
                 await marketplace_api.get_mapping(mapping_id)
         except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            if _mapping_writes_sync_managed(e):
+                pytest.skip(
+                    f"Mapping writes are sync-managed server-side (GET/DELETE only): {e}"
+                )
             pytest.skip(f"Mapping deletion not testable — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
+        if asset:
+            with contextlib.suppress(Exception):
+                await marketplace_api.client.delete(f"/assets/{asset}/")
 
 
 # ========== Connector Methods Comprehensive Tests ==========

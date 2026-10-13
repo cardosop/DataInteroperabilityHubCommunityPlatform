@@ -22,14 +22,14 @@ class TenantFactory:
     @staticmethod
     def create_tenant(**kwargs):
         import uuid as _uuid
+
         from hub.apps.tenants.models import Tenant
 
         # Ensure unique slug to prevent reuse-db collisions
         if "slug" not in kwargs and "name" in kwargs and kwargs["name"]:
             kwargs.setdefault(
                 "slug",
-                kwargs["name"].lower().replace(" ", "-")[:50]
-                + f"-{_uuid.uuid4().hex[:8]}",
+                kwargs["name"].lower().replace(" ", "-")[:50] + f"-{_uuid.uuid4().hex[:8]}",
             )
         # Ensure unique name if not provided
         if "name" not in kwargs or kwargs["name"] is None:
@@ -88,6 +88,7 @@ class AssetFactory:
     @staticmethod
     def create_asset(**kwargs):
         import uuid as _uuid
+
         from hub.apps.assets.models import Asset
 
         # Ensure unique key per tenant to prevent reuse-db collisions
@@ -126,11 +127,13 @@ class DatasetFactory:
     @staticmethod
     def create_dataset(**kwargs):
         import uuid as _uuid
+
         from hub.apps.datasets.models import Dataset
 
         kwargs.setdefault("format", "CSV")
         if "file" not in kwargs:
             from hub.apps.files.models import File
+
             uid = _uuid.uuid4().hex[:12]
             kwargs["file"] = File.objects.create(
                 tenant=kwargs.get("tenant"),
@@ -152,6 +155,7 @@ class JobFactory:
     @staticmethod
     def create_job(**kwargs):
         import uuid as _uuid
+
         from hub.apps.jobs.models import Job, JobType
 
         kwargs.setdefault("type", JobType.DQ_RUN)
@@ -162,7 +166,9 @@ class JobFactory:
     @staticmethod
     def create_failed_job(**kwargs):
         import uuid as _uuid
+
         from django.utils import timezone
+
         from hub.apps.jobs.models import Job, JobStatus
 
         error_message = kwargs.pop("error_message", "Test error message")
@@ -176,7 +182,9 @@ class JobFactory:
     @staticmethod
     def create_completed_job(**kwargs):
         import uuid as _uuid
+
         from django.utils import timezone
+
         from hub.apps.jobs.models import Job, JobStatus
 
         kwargs.setdefault("resource_id", _uuid.uuid4())
@@ -192,6 +200,7 @@ class FileFactory:
     @staticmethod
     def create_file(**kwargs):
         import uuid as _uuid
+
         from hub.apps.files.models import File
 
         defaults = {
@@ -212,6 +221,7 @@ class ListingFactory:
     @staticmethod
     def create_listing(**kwargs):
         from django.db import IntegrityError
+
         from hub.apps.marketplace.models import Listing
 
         try:

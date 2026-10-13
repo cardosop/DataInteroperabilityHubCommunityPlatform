@@ -93,10 +93,7 @@ class GapAnalyzer:
         endpoint = endpoint.rstrip("/")
         # Ensure starts with /api/v1
         if not endpoint.startswith("/api/v1"):
-            if endpoint.startswith("/"):
-                endpoint = f"/api/v1{endpoint}"
-            else:
-                endpoint = f"/api/v1/{endpoint}"
+            endpoint = f"/api/v1{endpoint}" if endpoint.startswith("/") else f"/api/v1/{endpoint}"
         # Normalize UUID placeholders
         endpoint = re.sub(r"<uuid:(\w+)>", r"{\1}", endpoint)
         endpoint = re.sub(r"<str:(\w+)>", r"{\1}", endpoint)
@@ -119,8 +116,8 @@ class GapAnalyzer:
         current_priority = "P3"
 
         # Look for category sections
-        for line in content.split("\n"):
-            line = line.strip()
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
 
             # Category headers
             if line.startswith("### ") and not line.startswith("#### "):
@@ -193,22 +190,21 @@ class GapAnalyzer:
                     continue
 
             # Parse detailed endpoint information
-            if "in_section" in locals() and in_section:
-                if line.startswith("**") and "**:" in line:
-                    field_name = line.split("**")[1].split(":")[0].strip().lower()
-                    field_value = line.split(":", 1)[1].strip() if ":" in line else ""
+            if "in_section" in locals() and in_section and line.startswith("**") and "**:" in line:
+                field_name = line.split("**")[1].split(":")[0].strip().lower()
+                field_value = line.split(":", 1)[1].strip() if ":" in line else ""
 
-                    if field_name == "priority":
-                        api.priority = field_value
-                    elif field_name == "status":
-                        # Skip status, it's about existence
-                        pass
-                    elif field_name == "sources":
-                        api.sources = [s.strip() for s in field_value.split(",")]
-                    elif field_name == "authentication":
-                        api.auth_required = "required" in field_value.lower()
-                    elif field_name == "performance target":
-                        api.performance_target = field_value
+                if field_name == "priority":
+                    api.priority = field_value
+                elif field_name == "status":
+                    # Skip status, it's about existence
+                    pass
+                elif field_name == "sources":
+                    api.sources = [s.strip() for s in field_value.split(",")]
+                elif field_name == "authentication":
+                    api.auth_required = "required" in field_value.lower()
+                elif field_name == "performance target":
+                    api.performance_target = field_value
 
         return apis
 
@@ -225,8 +221,8 @@ class GapAnalyzer:
         current_category = "Uncategorized"
 
         # Parse markdown tables
-        for line in content.split("\n"):
-            line = line.strip()
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
 
             # Category headers
             if line.startswith("### ") and not line.startswith("#### "):

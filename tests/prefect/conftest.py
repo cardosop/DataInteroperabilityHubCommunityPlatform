@@ -36,9 +36,10 @@ def prefect_server_health(prefect_server_url: str) -> bool:
     """
     try:
         response = requests.get(f"{prefect_server_url}/health", timeout=5)
-        return response.status_code == 200
     except Exception:
         return False
+    else:
+        return response.status_code == 200
 
 
 @pytest.fixture(scope="session")
@@ -59,7 +60,7 @@ def prefect_server_available(prefect_server_health: bool) -> bool:
     return True
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def prefect_api_key(prefect_server_available: bool) -> str | None:
     """
     Get or create Prefect API key for testing.
@@ -78,7 +79,7 @@ def prefect_api_key(prefect_server_available: bool) -> str | None:
     return None
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def prefect_work_pool(prefect_server_available: bool, prefect_api_key: str | None) -> str:
     """
     Get or create Prefect work pool for testing.
@@ -94,7 +95,7 @@ def prefect_work_pool(prefect_server_available: bool, prefect_api_key: str | Non
     return "default"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def wait_for_prefect_server(prefect_server_url: str, max_wait: int = 60) -> bool:
     """
     Wait for Prefect Server to be ready.

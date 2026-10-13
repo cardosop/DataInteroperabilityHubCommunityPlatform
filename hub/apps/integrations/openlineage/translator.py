@@ -324,7 +324,7 @@ def validate_openlineage_event(event: dict[str, Any]) -> None:
     schema. Raises ``jsonschema.ValidationError`` on failure; the
     caller turns the error into the appropriate API response.
     """
-    from jsonschema import validate
+    from jsonschema import validate  # type: ignore[import-untyped]
 
     validate(instance=event, schema=_OPENLINEAGE_RUN_EVENT_SCHEMA)
 

@@ -20,6 +20,7 @@ from ..odps_errors import (
     validate_odcs_version,
     validate_odps_version,
 )
+from ..output import print_json_output
 
 
 @click.group()
@@ -84,7 +85,7 @@ def list_contracts(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list contracts: {e}")
+        raise click.ClickException(f"Failed to list contracts: {e}") from e
 
 
 @contracts.command("get")
@@ -110,7 +111,7 @@ def get_contract(contract_id: str, output_format: str, show_odps: bool):
         data = api_client.get(f"contracts/{contract_id}/")
 
         if output_format == "json":
-            click.echo(json.dumps(data, indent=2))
+            print_json_output(data)
         else:
             # Table format
             click.echo(f"ID: {data.get('id')}")
@@ -133,7 +134,7 @@ def get_contract(contract_id: str, output_format: str, show_odps: bool):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get contract: {e}")
+        raise click.ClickException(f"Failed to get contract: {e}") from e
 
 
 def _detect_contract_spec_type(content: str, original_format: str) -> str | None:
@@ -163,11 +164,11 @@ def _detect_contract_spec_type(content: str, original_format: str) -> str | None
         schema_url = contract_data.get("schema")
         if schema_url and isinstance(schema_url, str):
             schema_lower = schema_url.lower()
-            if "opendataproducts.org/schema" in schema_lower:
-                return "ODPS"
-            if "schemas.opendataproducts.io/spec" in schema_lower:
-                return "ODPS"
-            if "open-data-product" in schema_lower:
+            if (
+                "opendataproducts.org/schema" in schema_lower
+                or "schemas.opendataproducts.io/spec" in schema_lower
+                or "open-data-product" in schema_lower
+            ):
                 return "ODPS"
 
         # Check for product field (ODPS structure indicator)
@@ -180,12 +181,23 @@ def _detect_contract_spec_type(content: str, original_format: str) -> str | None
         if "apiVersion" in contract_data and "kind" in contract_data:
             return "ODCS"
 
+    except (json.JSONDecodeError, yaml.YAMLError):
+        # If parsing fails, cannot determine spec type
+        return None
+    else:
         # Default to ODCS if no clear indicators
         return "ODCS"
 
-    except (json.JSONDecodeError, yaml.YAMLError, Exception):
-        # If parsing fails, cannot determine spec type
-        return None
+
+def _raise_file_read_error(file_path: str, exc: OSError) -> None:
+    """Raise the CLI error for an unreadable contract file (TRY301 helper)."""
+    raise ODPSParameterError(
+        message=f"Failed to read file: {file_path}",
+        error_code="FILE_READ_ERROR",
+        context={"file_path": file_path},
+        suggestion="Check that the file exists and you have read permissions",
+        original_error=exc,
+    ) from exc
 
 
 @contracts.command("create")
@@ -223,20 +235,17 @@ def create_contract(
         with open(file_path, encoding="utf-8") as f:
             content = f.read()
     except Exception as e:
-        raise click.ClickException(f"Failed to read file: {e}")
+        raise click.ClickException(f"Failed to read file: {e}") from e
 
     # Determine format
     if file_path.endswith(".json"):
         original_format = "JSON"
-    elif file_path.endswith(".yaml") or file_path.endswith(".yml"):
+    elif file_path.endswith((".yaml", ".yml")):
         original_format = "YAML"
     else:
         # Try to detect format
         content_stripped = content.strip()
-        if content_stripped.startswith("{"):
-            original_format = "JSON"
-        else:
-            original_format = "YAML"
+        original_format = "JSON" if content_stripped.startswith("{") else "YAML"
 
     # Auto-detect spec type if not overridden
     detected_spec_type = None
@@ -272,7 +281,7 @@ def create_contract(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to create contract: {e}")
+        raise click.ClickException(f"Failed to create contract: {e}") from e
 
 
 @contracts.command("validate")
@@ -318,7 +327,7 @@ def validate_contract(contract_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to validate contract: {e}")
+        raise click.ClickException(f"Failed to validate contract: {e}") from e
 
 
 @contracts.command("lint")
@@ -354,7 +363,7 @@ def lint_contract(contract_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to lint contract: {e}")
+        raise click.ClickException(f"Failed to lint contract: {e}") from e
 
 
 @contracts.command("create-odps")
@@ -418,7 +427,8 @@ def create_odps(
 
     These options are mutually exclusive.
     """
-    try:
+
+    def _validate_params() -> str:
         # Validate parameters
         validate_mutually_exclusive_options("extract-odcs", extract_odcs, "link-odcs", link_odcs_id)
         # Check that either extract_odcs or link_odcs_id is provided
@@ -437,23 +447,78 @@ def create_odps(
             validate_odps_version(odps_version)
 
         # Validate file format
-        if input_format:
-            original_format = input_format.upper()
+        return input_format.upper() if input_format else validate_file_format(file_path)
+
+    def _poll_workflow() -> None:
+        nonlocal result
+        # Async workflow - poll for completion
+        if output_format == "table":
+            click.echo("Product creation workflow started (async)")
+            click.echo(f"Workflow Instance ID: {workflow_instance_id}")
+            click.echo("Polling for completion...")
+
+        # Poll for completion
+        import time
+
+        max_poll_time = 300  # 5 minutes max
+        poll_interval = 2  # Poll every 2 seconds
+        start_time = time.time()
+
+        while time.time() - start_time < max_poll_time:
+
+            def _check_status() -> bool:
+                nonlocal result
+                status_result = api_client.get(
+                    f"contracts/products/workflows/{workflow_instance_id}/status/"
+                )
+                status = status_result.get("status")
+
+                if status == "COMPLETED":
+                    # Workflow completed - get results
+                    result = status_result
+                    return True
+                if status in ["FAILED", "CANCELLED", "ROLLED_BACK"]:
+                    error_msg = status_result.get("message") or f"Workflow {status.lower()}"
+                    raise ODPSExportError(
+                        message=f"Product creation workflow {status.lower()}: {error_msg}",
+                        error_code="WORKFLOW_FAILED",
+                        context={
+                            "workflow_instance_id": workflow_instance_id,
+                            "status": status,
+                        },
+                    )
+                return False
+
+            try:
+                completed = _check_status()
+                if completed:
+                    break
+                # Still running - continue polling
+                time.sleep(poll_interval)
+            except click.ClickException as e:
+                # If 404, workflow might not be ready yet
+                if "404" in str(e) or "not found" in str(e).lower():
+                    time.sleep(poll_interval)
+                    continue
+                raise
         else:
-            original_format = validate_file_format(file_path)
+            # Timeout
+            raise ODPSExportError(
+                message=f"Workflow did not complete within {max_poll_time} seconds",
+                error_code="WORKFLOW_TIMEOUT",
+                context={"workflow_instance_id": workflow_instance_id},
+                suggestion=f"Check workflow status manually: contracts/products/workflows/{workflow_instance_id}/status/",
+            )
+
+    try:
+        original_format = _validate_params()
 
         # Read file
         try:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
         except OSError as e:
-            raise ODPSParameterError(
-                message=f"Failed to read file: {file_path}",
-                error_code="FILE_READ_ERROR",
-                context={"file_path": file_path},
-                suggestion="Check that the file exists and you have read permissions",
-                original_error=e,
-            )
+            _raise_file_read_error(file_path, e)
 
         if extract_odcs:
             # Product-First flow: Use /api/v1/contracts/products/ endpoint
@@ -472,7 +537,14 @@ def create_odps(
             try:
                 # Use request() to get raw Response object so we can check status code
                 response_obj = api_client.request(
-                    "POST", "contracts/products/", json_data=data, timeout=30
+                    # The product-first flow is workflow-backed — 30s
+                    # read-times-out before the server responds (measured
+                    # >30s even on an idle stack). 120s matches the other
+                    # workflow operations and the gunicorn window.
+                    "POST",
+                    "contracts/products/",
+                    json_data=data,
+                    timeout=120,
                 )
 
                 # Check status code
@@ -493,61 +565,12 @@ def create_odps(
                 error_msg = str(e)
                 if "API error" in error_msg:
                     # Extract error code and message
-                    raise handle_api_error(error_msg, 400, "contracts/products/")
+                    raise handle_api_error(error_msg, 400, "contracts/products/") from None
                 raise
 
             # Check if async workflow (202 Accepted)
             if workflow_instance_id:
-                # Async workflow - poll for completion
-                if output_format == "table":
-                    click.echo("Product creation workflow started (async)")
-                    click.echo(f"Workflow Instance ID: {workflow_instance_id}")
-                    click.echo("Polling for completion...")
-
-                # Poll for completion
-                import time
-
-                max_poll_time = 300  # 5 minutes max
-                poll_interval = 2  # Poll every 2 seconds
-                start_time = time.time()
-
-                while time.time() - start_time < max_poll_time:
-                    try:
-                        status_result = api_client.get(
-                            f"contracts/products/workflows/{workflow_instance_id}/status/"
-                        )
-                        status = status_result.get("status")
-
-                        if status == "COMPLETED":
-                            # Workflow completed - get results
-                            result = status_result
-                            break
-                        elif status in ["FAILED", "CANCELLED", "ROLLED_BACK"]:
-                            error_msg = status_result.get("message") or f"Workflow {status.lower()}"
-                            raise ODPSExportError(
-                                message=f"Product creation workflow {status.lower()}: {error_msg}",
-                                error_code="WORKFLOW_FAILED",
-                                context={
-                                    "workflow_instance_id": workflow_instance_id,
-                                    "status": status,
-                                },
-                            )
-                        # Still running - continue polling
-                        time.sleep(poll_interval)
-                    except click.ClickException as e:
-                        # If 404, workflow might not be ready yet
-                        if "404" in str(e) or "not found" in str(e).lower():
-                            time.sleep(poll_interval)
-                            continue
-                        raise
-                else:
-                    # Timeout
-                    raise ODPSExportError(
-                        message=f"Workflow did not complete within {max_poll_time} seconds",
-                        error_code="WORKFLOW_TIMEOUT",
-                        context={"workflow_instance_id": workflow_instance_id},
-                        suggestion=f"Check workflow status manually: contracts/products/workflows/{workflow_instance_id}/status/",
-                    )
+                _poll_workflow()
             else:
                 # Synchronous response path - result was already set above in status code checks
                 # No need to call _handle_response again on the same response object
@@ -605,7 +628,9 @@ def create_odps(
                 error_msg = str(e)
                 if "API error" in error_msg:
                     # Extract error code and message
-                    raise handle_api_error(error_msg, 400, f"contracts/{link_odcs_id}/link-odps/")
+                    raise handle_api_error(
+                        error_msg, 400, f"contracts/{link_odcs_id}/link-odps/"
+                    ) from None
                 raise
 
             if output_format == "json":
@@ -635,7 +660,7 @@ def create_odps(
             error_code="ODPS_CREATE_FAILED",
             context={"file_path": file_path},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("export")
@@ -710,7 +735,7 @@ def export_contract(
             error_data = {}
             try:
                 error_data = response.json()
-            except:
+            except ValueError:
                 error_data = {"error": {"message": response.text or "Unknown error"}}
 
             # Use handle_api_error for better error parsing and context
@@ -731,7 +756,7 @@ def export_contract(
                     error_context["odps_version"] = version_param
 
             # Use handle_api_error for structured error handling
-            try:
+            def _build_odps_error() -> ODPSCLIError:
                 odps_error = handle_api_error(
                     response.text or json.dumps(error_data),
                     response.status_code,
@@ -739,47 +764,53 @@ def export_contract(
                 )
                 # Enhance error context with format-specific information
                 odps_error.context.update(error_context)
-                raise odps_error
+                return odps_error
+
+            try:
+                odps_error = _build_odps_error()
             except ODPSCLIError:
                 raise
             except Exception:
                 # Fallback to ClickException if handle_api_error doesn't return ODPS error
-                raise click.ClickException(f"API error ({error_code}): {error_msg}")
+                raise click.ClickException(f"API error ({error_code}): {error_msg}") from None
+            else:
+                raise odps_error
 
         # Get content type to determine if it's JSON or YAML
         response.headers.get("Content-Type", "").lower()
         content = response.text
 
         # Validate response content for ODCS format
-        if format_type == "odcs" and content:
-            # Basic validation: check if content looks like ODCS
+        # Basic validation: check if content looks like ODCS
+        if format_type == "odcs" and content and output_format == "json":
             # For JSON format, should have apiVersion and kind fields
-            # For YAML format, should have apiVersion and kind fields
-            if output_format == "json":
-                try:
-                    content_dict = json.loads(content)
-                    if "apiVersion" not in content_dict or "kind" not in content_dict:
-                        # Not a critical error, but log a warning
-                        click.echo(
-                            "Warning: Exported content may not be valid ODCS format", err=True
-                        )
-                except json.JSONDecodeError:
-                    # Invalid JSON - this is an error
-                    raise ODPSExportError(
-                        message="Invalid JSON response from ODCS export",
-                        error_code="INVALID_ODCS_RESPONSE",
-                        context={
-                            "contract_id": contract_id,
-                            "format": format_type,
-                            "output_format": output_format,
-                            "version": version_param,
-                        },
-                        suggestion="The API returned invalid JSON. Check API logs or contact support.",
-                    )
-            elif output_format == "yaml":
-                # For YAML, check if it contains ODCS indicators
-                if "apiVersion" not in content and "kind" not in content:
+            try:
+                content_dict = json.loads(content)
+                if "apiVersion" not in content_dict or "kind" not in content_dict:
+                    # Not a critical error, but log a warning
                     click.echo("Warning: Exported content may not be valid ODCS format", err=True)
+            except json.JSONDecodeError:
+                # Invalid JSON - this is an error
+                raise ODPSExportError(
+                    message="Invalid JSON response from ODCS export",
+                    error_code="INVALID_ODCS_RESPONSE",
+                    context={
+                        "contract_id": contract_id,
+                        "format": format_type,
+                        "output_format": output_format,
+                        "version": version_param,
+                    },
+                    suggestion="The API returned invalid JSON. Check API logs or contact support.",
+                ) from None
+        # For YAML format, check if it contains ODCS indicators
+        elif (
+            format_type == "odcs"
+            and content
+            and output_format == "yaml"
+            and "apiVersion" not in content
+            and "kind" not in content
+        ):
+            click.echo("Warning: Exported content may not be valid ODCS format", err=True)
 
         if output_format_cli == "json":
             # Return raw response content
@@ -826,7 +857,7 @@ def export_contract(
             error_code=error_code,
             context=error_context,
             original_error=e,
-        )
+        ) from None
 
 
 @contracts.command("get-pricing")
@@ -895,7 +926,7 @@ def get_pricing(contract_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get pricing: {e}")
+        raise click.ClickException(f"Failed to get pricing: {e}") from e
 
 
 @contracts.command("get-access-methods")
@@ -950,7 +981,7 @@ def get_access_methods(contract_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get access methods: {e}")
+        raise click.ClickException(f"Failed to get access methods: {e}") from e
 
 
 def _display_odps_fields(data: dict):
@@ -1064,6 +1095,17 @@ def download_contract(
     Output formats: json or yaml
     """
 
+    def _raise_api_error() -> None:
+        error_data = {}
+        try:
+            error_data = response.json()
+        except ValueError:
+            error_data = {"error": {"message": response.text or "Unknown error"}}
+
+        error_msg = error_data.get("error", {}).get("message", "Unknown error")
+        error_code = error_data.get("error", {}).get("code", "UNKNOWN_ERROR")
+        raise click.ClickException(f"API error ({error_code}): {error_msg}")
+
     try:
         # Validate parameters
         validate_contract_id(contract_id)
@@ -1084,15 +1126,7 @@ def download_contract(
 
         # Handle response
         if response.status_code >= 400:
-            error_data = {}
-            try:
-                error_data = response.json()
-            except:
-                error_data = {"error": {"message": response.text or "Unknown error"}}
-
-            error_msg = error_data.get("error", {}).get("message", "Unknown error")
-            error_code = error_data.get("error", {}).get("code", "UNKNOWN_ERROR")
-            raise click.ClickException(f"API error ({error_code}): {error_msg}")
+            _raise_api_error()
 
         # Get filename from Content-Disposition header or generate one
         content_disposition = response.headers.get("Content-Disposition", "")
@@ -1111,10 +1145,7 @@ def download_contract(
             filename = f"contract-{contract_id[:8]}.{format_type}.{extension}"
 
         # Use provided output path or filename
-        if output_path:
-            final_path = output_path
-        else:
-            final_path = filename
+        final_path = output_path or filename
 
         # Write file
         try:
@@ -1127,7 +1158,7 @@ def download_contract(
                 context={"file_path": final_path, "contract_id": contract_id},
                 suggestion="Check that you have write permissions for the output directory",
                 original_error=e,
-            )
+            ) from e
 
         click.echo("Contract downloaded successfully!")
         click.echo(f"Contract ID: {contract_id}")
@@ -1148,7 +1179,7 @@ def download_contract(
             error_code="ODPS_DOWNLOAD_FAILED",
             context={"contract_id": contract_id, "format": format_type},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("link-odps")
@@ -1199,7 +1230,7 @@ def link_odps(odcs_id: str, odps_id: str, output_format: str):
             error_code="ODPS_LINKING_FAILED",
             context={"odcs_id": odcs_id, "odps_id": odps_id},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("unlink-odps")
@@ -1239,7 +1270,7 @@ def unlink_odps(odcs_id: str, output_format: str):
             error_code="ODPS_UNLINKING_FAILED",
             context={"odcs_id": odcs_id},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("list-links")
@@ -1309,7 +1340,7 @@ def list_links(contract_id: str, output_format: str):
             error_code="ODPS_LIST_LINKS_FAILED",
             context={"contract_id": contract_id},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("get-payment-gateways")
@@ -1346,7 +1377,7 @@ def get_payment_gateways(contract_id: str, output_format: str):
                 error_code="GET_PAYMENT_GATEWAYS_FAILED",
                 context={"contract_id": contract_id},
                 original_error=e,
-            )
+            ) from e
 
         payment_gateways = result.get("payment_gateways", {})
 
@@ -1390,7 +1421,7 @@ def get_payment_gateways(contract_id: str, output_format: str):
             error_code="GET_PAYMENT_GATEWAYS_FAILED",
             context={"contract_id": contract_id},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("get-product-strategy")
@@ -1427,7 +1458,7 @@ def get_product_strategy(contract_id: str, output_format: str):
                 error_code="GET_PRODUCT_STRATEGY_FAILED",
                 context={"contract_id": contract_id},
                 original_error=e,
-            )
+            ) from e
 
         product_strategy = result.get("product_strategy")
 
@@ -1553,7 +1584,7 @@ def get_product_strategy(contract_id: str, output_format: str):
             error_code="GET_PRODUCT_STRATEGY_FAILED",
             context={"contract_id": contract_id},
             original_error=e,
-        )
+        ) from e
 
 
 @contracts.command("get-product-details")
@@ -1575,18 +1606,22 @@ def get_product_details(contract_id: str, lang: str, output_format: str):
     Returns the product details configured in the contract for the specified language.
     The contract must be an ODPS contract.
     """
-    try:
-        # Validate contract ID
-        validate_contract_id(contract_id)
 
-        # Validate language code (ISO 639-1: 2 characters)
+    def _validate_lang() -> str:
         if not isinstance(lang, str) or len(lang) != 2:
             raise ODPSParameterError(
                 message=f"Invalid language code: {lang}. Must be a valid ISO 639-1 code (2 characters)",
                 error_code="INVALID_LANGUAGE_CODE",
                 context={"lang": lang},
             )
-        lang = lang.lower()
+        return lang.lower()
+
+    try:
+        # Validate contract ID
+        validate_contract_id(contract_id)
+
+        # Validate language code (ISO 639-1: 2 characters)
+        lang = _validate_lang()
 
         # API endpoint: GET /api/v1/contracts/{contract_id}/product-details/?lang={lang}
         # Note: Router uses basename="contract" with empty prefix, so URL is contracts/{id}/product-details/
@@ -1605,7 +1640,7 @@ def get_product_details(contract_id: str, lang: str, output_format: str):
                 error_code="GET_PRODUCT_DETAILS_FAILED",
                 context={"contract_id": contract_id, "lang": lang},
                 original_error=e,
-            )
+            ) from e
 
         product_details = result.get("product_details")
 
@@ -1690,4 +1725,4 @@ def get_product_details(contract_id: str, lang: str, output_format: str):
             error_code="GET_PRODUCT_DETAILS_UNEXPECTED_ERROR",
             context={"contract_id": contract_id, "lang": lang},
             original_error=e,
-        )
+        ) from e

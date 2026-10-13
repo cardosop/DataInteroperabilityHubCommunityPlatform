@@ -17,7 +17,7 @@ def audit() -> int:
     for f in _FE_DIR.rglob("*.tsx"):
         try:
             text = f.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
         matches = _HARDCODED_RE.findall(text)
         if matches:

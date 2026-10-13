@@ -28,7 +28,9 @@ import secrets
 import time
 
 import structlog
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError
 from django.utils import timezone
 
 logger = structlog.get_logger(__name__)
@@ -49,7 +51,7 @@ class Command(BaseCommand):
             help="Report the current state without mutating keys.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from hub.apps.webhooks.models import (
             Webhook,
         )
@@ -62,7 +64,7 @@ class Command(BaseCommand):
         if webhook_id:
             try:
                 webhooks = webhooks.filter(id=webhook_id)
-            except Exception:
+            except (ValidationError, DatabaseError):
                 self.stderr.write(f"Invalid webhook-id: {webhook_id}")
                 return
         if not webhooks.exists():

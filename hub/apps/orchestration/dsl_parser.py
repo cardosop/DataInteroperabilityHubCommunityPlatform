@@ -5,7 +5,7 @@ Parses workflow definitions in YAML/JSON format and validates structure.
 """
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 from django.core.exceptions import ValidationError
@@ -20,7 +20,7 @@ class WorkflowDSLParser:
     """
 
     # Supported step types
-    STEP_TYPES = {
+    STEP_TYPES: ClassVar[set[str]] = {
         "task",  # Single task execution
         "parallel",  # Parallel task execution
         "conditional",  # Conditional branching
@@ -31,10 +31,10 @@ class WorkflowDSLParser:
     }
 
     # Required workflow fields
-    REQUIRED_WORKFLOW_FIELDS = {"version", "steps"}
+    REQUIRED_WORKFLOW_FIELDS: ClassVar[set[str]] = {"version", "steps"}
 
     # Required step fields
-    REQUIRED_STEP_FIELDS = {"name", "type"}
+    REQUIRED_STEP_FIELDS: ClassVar[set[str]] = {"name", "type"}
 
     @classmethod
     def parse(cls, dsl_content: str, format: str = "json") -> dict[str, Any]:
@@ -59,7 +59,7 @@ class WorkflowDSLParser:
             else:
                 raise ValidationError(f"Unsupported format: {format}. Supported: json, yaml")
         except (json.JSONDecodeError, yaml.YAMLError) as e:
-            raise ValidationError(f"Invalid {format.upper()} format: {e!s}")
+            raise ValidationError(f"Invalid {format.upper()} format: {e!s}") from e
 
         # Validate workflow structure
         cls._validate_workflow(workflow_def)

@@ -61,7 +61,7 @@ test.describe('226.G5 — Lineage multi-hop traversal @critical @lineage', () =>
       data: { original_raw: odcs, original_format: 'JSON', original_spec_type: 'ODCS' },
     });
     if (!cRes.ok()) {
-      test.skip(true, `contract create failed (${cRes.status()})`);
+      test.skip(!cRes.ok(), `contract create failed (${cRes.status()})`);
       return;
     }
     const c = (await cRes.json()) as { id: string };

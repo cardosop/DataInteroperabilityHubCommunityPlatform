@@ -1,0 +1,72 @@
+# Test-specific dynamic routes for traefik-test (docker-compose.test.yml).
+# Uses plain HTTP (web entrypoint, port 80) — no TLS/certResolver needed.
+# Backend hostnames use Docker test-network names (-test suffix).
+http:
+  routers:
+    health:
+      entryPoints: [web]
+      rule: "PathPrefix(`/health`)"
+      service: api-service-service
+
+    # Phase 260 — route rdf/ingest through Django where the cross-tenant
+    # gate lives (hub/apps/semantic/views.py:703).  All other /api/v1/semantic
+    # paths continue to the FastAPI semantic sidecar below.
+    semantic-rdf-ingest:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/v1/semantic/rdf/ingest`)"
+      service: api-service-service
+      priority: 200
+
+    # ── Sidecar service routes (must precede the catch-all /api/v1) ──────
+    semantic-api:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/v1/semantic`)"
+      service: semantic-service
+
+    prefect-api:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/v1/prefect`)"
+      service: prefect-integration-service
+
+    observability-api:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/v1/observability`)"
+      service: observability-service
+
+    # ── Catch-all ────────────────────────────────────────────────────────
+    # Routes /api/v1 directly to api-service (no separate gateway service)
+    api-default:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/v1`)"
+      service: api-service-service
+
+    frontend:
+      entryPoints: [web]
+      rule: "PathPrefix(`/`)"
+      service: frontend-service
+
+  services:
+    api-service-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service-test:8000"
+
+    semantic-service:
+      loadBalancer:
+        servers:
+          - url: "http://semantic-service-test:8081"
+
+    prefect-integration-service:
+      loadBalancer:
+        servers:
+          - url: "http://prefect-integration-service-test:8084"
+
+    observability-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service-test:8000"
+
+    frontend-service:
+      loadBalancer:
+        servers:
+          - url: "http://frontend-test:80"

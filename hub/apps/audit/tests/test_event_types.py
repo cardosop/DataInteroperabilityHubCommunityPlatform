@@ -16,7 +16,7 @@ pytestmark = [pytest.mark.unit]
 
 
 def test_module_imports():
-    from hub.apps.audit import event_types  # noqa: F401
+    from hub.apps.audit import event_types
 
 
 def test_dq_alert_constants_exist_and_are_strings():

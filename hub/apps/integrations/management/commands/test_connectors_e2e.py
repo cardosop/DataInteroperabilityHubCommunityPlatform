@@ -190,7 +190,7 @@ class Command(BaseCommand):
             help="Comma-separated resource IDs for selective download (only used with DOWNLOAD_SELECTIVE)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         """Main command handler"""
         source = options["source"]
         limit = options["limit"]
@@ -275,19 +275,20 @@ class Command(BaseCommand):
         """Return skip reason if credentials not available, None if OK to run."""
         if source_name == "ckan":
             return None  # demo.ckan.org does not require API key for read
-        if source_name == "dados_gov_br":
-            if not (os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")):
-                return "DADOS_GOV_BR_API_KEY not set"
-        elif source_name == "snowflake":
-            if not (
-                os.getenv("SNOWFLAKE_ACCOUNT")
-                and os.getenv("SNOWFLAKE_USER")
-                and os.getenv("SNOWFLAKE_TOKEN")
-            ):
-                return "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_TOKEN not set"
-        elif source_name == "azure":
-            if not (os.getenv("AZURE_MARKETPLACE_API_KEY") or os.getenv("AZURE_CATALOG_API_KEY")):
-                return "AZURE_MARKETPLACE_API_KEY (or AZURE_CATALOG_API_KEY) not set"
+        if source_name == "dados_gov_br" and not (
+            os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
+        ):
+            return "DADOS_GOV_BR_API_KEY not set"
+        elif source_name == "snowflake" and not (
+            os.getenv("SNOWFLAKE_ACCOUNT")
+            and os.getenv("SNOWFLAKE_USER")
+            and os.getenv("SNOWFLAKE_TOKEN")
+        ):
+            return "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_TOKEN not set"
+        elif source_name == "azure" and not (
+            os.getenv("AZURE_MARKETPLACE_API_KEY") or os.getenv("AZURE_CATALOG_API_KEY")
+        ):
+            return "AZURE_MARKETPLACE_API_KEY (or AZURE_CATALOG_API_KEY) not set"
         return None
 
     def _get_tenant(self, tenant_spec: str | None) -> Tenant:
@@ -299,7 +300,7 @@ class Command(BaseCommand):
                 else:
                     return Tenant.objects.get(slug=tenant_spec)
             except Tenant.DoesNotExist:
-                raise CommandError(f"Tenant '{tenant_spec}' not found")
+                raise CommandError(f"Tenant '{tenant_spec}' not found") from None
         else:
             tenant = Tenant.objects.first()
             if not tenant:
@@ -324,7 +325,7 @@ class Command(BaseCommand):
                 else:
                     return User.objects.get(email=user_spec)
             except User.DoesNotExist:
-                raise CommandError(f"User '{user_spec}' not found")
+                raise CommandError(f"User '{user_spec}' not found") from None
         else:
             # Try tenant user first, then superuser, then any user
             user = User.objects.filter(tenant_id=tenant.id).first()
@@ -621,9 +622,10 @@ class Command(BaseCommand):
         """Discover listings from source"""
         try:
             listings = connector.list_listings(limit=limit)
-            return listings if listings else []
         except Exception as e:
-            raise CommandError(f"Failed to discover listings: {e}")
+            raise CommandError(f"Failed to discover listings: {e}") from e
+        else:
+            return listings if listings else []
 
     def _create_sync_job(
         self,

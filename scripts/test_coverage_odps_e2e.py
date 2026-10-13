@@ -17,6 +17,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -35,7 +36,7 @@ class ODPSE2ETestCoverage:
     """Comprehensive E2E test coverage runner for ODPS modules."""
 
     # E2E test categories
-    E2E_CATEGORIES = {
+    E2E_CATEGORIES: ClassVar[dict[str, dict[str, object]]] = {
         "user_journeys": {
             "description": "Complete user journeys tested",
             "test_files": [
@@ -118,7 +119,7 @@ class ODPSE2ETestCoverage:
             check_result = subprocess.run(check_cmd, check=False, capture_output=True, text=True)
             if check_result.returncode == 0 and "hub-api" in check_result.stdout:
                 # Run command in Docker container
-                docker_cmd = ["docker", "exec", "-w", "/app", "hub-api"] + cmd
+                docker_cmd = ["docker", "exec", "-w", "/app", "hub-api", *cmd]
                 try:
                     result = subprocess.run(
                         docker_cmd,
@@ -131,7 +132,7 @@ class ODPSE2ETestCoverage:
                     return result.returncode, result.stdout, result.stderr
                 except subprocess.TimeoutExpired:
                     return 1, "", "Command timed out after 60 minutes"
-                except Exception as e:
+                except (OSError, subprocess.SubprocessError) as e:
                     return 1, "", str(e)
             else:
                 print(
@@ -153,7 +154,7 @@ class ODPSE2ETestCoverage:
                 return result.returncode, result.stdout, result.stderr
             except subprocess.TimeoutExpired:
                 return 1, "", "Command timed out after 60 minutes"
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 return 1, "", str(e)
 
     def run_e2e_tests(self, category: str, config: dict) -> dict:
@@ -279,7 +280,7 @@ class ODPSE2ETestCoverage:
         total_passed = 0
         total_failed = 0
 
-        for category, result in self.results.items():
+        for _category, result in self.results.items():
             total_tests += result.get("tests_run", 0)
             total_passed += result.get("tests_passed", 0)
             total_failed += result.get("tests_failed", 0)

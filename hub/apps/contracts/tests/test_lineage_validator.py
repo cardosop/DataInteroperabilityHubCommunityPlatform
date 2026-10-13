@@ -215,7 +215,7 @@ class TestValidateFieldExists:
 
 class TestValidateTypeCompatibility:
     @pytest.mark.parametrize(
-        "src,tgt,expected",
+        ("src", "tgt", "expected"),
         [
             ("string", "string", True),
             ("integer", "long", True),

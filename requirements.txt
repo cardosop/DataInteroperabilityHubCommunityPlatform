@@ -69,13 +69,30 @@ sentry-sdk==2.55.0  # Optional: Error tracking with Sentry (set SENTRY_DSN to en
 # Typed models and validation
 # Prefect 3.x requires pydantic >=2.10.1,<3.0 (excludes 2.11.0–2.11.4 internally)
 pydantic>=2.10.1,<3.0
+# W4.3 (2026-08-22): pin the CORE pair explicitly — a half-installed env left
+# pydantic files demanding core 2.46.4 while pip's metadata claimed 2.12.4,
+# and the parity install then paired them with core 2.41.5 -> SystemError at
+# django.setup(). The pair must stay consistent; bump both pins together.
+pydantic-core==2.46.4
 
 # Data Quality Engines — in services/dq-service/requirements.txt only (Phase 55)
 
 # Data Processing
-pandas>=2.2.0,<2.3.0   # <2.3.0 required by databricks-sql-connector
-numpy==1.26.4
-pyarrow>=14.0.1,<15.0.0  # Required for Parquet file format support; <15.0 required by databricks-sql-connector
+pandas>=2.2.0,<2.3.0   # <2.3.0 required by databricks-sql-connector (F3, openspec wire-databricks-dlt-movement 6.7)
+# numpy/pyarrow pins are Python-version-aware: 1.26.4 / <15.0 have NO
+# cp313/cp314 wheels, so the CI test matrix's 3.13/3.14 legs built them
+# from source and died on the removed setuptools pkg_resources (U.8 CI
+# triage, run 33454376285). On <3.13 the pins preserve the
+# databricks-sql-connector constraints where that connector runs: the
+# connector requires pandas<2.3 (verified against the 3.7.5 metadata) and
+# pyarrow>=14.0.1; the pyarrow <15 ceiling is the repo's own F3 coherence
+# guard — dlt's arrow-needing extras (athena/bigquery/parquet/...) declare
+# pyarrow>=16 and stay EXCLUDED by design (wire-databricks-dlt-movement
+# task 6.7, pinned by hub/data_movement/tests/test_dependency_pins.py).
+numpy==1.26.4; python_version < "3.13"
+numpy>=2.5.0,<3.0.0; python_version >= "3.13"   # cp313+cp314 wheels
+pyarrow>=14.0.1,<15.0.0; python_version < "3.13"  # F3: floor from databricks-sql-connector (>=14.0.1); <15 keeps dlt's arrow extras (>=16) out — wire-databricks-dlt-movement 6.7
+pyarrow>=22.0.0; python_version >= "3.13"  # first with cp314 wheels
 
 # Phase 260.5.D — text-encoding detection with confidence floor.
 # charset-normalizer is MIT-licensed (license-clean alternative to
@@ -196,6 +213,3 @@ pyathena>=3.0,<4.0                        # MIT
 # Handles schema management, idempotency, and normalisation for all 4 destinations.
 dlt>=1.0,<2.0                              # Apache 2.0
 
-# Phase 275.D.3 — delta-sharing Python reference server.
-# Serves Delta Sharing 1.0 protocol with Hub auth + audit injection.
-delta-sharing>=1.0,<2.0                   # Apache 2.0

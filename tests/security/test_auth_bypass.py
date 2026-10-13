@@ -50,7 +50,9 @@ class AuthBypassTest(TestCase):
         """JWT signed with wrong secret must be rejected."""
         forged = jwt.encode(
             {"user_id": str(self.user.id), "email": self.user.email},
-            "wrong-secret-key",
+            # 32+ bytes: RFC 7518 §3.2 requires >=32-byte HMAC keys for
+            # HS256 (a 16-byte key trips pyjwt's InsecureKeyLengthWarning).
+            "wrong-secret-key-0123456789abcdef0123456789abcdef",
             algorithm="HS256",
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {forged}")

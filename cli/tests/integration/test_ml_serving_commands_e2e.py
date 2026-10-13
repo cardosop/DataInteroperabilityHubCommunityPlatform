@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -13,7 +15,6 @@ These tests require a real API service running and will skip if not available.
 No mocks or stubs are used - all tests use real API endpoints.
 """
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
@@ -21,26 +22,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        # Health endpoint is at /health/ not /api/v1/health/
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
-            + "/health/",
-            timeout=2,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Check if API is available before running tests"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip(
             "API service not available at http://localhost:8000. Start with: docker compose up -d api db redis"
         )
@@ -54,7 +39,7 @@ def runner():
 
 
 @pytest.fixture
-def test_model_id(api_available):
+def test_model_id(api_service_available):
     """
     Get or create a test model for use in tests.
     This fixture returns a model ID that can be used for serving operations.
@@ -101,7 +86,7 @@ def test_model_id(api_available):
 class TestMLServingE2E:
     """End-to-end tests for ML serving commands"""
 
-    def test_complete_serving_workflow(self, runner, api_available, test_model_id):
+    def test_complete_serving_workflow(self, runner, api_service_available, test_model_id):
         """
         Test complete workflow: deploy → list → get → predict → metrics → undeploy
 
@@ -187,7 +172,7 @@ class TestMLServingE2E:
             # The important thing is that commands are structured correctly
             pytest.skip(f"E2E test workflow incomplete (may need API/serving setup): {e}")
 
-    def test_list_serving_deployments_command(self, runner, api_available):
+    def test_list_serving_deployments_command(self, runner, api_service_available):
         """Test ML serving list command execution"""
         result = runner.invoke(cli, ["ml", "serving", "list", "--format", "json"])
         # Should succeed even if no deployments exist (empty list)
@@ -204,7 +189,9 @@ class TestMLServingE2E:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_list_serving_deployments_with_filters(self, runner, api_available, test_model_id):
+    def test_list_serving_deployments_with_filters(
+        self, runner, api_service_available, test_model_id
+    ):
         """Test ML serving list command with filters"""
         result = runner.invoke(
             cli,
@@ -227,7 +214,7 @@ class TestMLServingE2E:
         # Should succeed or fail with expected errors (auth, not found, etc.)
         assert result.exit_code == 0, f"List with filters failed: {result.output}"
 
-    def test_get_serving_command_structure(self, runner, api_available):
+    def test_get_serving_command_structure(self, runner, api_service_available):
         """Test ML serving get command structure"""
         # Use a test serving ID (even if deployment doesn't exist)
         test_serving_id = "test-serving-123"
@@ -243,7 +230,7 @@ class TestMLServingE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_deploy_serving_command_structure(self, runner, api_available, test_model_id):
+    def test_deploy_serving_command_structure(self, runner, api_service_available, test_model_id):
         """Test ML serving deploy command structure"""
         result = runner.invoke(
             cli, ["ml", "serving", "deploy", "--model-id", test_model_id, "--format", "json"]
@@ -252,7 +239,7 @@ class TestMLServingE2E:
         # Not a command parsing error
         assert result.exit_code == 0, f"Deploy command failed: {result.output}"
 
-    def test_predict_serving_command_structure(self, runner, api_available, test_model_id):
+    def test_predict_serving_command_structure(self, runner, api_service_available, test_model_id):
         """Test ML serving predict command structure"""
         result = runner.invoke(
             cli,
@@ -279,7 +266,7 @@ class TestMLServingE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_undeploy_serving_command_structure(self, runner, api_available):
+    def test_undeploy_serving_command_structure(self, runner, api_service_available):
         """Test ML serving undeploy command structure"""
         test_serving_id = "test-serving-123"
         result = runner.invoke(
@@ -296,7 +283,7 @@ class TestMLServingE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_metrics_serving_command_structure(self, runner, api_available):
+    def test_metrics_serving_command_structure(self, runner, api_service_available):
         """Test ML serving metrics command structure"""
         test_serving_id = "test-serving-123"
         result = runner.invoke(
@@ -313,7 +300,7 @@ class TestMLServingE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_table_format_output(self, runner, api_available):
+    def test_table_format_output(self, runner, api_service_available):
         """Test that table format works correctly"""
         result = runner.invoke(cli, ["ml", "serving", "list", "--format", "table"])
         # Should succeed or fail with expected errors
@@ -323,7 +310,7 @@ class TestMLServingE2E:
             # Verify table format indicators
             assert "Serving ID" in result.output or "No serving deployments found" in result.output
 
-    def test_json_format_output(self, runner, api_available):
+    def test_json_format_output(self, runner, api_service_available):
         """Test that JSON format works correctly"""
         result = runner.invoke(cli, ["ml", "serving", "list", "--format", "json"])
         # Should succeed or fail with expected errors
@@ -339,7 +326,7 @@ class TestMLServingE2E:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_predict_with_input_file(self, runner, api_available, test_model_id):
+    def test_predict_with_input_file(self, runner, api_service_available, test_model_id):
         """Test predict command with input file"""
         import os
         import tempfile
@@ -384,7 +371,7 @@ class TestMLServingE2E:
 class TestMLServingABTestE2E:
     """End-to-end tests for ML serving A/B testing commands"""
 
-    def test_complete_ab_test_workflow(self, runner, api_available, test_model_id):
+    def test_complete_ab_test_workflow(self, runner, api_service_available, test_model_id):
         """
         Test complete A/B test workflow: create → list → get
 
@@ -461,7 +448,7 @@ class TestMLServingABTestE2E:
             # If we can't complete the workflow, that's OK for E2E tests
             pytest.skip(f"E2E test workflow incomplete (may need API/A/B testing setup): {e}")
 
-    def test_list_ab_tests_command(self, runner, api_available):
+    def test_list_ab_tests_command(self, runner, api_service_available):
         """Test ML serving ab-test list command execution"""
         result = runner.invoke(cli, ["ml", "serving", "ab-test", "list", "--format", "json"])
         # Should succeed even if no A/B tests exist (empty list)
@@ -478,7 +465,7 @@ class TestMLServingABTestE2E:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_create_ab_test_command_structure(self, runner, api_available, test_model_id):
+    def test_create_ab_test_command_structure(self, runner, api_service_available, test_model_id):
         """Test ML serving ab-test create command structure"""
         result = runner.invoke(
             cli,
@@ -500,7 +487,7 @@ class TestMLServingABTestE2E:
         # Should succeed or fail with expected errors (auth, validation, etc.)
         assert result.exit_code == 0, f"Create command failed: {result.output}"
 
-    def test_get_ab_test_command_structure(self, runner, api_available):
+    def test_get_ab_test_command_structure(self, runner, api_service_available):
         """Test ML serving ab-test get command structure"""
         test_ab_test_id = "test-ab-test-123"
         result = runner.invoke(
@@ -517,7 +504,9 @@ class TestMLServingABTestE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_create_ab_test_with_invalid_traffic_split(self, runner, api_available, test_model_id):
+    def test_create_ab_test_with_invalid_traffic_split(
+        self, runner, api_service_available, test_model_id
+    ):
         """Test create A/B test with invalid traffic split"""
         result = runner.invoke(
             cli,

@@ -68,25 +68,56 @@ get_migration_state() {
     }
 }
 
-# Check for pending migrations
+# Verify the deploy artifact has no model/migration drift
 check_pending_migrations() {
-    log_section "Checking for Pending Migrations"
-    
+    log_section "Checking for Model/Migration Drift"
+
     COMPOSE_FILE="docker-compose.${ENVIRONMENT}.yml"
-    
-    log_info "Checking for model changes that need migrations..."
-    PENDING_APPS=$(docker compose -f "$COMPOSE_FILE" exec -T api-service python hub/manage.py makemigrations --dry-run 2>&1 | grep -E "Migrations for|No changes detected" || echo "")
-    
-    if echo "$PENDING_APPS" | grep -q "Migrations for"; then
-        log_warn "Pending migrations detected. Creating migrations..."
-        if docker compose -f "$COMPOSE_FILE" exec -T api-service python hub/manage.py makemigrations --noinput 2>&1; then
-            log_info "Migrations created successfully"
-        else
-            log_error "Failed to create migrations"
-            return 1
-        fi
+
+    # This function used to run `makemigrations --noinput` here — GENERATING
+    # migrations on the deploy host and applying them moments later.
+    #
+    # That is a production data-loss path. An auto-generated migration reflects
+    # whatever the model state happens to be, and when model state has drifted
+    # the autodetector emits DESTRUCTIVE operations to reconcile it. This repo
+    # carried exactly that: 70 pending operations, among them
+    # `Remove field contract from listing` (DROP COLUMN on a populated,
+    # foreign-keyed column) and the removal of a unique constraint guarding a
+    # race condition. The old code would have generated and executed both,
+    # unreviewed, against production.
+    #
+    # Migrations are source artifacts: written, reviewed and committed by a
+    # human — never conjured mid-deploy. Drift here means the artifact was
+    # built from a tree nobody verified, so abort.
+    log_info "Verifying committed migrations cover all model changes..."
+    if docker compose -f "$COMPOSE_FILE" exec -T api-service \
+        python hub/manage.py makemigrations --check --dry-run --noinput 2>&1; then
+        log_info "No drift — every model change has a committed migration"
     else
-        log_info "No pending migrations detected"
+        log_error "Model/migration drift detected on the deploy artifact."
+        log_error "Refusing to auto-generate migrations during deploy: the"
+        log_error "autodetector emits destructive operations (DROP COLUMN,"
+        log_error "constraint removal) when model state has drifted."
+        log_error "Run 'makemigrations' locally, review the diff, and commit it."
+        return 1
+    fi
+}
+
+# Pre-flight: catch data that would abort a pending migration, and report lock
+# exposure, BEFORE any schema change begins.
+preflight_migrations() {
+    log_section "Migration Pre-flight"
+
+    COMPOSE_FILE="docker-compose.${ENVIRONMENT}.yml"
+
+    if docker compose -f "$COMPOSE_FILE" exec -T api-service \
+        python scripts/preflight_migrations.py 2>&1; then
+        log_info "Pre-flight clean"
+    else
+        log_error "Pre-flight found data that would abort a pending migration"
+        log_error "(e.g. duplicate rows vs. a UNIQUE constraint being added)."
+        log_error "Deduplicate the offending rows, then re-run the deploy."
+        return 1
     fi
 }
 
@@ -97,9 +128,12 @@ run_migrations() {
     COMPOSE_FILE="docker-compose.${ENVIRONMENT}.yml"
     START_TIME=$(date +%s)
     
-    # Check and create pending migrations first
-    check_pending_migrations
-    
+    # Both gates must pass before any schema change starts. `set -e` is not
+    # relied on here: these are explicit early returns so a failure aborts the
+    # deploy rather than falling through to `migrate`.
+    check_pending_migrations || return 1
+    preflight_migrations || return 1
+
     log_info "Running migrations..."
     
     if [ "$MONITOR" = "true" ] || [ "$MONITOR" = "--monitor" ]; then

@@ -12,6 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../shared/api/client');
 
+import { apiClient } from '../../../shared/api/client';
+import { capabilitiesService } from '../../capabilities/services/capabilitiesService';
+import { fullModeOpenApiSchema, isOpenApiUrl } from '../../../test/openApiSchemaMock';
+
 import { useAuthStore } from '../../auth/store/authStore';
 import { AppShell } from './AppShell';
 
@@ -38,7 +42,10 @@ function Wrapper({ children }: { children: ReactNode }) {
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={children as never} />
+          {/* Catch-all keeps the shell mounted while a nav click changes
+              the pathname (the AppShell closes the mobile overlay on
+              pathname change). */}
+          <Route path="*" element={children as never} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -46,8 +53,24 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 describe('AppShell mobile sidebar', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setUser();
+    // 313.H.4 — the Header tenant switcher fetches /tenants (array) and
+    // the capabilities service fetches the OpenAPI schema; both must
+    // return realistic shapes (a bare `{}` broke the switcher with
+    // "tenants.find is not a function").
+    vi.mocked(apiClient.getClient().get).mockImplementation((url: string) => {
+      if (isOpenApiUrl(url)) {
+        return Promise.resolve({ data: fullModeOpenApiSchema() } as never);
+      }
+      if (url.includes('/tenants')) {
+        return Promise.resolve({ data: [] } as never);
+      }
+      return Promise.resolve({ data: {} } as never);
+    });
+    // 313.H.4 — prime the singleton beyond its 5-minute cache so the
+    // full-mode schema (not a prior test's empty one) is what renders.
+    await capabilitiesService.loadCapabilities(true);
   });
 
   afterEach(() => {
@@ -141,10 +164,14 @@ describe('AppShell mobile sidebar', () => {
       </Wrapper>,
     );
     fireEvent.click(screen.getByTestId('sidebar-toggle'));
-    const firstLink = screen.getByRole('navigation', { name: /main navigation/i })
-      .querySelector('a');
-    expect(firstLink).toBeTruthy();
-    fireEvent.click(firstLink!);
+    // Click a link that CHANGES the pathname — the AppShell closes the
+    // overlay on pathname change; clicking the current path ('/') is a
+    // no-op navigation and correctly leaves the overlay open.
+    const contractsLink = screen
+      .getByRole('navigation', { name: /main navigation/i })
+      .querySelector('a[href="/contracts"]');
+    expect(contractsLink).toBeTruthy();
+    fireEvent.click(contractsLink!);
     expect(screen.getByTestId('app-shell')).toHaveAttribute(
       'data-sidebar-open',
       'false',
@@ -153,9 +180,18 @@ describe('AppShell mobile sidebar', () => {
 });
 
 describe('AppShell CommandPalette MVP filtering (Track A PR 4)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setUser();
     vi.stubEnv('VITE_MVP_MODE', 'true');
+    // 313.H.4 — full-mode schema so capability gating is neutral; the
+    // MVP filter is the only variable under test.
+    vi.mocked(apiClient.getClient().get).mockImplementation((url: string) => {
+      if (isOpenApiUrl(url)) {
+        return Promise.resolve({ data: fullModeOpenApiSchema() } as never);
+      }
+      return Promise.resolve({ data: {} } as never);
+    });
+    await capabilitiesService.loadCapabilities(true);
   });
 
   afterEach(() => {
@@ -180,7 +216,8 @@ describe('AppShell CommandPalette MVP filtering (Track A PR 4)', () => {
 
     // Once open, palette options are usually rendered as buttons or links
     // with the page label as text. Non-MVP labels must be absent.
-    const HIDDEN_LABELS = ['Data Mesh', 'BaaS', 'ML', 'Search', 'Observability', 'Developer'];
+        // 'Search' deliberately absent — Phase 273.1 made /search permanently MVP-in-scope.
+    const HIDDEN_LABELS = ['Data Mesh', 'BaaS', 'ML', 'Observability', 'Developer'];
     for (const label of HIDDEN_LABELS) {
       // Sidebar may be closed (mobile width) so the only place the label
       // could appear under MVP mode is the palette. Either way, it should

@@ -37,7 +37,12 @@ class TestReplayProtection(TestCase):
 
     def test_stripe_webhook_event_is_idempotent(self):
         """StripeWebhookEvent.get_or_create prevents replay of same event_id."""
-        from hub.apps.billing.models import StripeWebhookEvent
+        # billing is the paid layer — the sanctioned guard covers both
+        # core-only absence forms (W7.1).
+        try:
+            from hub.apps.billing.models import StripeWebhookEvent
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("billing (paid layer) not installed in core-only mode")
 
         event_id = f"evt_{uuid.uuid4().hex[:16]}"
         w1, created1 = StripeWebhookEvent.objects.get_or_create(

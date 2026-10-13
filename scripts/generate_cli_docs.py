@@ -42,13 +42,18 @@ def read_gated_prefixes() -> frozenset[str]:
             target = node.target
             value = node.value
 
-        if target and target.id == "MVP_GATED_RELATIVE_PREFIXES" and value:
-            if isinstance(value, ast.Call) and len(value.args) == 1:
-                set_node = value.args[0]
-                if isinstance(set_node, ast.Set):
-                    return frozenset(
-                        str(elt.value) for elt in set_node.elts if isinstance(elt, ast.Constant)
-                    )
+        if (
+            target
+            and target.id == "MVP_GATED_RELATIVE_PREFIXES"
+            and value
+            and isinstance(value, ast.Call)
+            and len(value.args) == 1
+        ):
+            set_node = value.args[0]
+            if isinstance(set_node, ast.Set):
+                return frozenset(
+                    str(elt.value) for elt in set_node.elts if isinstance(elt, ast.Constant)
+                )
     print(
         "WARNING: could not parse MVP_GATED_RELATIVE_PREFIXES",
         file=sys.stderr,

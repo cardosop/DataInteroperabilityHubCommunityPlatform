@@ -3,6 +3,7 @@ Atomic operations tests: F() expressions, get_or_create, update_or_create
 under concurrency. Real DB; no mocks.
 """
 
+import contextlib
 import threading
 
 from django.db import IntegrityError, connection, transaction
@@ -51,10 +52,10 @@ class AtomicOperationsTest(ConcurrencyTestBase):
                 with lock:
                     results.append(False)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=increment) for _ in range(5)]
         for t in threads:
@@ -91,10 +92,10 @@ class AtomicOperationsTest(ConcurrencyTestBase):
                 with lock:
                     created_ids.append(tenant.id)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=get_or_create_tenant) for _ in range(4)]
         for t in threads:
@@ -123,17 +124,17 @@ class AtomicOperationsTest(ConcurrencyTestBase):
                         original_spec_type=OriginalSpecType.ODPS,
                         original_spec_version="4.1",
                         status=ContractStatus.ACTIVE,
-                        version=1,
+                        version=idx + 1,  # unique_contract_version_per_asset: distinct per row
                         normalization_status=NormalizationStatus.NORMALIZED_OK,
                     )
                     c.save()
                     with lock:
                         created.append(str(c.id))
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=create_atomic, args=(i,)) for i in range(3)]
         for t in threads:
@@ -146,23 +147,23 @@ class AtomicOperationsTest(ConcurrencyTestBase):
 
     def test_update_or_create_concurrent(self):
         """Concurrent update_or_create with same lookup: one record, consistent state."""
-        slug = "atomic-update-or-create-%s" % (id(self),)
+        slug = f"atomic-update-or-create-{id(self)}"
         Tenant.objects.filter(slug=slug).delete()
 
         def update_or_create_tenant(idx: int) -> None:
             try:
                 connection.ensure_connection()
                 defaults = {
-                    "name": "Atomic Update Tenant %d" % idx,
+                    "name": f"Atomic Update Tenant {idx}",
                     "status": TenantStatus.ACTIVE,
                     "kyc_status": KYCStatus.UNVERIFIED,
                 }
                 Tenant.objects.update_or_create(slug=slug, defaults=defaults)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=update_or_create_tenant, args=(i,)) for i in range(4)]
         for t in threads:
@@ -173,6 +174,6 @@ class AtomicOperationsTest(ConcurrencyTestBase):
         count = Tenant.objects.filter(slug=slug).count()
         self.assertEqual(count, 1)
         tenant = Tenant.objects.get(slug=slug)
-        names = ["Atomic Update Tenant %d" % i for i in range(4)]
+        names = [f"Atomic Update Tenant {i}" for i in range(4)]
         self.assertIn(tenant.name, names)
         Tenant.objects.filter(slug=slug).delete()

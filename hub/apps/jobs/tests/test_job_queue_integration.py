@@ -16,6 +16,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django_rq import get_queue
+from redis.exceptions import RedisError
 
 from hub.apps.jobs.models import JobPriority, JobType
 from hub.apps.jobs.utils import create_job, get_queue_for_job_type
@@ -49,7 +50,7 @@ class JobQueueIntegrationTest(TestCase):
             try:
                 queue = get_queue(queue_name)
                 queue.empty()
-            except Exception:
+            except (RedisError, KeyError):
                 pass  # Queue might not exist
 
     def tearDown(self):
@@ -58,7 +59,7 @@ class JobQueueIntegrationTest(TestCase):
             try:
                 queue = get_queue(queue_name)
                 queue.empty()
-            except Exception:
+            except (RedisError, KeyError):
                 pass
 
     def test_job_enqueued_to_correct_queue(self):

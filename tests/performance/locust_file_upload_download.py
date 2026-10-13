@@ -10,9 +10,15 @@ Targets from Testing_Strategy.md §8.1.4:
 
 import pytest
 
+
+def _raise_upload_failure(status_code):
+    """Raise upload failure outside the task's try body (TRY301)."""
+    raise Exception(f"Upload failed: {status_code}")
+
+
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, events, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -207,7 +213,7 @@ if LOCUST_AVAILABLE:
                         timeout=300,
                     )
                     if upload_response.status_code not in [200, 204]:
-                        raise Exception(f"Upload failed: {upload_response.status_code}")
+                        _raise_upload_failure(upload_response.status_code)
 
                 upload_time = (time.time() - upload_start) * 1000  # ms
                 ((size_mb * 8) / (upload_time / 1000) if upload_time > 0 else 0)

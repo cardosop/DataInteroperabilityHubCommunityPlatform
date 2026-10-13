@@ -55,11 +55,16 @@ async function extractBearerHeaders(
   // global. The e2e tsconfig does not include the DOM lib (intentionally —
   // the rest of the Playwright code is Node-side), so we cast locally to
   // avoid pulling a redundant lib into the global type environment.
-  const token = await page.evaluate<string | null>(
-    () =>
-      (globalThis as unknown as { localStorage?: { getItem: (k: string) => string | null } })
-        .localStorage?.getItem('access_token') ?? null,
-  );
+  const token = await page.evaluate<string | null>(() => {
+    const w = globalThis as unknown as {
+      localStorage?: { getItem: (k: string) => string | null };
+      __getAccessToken?: () => string | null;
+    };
+    if (typeof w.__getAccessToken === 'function') {
+      return w.__getAccessToken();
+    }
+    return w.localStorage?.getItem('access_token') ?? null;
+  });
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
 }

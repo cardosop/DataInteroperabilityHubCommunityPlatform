@@ -41,12 +41,24 @@ describe('contractService', () => {
     expect(url).toContain('contracts');
   });
 
-  it('update calls PUT on correct URL', async () => {
-    vi.mocked(mock.put).mockResolvedValue({ data: { id: 'test-id' } });
-    await contractService.update('test-id', { name: 'updated' } as never);
-    expect(vi.mocked(mock.put)).toHaveBeenCalled();
-    const url = vi.mocked(mock.put).mock.calls[0][0] as string;
-    expect(url).toContain('contracts');
+  it('update calls PATCH on correct URL with If-Match + surfaces the new etag', async () => {
+    vi.mocked(mock.patch).mockResolvedValue({
+      data: { id: 'test-id' },
+      headers: { etag: 'W/"new"' },
+    } as never);
+    const result = await contractService.update('test-id', { name: 'updated' } as never, {
+      ifMatch: 'W/"abc"',
+    });
+    expect(vi.mocked(mock.patch)).toHaveBeenCalled();
+    const url = vi.mocked(mock.patch).mock.calls[0][0] as string;
+    expect(url).toContain('contracts/test-id');
+    // The optimistic-concurrency header + the fresh etag the conflict
+    // dialog consumes.
+    const call = vi.mocked(mock.patch).mock.calls[0];
+    expect((call[2] as { headers?: Record<string, string> })?.headers?.['If-Match']).toBe(
+      'W/"abc"',
+    );
+    expect(result.etag).toBe('W/"new"');
   });
 
   it('delete calls DELETE on correct URL', async () => {

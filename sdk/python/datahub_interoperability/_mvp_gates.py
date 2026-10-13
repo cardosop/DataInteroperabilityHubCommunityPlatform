@@ -11,7 +11,7 @@ Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.
 
 from __future__ import annotations
 
-from typing import Dict, Final, FrozenSet
+from typing import Final
 
 # Canonical relative prefixes (relative to ``/api/v1/``) that are gated when
 # MVP_MODE is on. Order does not matter; the frozenset is the contract.
@@ -26,7 +26,7 @@ from typing import Dict, Final, FrozenSet
 # though the SDK currently requires 3.12+ — this matches the doctrine in the
 # CLI module and gives us cheap forward-portability if downstream consumers
 # pin an older interpreter.
-MVP_GATED_PREFIXES: Final[FrozenSet[str]] = frozenset(
+MVP_GATED_PREFIXES: Final[frozenset[str]] = frozenset(
     {
         "mesh/",
         "virtualization/",
@@ -41,6 +41,16 @@ MVP_GATED_PREFIXES: Final[FrozenSet[str]] = frozenset(
         "developer/",
         "dpia/",
         "ropa/",
+        # Phase 278 apps — mounted in hub/apps/api/urls.py and present in the
+        # canonical list; this copy had not been updated to match.
+        "breach/",
+        "consent/",
+        "data-movement/",
+        "databricks/",
+        "dsar/",
+        "gdpr/",
+        "processor-agreements/",
+        "warehouses/",
     }
 )
 
@@ -51,7 +61,7 @@ MVP_FEATURE_GATED_CODE: Final[str] = "MVP_FEATURE_GATED"
 
 
 # Human-readable feature names keyed by gated prefix.
-MVP_GATED_FEATURE_NAMES: Final[Dict[str, str]] = {
+MVP_GATED_FEATURE_NAMES: Final[dict[str, str]] = {
     "mesh/": "Data Mesh",
     "virtualization/": "Data Virtualization",
     "integrations/": "Marketplace Integrations",
@@ -65,6 +75,16 @@ MVP_GATED_FEATURE_NAMES: Final[Dict[str, str]] = {
     "developer/": "Developer Portal",
     "dpia/": "Data Protection Impact Assessments",
     "ropa/": "Record of Processing Activities",
+    # Phase 278 apps — must stay in step with MVP_GATED_PREFIXES; the
+    # gated-404 and README tests assert every gated prefix has a name.
+    "breach/": "Breach Notification",
+    "consent/": "Consent Management",
+    "data-movement/": "Data Movement Records",
+    "databricks/": "Databricks Control Plane",
+    "dsar/": "Data Subject Access Requests",
+    "gdpr/": "GDPR Compliance",
+    "processor-agreements/": "Processor Agreements",
+    "warehouses/": "Warehouse Connections",
 }
 
 

@@ -171,7 +171,7 @@ class TestDockerComposeDev:
         services = dev_compose_config.get("services", {})
         for service_name, service_config in services.items():
             networks = service_config.get("networks", [])
-            if isinstance(networks, list) or isinstance(networks, dict):
+            if isinstance(networks, (list, dict)):
                 assert "hub-net-dev" in networks, (
                     f"Service {service_name} must be connected to hub-net-dev network"
                 )

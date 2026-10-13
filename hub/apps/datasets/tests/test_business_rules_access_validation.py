@@ -28,6 +28,7 @@ User = get_user_model()
 
 class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
     """Test dataset access validation with GovernanceService integration"""
+
     _needs_storage = False
 
     def setUp(self):
@@ -114,8 +115,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertTrue(result.details["abac_policy_checked"])
         self.assertTrue(
             result.is_valid,
-            "Same-tenant user must have write access; "
-            f"got is_valid=False, errors={result.errors}",
+            f"Same-tenant user must have write access; got is_valid=False, errors={result.errors}",
         )
 
     def test_validate_dataset_write_access_cross_tenant(self):
@@ -505,8 +505,9 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         result = self.rules._validate_permissions(dataset, user=None, access_type="WRITE")
-        self.assertTrue(result.is_valid,
-                        "Validation passes (not a hard error) but write access is denied")
+        self.assertTrue(
+            result.is_valid, "Validation passes (not a hard error) but write access is denied"
+        )
         self.assertFalse(result.details["write_access_allowed"])
 
 
@@ -621,8 +622,11 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
             "validate_dataset_read_access must return a ValidationResult "
             "even for non-existent datasets",
         )
-        self.assertIn("tenant_isolation", result.details,
-                       "Result must include tenant isolation details even for non-persisted dataset")
+        self.assertIn(
+            "tenant_isolation",
+            result.details,
+            "Result must include tenant isolation details even for non-persisted dataset",
+        )
 
     def test_validate_dataset_write_access_failure_nonexistent_dataset(self):
         """Test write access validation with non-existent dataset returns result."""
@@ -637,8 +641,11 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
             "validate_dataset_write_access must return a ValidationResult "
             "even for non-existent datasets",
         )
-        self.assertIn("tenant_isolation", result.details,
-                       "Result must include tenant isolation details even for non-persisted dataset")
+        self.assertIn(
+            "tenant_isolation",
+            result.details,
+            "Result must include tenant isolation details even for non-persisted dataset",
+        )
 
     # ========== EDGE CASES ==========
 
@@ -657,8 +664,7 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         # Without a user, validation passes but read access isn't conclusively determined
         self.assertTrue(
             result.is_valid,
-            "Validation itself passes (skips user-based checks); got errors=%s"
-            % result.errors,
+            f"Validation itself passes (skips user-based checks); got errors={result.errors}",
         )
 
     def test_validate_dataset_write_access_edge_case_none_user(self):
@@ -674,8 +680,7 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
             result, "validate_dataset_write_access(user=None) must return a ValidationResult"
         )
         # Without a user, validation passes but write access is denied
-        self.assertTrue(result.is_valid,
-                        "Validation itself passes (skips user-based checks)")
+        self.assertTrue(result.is_valid, "Validation itself passes (skips user-based checks)")
         self.assertFalse(result.details["write_access_allowed"])
 
     def test_validate_dataset_read_access_edge_case_different_tenant(self):
@@ -711,7 +716,7 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         self.assertIsNotNone(result, "validate_dataset_read_access must return a ValidationResult")
         self.assertTrue(
             result.is_valid,
-            "Same-tenant read access must be valid; errors=%s" % result.errors,
+            f"Same-tenant read access must be valid; errors={result.errors}",
         )
         self.assertIn("tenant_isolation", result.details)
         self.assertTrue(

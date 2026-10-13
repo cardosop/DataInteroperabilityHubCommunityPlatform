@@ -55,6 +55,6 @@ class ScheduledExportThrottleCoverageTests(TestCase):
         mock_view = MagicMock()
 
         cache_key = throttle.get_cache_key(mock_request, mock_view)
-        self.assertIsNotNone(cache_key)
-        self.assertIn("00000000-0000-0000-0000-000000000001", cache_key)
-        self.assertIn("scheduled_export", cache_key)
+        assert cache_key is not None
+        assert "00000000-0000-0000-0000-000000000001" in cache_key
+        assert "scheduled_export" in cache_key

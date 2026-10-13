@@ -14,6 +14,8 @@ Follows TDD principles and engineering best practices.
 
 import pytest
 
+from envpolicy import api_available
+
 pytestmark = pytest.mark.slow
 import asyncio
 import contextlib
@@ -51,19 +53,10 @@ except ImportError:
 # The conftest.py in this directory may import Django, but we don't need it here
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get("http://localhost:8000/health/", timeout=2)
-        return response.status_code in (200, 503)
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip("API service not available at http://localhost:8000")
     return True
 
@@ -162,8 +155,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -176,8 +169,8 @@ print('API_KEY_END')
 
             # Fallback: extract from last long line
             if not api_key:
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if (
                         (
                             line
@@ -215,7 +208,7 @@ def _create_api_key_via_django_orm():
 
         # Ensure tenant has unlimited plan limits (enterprise tier) so ML
         # model creation is never blocked by max_ml_models caps.
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
         ensure_e2e_tenant_ready(tenant)
 
@@ -251,13 +244,14 @@ def _create_api_key_via_django_orm():
             key_hash=api_key_hash,
             scopes=tenant_admin_scopes,
         )
-        return api_key_value
     except Exception:
         return None
+    else:
+        return api_key_value
 
 
 @pytest.fixture
-def api_key(api_available, django_db_blocker):
+def api_key(api_service_available, django_db_blocker):
     """Get API key from environment, Docker Compose, or create via Django ORM.
 
     Uses django_db_blocker.unblock() as a fallback to create the key directly
@@ -280,7 +274,7 @@ def api_key(api_available, django_db_blocker):
     try:
         with django_db_blocker.unblock():
             from hub.apps.auth.models import APIKey as AuthAPIKey
-            from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+            from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
             api_key_obj = (
                 AuthAPIKey.objects.filter(
@@ -330,6 +324,12 @@ def runner(api_key):
 
     from datahub_cli.config import config
 
+    # The API test image's rootfs is read-only ($HOME/.datahub is not
+    # writable) — redirect the CLI config to a fresh temp dir before any
+    # set_* call (batch 10-3d: 9x OSError Errno 30 at fixture setup).
+    from tests.utils.cli_config import point_cli_config_at_tmpdir
+
+    point_cli_config_at_tmpdir()
     config.set_api_key(api_key)
     # Set both the config value and the env var — `get_api_base_url()`
     # checks env vars first (DATAHUB_BASE_URL, MESHANT_API_URL, API_BASE_URL),
@@ -397,7 +397,7 @@ def sdk_client(api_key, api_base_url):
 
 
 @pytest.fixture
-def test_model(api_available, api_key, test_asset):
+def test_model(api_service_available, api_key, test_asset):
     """Create (or retrieve) a test ML model for consistency tests."""
     headers = {
         "Authorization": f"ApiKey {api_key}",
@@ -407,7 +407,11 @@ def test_model(api_available, api_key, test_asset):
     # Try ORM first (fast, no plan-limit enforcement)
     try:
         from hub.apps.auth.models import APIKey as AuthAPIKey
-        from hub.apps.ml.models import MLModel, ModelStatus, ModelType
+        from hub.apps.ml.models import (  # core-guard: full-mode-only — ML models live in the paid tree; the ORM shortcut below is a full-mode fallback (API path covers core).
+            MLModel,
+            ModelStatus,
+            ModelType,
+        )
 
         api_key_obj = (
             AuthAPIKey.objects.filter(
@@ -463,12 +467,12 @@ def test_model(api_available, api_key, test_asset):
             yield str(create_resp.json()["id"])
             return
         pytest.skip(f"Failed to create test model: {create_resp.status_code} - {create_resp.text}")
-    except Exception as e:
+    except (requests.RequestException, KeyError, IndexError) as e:
         pytest.skip(f"Failed to create test model via API: {e}")
 
 
 @pytest.fixture
-def test_asset(api_available, api_key):
+def test_asset(api_service_available, api_key):
     """Create a test asset"""
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -477,7 +481,6 @@ def test_asset(api_available, api_key):
         "key": f"e2e-asset-{uuid.uuid4().hex[:8]}",
         "status": "DRAFT",
         "domain": "test",
-        "visibility": "INTERNAL",
     }
 
     try:
@@ -496,12 +499,12 @@ def test_asset(api_available, api_key):
                 )
         else:  # noqa: skip-in-body — runtime service dependency
             pytest.skip(f"Failed to create test asset: {response.status_code} - {response.text}")
-    except Exception as e:
+    except requests.RequestException as e:
         pytest.skip(f"Failed to create test asset: {e}")
 
 
 @pytest.fixture
-def test_dataset(api_available, api_key):
+def test_dataset(api_service_available, api_key):
     """Create a test dataset.
 
     The dataset API requires ``file_id`` (a previously-uploaded file).  We
@@ -653,7 +656,9 @@ def test_dataset(api_available, api_key):
 class TestODHCLICompleteWorkflow:
     """Test complete workflows using CLI"""
 
-    def test_cli_complete_workflow_register_model(self, runner, api_available, api_key, test_asset):
+    def test_cli_complete_workflow_register_model(
+        self, runner, api_service_available, api_key, test_asset
+    ):
         """Test complete CLI workflow: register model"""
         if cli is None:
             pytest.skip("CLI not available in E2E test environment")  # noqa: skip-in-body — runtime service dependency
@@ -689,7 +694,7 @@ class TestODHCLICompleteWorkflow:
         assert data["id"], "Model ID should be non-empty"
 
     def test_cli_complete_workflow_train_model(
-        self, runner, api_available, api_key, test_asset, test_dataset
+        self, runner, api_service_available, api_key, test_asset, test_dataset
     ):
         """Test complete CLI workflow: train model"""
         if cli is None:  # noqa: skip-in-body — runtime service dependency
@@ -717,7 +722,7 @@ class TestODHCLICompleteWorkflow:
                 model_id = create_response.json().get("id")
 
                 # Now submit training job
-                config_json = json.dumps({"epochs": 10, "batch_size": 32})
+                config_json = json.dumps({"algorithm": "xgboost", "epochs": 10, "batch_size": 32})
                 result = runner.invoke(
                     cli,
                     [
@@ -746,7 +751,9 @@ class TestODHCLICompleteWorkflow:
         except requests.exceptions.ConnectionError:
             pytest.skip("External API not reachable for training workflow")
 
-    def test_cli_complete_workflow_deploy_model(self, runner, api_available, api_key, test_asset):
+    def test_cli_complete_workflow_deploy_model(
+        self, runner, api_service_available, api_key, test_asset
+    ):
         """Test complete CLI workflow: deploy model"""
         if cli is None:  # noqa: skip-in-body — runtime service dependency
             pytest.skip("CLI not available in E2E test environment")
@@ -809,7 +816,7 @@ class TestODHCLICompleteWorkflow:
             pytest.skip("External API not reachable for deployment workflow")
 
     def test_cli_complete_workflow_full_lifecycle(
-        self, runner, api_available, api_key, test_asset, test_dataset
+        self, runner, api_service_available, api_key, test_asset, test_dataset
     ):
         """Test complete CLI workflow: register → train → deploy → infer"""
         if cli is None:  # noqa: skip-in-body — runtime service dependency
@@ -840,9 +847,13 @@ class TestODHCLICompleteWorkflow:
             # Fallback: create model via ORM (bypasses plan limit checks)
             if not model_id:
                 try:
-                    from hub.apps.ml.models import MLModel, ModelStatus, ModelType
+                    from hub.apps.billing.test_support import ensure_e2e_tenant_ready
+                    from hub.apps.ml.models import (  # core-guard: full-mode-only — ORM fallback for model creation; the API path above covers core mode.
+                        MLModel,
+                        ModelStatus,
+                        ModelType,
+                    )
                     from hub.apps.tenants.models import Tenant as TenantModel
-                    from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 
                     tenant = (
                         TenantModel.objects.filter(slug__startswith="odh-e2e-test-tenant")
@@ -866,7 +877,7 @@ class TestODHCLICompleteWorkflow:
                 pytest.skip(f"Failed to create model: {create_response.status_code}")
 
             # Step 2: Submit training job
-            config_json = json.dumps({"epochs": 10, "batch_size": 32})
+            config_json = json.dumps({"algorithm": "xgboost", "epochs": 10, "batch_size": 32})
             train_result = runner.invoke(
                 cli,
                 [
@@ -957,7 +968,9 @@ class TestODHSDKCompleteWorkflow:
 
             # Submit training job
             job = await sdk_client.training.submit_training_job(
-                model_id=model_id, dataset_id=test_dataset, config={"epochs": 10, "batch_size": 32}
+                model_id=model_id,
+                dataset_id=test_dataset,
+                config={"algorithm": "xgboost", "epochs": 10, "batch_size": 32},
             )
             assert isinstance(job, dict), "Training job should be submitted"
             assert "job_id" in job or "hub_job_id" in job, "Job should have job_id"
@@ -1006,7 +1019,12 @@ class TestODHSDKCompleteWorkflow:
             job = await sdk_client.training.submit_training_job(
                 model_id=model_id,
                 dataset_id=test_dataset,
-                config={"epochs": 10, "batch_size": 32, "learning_rate": 0.001},
+                config={
+                    "algorithm": "xgboost",
+                    "epochs": 10,
+                    "batch_size": 32,
+                    "learning_rate": 0.001,
+                },
             )
             job_id = job.get("job_id") or job.get("hub_job_id")
 
@@ -1044,7 +1062,7 @@ class TestODHCLISDKConsistency:
     """Test CLI/SDK consistency"""
 
     def test_cli_sdk_model_creation_consistency(
-        self, runner, sdk_client, api_available, api_key, test_asset
+        self, runner, sdk_client, api_service_available, api_key, test_asset
     ):
         """Test that CLI and SDK create models consistently"""
         if cli is None:
@@ -1104,7 +1122,9 @@ class TestODHCLISDKConsistency:
             assert len(cli_model_id) > 10, "CLI model ID looks valid"
             assert len(sdk_model_id) > 10, "SDK model ID looks valid"
 
-    def test_cli_sdk_model_listing_consistency(self, runner, sdk_client, api_available, api_key):
+    def test_cli_sdk_model_listing_consistency(
+        self, runner, sdk_client, api_service_available, api_key
+    ):
         """Test that CLI and SDK list models consistently"""
         if cli is None:
             pytest.skip("CLI not available in E2E test environment")  # noqa: skip-in-body — runtime service dependency
@@ -1137,7 +1157,7 @@ class TestODHCLISDKConsistency:
             assert "id" in sdk_models[0] if sdk_models else True, "SDK models should have id"
 
     def test_cli_sdk_model_get_consistency(
-        self, runner, sdk_client, api_available, api_key, test_model
+        self, runner, sdk_client, api_service_available, api_key, test_model
     ):
         """Test that CLI and SDK get model details consistently"""
         if cli is None:
@@ -1163,7 +1183,9 @@ class TestODHCLISDKConsistency:
             assert "id" in sdk_model, "SDK model should have id"
             assert cli_model.get("id") == sdk_model.get("id"), "Model IDs should match"
 
-    def test_cli_sdk_training_list_consistency(self, runner, sdk_client, api_available, api_key):
+    def test_cli_sdk_training_list_consistency(
+        self, runner, sdk_client, api_service_available, api_key
+    ):
         """Test that CLI and SDK list training jobs consistently"""
         if cli is None:
             pytest.skip("CLI not available in E2E test environment")  # noqa: skip-in-body — runtime service dependency
@@ -1190,7 +1212,9 @@ class TestODHCLISDKConsistency:
         assert isinstance(cli_jobs, list), "CLI should return a list"
         assert isinstance(sdk_jobs, list), "SDK should return a list"
 
-    def test_cli_sdk_inference_list_consistency(self, runner, sdk_client, api_available, api_key):
+    def test_cli_sdk_inference_list_consistency(
+        self, runner, sdk_client, api_service_available, api_key
+    ):
         """Test that CLI and SDK list deployments consistently"""
         if cli is None:
             pytest.skip("CLI not available in E2E test environment")  # noqa: skip-in-body — runtime service dependency

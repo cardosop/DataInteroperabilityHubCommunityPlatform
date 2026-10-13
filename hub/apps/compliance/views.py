@@ -5,6 +5,7 @@ REST API views for compliance run management.
 """
 
 import json
+
 import structlog
 from django.db import transaction
 from django.http import StreamingHttpResponse
@@ -46,6 +47,7 @@ class ComplianceExportThrottle(ScopedRateThrottle):
     scope→rate→parse sequence and then delegate directly to
     ``SimpleRateThrottle.allow_request`` for the cache check.
     """
+
     scope = "compliance_export"
 
     def allow_request(self, request, view):
@@ -68,9 +70,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
     serializer_class = ComplianceRunSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter]
-    ordering_fields = ["created_at", "updated_at", "status", "completed_at"]
-    ordering = ["-created_at"]  # Default ordering
+    filter_backends = (OrderingFilter,)
+    ordering_fields = ("created_at", "updated_at", "status", "completed_at")
+    ordering = "-created_at"  # Default ordering
 
     def _resolve_tenant(self):
         """Return the tenant ORM row for the current request, or None."""
@@ -393,7 +395,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         try:
             dataset = Dataset.objects.get(id=dataset_id, tenant_id=str(tenant.id))
         except Dataset.DoesNotExist:
-            raise NotFound("Dataset not found or not in your tenant.")
+            raise NotFound("Dataset not found or not in your tenant.") from None
 
         if not getattr(tenant, "warehouse_compliance_enabled", False):
             return Response(
@@ -426,7 +428,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         methods=["post"],
         url_path="scan-warehouse",
     )
-    def scan_warehouse(self, request, id=None):
+    def scan_warehouse(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """Trigger a warehouse scan for an existing compliance run.
 
         POST /api/v1/compliance/runs/{id}/scan-warehouse/
@@ -442,8 +446,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
                 {
                     "error": "SCAN_MODE_NOT_WAREHOUSE",
                     "message": (
-                        "This endpoint requires a compliance run with "
-                        "scan_mode=WAREHOUSE_SQL."
+                        "This endpoint requires a compliance run with scan_mode=WAREHOUSE_SQL."
                     ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -496,7 +499,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["post"], url_path="cancel")
-    def cancel(self, request, id=None):
+    def cancel(self, request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Cancel a compliance run by cancelling its underlying job.
 
@@ -590,7 +593,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         tags=["Compliance"],
     )
     @action(detail=True, methods=["get"], url_path="results")
-    def results(self, request, id=None):
+    def results(self, request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Get enhanced compliance run results with detailed violation information.
 
@@ -814,7 +817,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         url_path="export.csv",
         throttle_classes=[ComplianceExportThrottle],
     )
-    def export_csv(self, request, id=None):
+    def export_csv(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """Export compliance run violations as CSV.
 
         GET /api/v1/compliance/runs/{id}/export.csv/
@@ -865,7 +870,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         url_path="export.json",
         throttle_classes=[ComplianceExportThrottle],
     )
-    def export_json(self, request, id=None):
+    def export_json(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """Export compliance run results as JSON.
 
         GET /api/v1/compliance/runs/{id}/export.json/
@@ -882,12 +889,14 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
             column_name = finding.get("column") or finding.get("column_name", "Unknown")
             pii_types = finding.get("categories") or finding.get("pii_types", [])
             risk_score = finding.get("match_ratio") or finding.get("risk_score", 0.0)
-            findings.append({
-                "column": column_name,
-                "pii_types": pii_types,
-                "risk_score": risk_score,
-                "confidence": finding.get("confidence"),
-            })
+            findings.append(
+                {
+                    "column": column_name,
+                    "pii_types": pii_types,
+                    "risk_score": risk_score,
+                    "confidence": finding.get("confidence"),
+                }
+            )
 
         envelope = {
             "run": {
@@ -1031,10 +1040,7 @@ def execute_compliance_run(compliance_run_id: str) -> None:
         # Phase 213.G — map exception to canonical error_type taxonomy
         # {REMOTE_FAILURE, POLL_TIMEOUT, STORAGE_MISSING, EXECUTION_ERROR}
         # so the FAILED-row invariant holds for every code path.
-        if isinstance(e, FileNotFoundError):
-            _error_type = "STORAGE_MISSING"
-        else:
-            _error_type = "EXECUTION_ERROR"
+        _error_type = "STORAGE_MISSING" if isinstance(e, FileNotFoundError) else "EXECUTION_ERROR"
         compliance_run.status = ComplianceRunStatus.FAILED
         compliance_run.allowed_to_store = False
         compliance_run.regulation_mapping_json = {

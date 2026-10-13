@@ -82,14 +82,14 @@ class IngestionMonitoringDashboardTest(TestCase):
             tenant_id=str(self.tenant.id), days=30
         )
 
-        self.assertIn("summary", dashboard)
-        self.assertEqual(dashboard["summary"]["total_runs"], 2)
-        self.assertEqual(dashboard["summary"]["completed_runs"], 1)
-        self.assertEqual(dashboard["summary"]["failed_runs"], 1)
-        self.assertEqual(dashboard["summary"]["total_files_found"], 15)
-        self.assertEqual(dashboard["summary"]["total_files_processed"], 9)
-        self.assertEqual(dashboard["summary"]["total_files_failed"], 6)
-        self.assertEqual(dashboard["summary"]["total_datasets_created"], 9)
+        assert "summary" in dashboard
+        assert dashboard["summary"]["total_runs"] == 2
+        assert dashboard["summary"]["completed_runs"] == 1
+        assert dashboard["summary"]["failed_runs"] == 1
+        assert dashboard["summary"]["total_files_found"] == 15
+        assert dashboard["summary"]["total_files_processed"] == 9
+        assert dashboard["summary"]["total_files_failed"] == 6
+        assert dashboard["summary"]["total_datasets_created"] == 9
 
     def test_get_dashboard_health_status(self):
         """Test health status calculation"""
@@ -113,12 +113,10 @@ class IngestionMonitoringDashboardTest(TestCase):
         )
 
         # 90% success rate (9 ok / 1 fail) should be DEGRADED
-        self.assertIn("summary", dashboard)
-        self.assertIn("health_status", dashboard["summary"])
-        self.assertEqual(
-            dashboard["summary"]["health_status"],
-            "DEGRADED",
-            f"90% success rate should be DEGRADED, got {dashboard['summary']['health_status']}",
+        assert "summary" in dashboard
+        assert "health_status" in dashboard["summary"]
+        assert dashboard["summary"]["health_status"] == "DEGRADED", (
+            f"90% success rate should be DEGRADED, got {dashboard['summary']['health_status']}"
         )
 
     def test_get_dashboard_trends(self):
@@ -139,8 +137,8 @@ class IngestionMonitoringDashboardTest(TestCase):
             tenant_id=str(self.tenant.id), days=7
         )
 
-        self.assertIn("trends", dashboard)
-        self.assertEqual(len(dashboard["trends"]), 7)
+        assert "trends" in dashboard
+        assert len(dashboard["trends"]) == 7
 
     def test_get_dashboard_per_ingestion(self):
         """Test per-ingestion statistics"""
@@ -177,15 +175,15 @@ class IngestionMonitoringDashboardTest(TestCase):
             tenant_id=str(self.tenant.id), days=30
         )
 
-        self.assertIn("ingestions", dashboard)
-        self.assertEqual(len(dashboard["ingestions"]), 2)
+        assert "ingestions" in dashboard
+        assert len(dashboard["ingestions"]) == 2
 
         # Verify ingestion stats
         ingestion1_stats = next(
             (i for i in dashboard["ingestions"] if i["id"] == str(self.scheduled_ingestion.id)),
             None,
         )
-        self.assertIsNotNone(ingestion1_stats)
-        self.assertEqual(ingestion1_stats["total_runs"], 1)
-        self.assertEqual(ingestion1_stats["completed_runs"], 1)
-        self.assertEqual(ingestion1_stats["success_rate"], 100.0)
+        assert ingestion1_stats is not None
+        assert ingestion1_stats["total_runs"] == 1
+        assert ingestion1_stats["completed_runs"] == 1
+        assert ingestion1_stats["success_rate"] == 100.0

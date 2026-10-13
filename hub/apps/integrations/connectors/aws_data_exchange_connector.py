@@ -15,6 +15,7 @@ Features:
 AWS Data Exchange API Documentation: https://docs.aws.amazon.com/data-exchange/
 """
 
+import functools
 import logging
 import os
 import time
@@ -285,8 +286,6 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                             attempt=attempt + 1,
                             max_retries=self.max_retries + 1,
                         )
-                    return result
-
                 except ClientError as e:
                     error_code = e.response.get("Error", {}).get("Code", "")
                     error_message = e.response.get("Error", {}).get("Message", str(e))
@@ -311,7 +310,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
                     # Non-transient error or max retries exceeded - map and raise
                     mapped_error = self._map_aws_error(e, context)
-                    raise mapped_error
+                    raise mapped_error from None
 
                 except BotoCoreError as e:
                     # Network/connection errors - retry if not last attempt
@@ -335,6 +334,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     raise ConnectionError(
                         f"{context}Network error during {operation_name}: {e}"
                     ) from e
+                else:
+                    return result
 
             # Max retries exceeded for transient error
             if last_exception:
@@ -447,9 +448,10 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 "dataexchange", region_name=self._region_name, **credentials
             )
             logger.debug(f"Created AWS Data Exchange client for region {self._region_name}")
-            return self._dataexchange_client
         except Exception as e:
             raise ConnectionError(f"Failed to create AWS Data Exchange client: {e}") from e
+        else:
+            return self._dataexchange_client
 
     def _get_s3_client(self):
         """
@@ -487,9 +489,10 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         try:
             self._s3_client = boto3.client("s3", region_name=self._region_name, **credentials)
             logger.debug(f"Created AWS S3 client for region {self._region_name}")
-            return self._s3_client
         except Exception as e:
             raise ConnectionError(f"Failed to create AWS S3 client: {e}") from e
+        else:
+            return self._s3_client
 
     @property
     def marketplace_type(self) -> MarketplaceType:
@@ -557,18 +560,19 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         self._assumed_role_credentials = None
 
         # Test connection using test_connection()
-        try:
-            result = self.test_connection()
-            if result:
+        def _test() -> bool:
+            if self.test_connection():
                 self._authenticated = True
                 logger.info("Successfully authenticated with AWS Data Exchange")
                 return True
-            else:
-                self._authenticated = False
-                logger.warning(
-                    "AWS Data Exchange authentication failed: Connection test returned False"
-                )
-                raise ConnectionError("Connection test failed")
+            self._authenticated = False
+            logger.warning(
+                "AWS Data Exchange authentication failed: Connection test returned False"
+            )
+            raise ConnectionError("Connection test failed")
+
+        try:
+            result = _test()
         except (PermissionError, ConnectionError):
             self._authenticated = False
             raise
@@ -576,6 +580,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             self._authenticated = False
             logger.warning(f"AWS Data Exchange authentication failed: {e}")
             raise ConnectionError(f"Unable to authenticate with AWS Data Exchange: {e}") from e
+        else:
+            return result
 
     def test_connection(self) -> bool:
         """
@@ -685,7 +691,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         try:
             # AWS uses ISO 8601 format with timezone info
             # Example: "2023-01-01T12:00:00Z" or "2023-01-01T12:00:00+00:00"
-            from dateutil import parser as dateutil_parser
+            from dateutil import parser as dateutil_parser  # type: ignore[import-untyped]
 
             return dateutil_parser.isoparse(aws_datetime_str)
         except (ValueError, TypeError) as e:
@@ -987,9 +993,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 if next_token:
                     params["NextToken"] = next_token
 
-                # Call ListDataSets API with retry logic
-                def call_list_datasets():
-                    return client.list_data_sets(**params)
+                # Call ListDataSets API with retry logic.
+                # functools.partial binds the loop-scoped kwargs NOW —
+                # a late-binding closure would see the final iteration's
+                # params if this ever became async.
+                call_list_datasets = functools.partial(client.list_data_sets, **params)
 
                 response = self._execute_with_retry(
                     call_list_datasets, "ListDataSets", "Unable to list datasets: "
@@ -1182,13 +1190,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     url=f"https://console.aws.amazon.com/dataexchange/home?region={self._region_name}#/data-sets/{listing_id}",
                 )
 
-                return listing
-
             except NotFoundError:
                 raise
             except Exception as e:
                 logger.warning(f"Failed to get listing '{listing_id}': {e}")
                 raise ConnectionError(f"Unable to get listing '{listing_id}': {e}") from e
+            else:
+                return listing
 
         try:
             return self._circuit_breaker.call(execute_get_listing)
@@ -1262,8 +1270,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     params["NextToken"] = next_token
 
                 # Call ListRevisionAssets API with retry logic
-                def call_list_revision_assets():
-                    return client.list_revision_assets(**params)
+                call_list_revision_assets = functools.partial(client.list_revision_assets, **params)
 
                 response = self._execute_with_retry(
                     call_list_revision_assets,
@@ -1450,7 +1457,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             NotFoundError: If dataset has no revisions
             ConnectionError: If unable to connect to AWS Data Exchange
         """
-        try:
+
+        def _build() -> str:
             revisions_response = self._list_revisions(dataset_id, max_results=1)
             revisions = revisions_response.get("Revisions", [])
 
@@ -1465,6 +1473,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 raise NotFoundError(f"Dataset {dataset_id} revision has no ID")
 
             return revision_id
+
+        try:
+            result = _build()
         except NotFoundError:
             raise
         except Exception as e:
@@ -1473,6 +1484,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise ConnectionError(
                 f"Failed to get latest revision for dataset {dataset_id}: {e}"
             ) from e
+        else:
+            return result
 
     def _create_export_job(
         self,
@@ -1623,7 +1636,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     get_job_status, "GetJob", f"Unable to get job status for '{job_id}': "
                 )
             except NotFoundError:
-                raise NotFoundError(f"Job {job_id} not found")
+                raise NotFoundError(f"Job {job_id} not found") from None
             except Exception as e:
                 # For polling, we want to continue on transient errors
                 # but raise on permanent errors
@@ -1680,14 +1693,23 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             PermissionError: If user lacks permission to download from S3
             ConnectionError: If unable to connect to S3
         """
-        try:
+        # Resolve the S3 bucket in the outer scope so the write-error
+        # handlers below can include it in their messages.
+        bucket = (
+            job_result.get("Details", {})
+            .get("ExportAssetsToS3", {})
+            .get("AssetDestination", {})
+            .get("S3Destination", {})
+            .get("Bucket")
+        )
+
+        def _build() -> str:
             # Extract S3 destination from job result
             details = job_result.get("Details", {})
             export_details = details.get("ExportAssetsToS3", {})
             asset_destination = export_details.get("AssetDestination", {})
             s3_destination = asset_destination.get("S3Destination", {})
 
-            bucket = s3_destination.get("Bucket")
             key_prefix = s3_destination.get("KeyPrefix", "")
 
             if not bucket:
@@ -1739,8 +1761,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     )
 
                 # Download file with retry logic
-                def download_s3_file():
-                    s3_client.download_file(bucket, s3_key, local_file_path)
+                download_s3_file = functools.partial(
+                    s3_client.download_file, bucket, s3_key, local_file_path
+                )
 
                 self._execute_with_retry(
                     download_s3_file, "GetObject", f"Unable to download S3 object '{s3_key}': "
@@ -1756,7 +1779,12 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             # Return first file path (or destination_path if single file)
             return downloaded_files[0] if len(downloaded_files) == 1 else destination_path
 
-        except (OSError, ValueError, PermissionError):
+        try:
+            result = _build()
+        except (ValueError, PermissionError):
+            # OSError is deliberately NOT here — it falls through to the
+            # dedicated write-error handler below (the tuple previously
+            # shadowed it, making that clause unreachable).
             raise
         except ClientError as e:
             # Map S3 errors appropriately
@@ -1775,6 +1803,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise OSError(f"Unable to write to destination path {destination_path}: {e}") from e
         except Exception as e:
             raise ConnectionError(f"Unexpected error downloading from S3: {e}") from e
+        else:
+            return result
 
     def _extract_schema_from_assets(self, file_path: str) -> dict[str, Any]:
         """
@@ -1944,7 +1974,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 if len(parts) >= 2:
                     revision_id = parts[1]
                 if len(parts) >= 3:
-                    asset_id = parts[2]
+                    _asset_id = parts[2]
             else:
                 # Assume it's a dataset ID or asset ID
                 # Try to determine by checking if it looks like a dataset ID
@@ -1957,7 +1987,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             # Step 1: Subscribe to dataset if not already subscribed
             try:
                 self._subscribe_to_dataset(dataset_id)
-            except (PermissionError, Exception) as e:
+            except Exception as e:
                 # If subscription fails, log warning but continue
                 # User may have subscribed via AWS Console
                 if isinstance(e, PermissionError):

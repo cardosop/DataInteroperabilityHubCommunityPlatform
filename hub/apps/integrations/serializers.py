@@ -4,6 +4,8 @@ Marketplace Integration Serializers
 REST API serializers for marketplace connection management.
 """
 
+from typing import ClassVar
+
 from rest_framework import serializers
 
 from .base import MarketplaceType, SyncDirection
@@ -32,7 +34,7 @@ class MarketplaceConnectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MarketplaceConnection
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -42,19 +44,19 @@ class MarketplaceConnectionSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "tenant_name",
             "marketplace_type_display",
             "created_at",
             "updated_at",
-        ]
+        )
         # Phase 90.4 — defense-in-depth: even though config is not in
         # ``fields``, mark it write_only so DRF will never serialize it
         # if the allowlist is accidentally widened in the future.
-        extra_kwargs = {
+        extra_kwargs: ClassVar[dict] = {
             "config": {"write_only": True},
         }
 
@@ -215,7 +217,7 @@ class MarketplaceSyncJobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MarketplaceSyncJob
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -232,8 +234,8 @@ class MarketplaceSyncJobSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "completed_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -248,7 +250,7 @@ class MarketplaceSyncJobSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "completed_at",
-        ]
+        )
 
 
 class MarketplaceSyncRequestSerializer(serializers.Serializer):
@@ -332,26 +334,23 @@ class MarketplaceSyncRequestSerializer(serializers.Serializer):
         asset_ids = attrs.get("asset_ids")
         attrs.get("listing_ids")
 
-        if direction == SyncDirection.PUSH.value:
+        if direction == SyncDirection.PUSH.value and not asset_ids:
             # PUSH direction requires asset_ids
-            if not asset_ids:
-                raise serializers.ValidationError(
-                    {"asset_ids": "asset_ids is required for PUSH direction"}
-                )
-        elif direction == SyncDirection.PULL.value:
+            raise serializers.ValidationError(
+                {"asset_ids": "asset_ids is required for PUSH direction"}
+            )
+        elif direction == SyncDirection.PULL.value and asset_ids:
             # PULL direction can have listing_ids or filters, but not asset_ids
-            if asset_ids:
-                raise serializers.ValidationError(
-                    {
-                        "asset_ids": "asset_ids cannot be used with PULL direction. Use listing_ids or filters instead."
-                    }
-                )
-        elif direction == SyncDirection.BIDIRECTIONAL.value:
+            raise serializers.ValidationError(
+                {
+                    "asset_ids": "asset_ids cannot be used with PULL direction. Use listing_ids or filters instead."
+                }
+            )
+        elif direction == SyncDirection.BIDIRECTIONAL.value and not asset_ids:
             # BIDIRECTIONAL requires both asset_ids and listing_ids/filters
-            if not asset_ids:
-                raise serializers.ValidationError(
-                    {"asset_ids": "asset_ids is required for BIDIRECTIONAL direction"}
-                )
+            raise serializers.ValidationError(
+                {"asset_ids": "asset_ids is required for BIDIRECTIONAL direction"}
+            )
 
         return attrs
 
@@ -398,7 +397,7 @@ class MarketplaceMappingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MarketplaceMapping
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -413,8 +412,8 @@ class MarketplaceMappingSerializer(serializers.ModelSerializer):
             "last_synced_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -429,4 +428,49 @@ class MarketplaceMappingSerializer(serializers.ModelSerializer):
             "last_synced_at",
             "created_at",
             "updated_at",
-        ]
+        )
+
+
+class MarketplaceMappingCreateSerializer(serializers.Serializer):
+    """Serializer for creating a marketplace mapping (POST).
+
+    The mapping record itself is sync-managed on the read side; this
+    write surface lets API clients create mappings directly (the same
+    service path the sync flow uses internally).
+    """
+
+    connection_id = serializers.UUIDField(help_text="Marketplace connection ID")
+    hub_asset_id = serializers.UUIDField(help_text="Hub asset ID to map")
+    external_listing_id = serializers.CharField(
+        max_length=255, help_text="External marketplace listing ID"
+    )
+    external_resource_ids = serializers.ListField(
+        child=serializers.CharField(max_length=255),
+        required=False,
+        default=list,
+        help_text="Optional external resource identifiers",
+    )
+    sync_metadata = serializers.JSONField(
+        required=False, default=dict, help_text="Optional sync metadata"
+    )
+
+
+class MarketplaceMappingUpdateSerializer(serializers.Serializer):
+    """Serializer for updating a marketplace mapping (PATCH).
+
+    All fields are optional — at least one must be provided.
+    """
+
+    external_listing_id = serializers.CharField(max_length=255, required=False)
+    external_resource_ids = serializers.ListField(
+        child=serializers.CharField(max_length=255), required=False
+    )
+    sync_metadata = serializers.JSONField(required=False)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                "At least one of external_listing_id, external_resource_ids, "
+                "or sync_metadata must be provided"
+            )
+        return attrs

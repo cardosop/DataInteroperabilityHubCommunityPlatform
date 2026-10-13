@@ -29,11 +29,12 @@ from django.test import LiveServerTestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceMapping, MarketplaceType
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 # Import Django models
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
+from tests.utils.cli_config import point_cli_config_at_tmpdir
 
 User = get_user_model()
 
@@ -78,7 +79,10 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
         )
         UserRole.objects.create(user=self.user, role=data_provider_role)
 
-        # Set API base URL to live test server
+        # Set API base URL to live test server.
+        # The API test image's rootfs is read-only ($HOME/.datahub is not
+        # writable) — redirect the CLI config to a fresh temp dir first.
+        point_cli_config_at_tmpdir()
         self.api_base_url = f"{self.live_server_url}/api/v1"
         config.set_api_base_url(self.api_base_url)
 
@@ -166,10 +170,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             list_data = json.loads(result.output)
 
             # Verify mapping is in the list
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
 
             mapping_ids = [m.get("id") for m in mappings]
             assert str(mapping.id) in mapping_ids, "Mapping not found in list"
@@ -237,10 +238,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             )
             assert result.exit_code == 0
             list_data = json.loads(result.output)
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
             mapping_ids = [m.get("id") for m in mappings]
             assert str(mapping1.id) in mapping_ids
             assert str(mapping2.id) in mapping_ids
@@ -260,10 +258,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             )
             assert result.exit_code == 0
             list_data = json.loads(result.output)
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
             mapping_ids = [m.get("id") for m in mappings]
             assert str(mapping1.id) in mapping_ids
             assert str(mapping2.id) not in mapping_ids
@@ -285,10 +280,7 @@ class TestMarketplaceMappingWorkflowsE2E(LiveServerTestCase):
             )
             assert result.exit_code == 0
             list_data = json.loads(result.output)
-            if isinstance(list_data, dict):
-                mappings = list_data.get("results", [])
-            else:
-                mappings = list_data
+            mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
             assert len(mappings) <= 1
 
         finally:

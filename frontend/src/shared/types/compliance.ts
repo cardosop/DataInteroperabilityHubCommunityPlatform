@@ -147,6 +147,31 @@ export interface ComplianceRunResults {
   column_findings: ComplianceColumnFinding[];
   started_at?: string;
   completed_at?: string;
+  /**
+   * Phase 19 — regulatory posture (v2): the cross-border /
+   * localisation alert states, the per-regulation summary rows, and
+   * the legal-basis violation list. Absent on pre-v2 payloads — the
+   * viewer falls back to the clear-state cards.
+   */
+  cross_border_alert?: {
+    applicable: boolean;
+    regulations?: string[];
+    requires_safeguards?: boolean;
+  } | null;
+  localisation_alert?: {
+    applicable: boolean;
+    regulations?: string[];
+  } | null;
+  regulation_summaries?: Array<{
+    regulation: string;
+    status: string;
+    violations?: number;
+  }>;
+  legal_basis_violations?: Array<{
+    regulation: string;
+    basis: string;
+    violation: string;
+  }>;
 }
 
 export interface ComplianceCrossBorderAlert {

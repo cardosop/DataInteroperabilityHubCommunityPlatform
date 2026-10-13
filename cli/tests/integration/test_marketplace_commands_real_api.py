@@ -13,6 +13,8 @@ NOTE: These tests must be run from the Django project root (not CLI directory)
 to ensure Django is properly initialized via pytest-django.
 """
 
+import contextlib
+
 import pytest
 
 # Phase 215.4 review fix: this module imports from django/hub which are
@@ -20,7 +22,16 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+
 hub = pytest.importorskip("hub")
+# Phase U / U.3 — marketplace is paid/excluded from the public
+# tree; the integrations guards were no-ops (integrations is core).
+_marketplace = pytest.importorskip("hub.apps.marketplace")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import json
 
 from click.testing import CliRunner
@@ -95,11 +106,9 @@ class TestMarketplaceCommandsIntegration(LiveServerTestCase):
         config.clear_auth()
         # Note: super().tearDown() may fail with database flush errors in LiveServerTestCase
         # This is a known issue and doesn't affect test results
-        try:
+        # Ignore teardown errors - they don't affect test validity
+        with contextlib.suppress(Exception):
             super().tearDown()
-        except Exception:
-            # Ignore teardown errors - they don't affect test validity
-            pass
 
     def test_marketplace_connections_create_list_get_delete(self):
         """Test complete workflow: create → list → get → delete"""
@@ -145,10 +154,7 @@ class TestMarketplaceCommandsIntegration(LiveServerTestCase):
         )
 
         # Find our connection in the list
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         found = any(conn.get("id") == connection_id for conn in connections)
         assert found, "Created connection not found in list"
 
@@ -295,10 +301,7 @@ class TestMarketplaceCommandsIntegration(LiveServerTestCase):
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
 
         # Should only have Snowflake connections
         for conn in connections:
@@ -419,10 +422,7 @@ class TestMarketplaceCommandsIntegration(LiveServerTestCase):
         )
 
         # Find our mapping in the list
-        if isinstance(list_data, dict):
-            mappings = list_data.get("results", [])
-        else:
-            mappings = list_data
+        mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         found = any(m.get("id") == str(mapping.id) for m in mappings)
         assert found, "Created mapping not found in list"
 
@@ -531,10 +531,7 @@ class TestMarketplaceCommandsIntegration(LiveServerTestCase):
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            mappings = list_data.get("results", [])
-        else:
-            mappings = list_data
+        mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         # Should have both mappings
         mapping_ids = [m.get("id") for m in mappings]
         assert str(mapping1.id) in mapping_ids
@@ -547,10 +544,7 @@ class TestMarketplaceCommandsIntegration(LiveServerTestCase):
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            mappings = list_data.get("results", [])
-        else:
-            mappings = list_data
+        mappings = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         # Should only have mapping1
         mapping_ids = [m.get("id") for m in mappings]
         assert str(mapping1.id) in mapping_ids

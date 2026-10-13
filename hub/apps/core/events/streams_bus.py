@@ -78,6 +78,15 @@ class EventStreamsSubscribeError(EventStreamsError):
     """Error subscribing to stream."""
 
 
+def _raise_validation_error(span, error: str, message: str) -> None:
+    """Record a validation failure on *span* and raise ``EventStreamsPublishError``."""
+    if span and _trace_available:
+        span.set_attribute("event.validation_error", error)
+        span.set_status(Status(StatusCode.ERROR, error))
+        span.end()
+    raise EventStreamsPublishError(message)
+
+
 class EventStreamsBus:
     """
     Redis Streams-based event bus implementation.
@@ -212,11 +221,9 @@ class EventStreamsBus:
             if not is_valid:
                 status = "validation_failed"
                 error_type = "validation_error"
-                if span and _trace_available:
-                    span.set_attribute("event.validation_error", error)
-                    span.set_status(Status(StatusCode.ERROR, error))
-                    span.end()
-                raise EventStreamsPublishError(f"Invalid event data for {event_type}: {error}")
+                _raise_validation_error(
+                    span, error, f"Invalid event data for {event_type}: {error}"
+                )
 
             # Build event
             event = EventSchema.build_event(
@@ -236,11 +243,7 @@ class EventStreamsBus:
             if not is_valid:
                 status = "validation_failed"
                 error_type = "validation_error"
-                if span and _trace_available:
-                    span.set_attribute("event.validation_error", error)
-                    span.set_status(Status(StatusCode.ERROR, error))
-                    span.end()
-                raise EventStreamsPublishError(f"Invalid event: {error}")
+                _raise_validation_error(span, error, f"Invalid event: {error}")
 
             event_id = event["event_id"]
 
@@ -335,8 +338,6 @@ class EventStreamsBus:
                 span.set_status(Status(StatusCode.OK))
                 span.end()
 
-            return event_id
-
         except Exception as e:
             error_type = get_error_type(None, e)
             status = "failed"
@@ -361,6 +362,8 @@ class EventStreamsBus:
                 "event_stream_publish_error", event_type=event_type, error=str(e), exc_info=True
             )
             raise EventStreamsPublishError(f"Failed to publish event: {e}") from e
+        else:
+            return event_id
 
     def _persist_event(self, event: dict[str, Any]) -> Event:
         """
@@ -421,7 +424,6 @@ class EventStreamsBus:
                 group_name=group_name,
                 start_id=start_id,
             )
-            return True
         except redis.exceptions.ResponseError as e:
             if "BUSYGROUP" in str(e):
                 # Group already exists
@@ -430,6 +432,8 @@ class EventStreamsBus:
                 )
                 return False
             raise
+        else:
+            return True
 
     def subscribe(
         self,
@@ -633,7 +637,7 @@ class EventStreamsBus:
                             ).inc()
 
                         except json.JSONDecodeError as e:
-                            logger.error(
+                            logger.exception(
                                 "event_decode_error",
                                 subscriber_name=subscriber_name,
                                 stream_name=stream_name,
@@ -656,7 +660,7 @@ class EventStreamsBus:
                                 event_json = message_data.get("event", "{}")
                                 event = json.loads(event_json)
                                 self._send_to_dlq(subscriber_name, event, str(e))
-                            except Exception:
+                            except (json.JSONDecodeError, TypeError):
                                 pass
 
                             # Record failure metrics
@@ -706,7 +710,6 @@ class EventStreamsBus:
                     subscriber_name=subscriber_name,
                     status="success",
                 ).observe(processing_duration)
-                return
             except Exception:
                 retries += 1
                 event_handler_retry_count.labels(
@@ -724,6 +727,8 @@ class EventStreamsBus:
 
                 # Exponential backoff
                 time.sleep(2**retries)
+            else:
+                return
 
     def _send_to_dlq(self, subscriber_name: str, event: dict[str, Any], error: str) -> None:
         """
@@ -775,7 +780,6 @@ class EventStreamsBus:
             else:
                 pending = self.redis_client.xpending(stream_name, consumer_group)
 
-            return pending
         except Exception as e:
             logger.error(
                 "pending_messages_error",
@@ -785,6 +789,8 @@ class EventStreamsBus:
                 exc_info=True,
             )
             return []
+        else:
+            return pending
 
     def replay_events(
         self, stream_name: str, start_id: str = "0", end_id: str = "+", count: int | None = None
@@ -817,12 +823,13 @@ class EventStreamsBus:
                 except json.JSONDecodeError:
                     continue
 
-            return events
         except Exception as e:
             logger.error(
                 "replay_events_error", stream_name=stream_name, error=str(e), exc_info=True
             )
             return []
+        else:
+            return events
 
 
 def get_event_streams_bus(redis_client: redis.Redis | None = None) -> EventStreamsBus:

@@ -134,8 +134,7 @@ class AssetPopularityIntegrationTest(TestCase):
         # No new asset must have been created
         self.assertFalse(
             Asset.objects.filter(id=fake_asset_id).exists(),
-            "track_view must not create a spurious Asset row for "
-            "a non-existent asset_id.",
+            "track_view must not create a spurious Asset row for a non-existent asset_id.",
         )
 
     # ========== EDGE CASES ==========

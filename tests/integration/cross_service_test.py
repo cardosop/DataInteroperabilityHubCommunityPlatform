@@ -27,7 +27,7 @@ class TestServiceHealth:
     """Test health endpoints for all services"""
 
     @pytest.mark.parametrize(
-        "service_url,service_name",
+        ("service_url", "service_name"),
         [
             (API_SERVICE_URL, "api-service"),
             (DATACONTRACT_SERVICE_URL, "datacontract-service"),
@@ -79,7 +79,8 @@ class TestAPIToMicroservices:
 
     def test_api_to_semantic_service(self):
         """Test API service can communicate with Semantic service"""
-        response = requests.get(f"{SEMANTIC_SERVICE_URL}/health", timeout=5)
+        # Cold Fuseki ping behind /health takes ~8s on a loaded host — 5s races it.
+        response = requests.get(f"{SEMANTIC_SERVICE_URL}/health", timeout=20)
         assert response.status_code == 200
 
 
@@ -106,9 +107,12 @@ class TestWorkerToServices:
         db = settings.DATABASES["default"]
         try:
             conn = psycopg2.connect(
-                dbname=db["NAME"], user=db["USER"],
-                password=db["PASSWORD"], host=db.get("HOST", "localhost"),
-                port=db.get("PORT", "5432"), connect_timeout=5,
+                dbname=db["NAME"],
+                user=db["USER"],
+                password=db["PASSWORD"],
+                host=db.get("HOST", "localhost"),
+                port=db.get("PORT", "5432"),
+                connect_timeout=5,
             )
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")

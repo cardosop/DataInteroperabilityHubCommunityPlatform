@@ -7,7 +7,7 @@ Tracks quality trends over time with visualization and forecasting.
 from __future__ import annotations
 
 import statistics
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
@@ -28,7 +28,7 @@ class TrendAnalyzer:
     def calculate_trend(
         asset_id: str | None = None,
         dataset_id: str | None = None,
-        tenant_id: str = None,
+        tenant_id: str | None = None,
         metric_type: str = "quality_score",
         period_type: str = "DAILY",
         periods: int = 30,
@@ -141,7 +141,7 @@ class TrendAnalyzer:
     @staticmethod
     def _group_by_period(
         dq_runs: list[DQRun], period_type: str, metric_type: str
-    ) -> dict[timezone.datetime, dict[str, Any]]:
+    ) -> dict[datetime, dict[str, Any]]:
         """Group DQ runs by time period"""
         period_groups = {}
 
@@ -165,7 +165,7 @@ class TrendAnalyzer:
             period_groups[period_start]["count"] += 1
 
         # Calculate average for each period
-        for period_start, period_data in period_groups.items():
+        for _period_start, period_data in period_groups.items():
             if period_data["values"]:
                 period_data["value"] = statistics.mean(period_data["values"])
             else:
@@ -174,7 +174,7 @@ class TrendAnalyzer:
         return period_groups
 
     @staticmethod
-    def _get_period_start(dt: timezone.datetime, period_type: str) -> timezone.datetime:
+    def _get_period_start(dt: datetime, period_type: str) -> datetime:
         """Get period start timestamp"""
         if period_type == "HOURLY":
             return dt.replace(minute=0, second=0, microsecond=0)
@@ -219,8 +219,8 @@ class TrendAnalyzer:
 
     @staticmethod
     def _calculate_trend_strength(
-        period_groups: dict[timezone.datetime, dict[str, Any]],
-        current_period: timezone.datetime,
+        period_groups: dict[datetime, dict[str, Any]],
+        current_period: datetime,
         direction: str,
     ) -> float:
         """Calculate trend strength (0-1)"""
@@ -257,8 +257,8 @@ class TrendAnalyzer:
 
     @staticmethod
     def _forecast_value(
-        period_groups: dict[timezone.datetime, dict[str, Any]],
-        current_period: timezone.datetime,
+        period_groups: dict[datetime, dict[str, Any]],
+        current_period: datetime,
         current_value: float,
     ) -> float | None:
         """Forecast value for next period using simple linear regression"""

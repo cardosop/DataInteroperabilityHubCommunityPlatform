@@ -13,7 +13,7 @@ from shared.tests.conftest import _build_app
 _TINY_LIMIT = 100
 
 
-@pytest.fixture()
+@pytest.fixture
 async def tiny_client(auth_headers):
     """Client with a 100-byte size limit."""
     app = _build_app(max_bytes=_TINY_LIMIT)

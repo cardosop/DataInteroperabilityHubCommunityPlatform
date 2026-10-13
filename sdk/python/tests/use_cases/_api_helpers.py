@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import requests
 
-from tests._persona_provisioning import PersonaCredentials
+if TYPE_CHECKING:
+    from tests._persona_provisioning import PersonaCredentials
 
 
 def _default_api_base_url() -> str:
@@ -47,7 +48,7 @@ def _retry_on_throttle(
 
     Non-retryable 4xx errors are returned immediately.
     """
-    last_resp: Optional[requests.Response] = None
+    last_resp: requests.Response | None = None
 
     for attempt in range(max_attempts):
         try:
@@ -95,7 +96,7 @@ def api_get(
     path: str,
     creds: PersonaCredentials,
     *,
-    params: Optional[dict] = None,
+    params: dict | None = None,
     timeout: int = 15,
     retry_on_throttle: bool = True,
 ) -> requests.Response:
@@ -123,7 +124,7 @@ def api_post(
     path: str,
     creds: PersonaCredentials,
     *,
-    json: Optional[dict] = None,
+    json: dict | None = None,
     timeout: int = 15,
     retry_on_throttle: bool = True,
 ) -> requests.Response:
@@ -154,7 +155,7 @@ def api_put(
     path: str,
     creds: PersonaCredentials,
     *,
-    json: Optional[dict] = None,
+    json: dict | None = None,
     timeout: int = 15,
     retry_on_throttle: bool = True,
 ) -> requests.Response:
@@ -230,7 +231,7 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
     payload = {"email": email, "password": password}
 
     max_attempts = 5
-    last_resp: Optional[requests.Response] = None
+    last_resp: requests.Response | None = None
 
     for attempt in range(max_attempts):
         # ---- connection-level errors: DNS, network, timeout ----
@@ -246,10 +247,7 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
         # ---- 429 rate-limit ----
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
-            if retry_after:
-                wait = int(retry_after)
-            else:
-                wait = min(2 ** (attempt + 2), 60)
+            wait = int(retry_after) if retry_after else min(2 ** (attempt + 2), 60)
             time.sleep(wait)
             last_resp = resp
             continue
@@ -297,7 +295,7 @@ def api_unauthenticated_get(
 def api_unauthenticated_post(
     path: str,
     *,
-    json: Optional[dict] = None,
+    json: dict | None = None,
     timeout: int = 15,
     retry_on_throttle: bool = True,
 ) -> requests.Response:

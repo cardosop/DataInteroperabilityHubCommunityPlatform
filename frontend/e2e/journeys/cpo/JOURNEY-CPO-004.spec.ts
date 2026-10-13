@@ -26,7 +26,7 @@ test.describe('JOURNEY-CPO-004: Review Access Requests', () => {
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
       if (on403 || onLogin) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(on403 || onLogin, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onGov).toBe(true);

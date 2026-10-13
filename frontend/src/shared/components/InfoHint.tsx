@@ -6,7 +6,7 @@
  * explain technical terms without cluttering the UI.
  */
 
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle } from '../config/iconRegistry';
 import { forwardRef, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { Tooltip } from './Tooltip';
 import './InfoHint.css';

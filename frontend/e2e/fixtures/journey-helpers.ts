@@ -90,10 +90,60 @@ export async function assertEdgeBehavior(
     timeout = 30000,
   } = options;
   await page.waitForLoadState('domcontentloaded');
-  const hasEmpty = (await page.locator(emptyStateSelector).count()) > 0;
+  // Wait briefly for the empty state instead of checking once: an instant
+  // count races the list fetch (isLoading renders a skeleton), and a
+  // slow-but-empty fetch strands this helper on the content branch,
+  // waiting for a table that never renders for an empty list (b7:
+  // files.spec edge test timed out exactly this way).
+  // intentional: bounded best-effort probe — falling through to the content/fallback branches below is the designed behaviour when no empty state renders.
+  const hasEmpty = await page
+    .locator(emptyStateSelector)
+    .first()
+    .waitFor({ state: 'visible', timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
   if (hasEmpty) {
     await expect(page.locator(emptyStateSelector).first()).toBeVisible({ timeout: 5000 });
     return;
+  }
+  // Churn recovery: the list fetch can die during an API restart window and
+  // render ErrorDisplay ("Failed to load …", NETWORK_ERROR) with a Retry
+  // affordance — neither the empty state nor the content selector matches
+  // that terminal (b7: files.spec edge test burned its full 30s waiting for
+  // a table that could not render). Use the app's retry ONCE, then re-probe
+  // the empty state before falling through to the content branch; a
+  // sustained outage then fails the content assertion with the visible state.
+  const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
+  const hasErrorDisplay = (await errorDisplay.count()) > 0;
+  if (hasErrorDisplay) {
+    const errorRetry = page.locator('[data-testid="error-display-retry"]').first();
+    // intentional: diagnostic-only read — an empty read just skips the
+    // retry and the strict assertions below report the visible state.
+    const errorText = (await errorDisplay.textContent().catch(() => '')) ?? '';
+    // intentional: retry only when the error is transient churn — a real
+    // product error falls through to the strict content assertion below
+    // instead of looping on a retry that cannot help.
+    if (
+      (await errorRetry.count()) > 0 &&
+      /NETWORK_ERROR|Failed to fetch|connection|INTERNAL_ERROR|SERVICE_UNAVAILABLE/i.test(errorText)
+    ) {
+      // intentional: the retry click is best-effort — a mid-outage refetch
+      // may fail again; the bounded probes below decide the verdict.
+      await errorRetry.click().catch(() => null);
+      // intentional: bounded best-effort probe — falling through to the
+      // content branch below is the designed behaviour when no empty
+      // state renders after the retry.
+      const hasEmptyAfterRetry = await page
+        .locator(emptyStateSelector)
+        .first()
+        .waitFor({ state: 'visible', timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
+      if (hasEmptyAfterRetry) {
+        await expect(page.locator(emptyStateSelector).first()).toBeVisible({ timeout: 5000 });
+        return;
+      }
+    }
   }
   if (orContentSelector) {
     await expect(page.locator(orContentSelector).first()).toBeVisible({ timeout });

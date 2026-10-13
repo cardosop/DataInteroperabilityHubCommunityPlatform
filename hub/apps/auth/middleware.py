@@ -8,14 +8,42 @@ It extracts tenant_id from Authorization headers (API keys or JWT tokens)
 so that rate limiting middleware can access it.
 
 REST Framework authentication will run later and can override/validate.
+
+RLS request-path arming (W1.20 / oss-release-remediation D2, W1.4b)
+===================================================================
+
+After tenant resolution, ``__call__`` wraps the rest of the request in
+``transaction.atomic()`` and sets, transaction-locally (SET LOCAL):
+
+* ``app.current_tenant_id`` — the resolved tenant (NULL for anonymous
+  requests: the RLS policies then hide every tenant row — arming fails
+  CLOSED, leaks become empty results, never cross-tenant rows);
+* one ``app.rls_<table>_enabled`` GUC per RLS policy, mapped from the
+  paired ``RLS_<TABLE>_ENABLED`` settings kill switch.
+
+The whole path is gated behind the ``RLS_REQUEST_PATH_ENABLED`` master
+kill switch (default True — armed; set it false to disable arming
+without a deploy).  Transaction-local GUCs are mandatory: staging and
+production run through PgBouncer transaction pooling, where a
+session-level SET would leak onto the next client reusing the pooled
+server connection.  SET LOCAL evaporates at COMMIT/ROLLBACK, so the
+connection is clean for the next request (pinned by
+``test_rls_middleware_guc`` / ``test_rls_request_path_arming``).
+
+Pre-tenant identity resolution: the middleware's own lookups (API
+keys, JWT users, memberships) run BEFORE the tenant GUC exists and
+touch RLS-enabled tables — they route through ``user_lookup_alias()``
+(the BYPASSRLS admin alias in the production role shape; the default
+connection everywhere else).  See ``hub/apps/auth/db_aliases.py``.
 """
 
 import structlog
+from django.apps.registry import AppRegistryNotReady
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from django.db import DatabaseError, InterfaceError, OperationalError
-from django.http import HttpResponse
-from rest_framework.response import Response
+from django.core.exceptions import ImproperlyConfigured
+from django.db import DatabaseError, InterfaceError, OperationalError, transaction
+from django.http import HttpResponse, JsonResponse
 
 logger = structlog.get_logger(__name__)
 
@@ -27,7 +55,10 @@ logger = structlog.get_logger(__name__)
 # root cause.
 try:
     User = get_user_model()
-except Exception:  # pragma: no cover — only hit during cascading import failures
+except (
+    ImproperlyConfigured,
+    AppRegistryNotReady,
+):  # pragma: no cover — only hit during cascading import failures
     User = None
 
 
@@ -60,7 +91,57 @@ class TenantScopingMiddleware:
         if response is not None:
             return response
 
+        # W1.20 / D2 — RLS request-path arming.  Wrap the rest of the
+        # request in ONE transaction and arm the RLS GUCs
+        # transaction-locally inside it: SET LOCAL survives PgBouncer
+        # transaction pooling and evaporates at commit, so a reused
+        # pooled connection can never leak one tenant's scope into the
+        # next request.  Fail-closed on arming failure: if the GUCs
+        # cannot be set, the request must not run unscoped — 503.
+        from django.conf import settings
+
+        if getattr(settings, "RLS_REQUEST_PATH_ENABLED", True):
+            armed = []
+
+            def _arm():
+                self._arm_rls_gucs(request)
+                armed.append(True)
+
+            try:
+                with transaction.atomic():
+                    _arm()
+                    return self.get_response(request)
+            except (DatabaseError, InterfaceError, OperationalError):
+                if not armed:
+                    # The GUCs could not be set — the request must not
+                    # run unscoped.  Fail closed with 503.  A DB error
+                    # AFTER arming (i.e. from the view itself) re-raises
+                    # untouched.
+                    logger.exception(
+                        "rls_arming_failed", tenant_id=getattr(request, "tenant_id", None)
+                    )
+                    return JsonResponse(
+                        {"error": "RLS_ARMING_FAILED", "code": "SERVICE_UNAVAILABLE"},
+                        status=503,
+                    )
+                raise
+
         return self.get_response(request)
+
+    def _arm_rls_gucs(self, request):
+        """Set the tenant + per-table RLS GUCs transaction-locally.
+
+        Must run INSIDE the request's ``transaction.atomic()`` block —
+        the GUCs are SET LOCAL and die with the transaction.
+        """
+        from django.db import connection
+
+        from hub.apps.auth.rls_gucs import build_arm_sql
+
+        tenant_id = getattr(request, "tenant_id", None)
+        sql, params = build_arm_sql(str(tenant_id) if tenant_id else None)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
 
     def _extract_tenant_id_from_api_key(self, request):
         """
@@ -85,11 +166,17 @@ class TenantScopingMiddleware:
             return None
 
         try:
+            from hub.apps.auth.db_aliases import user_lookup_alias
             from hub.apps.auth.models import APIKey
 
+            # W1.20 — the api_keys table carries an RLS policy; this
+            # lookup runs BEFORE the tenant GUC exists, so it must use
+            # the pre-tenant alias (BYPASSRLS admin in production,
+            # the default connection everywhere else).
             key_hash = APIKey.hash_key(api_key)
             api_key_obj = (
-                APIKey.objects.select_related("tenant", "user")
+                APIKey.objects.using(user_lookup_alias())
+                .select_related("tenant", "user")
                 .prefetch_related("user__user_roles__role")
                 .get(key_hash=key_hash)
             )
@@ -110,7 +197,6 @@ class TenantScopingMiddleware:
                 user = api_key_obj.user
                 if user.is_active():
                     request.user = user
-            return tenant_id_str
         except APIKey.DoesNotExist:
             # Invalid API key - will be caught by REST Framework authentication
             return None
@@ -118,6 +204,8 @@ class TenantScopingMiddleware:
             # Log but don't fail - let REST Framework authentication handle errors
             logger.debug("failed_to_extract_tenant_from_api_key", error=str(e))
             return None
+        else:
+            return tenant_id_str
 
     def _extract_tenant_id_from_jwt(self, request):
         """
@@ -217,13 +305,19 @@ class TenantScopingMiddleware:
                     token = auth_header.split(" ", 1)[1] if " " in auth_header else None
                     if token:
                         try:
+                            from hub.apps.auth.db_aliases import user_lookup_alias
                             from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
                             payload = JWTTokenGenerator.decode_access_token(
                                 token, verify_version=False
                             )
                             if payload:
-                                user = JWTTokenGenerator.get_user_from_token(payload)
+                                # W1.20 — the users table is RLS-enabled
+                                # and no tenant GUC exists yet; resolve
+                                # through the pre-tenant alias.
+                                user = JWTTokenGenerator.get_user_from_token(
+                                    payload, using=user_lookup_alias()
+                                )
                                 if user and user.is_active():
                                     request.user = user
                                     is_anon = False
@@ -266,7 +360,11 @@ class TenantScopingMiddleware:
                                     request.worker_authenticated = True
                                     # Find a user in this tenant for the
                                     # middleware's is_authenticated check.
-                                    user = User.objects.filter(
+                                    # W1.20 — users is RLS-enabled; use
+                                    # the pre-tenant alias.
+                                    from hub.apps.auth.db_aliases import user_lookup_alias
+
+                                    user = User.objects.using(user_lookup_alias()).filter(
                                         tenant=tenant,
                                     ).first()
                                     if user and user.is_active():
@@ -284,13 +382,18 @@ class TenantScopingMiddleware:
                     cookie_token = request.COOKIES.get("access_token", "")
                     if cookie_token:
                         try:
+                            from hub.apps.auth.db_aliases import user_lookup_alias
                             from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
                             payload = JWTTokenGenerator.decode_access_token(
                                 cookie_token, verify_version=False
                             )
                             if payload:
-                                user = JWTTokenGenerator.get_user_from_token(payload)
+                                # W1.20 — users is RLS-enabled; resolve
+                                # through the pre-tenant alias.
+                                user = JWTTokenGenerator.get_user_from_token(
+                                    payload, using=user_lookup_alias()
+                                )
                                 if user and user.is_active():
                                     request.user = user
                                     is_anon = False
@@ -310,10 +413,20 @@ class TenantScopingMiddleware:
                 return HttpResponse(status=401)
             # Allow if user's own tenant matches, or if explicit membership exists
             user_tenant_id = str(getattr(user, "tenant_id", None) or "")
-            if user_tenant_id != str(x_tenant_id):
+            # Platform admins have cross-tenant access (the same
+            # convention as the feature-flag gates and the
+            # tenant-scoped querysets) — bypass the membership
+            # check for them.
+            if user_tenant_id != str(x_tenant_id) and not getattr(user, "is_platform_admin", False):
+                from hub.apps.auth.db_aliases import user_lookup_alias
                 from hub.apps.users.services import UserTenantMembershipService
 
-                if not UserTenantMembershipService().validate_membership(user, x_tenant_id):
+                # W1.20 — user_tenant_memberships is RLS-enabled and no
+                # tenant GUC exists yet; resolve through the pre-tenant
+                # alias.
+                if not UserTenantMembershipService().validate_membership(
+                    user, x_tenant_id, using=user_lookup_alias()
+                ):
                     return HttpResponse(status=403)
             from django.core.exceptions import ValidationError
 
@@ -358,9 +471,9 @@ class TenantScopingMiddleware:
                 if not hasattr(request, "tenant") or not request.tenant:
                     request.tenant = Tenant.objects.get(id=request.tenant_id)
             except Tenant.DoesNotExist:
-                return Response({"error": "TENANT_NOT_FOUND"}, status=403)
+                return JsonResponse({"error": "TENANT_NOT_FOUND"}, status=403)
             except (InterfaceError, OperationalError, DatabaseError):
-                return Response({"error": "SERVICE_UNAVAILABLE"}, status=503)
+                return JsonResponse({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
 
         # Try to extract tenant_id from Authorization header (for rate limiting)
@@ -382,9 +495,9 @@ class TenantScopingMiddleware:
 
                 request.tenant = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                return Response({"error": "TENANT_NOT_FOUND"}, status=403)
+                return JsonResponse({"error": "TENANT_NOT_FOUND"}, status=403)
             except (InterfaceError, OperationalError, DatabaseError):
-                return Response({"error": "SERVICE_UNAVAILABLE"}, status=503)
+                return JsonResponse({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
 
         # Fallback: get tenant from request.user (set by Django's AuthenticationMiddleware)
@@ -434,8 +547,14 @@ class TenantScopingMiddleware:
                     return None
                 try:
                     # Query user from database to get fresh tenant_id (avoid cached relationships)
-                    # This is important for thread safety with LiveServerTestCase
-                    db_user = User.objects.only("tenant_id").get(id=user.id)
+                    # This is important for thread safety with LiveServerTestCase.
+                    # W1.20 — users is RLS-enabled; use the pre-tenant
+                    # alias so the lookup works under an enforcing role
+                    # (the in-memory fallback below still covers the
+                    # pathological cases).
+                    from hub.apps.auth.db_aliases import user_lookup_alias
+
+                    db_user = User.objects.using(user_lookup_alias()).only("tenant_id").get(id=user.id)
                     if db_user.tenant_id:
                         request.tenant_id = str(db_user.tenant_id)
                         tenant_id_set = True

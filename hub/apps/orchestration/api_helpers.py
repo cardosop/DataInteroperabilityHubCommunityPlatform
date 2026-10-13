@@ -27,15 +27,12 @@ def _get_workflow_classes() -> list:
         ContractCreationWorkflow,
         DataQualityCheckWorkflow,
         DatasetCreationWorkflow,
-        MarketplacePublicationWorkflow,
-        MarketplaceSyncWorkflow,
-        ProductCreationWorkflow,
         ScheduledIngestionWorkflow,
         VersionCreationWorkflow,
         VirtualizationWorkflow,
     )
 
-    return [
+    classes = [
         ContractCreationWorkflow,
         ScheduledIngestionWorkflow,
         AccessRequestWorkflow,
@@ -44,11 +41,29 @@ def _get_workflow_classes() -> list:
         AssetCreationWorkflow,
         DatasetCreationWorkflow,
         VersionCreationWorkflow,
-        MarketplacePublicationWorkflow,
-        ProductCreationWorkflow,
-        MarketplaceSyncWorkflow,
         VirtualizationWorkflow,
     ]
+
+    # Phase 313 — the marketplace/product workflows depend on the paid
+    # layer; their exports are absent in core-only mode, so the registry
+    # degrades to the core workflow set there.
+    try:
+        from hub.apps.orchestration.workflows import (
+            MarketplacePublicationWorkflow,
+            MarketplaceSyncWorkflow,
+            ProductCreationWorkflow,
+        )
+    except ImportError:
+        return classes
+
+    classes.extend(
+        [
+            MarketplacePublicationWorkflow,
+            ProductCreationWorkflow,
+            MarketplaceSyncWorkflow,
+        ]
+    )
+    return classes
 
 
 def get_workflow_registry():  # -> WorkflowRegistry

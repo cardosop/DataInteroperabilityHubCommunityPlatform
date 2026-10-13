@@ -296,8 +296,7 @@ class JobUtilsTest(TestCase):
             self.assertIn("uuid", str(exc).lower())
         except (TypeError, ValidationError) as exc:
             self.fail(
-                f"Unexpected exception type {type(exc).__name__} "
-                f"for invalid resource_id: {exc}"
+                f"Unexpected exception type {type(exc).__name__} for invalid resource_id: {exc}"
             )
 
     def test_create_job_failure_tenant_limits_exceeded(self):
@@ -459,7 +458,8 @@ class JobUtilsTest(TestCase):
         except (ValueError, TypeError) as exc:
             # Expected: priority validation rejects the invalid value
             self.assertGreater(
-                len(str(exc)), 0,
+                len(str(exc)),
+                0,
                 "Exception should have a descriptive message",
             )
 

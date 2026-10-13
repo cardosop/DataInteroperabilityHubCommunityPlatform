@@ -514,6 +514,6 @@ Before declaring Wave 0 complete, confirm:
 | Email template | [hub/apps/notifications/templates/notifications/emails/asset_contract_structureless_pending.html](../../hub/apps/notifications/templates/notifications/emails/asset_contract_structureless_pending.html) |
 | Tenant-admin lookup | [hub/apps/users/services.py](../../hub/apps/users/services.py) — `get_tenant_admin_users()` |
 | Email type registration | [hub/apps/notifications/models.py](../../hub/apps/notifications/models.py) — `EmailType.ASSET_CONTRACT_STRUCTURELESS_PENDING` |
-| OpenSpec proposal | [openspec/changes/preprod01/proposal.md](../../openspec/changes/preprod01/proposal.md) Phase 227 |
-| OpenSpec tasks | [openspec/changes/preprod01/tasks.md](../../openspec/changes/preprod01/tasks.md) §227.0 |
+| OpenSpec proposal | `openspec/changes/preprod01/proposal.md` (private change dir) — Phase 227 |
+| OpenSpec tasks | `openspec/changes/preprod01/tasks.md` (private change dir) — §227.0 |
 | Tests | `hub/apps/contracts/tests/test_structureless.py`, `test_renormalize_structureless_filter.py`, `test_structureless_notification.py`, `test_wave0_capture_command.py`, `test_wave0_summarize_command.py`, `test_wave0_notify_command.py` |

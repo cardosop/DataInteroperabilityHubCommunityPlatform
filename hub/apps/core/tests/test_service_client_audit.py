@@ -189,9 +189,7 @@ class ServiceClientAuditTest(TestCase):
             # If it's not "unknown", it should look like a URL
             if base_url != "unknown":
                 self.assertTrue(
-                    base_url.startswith("http://")
-                    or base_url.startswith("https://")
-                    or base_url.startswith("<"),
+                    base_url.startswith(("http://", "https://", "<")),
                     f"Base URL should start with http://, https://, or <: {base_url}",
                 )
 

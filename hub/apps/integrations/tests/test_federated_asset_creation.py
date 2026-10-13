@@ -24,12 +24,12 @@ from django.utils import timezone
 
 from hub.apps.assets.models import (
     Asset,
-    AssetSourceType,
     AssetStatus,
     AssetVisibility,
     ExternalResourceReference,
 )
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.core.services.base import ServiceError
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
 from hub.apps.integrations.base import (
@@ -382,9 +382,8 @@ class TestFederatedAssetCreation(TestCase):
         """Test federated asset creation with resource download"""
         # Create a test CSV file
         csv_content = b"id,name,value\n1,test1,value1\n2,test2,value2\n"
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(csv_content)
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(csv_content)
 
         # Mock connector download_resource to return our test file
         class MockConnector:
@@ -570,7 +569,7 @@ class TestFederatedAssetCreation(TestCase):
         Contract.objects.create = failing_create
 
         try:
-            with self.assertRaises(Exception):
+            with self.assertRaises(ServiceError):
                 self.service.create_federated_asset_with_contracts(
                     asset_mapping=asset_mapping,
                     connection=self.connection,
@@ -585,8 +584,9 @@ class TestFederatedAssetCreation(TestCase):
 
             # Verify no contracts were created after rollback
             contracts = Contract.objects.filter(tenant=self.tenant)
-            self.assertEqual(contracts.count(), 0,
-                "No contracts should exist after transaction rollback")
+            self.assertEqual(
+                contracts.count(), 0, "No contracts should exist after transaction rollback"
+            )
 
         finally:
             Contract.objects.create = original_create
@@ -751,13 +751,11 @@ class TestFederatedAssetCreation(TestCase):
         csv_content_1 = b"id,name\n1,test1\n2,test2\n"
         csv_content_3 = b"id,value\n1,100\n2,200\n"
 
-        temp_file_1 = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file_1.write(csv_content_1)
-        temp_file_1.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file_1:
+            temp_file_1.write(csv_content_1)
 
-        temp_file_3 = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file_3.write(csv_content_3)
-        temp_file_3.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file_3:
+            temp_file_3.write(csv_content_3)
 
         resources = [
             MarketplaceResource(
@@ -875,7 +873,7 @@ class TestFederatedAssetCreation(TestCase):
             try:
                 os.unlink(temp_file_1.name)
                 os.unlink(temp_file_3.name)
-            except Exception:
+            except OSError:
                 pass
 
     def test_odps_contract_minimal_metadata(self):
@@ -1032,17 +1030,14 @@ class TestFederatedAssetCreation(TestCase):
         json_content_2 = b'{"id": 1, "name": "test"}'
         csv_content_3 = b"id,value\n1,100\n2,200\n"
 
-        temp_file_1 = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file_1.write(csv_content_1)
-        temp_file_1.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file_1:
+            temp_file_1.write(csv_content_1)
 
-        temp_file_2 = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-        temp_file_2.write(json_content_2)
-        temp_file_2.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file_2:
+            temp_file_2.write(json_content_2)
 
-        temp_file_3 = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file_3.write(csv_content_3)
-        temp_file_3.close()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file_3:
+            temp_file_3.write(csv_content_3)
 
         resources = [
             MarketplaceResource(
@@ -1158,7 +1153,7 @@ class TestFederatedAssetCreation(TestCase):
                 os.unlink(temp_file_1.name)
                 os.unlink(temp_file_2.name)
                 os.unlink(temp_file_3.name)
-            except Exception:
+            except OSError:
                 pass
 
     def test_integration_metadata_first_workflow(self):

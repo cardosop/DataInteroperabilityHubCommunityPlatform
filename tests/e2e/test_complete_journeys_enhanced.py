@@ -546,8 +546,6 @@ class CompleteMarketplaceJourneyE2ETest(E2ETestBase):
         )
         # Audit log verification for order is done above with flexible action checking
         # Check for entitlement if it was created (from order)
-        from hub.apps.marketplace.models import Entitlement
-
         entitlement = Entitlement.objects.filter(order=order).first()
         if entitlement:
             self.verify_audit_log(

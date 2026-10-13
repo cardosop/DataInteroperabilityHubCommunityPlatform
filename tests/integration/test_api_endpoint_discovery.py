@@ -395,7 +395,7 @@ class APIEndpointDiscoveryTest(TestCase):
 
         # Extract base paths from OpenAPI spec (e.g., /api/v1/assets/ from /api/v1/assets/{id}/)
         spec_base_paths = set()
-        for path in spec_paths.keys():
+        for path in spec_paths:
             # Extract base path (remove {id} patterns and trailing slashes)
             base_path = path.split("{")[0].rstrip("/")
             if base_path.startswith("/api/v1/"):

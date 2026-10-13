@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import jwt
@@ -12,6 +13,8 @@ from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied_total
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.users.models import User, UserStatus, UserTenantMembership
+
+from .test_sso_security_tokens import _generated_rsa_keypair, _ScriptedIdP
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -32,22 +35,41 @@ class SSOStateBindingOIDCTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
+        # Real scripted IdP: the callback verifies signatures via JWKS
+        # now (W1.5), so the tokens must be RS256-signed with the key
+        # the tenant config points at.
+        self._private, self._public = _generated_rsa_keypair()
+        self._idp = _ScriptedIdP({"keys": [self._public]})
+        self.issuer = f"{self._idp.base}/oidc"
         TenantConfig.objects.create(
             tenant=self.tenant,
             sso_config={
                 "oidc": {
-                    "authorization_endpoint": "https://idp.example.com/auth",
+                    "authorization_endpoint": f"{self._idp.base}/oidc/v1/authorize",
                     "client_id": "client-1",
-                    "role_mapping": {},
+                    "issuer": self.issuer,
+                    "jwks_uri": self._idp.jwks_uri,
                 }
             },
         )
 
+    def tearDown(self):
+        self._idp.close()
+
     def _id_token(self, email: str) -> str:
+        now = int(time.time())
         return jwt.encode(
-            {"sub": f"sub-{email}", "email": email},
-            "local-test-secret-with-sufficient-length-for-hs256",
-            algorithm="HS256",
+            {
+                "sub": f"sub-{email}",
+                "email": email,
+                "iss": self.issuer,
+                "aud": "client-1",
+                "exp": now + 300,
+                "iat": now,
+            },
+            self._private,
+            algorithm="RS256",
+            headers={"kid": "scripted-idp-key"},
         )
 
     @staticmethod
@@ -107,38 +129,19 @@ class SSOStateBindingOIDCTest(TestCase):
         after_counter = self._counter_value()
         self.assertGreaterEqual(after_counter - before_counter, 1.0)
 
-    def test_saml_tampered_body_tenant_id_returns_400_and_audit(self) -> None:
-        state = sso_state.issue_state(str(self.tenant.id), "private")
-        before = AuditEvent.objects.filter(
-            action=event_types.CROSS_TENANT_DENIED,
-        ).count()
-        before_counter = self._counter_value()
-
+    def test_saml_callback_endpoint_is_retired(self) -> None:
+        """The SAML callback is DELETED (W1.5/D4) — the route 404s."""
         response = self.client.post(
             "/api/v1/auth/sso/saml/callback/",
             {
-                # _extract_unverified_saml_identity supports best-effort
-                # extraction from raw text, so an email marker is enough
-                # for routing fallback logic.
                 "SAMLResponse": "nameid=saml-tamper@example.com",
-                "RelayState": state,
+                "RelayState": "state",
                 "tenant_id": str(self.other_tenant.id),
             },
             format="json",
             REMOTE_ADDR="10.2.3.4",
         )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(
-            "SSO_STATE_TENANT_MISMATCH",
-            self._response_error_text(response),
-        )
-        after = AuditEvent.objects.filter(
-            action=event_types.CROSS_TENANT_DENIED,
-        ).count()
-        self.assertEqual(after, before + 1)
-        after_counter = self._counter_value()
-        self.assertGreaterEqual(after_counter - before_counter, 1.0)
+        self.assertEqual(response.status_code, 404)
 
     def test_valid_state_returns_200_and_token_for_state_tenant(self) -> None:
         state = sso_state.issue_state(str(self.tenant.id), "private")
@@ -207,27 +210,19 @@ class SSOStateBindingOIDCTest(TestCase):
         login_url = response.json().get("login_url", "")
         self.assertIn("state=", login_url)
 
-    def test_saml_login_url_contains_signed_relay_state(self) -> None:
-        TenantConfig.objects.filter(tenant=self.tenant).update(
-            sso_config={
-                "saml": {"sso_url": "https://idp.example.com/saml", "role_mapping": {}},
-                "oidc": {
-                    "authorization_endpoint": "https://idp.example.com/auth",
-                    "client_id": "client-1",
-                    "role_mapping": {},
-                },
-            }
-        )
+    def test_saml_login_url_endpoint_is_retired(self) -> None:
+        """The SAML login-url is DELETED (W1.5/D4) — the route 404s."""
         response = self.client.get(
             "/api/v1/auth/sso/saml/login-url/",
             {"tenant_id": str(self.tenant.id), "redirect_uri": "https://app.example.com/cb"},
             REMOTE_ADDR="10.0.0.10",
         )
-        self.assertEqual(response.status_code, 200)
-        login_url = response.json().get("login_url", "")
-        self.assertIn("RelayState=", login_url)
+        self.assertEqual(response.status_code, 404)
 
-    def test_missing_state_with_multi_membership_returns_ambiguous(self) -> None:
+    def test_missing_state_with_multi_membership_fails_closed(self) -> None:
+        """W1.5: the unverified-claims membership fallback is DELETED —
+        even a user with multiple memberships cannot log in without a
+        valid signed state."""
         user = User.objects.create(
             email=f"multi-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
@@ -245,7 +240,7 @@ class SSOStateBindingOIDCTest(TestCase):
             REMOTE_ADDR="10.0.0.4",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("SSO_TENANT_AMBIGUOUS", self._response_error_text(response))
+        self.assertIn("SSO_STATE_MISSING", self._response_error_text(response))
 
     def test_invalid_state_does_not_fallback_to_membership(self) -> None:
         user = User.objects.create(
@@ -267,7 +262,10 @@ class SSOStateBindingOIDCTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("SSO_STATE_INVALID", self._response_error_text(response))
 
-    def test_missing_state_with_single_membership_falls_back(self) -> None:
+    def test_missing_state_with_single_membership_fails_closed(self) -> None:
+        """W1.5: the single-membership email fallback is DELETED — a
+        missing state always fails closed (SSO_STATE_MISSING), never
+        logs in via unverified claims."""
         user = User.objects.create(
             email=f"fallback-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
@@ -281,9 +279,5 @@ class SSOStateBindingOIDCTest(TestCase):
             format="json",
             REMOTE_ADDR="10.0.0.6",
         )
-        self.assertEqual(response.status_code, 200)
-        access_token = response.json().get("access_token")
-        self.assertTrue(access_token)
-        payload = JWTTokenGenerator.decode_access_token(access_token)
-        assert payload is not None
-        self.assertEqual(payload.get("tenant_id"), str(self.tenant.id))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("SSO_STATE_MISSING", self._response_error_text(response))

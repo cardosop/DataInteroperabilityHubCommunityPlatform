@@ -28,7 +28,7 @@ def test_api_response_includes_request_id():
     """API responses should include an X-Request-ID header for tracing."""
     try:
         creds = provision_persona("data_engineer")
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         pytest.skip(f"Cannot provision persona (no backend?): {exc}")
     resp = api_get("/auth/me/", creds)
     if resp.status_code != 200:
@@ -47,7 +47,7 @@ def test_client_can_send_request_id():
     """Client-supplied X-Request-ID should be echoed back or accepted."""
     try:
         creds = provision_persona("data_engineer")
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         pytest.skip(f"Cannot provision persona (no backend?): {exc}")
     custom_id = f"test-{uuid.uuid4().hex[:12]}"
     resp = requests.get(

@@ -13,7 +13,7 @@ results compared to the baseline (ODCS 3.0.2). This test suite verifies:
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
@@ -133,7 +133,7 @@ class ODCSBackwardCompatibilityTestBase(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
-    def _create_versioned_contract(self, version: str) -> Dict[str, Any]:
+    def _create_versioned_contract(self, version: str) -> dict[str, Any]:
         """Create a versioned contract from the baseline."""
         contract = self.baseline_contract_3_0_2.copy()
         contract["apiVersion"] = f"odcs.io/v{version}"
@@ -143,13 +143,13 @@ class ODCSBackwardCompatibilityTestBase(TestCase):
         return contract
 
     def _normalize_contract(
-        self, contract_data: Dict[str, Any], version: str
+        self, contract_data: dict[str, Any], version: str
     ) -> NormalizationResult:
         """Normalize a contract using the appropriate normalizer."""
         normalizer = get_normalizer(OriginalSpecType.ODCS, version, contract_data)
         return normalizer.normalize(contract_data, spec_version=version)
 
-    def _normalize_via_api(self, contract_data: Dict[str, Any]) -> NormalizationResult:
+    def _normalize_via_api(self, contract_data: dict[str, Any]) -> NormalizationResult:
         """Normalize a contract via the normalize_contract API."""
         # Convert dict to JSON string for normalize_contract API
         raw_contract = json.dumps(contract_data)
@@ -176,7 +176,7 @@ class ODCSBackwardCompatibilityTestBase(TestCase):
         other: NormalizationResult,
         version: str,
         allow_version_differences: bool = True,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Compare two normalization results and return list of differences.
 
@@ -189,7 +189,7 @@ class ODCSBackwardCompatibilityTestBase(TestCase):
         Returns:
             List of difference descriptions (empty if no differences)
         """
-        differences: List[str] = []
+        differences: list[str] = []
 
         # Compare status
         if baseline.status != other.status:
@@ -429,8 +429,7 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
 
         # Fail the test if any differences found
         self.assertEqual(
-            len(differences), 0,
-            f"Normalization differences found for 3.0.1: {differences}"
+            len(differences), 0, f"Normalization differences found for 3.0.1: {differences}"
         )
 
         # Both should succeed
@@ -461,8 +460,7 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
 
         # Fail the test if any differences found
         self.assertEqual(
-            len(differences), 0,
-            f"Normalization differences found for 3.0.0: {differences}"
+            len(differences), 0, f"Normalization differences found for 3.0.0: {differences}"
         )
 
         # Both should succeed
@@ -493,8 +491,7 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
 
         # Fail the test if any differences found
         self.assertEqual(
-            len(differences), 0,
-            f"Normalization differences found for 3.0.0-preview: {differences}"
+            len(differences), 0, f"Normalization differences found for 3.0.0-preview: {differences}"
         )
 
         # Both should succeed
@@ -527,8 +524,7 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
 
         # Fail the test if any differences found
         self.assertEqual(
-            len(differences), 0,
-            f"Normalization differences found for 2.2.2: {differences}"
+            len(differences), 0, f"Normalization differences found for 2.2.2: {differences}"
         )
 
         # Both should succeed
@@ -559,7 +555,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
         ]
 
         results = {}
-        for version, contract in zip(versions, contracts):
+        for version, contract in zip(versions, contracts, strict=False):
             with self.subTest(version=version):
                 result = self._normalize_contract(contract, version)
                 results[version] = result
@@ -599,7 +595,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
         core_fields = ["id", "info", "schema"]
         results = {}
 
-        for version, contract in zip(versions, contracts):
+        for version, contract in zip(versions, contracts, strict=False):
             result = self._normalize_contract(contract, version)
             results[version] = result
 
@@ -660,7 +656,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
             self.contract_2_2_2,
         ]
 
-        for version, contract in zip(versions, contracts):
+        for version, contract in zip(versions, contracts, strict=False):
             with self.subTest(version=version):
                 normalizer = get_normalizer(OriginalSpecType.ODCS, version, contract)
 
@@ -698,7 +694,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
             raw_contract=json.dumps(contract), format="json", spec_type="ODCS"
         )
 
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = result
+        hub_contract_dict, _spec_type, _spec_version, _norm_status, _errors, _warnings = result
 
         # Should handle unicode characters
         self.assertIsNotNone(hub_contract_dict)
@@ -721,7 +717,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
             raw_contract=json.dumps(contract), format="json", spec_type="ODCS"
         )
 
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = result
+        hub_contract_dict, _spec_type, _spec_version, _norm_status, _errors, _warnings = result
 
         # Should handle special characters
         self.assertIsNotNone(hub_contract_dict)
@@ -745,7 +741,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
             raw_contract=json.dumps(contract), format="json", spec_type="ODCS"
         )
 
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = result
+        hub_contract_dict, _spec_type, _spec_version, _norm_status, _errors, _warnings = result
 
         # Should handle very large documents
         self.assertIsNotNone(hub_contract_dict)
@@ -772,21 +768,25 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
             raw_contract=json.dumps(contract), format="json", spec_type="ODCS"
         )
 
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = result
+        hub_contract_dict, _spec_type, _spec_version, _norm_status, _errors, _warnings = result
 
         # Should handle None values gracefully
         self.assertIsNotNone(hub_contract_dict)
         # None values should be either preserved as None or handled per spec
         has_description = "description" in hub_contract_dict
-        has_info_description = "info" in hub_contract_dict and "description" in hub_contract_dict["info"]
+        has_info_description = (
+            "info" in hub_contract_dict and "description" in hub_contract_dict["info"]
+        )
         if has_description:
             self.assertTrue(
-                hub_contract_dict["description"] is None or isinstance(hub_contract_dict["description"], str),
+                hub_contract_dict["description"] is None
+                or isinstance(hub_contract_dict["description"], str),
                 "None description should be preserved as None or converted to string",
             )
         if has_info_description:
             self.assertTrue(
-                hub_contract_dict["info"]["description"] is None or isinstance(hub_contract_dict["info"]["description"], str),
+                hub_contract_dict["info"]["description"] is None
+                or isinstance(hub_contract_dict["info"]["description"], str),
                 "None description in info should be preserved as None or converted to string",
             )
 
@@ -813,7 +813,7 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
             raw_contract=json.dumps(contract), format="json", spec_type="ODCS"
         )
 
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = result
+        hub_contract_dict, _spec_type, _spec_version, _norm_status, _errors, _warnings = result
 
         # Should handle nested structures
         self.assertIsNotNone(hub_contract_dict)

@@ -68,7 +68,7 @@ try:
     from vocabulary_mappings import get_dqv_dimension
 except ImportError:
 
-    def get_dqv_dimension(dimension):
+    def get_dqv_dimension(_dimension):
         return None
 
 
@@ -133,36 +133,23 @@ class ContractQualityRulesExtractor:
                 "field": field_name or expression_upper.split("IS NULL")[0].strip(),
                 "expression": original_expression,
             }
-        elif ">" in expression_upper:
-            parts = expression_upper.split(">")
+        elif ">" in expression_upper or "<" in expression_upper:
+            operator = ">" if ">" in expression_upper else "<"
+            parts = expression_upper.split(operator)
             if len(parts) == 2:
                 field = parts[0].strip()
                 threshold = parts[1].strip()
                 try:
                     threshold_value = float(threshold)
+                except ValueError:
+                    pass
+                else:
                     return {
-                        "type": "greater_than",
+                        "type": "greater_than" if operator == ">" else "less_than",
                         "field": field_name or field,
                         "threshold": threshold_value,
                         "expression": original_expression,
                     }
-                except ValueError:
-                    pass
-        elif "<" in expression_upper:
-            parts = expression_upper.split("<")
-            if len(parts) == 2:
-                field = parts[0].strip()
-                threshold = parts[1].strip()
-                try:
-                    threshold_value = float(threshold)
-                    return {
-                        "type": "less_than",
-                        "field": field_name or field,
-                        "threshold": threshold_value,
-                        "expression": original_expression,
-                    }
-                except ValueError:
-                    pass
         elif "IN (" in expression_upper:
             # Extract values from IN clause - use original expression to preserve case
             in_start = original_expression.upper().find("IN (")
@@ -180,21 +167,23 @@ class ContractQualityRulesExtractor:
                         "values": values,
                         "expression": original_expression,
                     }
-        elif "COUNT(*)" in expression_upper or "COUNT" in expression_upper:
+        elif ("COUNT(*)" in expression_upper or "COUNT" in expression_upper) and (
+            ">" in expression_upper
+        ):
             # Aggregate checks
-            if ">" in expression_upper:
-                parts = expression_upper.split(">")
-                if len(parts) == 2:
-                    try:
-                        threshold = float(parts[1].strip())
-                        return {
-                            "type": "row_count",
-                            "threshold": threshold,
-                            "operator": "greater_than",
-                            "expression": original_expression,
-                        }
-                    except ValueError:
-                        pass
+            parts = expression_upper.split(">")
+            if len(parts) == 2:
+                try:
+                    threshold = float(parts[1].strip())
+                except ValueError:
+                    pass
+                else:
+                    return {
+                        "type": "row_count",
+                        "threshold": threshold,
+                        "operator": "greater_than",
+                        "expression": original_expression,
+                    }
 
         # Default: custom expression
         return {"type": "custom", "field": field_name, "expression": original_expression}
@@ -286,14 +275,17 @@ class ContractQualityRulesExtractor:
                 target_column=field_name,
                 target_pattern=None,
             )
-            return dq_check
-        except Exception as e:
-            # Log error but don't fail
+        except TypeError as e:
+            # DQCheck.__init__ is a plain assignment class — the only
+            # thing it can raise on a malformed rule conversion. Log
+            # error but don't fail.
             import logging
 
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to convert rule {rule_id} to DQCheck: {e}")
             return None
+        else:
+            return dq_check
 
     @staticmethod
     def get_contract_quality_checks(contract: Contract) -> list[DQCheck]:

@@ -489,7 +489,7 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            schema_fields="not a list",  # type: ignore[misc]  # test: edge-case type exercise
+            schema_fields="not a list",  # test: edge-case type exercise
         )
         context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
@@ -504,7 +504,7 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            tags="not a list",  # type: ignore[misc]  # test: edge-case type exercise
+            tags="not a list",  # test: edge-case type exercise
         )
         context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
@@ -526,6 +526,28 @@ class SearchIndexValidationTest(TestCase):
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(any("email" in error.lower() for error in result.errors))
+
+    def test_validate_index_structure_accepts_uc_resource_types(self):
+        """1.4 (add-databricks-uc-read) — the UC feed's resource types are
+        valid SearchIndex rows and must pass index-structure validation."""
+        uc_types = (
+            "DATABRICKS_UC_CATALOG",
+            "DATABRICKS_UC_SCHEMA",
+            "DATABRICKS_UC_TABLE",
+            "DATABRICKS_UC_VIEW",
+            "DATABRICKS_UC_VOLUME",
+            "DATABRICKS_UC_MODEL",
+        )
+        for resource_type in uc_types:
+            index = SearchIndex(
+                tenant=self.tenant,
+                resource_type=resource_type,
+                resource_id=uuid.uuid4(),
+                title=f"{resource_type} Test",
+            )
+            context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
+            result = self.rules._validate_index_structure(index, context)
+            assert result.is_valid, f"{resource_type} must be a valid index type: {result.errors}"
 
     def test_validate_index_update_timestamp_inconsistency(self):
         """Test index update validation with timestamp inconsistency"""
@@ -697,21 +719,24 @@ class SearchIndexValidationTest(TestCase):
         )
         # Check for warnings - Contract model may or may not have updated_at field
         # If it does and was updated, we should get a warning
-        if hasattr(contract, "updated_at") and contract.updated_at:
-            # Only assert warning if updated_at is actually newer than indexed_at
-            if contract.updated_at > index.indexed_at:
-                self.assertGreater(
-                    len(result.warnings),
-                    0,
-                    f"Expected stale index warning when updated_at ({contract.updated_at}) > indexed_at ({index.indexed_at}). "
-                    f"Warnings: {result.warnings}",
+        # Only assert warning if updated_at is actually newer than indexed_at
+        if (
+            hasattr(contract, "updated_at")
+            and contract.updated_at
+            and contract.updated_at > index.indexed_at
+        ):
+            self.assertGreater(
+                len(result.warnings),
+                0,
+                f"Expected stale index warning when updated_at ({contract.updated_at}) > indexed_at ({index.indexed_at}). "
+                f"Warnings: {result.warnings}",
+            )
+            self.assertTrue(
+                any(
+                    "stale" in warning.lower() or "updated" in warning.lower()
+                    for warning in result.warnings
                 )
-                self.assertTrue(
-                    any(
-                        "stale" in warning.lower() or "updated" in warning.lower()
-                        for warning in result.warnings
-                    )
-                )
+            )
 
 
 class SearchFilterValidationTest(TestCase):
@@ -751,7 +776,7 @@ class SearchFilterValidationTest(TestCase):
         """Test filter validation with invalid filter type"""
         context = SearchRuleExecutionContext(
             tenant_id=str(self.tenant.id),
-            filters="not a dict",  # type: ignore[misc]  # test: edge-case type exercise
+            filters="not a dict",  # test: edge-case type exercise
         )
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)

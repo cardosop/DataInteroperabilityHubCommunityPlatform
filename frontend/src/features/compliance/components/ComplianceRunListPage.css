@@ -17,6 +17,22 @@
   gap: 1rem;
 }
 
+/* Phase 278.J — inline glossary help row (ROPA, DPIA, DSAR, RLS, ABAC) */
+.compliance-glossary-terms {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.compliance-glossary-term {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
 .compliance-create-run-btn {
   padding: 0.5rem 1rem;
   border-radius: 4px;
@@ -147,9 +163,12 @@
   font-weight: 500;
 }
 
+/* Badge text shades: 800/900-level tokens keep ≥4.5:1 contrast against the
+   50-level chip backgrounds (700-level text measures ~2.5–4.4:1 and fails
+   WCAG 2 AA — flagged by the axe-critical-pages E2E audit). */
 .status-badge.status-pending {
   background: var(--color-warning-50);
-  color: var(--color-warning-700);
+  color: var(--color-warning-800);
 }
 
 .status-badge.status-running {
@@ -159,12 +178,12 @@
 
 .status-badge.status-succeeded {
   background: var(--color-success-50);
-  color: var(--color-success-700);
+  color: var(--color-success-900);
 }
 
 .status-badge.status-failed {
   background: var(--color-error-50);
-  color: var(--color-error-700);
+  color: var(--color-error-900);
 }
 
 .overall-status-badge {
@@ -177,17 +196,17 @@
 
 .overall-status-badge.overall-status-pass {
   background: var(--color-success-50);
-  color: var(--color-success-700);
+  color: var(--color-success-900);
 }
 
 .overall-status-badge.overall-status-fail {
   background: var(--color-error-50);
-  color: var(--color-error-700);
+  color: var(--color-error-900);
 }
 
 .overall-status-badge.overall-status-warn {
   background: var(--color-warning-50);
-  color: var(--color-warning-700);
+  color: var(--color-warning-800);
 }
 
 .risk-level-badge {
@@ -199,12 +218,12 @@
 }
 
 .risk-level-badge.risk-level-critical {
-  background: var(--color-error-700);
+  background: var(--color-error-900);
   color: var(--color-text-on-primary);
 }
 
 .risk-level-badge.risk-level-high {
-  background: var(--color-error-500);
+  background: var(--color-error-700);
   color: var(--color-text-on-primary);
 }
 
@@ -215,7 +234,7 @@
 
 .risk-level-badge.risk-level-low {
   background: var(--color-success-50);
-  color: var(--color-success-700);
+  color: var(--color-success-900);
 }
 
 .risk-level-badge.risk-level-unknown {
@@ -233,12 +252,12 @@
 
 .allowed-badge.allowed {
   background: var(--color-success-50);
-  color: var(--color-success-700);
+  color: var(--color-success-900);
 }
 
 .allowed-badge.blocked {
   background: var(--color-error-50);
-  color: var(--color-error-700);
+  color: var(--color-error-900);
 }
 
 .compliance-run-list-pagination {

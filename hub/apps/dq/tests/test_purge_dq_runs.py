@@ -686,7 +686,7 @@ class S3PrefixDeleteHelperTests(TransactionTestCase):
 
         with override_settings(AWS_STORAGE_BUCKET_NAME=self._bucket):
             client = S3StorageClient()
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="refuses empty prefix"):
                 client.delete_prefix("", bucket=self._bucket)
 
     def test_prefix_does_not_match_unrelated_keys(self):

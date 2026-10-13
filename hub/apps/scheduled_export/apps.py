@@ -14,4 +14,4 @@ class ScheduledExportConfig(AppConfig):
 
     def ready(self):
         """Import business rules to register them."""
-        import hub.apps.scheduled_export.business_rules  # noqa: F401 - Import to register business rules
+        import hub.apps.scheduled_export.business_rules  # side-effect import: registers business rules

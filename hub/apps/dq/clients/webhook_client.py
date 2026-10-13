@@ -30,7 +30,13 @@ import uuid
 from typing import Any
 
 from ..log_helpers import _redact
-from .base import AlertDeliveryError, BaseAlertClient, DeliveryResult
+from .base import (
+    AlertDeliveryError,
+    BaseAlertClient,
+    DeliveryResult,
+    _audit_ssrf_block,
+    _ssrf_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +63,20 @@ class WebhookAlertClient(BaseAlertClient):
         webhook_url = config.get("url") or config.get("webhook_url")
         if not webhook_url:
             raise AlertDeliveryError(f"WEBHOOK channel config has no url (rule {rule.id})")
+
+        # W1.13 — deliver-time SSRF re-check: blocks PROVEN-private
+        # targets (rebinding between rule save and delivery is closed);
+        # DNS-resolution failure passes (see resolve_private_or_none).
+        # W1.19 — convention 8: the block emits its audit event.
+        if _ssrf_enabled():
+            from hub.apps.webhooks.ssrf_guard import resolve_private_or_none
+
+            violation = resolve_private_or_none(webhook_url)
+            if violation:
+                _audit_ssrf_block(rule, violation)
+                raise AlertDeliveryError(
+                    f"SSRF protection blocked WEBHOOK delivery: {violation}"
+                )
 
         body = json.dumps(payload, default=str, sort_keys=True).encode("utf-8")
         headers = _build_headers(config, body)
@@ -131,7 +151,7 @@ def _build_headers(config: dict[str, Any], body_bytes: bytes) -> dict[str, str]:
 
     extra = config.get("headers") or {}
     if isinstance(extra, dict):
-        for i, (name, value) in enumerate(extra.items()):
+        for i, (name, raw_value) in enumerate(extra.items()):
             if i >= _MAX_FORWARDED_HEADERS:
                 logger.warning(
                     "dq_alert_webhook_headers_truncated",
@@ -147,16 +167,14 @@ def _build_headers(config: dict[str, Any], body_bytes: bytes) -> dict[str, str]:
                     extra=_redact({"header_name": str(name)[:64]}),
                 )
                 continue
-            if not isinstance(value, str):
-                value = str(value)
             # Reject CR/LF in header values (header injection).
-            if "\r" in value or "\n" in value:
+            if "\r" in raw_value or "\n" in raw_value:
                 logger.warning(
                     "dq_alert_webhook_header_value_rejected",
                     extra=_redact({"header_name": name}),
                 )
                 continue
-            headers[name] = value
+            headers[name] = raw_value
 
     # HMAC-SHA256 signature if secret is configured. Reserved headers —
     # tenant-supplied values for these are overwritten.

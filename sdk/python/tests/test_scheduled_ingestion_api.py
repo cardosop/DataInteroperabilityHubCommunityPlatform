@@ -44,13 +44,17 @@ async def test_create_ingestion(ingestion_api, client):
     )
 
     assert result == expected_response
+    # create() translates to the server's contract: UPPERCASE source_type
+    # TextChoices and schedule_type=CUSTOM_CRON + schedule_config.cron (the
+    # server model has no bare "schedule" field).
     client.post.assert_called_once_with(
         "scheduled-ingestions/",
         data={
             "name": "test-ingestion",
-            "source_type": "s3",
+            "source_type": "S3",
             "source_config": {"bucket": "test-bucket"},
-            "schedule": "0 0 * * *",
+            "schedule_type": "CUSTOM_CRON",
+            "schedule_config": {"cron": "0 0 * * *"},
         },
     )
 

@@ -9,7 +9,8 @@ import importlib
 import uuid
 
 import pytest
-from django.db import connection, migrations as django_migrations
+from django.db import connection
+from django.db import migrations as django_migrations
 from django.test import TestCase
 
 from hub.apps.tenants.models import KYCStatus, Tenant
@@ -148,10 +149,17 @@ class VirtualDatasetMigrationTest(TestCase):
                     composite_indexes.append((idx_name, cols))
 
             # Single-column indexes that must exist
-            for required_col in ("tenant_id", "created_by_id", "query_type", "status", "created_at"):
+            for required_col in (
+                "tenant_id",
+                "created_by_id",
+                "query_type",
+                "status",
+                "created_at",
+            ):
                 self.assertIn(
-                    required_col, indexed_columns,
-                    f"Column '{required_col}' should have at least one index"
+                    required_col,
+                    indexed_columns,
+                    f"Column '{required_col}' should have at least one index",
                 )
 
             # Composite indexes that must exist
@@ -248,15 +256,13 @@ class VirtualDatasetMigrationTest(TestCase):
 
         # Also verify the initial migration creates the virtual_datasets
         # table (source of truth for forward migration correctness).
-        m0001 = importlib.import_module(
-            "hub.apps.virtualization.migrations.0001_initial"
-        )
+        m0001 = importlib.import_module("hub.apps.virtualization.migrations.0001_initial")
         create_ops = [
-            op for op in m0001.Migration.operations
-            if isinstance(op, django_migrations.CreateModel)
+            op for op in m0001.Migration.operations if isinstance(op, django_migrations.CreateModel)
         ]
         self.assertGreater(
-            len(create_ops), 0,
+            len(create_ops),
+            0,
             "0001_initial should contain at least one CreateModel operation",
         )
 
@@ -436,9 +442,7 @@ class QueryExecutionMigrationTest(TestCase):
 
             # Verify composite indexes - collect (name, columns) tuples
             composite_indexes = [
-                (idx_name, columns)
-                for idx_name, columns in indexes.items()
-                if len(columns) > 1
+                (idx_name, columns) for idx_name, columns in indexes.items() if len(columns) > 1
             ]
             self.assertGreater(
                 len(composite_indexes),
@@ -516,11 +520,11 @@ class QueryExecutionMigrationTest(TestCase):
             "hub.apps.virtualization.migrations.0003_add_query_execution"
         )
         create_ops = [
-            op for op in m0003.Migration.operations
-            if isinstance(op, django_migrations.CreateModel)
+            op for op in m0003.Migration.operations if isinstance(op, django_migrations.CreateModel)
         ]
         self.assertGreater(
-            len(create_ops), 0,
+            len(create_ops),
+            0,
             "0003_add_query_execution should contain at least one CreateModel",
         )
 

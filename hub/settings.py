@@ -9,7 +9,7 @@ import sys
 import warnings
 from pathlib import Path
 
-import environ
+import environ  # type: ignore[import-untyped]
 from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -62,7 +62,7 @@ if _AWS_SECRETS_ENABLED:
 # Production path (flag unset) is byte-for-byte unchanged: ALL_HUB_APPS
 # preserves the exact pre-split INSTALLED_APPS ordering.
 # ---------------------------------------------------------------------------
-from hub.apps.manifest import (  # noqa: E402
+from hub.apps.manifest import (
     ALL_HUB_APPS,
     CORE_APPS,
     PAID_MIDDLEWARE,
@@ -143,7 +143,7 @@ else:
 # fails on any error. Optional — guarded so a dev box without the
 # package installed still boots.
 try:
-    import django_migration_linter  # noqa: F401
+    import django_migration_linter  # type: ignore[import-untyped]  # availability probe
 
     if "django_migration_linter" not in INSTALLED_APPS:
         INSTALLED_APPS.append("django_migration_linter")
@@ -172,7 +172,7 @@ except ImportError:
 # core-only mode, so the whole conditional insert is skipped there.
 if not HUB_CORE_ONLY:
     try:
-        import graphene_django  # noqa: F401
+        import graphene_django  # type: ignore[import-untyped]  # availability probe
 
         # Add graphene_django to INSTALLED_APPS if available
         if "graphene_django" not in INSTALLED_APPS:
@@ -188,7 +188,7 @@ if not HUB_CORE_ONLY:
 
 # Conditionally add channels if available (for WebSocket support)
 try:
-    import channels  # noqa: F401
+    import channels  # type: ignore[import-untyped]  # availability probe
 
     # Add channels to INSTALLED_APPS if available
     if "channels" not in INSTALLED_APPS:
@@ -196,6 +196,15 @@ try:
 except ImportError:
     # channels is not installed - this is OK, WebSocket support won't be available
     pass
+
+# W1.18 (oss-release-remediation) — WebSocket query-param auth is OFF by
+# default: a ``?token=`` / ``?api_key=`` in the handshake URL lands in
+# nginx access logs, browser history and Referer headers. The shipped
+# client uses message-based auth (``authenticate`` frame); the middleware
+# closes such handshakes with 4001. Set
+# WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=false explicitly to re-enable the
+# deprecated path.
+WEBSOCKET_QUERY_PARAM_AUTH_DISABLED = env.bool("WEBSOCKET_QUERY_PARAM_AUTH_DISABLED", default=True)
 
 MIDDLEWARE = [
     # 0 — Must be first: sets security headers (HSTS, nosniff, XSS, SSL redirect)
@@ -372,8 +381,9 @@ def _detect_staging_for_tests():
         # Accept 200 (OK), 301/302 (redirects), 503 (unhealthy but service exists)
         if response.status_code in [200, 301, 302, 503]:
             return True
-    except (ConnectionError, TimeoutError, OSError, Exception):
-        # Catch all exceptions including httpx.ConnectError to prevent import failures during tests
+    except (httpx.HTTPError, ImportError, OSError):
+        # httpx transport errors (ConnectError, TimeoutException), missing httpx, and
+        # socket-level failures all fall through to the psycopg2 probe below.
         # Also check if staging PostgreSQL port is accessible as fallback
         try:
             import psycopg2
@@ -387,7 +397,6 @@ def _detect_staging_for_tests():
                 connect_timeout=1,
             )
             test_conn.close()
-            return True
         except (psycopg2.OperationalError, psycopg2.Error, ConnectionError, TimeoutError):
             # Staging database not available - expected in non-staging environments
             pass
@@ -400,10 +409,38 @@ def _detect_staging_for_tests():
                 "Unexpected error checking staging database",
                 extra={"error_type": type(e).__name__},
             )
+        else:
+            return True
 
     # Default to False (non-staging) if detection fails
     # This prevents production from accidentally using staging ports
     return False
+
+
+# P.3c root fix: _pgbouncer_enabled and _db_options were defined only inside
+# the TEST branch below, but the BAAS_DATABASE_URL block and the non-test
+# connection block both read them — any process taking the NON-test branch
+# (production/dev, or scripts that inject no pytest) crashed with
+# "NameError: name '_pgbouncer_enabled' is not defined" (then "_db_options")
+# at settings import. Hoisted to true module scope (single source); branches
+# keep only their environment-dependent additions.
+_pgbouncer_enabled = env.bool("PGBOUNCER_ENABLED", default=False)
+_db_options: dict = {
+    "connect_timeout": 60,  # Increased for TransactionTestCase database setup (migrations can take time)
+    # Connection keepalive settings (via psycopg2)
+    "keepalives": 1,  # Send keepalive packets
+    "keepalives_idle": 30,  # Start sending keepalives after 30 seconds of inactivity
+    "keepalives_interval": 10,  # Interval between keepalive packets
+    "keepalives_count": 5,  # Number of keepalive packets before considering connection dead
+    "options": "-c statement_timeout={st} -c idle_in_transaction_session_timeout={itst}".format(
+        # E2E/test: 4 parallel Playwright workers overload the DB — queries that take <5s
+        # in isolation can hit 60s under contention.  120s prevents cascading 500s.
+        st=120000 if ENVIRONMENT == "test" else 60000,
+        itst=env.int("TEST_IDLE_IN_TRANSACTION_TIMEOUT_MS", default=120000)
+        if ENVIRONMENT == "test"
+        else 300000,
+    ),
+}
 
 
 if "test" in sys.argv or "pytest" in sys.modules:
@@ -419,7 +456,7 @@ if "test" in sys.argv or "pytest" in sys.modules:
         raise RuntimeError(
             "psycopg2 is required for tests but not installed. "
             "Install it with: pip install psycopg2-binary"
-        )
+        ) from None
 
     # Get PostgreSQL connection parameters
     # For E2E tests, detect which PostgreSQL is actually running by trying both ports
@@ -555,7 +592,8 @@ if "test" in sys.argv or "pytest" in sys.modules:
                     warnings.warn(
                         f"PostgreSQL connection failed ({reason}), retrying in {retry_delay}s "
                         f"(attempt {attempt + 1}/{max_retries}). "
-                        f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}."
+                        f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}.",
+                        stacklevel=2,
                     )
                 time.sleep(retry_delay)
                 continue
@@ -576,13 +614,14 @@ if "test" in sys.argv or "pytest" in sys.modules:
                         f"Error: {e}.{hint}"
                     ) from e
                 # "Starting up" only: allow connection to be retried later for Docker Compose E2E
-                if not os.getenv("DOCKER_COMPOSE_E2E_TEST", "").lower() == "true":
+                if os.getenv("DOCKER_COMPOSE_E2E_TEST", "").lower() != "true":
                     warnings.warn(
                         f"PostgreSQL connection failed after {max_retries} retries "
                         f"(may be starting up or not running). "
                         f"Connection will be retried when needed. "
                         f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}. "
-                        f"Error: {e}"
+                        f"Error: {e}",
+                        stacklevel=2,
                     )
                 break
             else:
@@ -649,6 +688,8 @@ if "test" in sys.argv or "pytest" in sys.modules:
     # When TEST_DB_SUFFIX is set (e.g. "shared"), use fixed DB name so external services (prefect-integration) can connect
     use_shared_test_db = bool(test_db_suffix)
 
+    # (_pgbouncer_enabled / _db_options are hoisted to module scope above
+    # the mode branches — P.3c.)
     if use_production_db:
         # Use production database for SDK tests (allows API service to see test data)
         test_db_name = postgres_db
@@ -693,7 +734,7 @@ if "test" in sys.argv or "pytest" in sys.modules:
                     use_production_db or use_shared_test_db
                 ),  # Don't create if using existing
             },
-            # With --reuse-db and long test classes (e.g. 16 tests × 30s = 8 min),
+            # With --reuse-db and long test classes (e.g. 16 tests x 30s = 8 min),
             # CONN_MAX_AGE=0 forces every connection to be immediately expired while
             # Django TestCase atomics require persistent connections.  PostgreSQL
             # eventually idles-out the connection, and Django 6.0's
@@ -747,25 +788,10 @@ else:
     # - 0: Required when PgBouncer is active (transaction mode is incompatible with persistent connections)
     # - 600: Reuse connections for 10 minutes (direct Postgres without PgBouncer)
     # - None: Keep connections open indefinitely (not recommended)
-    _pgbouncer_enabled = env.bool("PGBOUNCER_ENABLED", default=False)
+    # (_pgbouncer_enabled and _db_options are hoisted above the mode
+    # branches — P.3c)
     conn_max_age = 0 if _pgbouncer_enabled else env.int("DB_CONN_MAX_AGE", default=600)
 
-    _db_options: dict = {
-        "connect_timeout": 60,  # Increased for TransactionTestCase database setup (migrations can take time)
-        # Connection keepalive settings (via psycopg2)
-        "keepalives": 1,  # Send keepalive packets
-        "keepalives_idle": 30,  # Start sending keepalives after 30 seconds of inactivity
-        "keepalives_interval": 10,  # Interval between keepalive packets
-        "keepalives_count": 5,  # Number of keepalive packets before considering connection dead
-        "options": "-c statement_timeout={st} -c idle_in_transaction_session_timeout={itst}".format(
-            # E2E/test: 4 parallel Playwright workers overload the DB — queries that take <5s
-            # in isolation can hit 60s under contention.  120s prevents cascading 500s.
-            st=120000 if ENVIRONMENT == "test" else 60000,
-            itst=env.int("TEST_IDLE_IN_TRANSACTION_TIMEOUT_MS", default=120000)
-            if ENVIRONMENT == "test"
-            else 300000,
-        ),
-    }
     if ENVIRONMENT == "production":
         # Enforce TLS for all PostgreSQL connections in production.
         # When using AWS RDS or GCP Cloud SQL, the CA cert is provided by the managed service;
@@ -823,7 +849,15 @@ if not HUB_CORE_ONLY:
         # flushes both aliases via two connections to the same physical DB,
         # causing TRUNCATE (AccessExclusiveLock) deadlocks between the two
         # connections when the suite is large enough (>150 tests).
-        DATABASES["baas"].setdefault("TEST", {})
+        # CRITICAL: ``dict(...)`` above is a SHALLOW copy — the "TEST" sub-dict
+        # is shared with the default alias.  Mutating it in place set
+        # MIRROR="default" on the DEFAULT alias itself, so
+        # TransactionTestCase._databases_names(include_mirrors=False) returned
+        # an empty list and NO test in the project ever flushed the test DB
+        # (found by the paid Marketplace CLI/SDK parity run — fixture rows
+        # from one test collided with the next test's setUp).  Copy the TEST
+        # sub-dict before marking the mirror.
+        DATABASES["baas"]["TEST"] = dict(DATABASES["baas"].get("TEST") or {})
         DATABASES["baas"]["TEST"]["MIRROR"] = "default"
 else:
     BAAS_DATABASE_URL = None
@@ -899,6 +933,13 @@ if "TEST" in DATABASES["default"]:
 # (UUID strings) exempt from KYC for orders/entitlements. Default empty. See RUNBOOKS.md.
 MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS = env.list("MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS", default=[])
 
+# R2-B6 (W2.7) — plan-limit counter fail-closed mode.  When True, a
+# resource-counter error (schema drift / DB outage / bad SQL) RAISES
+# ``LimitCounterError`` inside ``PlanLimitService.check_limit`` instead
+# of reading as 0 usage (the fail-open fallback).  Counter errors are
+# ALWAYS audited (``LIMIT_COUNTER_ERROR``) regardless of this flag.
+LIMIT_CHECK_STRICT = env.bool("LIMIT_CHECK_STRICT", default=False)
+
 # Redis Configuration
 # Separate Redis instances for cache, queue, events, and channels
 # When running locally (outside Docker), use 'localhost'
@@ -913,7 +954,13 @@ else:
     # Production/default: use standard port
     default_redis_port = "6379"
 
-# Legacy REDIS_URL for backward compatibility
+# Legacy REDIS_URL for backward compatibility.
+# NOTE (close-test-coverage-gaps 7.2): the contracts caching suites'
+# skip gate pings THIS setting (test_caching_enhanced.py's
+# get_real_redis_client_or_none), NOT REDIS_CACHE_URL — host-side
+# recipes must export BOTH (see
+# docs/runbooks/HOST_SIDE_VERIFICATION.md "Contracts Redis recipe"):
+# REDIS_CACHE_URL alone is a proven 33-skip state.
 REDIS_URL = env("REDIS_URL", default=f"redis://localhost:{default_redis_port}/0")
 
 # Separate Redis URLs for each instance (with backward compatibility fallback to REDIS_URL)
@@ -933,6 +980,12 @@ if REDIS_CACHE_URL is None:
 
 # Redis Queue Instance - Job queues (RQ)
 REDIS_QUEUE_URL = env("REDIS_QUEUE_URL", default=None)
+# W0.7 (oss-release-remediation): the JSON serializer when the
+# environment demands it — staging sets RQ_SERIALIZER to
+# rq.serializers.JSONSerializer (the rq pickle default is the R2-S8 RCE
+# class). None keeps rq's DefaultSerializer (dev/test unchanged until
+# the global flip is ticketed).
+RQ_SERIALIZER = env("RQ_SERIALIZER", default=None)
 if REDIS_QUEUE_URL is None:
     # Fallback: use service name redis-queue (Docker) or localhost (local)
     # Better detection: check for Docker environment first
@@ -986,7 +1039,12 @@ if REDIS_CHANNELS_URL is None:
 # Production: all Redis URLs MUST include authentication credentials with a non-empty password.
 # Format: redis://:password@host:port/db  (note the empty username before the colon)
 # Rejected: missing '@' (unauthenticated) OR ':@' pattern (empty password — equally insecure).
-if ENVIRONMENT == "production":
+# W0.8 (oss-release-remediation): staging joins production — the W0.7
+# requirepass hardening made the staging passwordless FALLBACK URLs
+# (redis://redis-queue:6379/0 when the env var is absent) fail at first
+# connect; the guard is what surfaces that class at boot instead of a
+# silent "Authentication required." crash or a lazy runtime break.
+if ENVIRONMENT in ("production", "staging"):
     _redis_urls_to_validate = {
         "REDIS_URL": REDIS_URL,
         "REDIS_CACHE_URL": REDIS_CACHE_URL,
@@ -1001,7 +1059,7 @@ if ENVIRONMENT == "production":
     if DATABASE_REPLICA_URL:
         if "@" not in DATABASE_REPLICA_URL:
             raise ImproperlyConfigured(
-                "In production, DATABASE_REPLICA_URL must include authentication credentials "
+                "In production/staging, DATABASE_REPLICA_URL must include authentication credentials "
                 "(format: postgresql://user:password@host:port/db). "
                 "Unauthenticated replica connections are not permitted. "
                 "See .env.production.template."
@@ -1011,7 +1069,7 @@ if ENVIRONMENT == "production":
         _replica_pass_part = _replica_creds.rsplit(":", 1)[-1]
         if not _replica_pass_part:
             raise ImproperlyConfigured(
-                "In production, DATABASE_REPLICA_URL has an empty password. "
+                "In production/staging, DATABASE_REPLICA_URL has an empty password. "
                 "Set a strong password: postgresql://user:password@host:port/db. "
                 "See .env.production.template."
             )
@@ -1020,7 +1078,7 @@ if ENVIRONMENT == "production":
             continue
         if "@" not in _redis_url:
             raise ImproperlyConfigured(
-                f"In production, {_redis_var} must include authentication credentials "
+                f"In production/staging, {_redis_var} must include authentication credentials "
                 f"(format: redis://:password@host:port/db). "
                 f"Current value has no '@' — unauthenticated Redis is not permitted. "
                 f"See docs/SECURITY.md."
@@ -1032,7 +1090,7 @@ if ENVIRONMENT == "production":
         # An empty password means the segment ends with ':'  e.g. "redis://:".
         if _creds_segment.endswith(":"):
             raise ImproperlyConfigured(
-                f"In production, {_redis_var} has an empty password "
+                f"In production/staging, {_redis_var} has an empty password "
                 f"(detected pattern: '...:<empty>@'). "
                 f"Set a strong password: redis://:strongpassword@host:port/db. "
                 f"See docs/SECURITY.md."
@@ -1065,6 +1123,13 @@ RQ_QUEUES = {
         "DEFAULT_RESULT_TTL": 500,
     },
 }
+
+# W0.7: django-rq reads the SERIALIZER queue key (django_rq/queues.py
+# get_queue) and rq resolves the dotted path — producers and the
+# manage.py rqworker consumers agree through RQ_QUEUES.
+if RQ_SERIALIZER:
+    for _q in RQ_QUEUES.values():
+        _q["SERIALIZER"] = RQ_SERIALIZER
 
 # RQ: synchronous mode during tests.
 # When running under pytest/unittest, execute enqueued jobs inline (in the
@@ -1198,7 +1263,7 @@ if is_test_env:
 else:
     # Use Redis cache backend for production (separate Redis instance for cache)
     try:
-        import django_redis
+        import django_redis  # type: ignore[import-untyped]  # availability probe
 
         CACHES = {
             "default": {
@@ -1289,6 +1354,12 @@ JOB_RETRY_MAX_ATTEMPTS = {
     "ODPS_SEMANTIC_MAPPING": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_SEMANTIC_MAPPING", default=2),
     "ODPS_LINKING": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_LINKING", default=2),
     "VIRTUAL_QUERY_EXECUTION": env.int("JOB_RETRY_MAX_ATTEMPTS_VIRTUAL_QUERY_EXECUTION", default=2),
+    "DATABRICKS_UC_METADATA_SYNC": env.int(
+        "JOB_RETRY_MAX_ATTEMPTS_DATABRICKS_UC_METADATA_SYNC", default=1
+    ),
+    "DATABRICKS_UC_CHANGE_REAPER": env.int(
+        "JOB_RETRY_MAX_ATTEMPTS_DATABRICKS_UC_CHANGE_REAPER", default=1
+    ),
 }
 
 # Initial delay before first retry per job type (in seconds)
@@ -1358,20 +1429,24 @@ JOB_RETRY_BACKOFF_FACTOR = {
 }
 
 # S3/MinIO Configuration
-# MEDIA_URL must always be set (Django 6 + LiveServerTestCase
-# passes them through urlparse which returns bytes path for None).
-# STATIC_URL is set inside the USE_S3 branches below — the S3 branch
-# sets it via django-storages, the else branch sets it to "/static/".
+# MEDIA_URL and STATIC_URL must always be set (Django 6 +
+# LiveServerTestCase passes them through urlparse, which returns a bytes
+# path for None; FSFilesHandler then does str.startswith(bytes) and every
+# live-server request dies with a TypeError/500). STATIC_URL used to be
+# assigned only in the local-storage branch — the S3 branch left it at
+# Django's None default (django-storages reads STATIC_URL; it never writes
+# it). Found by the paid Marketplace CLI/SDK parity run (LiveServerTestCase
+# served only 500s until this default existed).
 MEDIA_URL = "/"
+STATIC_URL = "/static/"
 
 USE_S3 = env.bool("USE_S3", default=True)
 if USE_S3:
     # Only detect staging in test mode to avoid affecting production
     is_test_env = "test" in sys.argv or "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST")
-    if is_test_env:
-        staging_detected = _detect_staging_for_tests()
-    else:
-        staging_detected = False  # Production defaults to non-staging
+    staging_detected = (
+        _detect_staging_for_tests() if is_test_env else False  # Production defaults to non-staging
+    )
 
     # Environment variables always take precedence
     env_access_key = os.getenv("AWS_ACCESS_KEY_ID")
@@ -1500,6 +1575,20 @@ CLAMAV_HOST = env("CLAMAV_HOST", default="clamav")
 CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)
 CLAMAV_TIMEOUT_SECONDS = env.float("CLAMAV_TIMEOUT_SECONDS", default=120.0)
 CLAMAV_JOB_TIMEOUT_SECONDS = env.int("CLAMAV_JOB_TIMEOUT_SECONDS", default=300)
+# W1.18 (oss-release-remediation) — ClamAV outage policy. When a file's
+# scan never produced a verdict (SCAN_UNAVAILABLE — clamd disabled or
+# unreachable), the dataset-source and download gates honour this policy:
+#   "allow" (default) — the file proceeds; SRE alerting covers the outage
+#       (availability over assurance; the recorded decision lives in
+#       docs/runbooks/file-virus-scan-incident.md).
+#   "block" — the file is treated like PENDING_SCAN: 503
+#       FILE_SCAN_UNAVAILABLE + FILE_SCAN_UNAVAILABLE_BLOCKED audit
+#       (fail-closed for high-assurance tenants/environments).
+SCAN_UNAVAILABLE_POLICY = env("SCAN_UNAVAILABLE_POLICY", default="allow")
+if SCAN_UNAVAILABLE_POLICY not in ("allow", "block"):
+    raise ImproperlyConfigured(
+        f"SCAN_UNAVAILABLE_POLICY must be 'allow' or 'block'; got {SCAN_UNAVAILABLE_POLICY!r}."
+    )
 # Phase 260.0.17 — production startup probes clamd VERSION (wired from CoreConfig.ready).
 CLAMAV_STARTUP_VERSION_CHECK_ENABLED = env.bool(
     "CLAMAV_STARTUP_VERSION_CHECK_ENABLED", default=True
@@ -1510,12 +1599,24 @@ CLAMAV_MINIMUM_ENGINE_VERSION = env("CLAMAV_MINIMUM_ENGINE_VERSION", default="0.
 MAX_BROWSER_UPLOAD_SIZE = env.int("MAX_BROWSER_UPLOAD_SIZE", default=100 * 1024 * 1024)  # 100MB
 MAX_SDK_UPLOAD_SIZE = env.int("MAX_SDK_UPLOAD_SIZE", default=5 * 1024 * 1024 * 1024)  # 5GB
 MAX_FILE_SIZE = env.int("MAX_FILE_SIZE", default=10 * 1024 * 1024 * 1024)  # 10GB
+# Phase 260.3.F — browser uploads ABOVE this size route through the
+# resumable multipart engine (chunked XHR PUTs), so the single-PUT-era
+# ``MAX_BROWSER_UPLOAD_SIZE`` cap does not apply to them; they are
+# governed by the platform/tenant effective limit instead. Must stay in
+# sync with the backend's ``requires_multipart`` decision.
+MULTIPART_UPLOAD_THRESHOLD = env.int(
+    "MULTIPART_UPLOAD_THRESHOLD", default=100 * 1024 * 1024
+)  # 100MB
 ALLOWED_FILE_TYPES = env.list(
     "ALLOWED_FILE_TYPES", default=["csv", "json", "parquet", "txt", "xlsx", "xls"]
 )
 
 # Phase 260.2.B — declared content-type vs magic-byte sniff on ``complete_upload`` (D260.3).
-MAGIC_BYTE_VALIDATION_ENABLED = env.bool("MAGIC_BYTE_VALIDATION_ENABLED", default=False)
+# W1.18 (oss-release-remediation): default-ON — the opt-in env flag made the
+# hardening silently absent on any deployment that never set the env var.
+# Set MAGIC_BYTE_VALIDATION_ENABLED=false explicitly to disable (documented
+# risk; the test stack's docker-compose.test.yml already ran it ON).
+MAGIC_BYTE_VALIDATION_ENABLED = env.bool("MAGIC_BYTE_VALIDATION_ENABLED", default=True)
 
 # Async polling deadlines (Phase 69 — fail-closed on timeout)
 COMPLIANCE_POLL_MAX_SECONDS = env.int("COMPLIANCE_POLL_MAX_SECONDS", default=300)
@@ -1589,17 +1690,26 @@ COMPLIANCE_WEBHOOK_REPORT_BASE_URL = env("COMPLIANCE_WEBHOOK_REPORT_BASE_URL", d
 # ``EMAIL_BACKEND`` setting — which the test runner sets to locmem.)
 EMAIL_PROVIDER = env("EMAIL_PROVIDER", default=env("EMAIL_BACKEND", default="smtp"))
 
-# When running under the Django test runner, ensure Django's own
-# ``EMAIL_BACKEND`` uses locmem so no real SMTP connections are
-# attempted.  The env var ``EMAIL_BACKEND`` (set by docker-compose)
-# shadows Django's default for the *provider* selector above but
-# does NOT affect this line — it's Django's built-in setting.
+# Under the Django test runner, use locmem so no real SMTP connections
+# are attempted.  The env var ``EMAIL_BACKEND`` (set by docker-compose)
+# only selects the *provider* pipeline above — Django's mailer config is
+# the ``MAILERS`` dict below (Django 6.1 deprecates the EMAIL_* settings).
 import os as _os
 import sys as _sys
 
 _e2e_smtp = _os.environ.get("E2E_ENABLE_SMTP", "").lower() in ("true", "1", "yes")
-if ("test" in _sys.argv or _os.environ.get("TEST_DB_SUFFIX")) and not _e2e_smtp:
-    EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+_use_locmem_mailer = (
+    "test" in _sys.argv or bool(_os.environ.get("TEST_DB_SUFFIX"))
+) and not _e2e_smtp
+
+if "test" in _sys.argv or _os.environ.get("TEST_DB_SUFFIX"):
+    # The api-service-test image runs with a read-only rootfs (hardened
+    # runtime); $HOME/.prefect is not writable and Prefect would emit
+    # "Failed to create the Prefect home directory" per import. Point
+    # PREFECT_HOME at the writable tmpfs.  Deliberately NOT gated on
+    # _e2e_smtp — the E2E stack sets E2E_ENABLE_SMTP=true, which would
+    # otherwise keep the warning.
+    _os.environ.setdefault("PREFECT_HOME", "/tmp/prefect-home")
 
 # Brand (Phase 28.7.5 Meshant)
 APP_NAME = env("APP_NAME", default="Meshant")
@@ -1629,6 +1739,30 @@ SMTP_USE_TLS = env.bool("SMTP_USE_TLS", default=True)
 SMTP_USE_SSL = env.bool("SMTP_USE_SSL", default=False)
 SMTP_FROM_EMAIL = env("SMTP_FROM_EMAIL", default=None)
 SMTP_FROM_NAME = env("SMTP_FROM_NAME", default=APP_NAME)
+
+# Phase U.6: mirror the SMTP_* provider settings into Django's mail
+# config. Django 6.1 deprecates the EMAIL_* settings in favour of the
+# ``MAILERS`` dict (RemovedInDjango70Warning, removed in 7.0) — without
+# the mirroring the default localhost mailer made every staging send
+# fail with ConnectionRefused (the SMTP_* vars alone configure the
+# custom EMAIL_PROVIDER pipeline, not send_mail). Under the test runner
+# the default mailer is locmem (no real SMTP connections).
+if _use_locmem_mailer:
+    MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+else:
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "HOST": SMTP_HOST,
+            "PORT": SMTP_PORT,
+            "USERNAME": SMTP_USERNAME,
+            "PASSWORD": SMTP_PASSWORD,
+            "USE_TLS": SMTP_USE_TLS,
+            "USE_SSL": SMTP_USE_SSL,
+        },
+    }
+if SMTP_FROM_EMAIL:
+    DEFAULT_FROM_EMAIL = SMTP_FROM_EMAIL
 
 # Phase 226 OQ-MailHog — in-cluster URL of the MailHog HTTP API.
 # Consumed ONLY by hub/apps/api/mailhog_proxy_views.py. Empty string
@@ -1725,6 +1859,31 @@ REST_FRAMEWORK = {
         # ImproperlyConfigured("No default throttle rate set for 'user'")
         # because UserRateThrottle.scope == "user".
         "user": "60/minute",
+        # R2-B1 (W1.1) — the RegisterThrottle scope. REQUIRED even though
+        # the class overrides self.rate from AUTH_REGISTER_RATE_LIMIT:
+        # SimpleRateThrottle.__init__ resolves THROTTLE_RATES[self.scope]
+        # INSIDE super().__init__(), BEFORE the override assignment runs —
+        # without this entry every register request 500s on throttle init
+        # (the W1.1 live-found class; the api-key throttle only avoided it
+        # because UserRateThrottle's "user" scope happens to exist).
+        "auth_register": "10/minute",
+        # D4 (W1.5) — the SSOThrottle scope (same DRF-3.16 super().__init__
+        # resolution requirement as auth_register, W1.1's live-found class).
+        "sso": "10/minute",
+        # Databricks control plane (task 0.8) — management API rate.
+        "databricks_workspaces": "30/minute",
+        "databricks_credentials": "30/minute",
+        "databricks_uc_browse": "30/minute",
+        "databricks_sql_warehouses": "30/minute",
+        "databricks_jobs": "30/minute",
+        "databricks_dlt": "30/minute",
+        "databricks_ml_assets": "30/minute",
+        "databricks_uc_changes": "30/minute",
+        "databricks_budgets": "30/minute",
+        # Delta Sharing server (task 5.2) — per-recipient-token protocol
+        # throttle (the docs/docs/integrations/delta-sharing.md promise:
+        # 30 req/min per consumer).
+        "delta_share_recipients": "30/minute",
         "semantic_export": "5/min",
         # 284.A.1 — per-tenant throttle for FederatedImportViewSet
         # (30/min for provider discovery, import job submission).
@@ -1756,6 +1915,9 @@ REST_FRAMEWORK = {
         "social": "30/minute",
         # BaaS API key management endpoints (defence-in-depth beneath API Gateway).
         "baas_api_key": "60/minute",
+        # Phase 313 single identity (D2) — the core auth api-keys endpoint
+        # carries its own per-tenant throttle (hub.apps.auth.throttles).
+        "auth_api_key": "60/minute",
         # Phase 285.9b.M.3 — ML model registry per-tenant throttle (30/min).
         "ml": "30/minute",
         # Phase 285.9b.M.3 — ML inference per-tenant throttle (600/hour = 10/min).
@@ -1863,7 +2025,9 @@ _cors_defaults = (
         "http://localhost:8000",
     ]
 )
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=_cors_defaults)  # type: ignore[arg-type]  # env.list returns List[str]; django-cors-headers expects Sequence[str]
+CORS_ALLOWED_ORIGINS = env.list(
+    "CORS_ALLOWED_ORIGINS", default=_cors_defaults
+)  # env.list returns List[str]; django-cors-headers expects Sequence[str]
 
 if ENVIRONMENT == "production" and not CORS_ALLOWED_ORIGINS:
     raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS must be set in production.")
@@ -1924,6 +2088,48 @@ if ENVIRONMENT == "production":
                 f"In production, {_name} must be set via environment "
                 f"and must not be the dev default. {_hint}"
             )
+
+    # W1.18 (oss-release-remediation) — JWT key-pair production guard.
+    # With an asymmetric algorithm (RS256 is the settings DEFAULT), an
+    # empty pair makes every login 500 at sign time and every token
+    # verify fail silently — a boot-time guard names the misconfig
+    # instead. A half-pair (private-only or public-only) is refused too:
+    # signing works but no verifying service can check, or vice versa.
+    # HS256 mode is unaffected (JWT_SECRET_KEY is guarded above).
+    _ASYMMETRIC_JWT_ALGORITHMS = frozenset(
+        {"RS256", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512", "EdDSA"}
+    )
+
+    def _is_pem_shaped(key_material: str) -> bool:
+        return (
+            "-----BEGIN" in key_material
+            and "KEY-----" in key_material
+            and "-----END" in key_material
+        )
+
+    if JWT_ALGORITHM in _ASYMMETRIC_JWT_ALGORITHMS:
+        if not JWT_PRIVATE_KEY or not JWT_PUBLIC_KEY:
+            raise ImproperlyConfigured(
+                f"In production, JWT_ALGORITHM={JWT_ALGORITHM} requires "
+                "both JWT_PRIVATE_KEY and JWT_PUBLIC_KEY to be set. "
+                "Use HS256 (shared-secret JWT_SECRET_KEY) or provision an "
+                "asymmetric key pair. See docs/SECURITY.md."
+            )
+        if not _is_pem_shaped(JWT_PRIVATE_KEY) or not _is_pem_shaped(JWT_PUBLIC_KEY):
+            raise ImproperlyConfigured(
+                f"In production, JWT_PRIVATE_KEY/JWT_PUBLIC_KEY for "
+                f"JWT_ALGORITHM={JWT_ALGORITHM} must be PEM-encoded keys "
+                "(-----BEGIN ... KEY-----). See docs/SECURITY.md."
+            )
+    elif JWT_PRIVATE_KEY or JWT_PUBLIC_KEY:
+        # A half-pair under HS256 is a sign that the deployer intended
+        # RS256 and misconfigured JWT_ALGORITHM — fail closed rather
+        # than silently sign with the shared secret.
+        raise ImproperlyConfigured(
+            "In production, JWT_PRIVATE_KEY and JWT_PUBLIC_KEY must be "
+            "set together (asymmetric JWT_ALGORITHM) — a half-pair is "
+            "refused. See docs/SECURITY.md."
+        )
 JWT_ACCESS_TOKEN_EXPIRY = env.int("JWT_ACCESS_TOKEN_EXPIRY", default=3600)  # 1 hour
 JWT_REFRESH_TOKEN_EXPIRY = env.int("JWT_REFRESH_TOKEN_EXPIRY", default=86400)  # 24 hours
 # Phase 90: Maximum refresh token lifetime (absolute cap, even if JWT_REFRESH_TOKEN_EXPIRY is higher)
@@ -2022,52 +2228,224 @@ OPTIMISTIC_LOCK_REQUIRE_IF_MATCH = env.bool(
     default=False,
 )
 
-# Phase 260.B-RLS-1.2 — pilot-table kill switch for assets RLS policy.
-# Middleware maps this into transaction-local GUC app.rls_assets_enabled.
+# ---------------------------------------------------------------------------
+# RLS request-path arming (W1.20 / oss-release-remediation D2, W1.4b)
+# ---------------------------------------------------------------------------
+# PostgreSQL Row-Level Security is armed on the HTTP path: the
+# TenantScopingMiddleware resolves the request tenant, then wraps the
+# rest of the request in ONE transaction and SET LOCALs
+# ``app.current_tenant_id`` plus one ``app.rls_<table>_enabled`` GUC per
+# policy, each mapped from the paired RLS_<TABLE>_ENABLED setting below.
+#
+# The transaction-local shape is mandatory: staging and production route
+# through PgBouncer in transaction pooling, where a session-level SET
+# would leak onto the next client that reuses the pooled server
+# connection.  SET LOCAL evaporates at COMMIT/ROLLBACK, so a reused
+# connection never carries one tenant's scope into the next request.
+#
+# Arming fails CLOSED: an anonymous request — or any request whose
+# tenant cannot be resolved — gets ``app.current_tenant_id`` = NULL and
+# the policies hide every tenant row.  Leaks become empty results,
+# never cross-tenant rows.
+#
+# ``RLS_REQUEST_PATH_ENABLED`` is the MASTER kill switch for the whole
+# arming path (default True — armed; set it false to disable arming
+# without a deploy).  Each RLS_<TABLE>_ENABLED switch below disables
+# ONE table's policy: its USING clause opens for reads (the forensic-
+# inspection mode) while WITH CHECK stays tenant-bound.
+#
+# The switch inventory is pinned bidirectionally against the DEPLOYED
+# policies by ``hub.apps.auth.tests.test_rls_guc_settings_sync`` — every
+# policy GUC must have a paired setting and vice versa, so a new RLS
+# migration without a kill switch (or a stale switch without a policy)
+# fails the suite.
+#
+# Pre-tenant identity resolution (API keys, JWT users, memberships) runs
+# BEFORE any tenant GUC exists and routes through
+# ``hub.apps.auth.db_aliases.user_lookup_alias()`` — the BYPASSRLS
+# admin alias in the production role shape, the default connection
+# everywhere else.
+RLS_REQUEST_PATH_ENABLED = env.bool("RLS_REQUEST_PATH_ENABLED", default=True)
+
+# Per-table kill switches — one per deployed RLS policy.  Default True
+# (enforced) per the Phase 260 D-260.4 fail-closed shape; ops sets a
+# switch "off" to open that table's reads for forensic inspection.
+RLS_ACCESS_CERTIFICATIONS_ENABLED = env.bool("RLS_ACCESS_CERTIFICATIONS_ENABLED", default=True)
+RLS_ACCESS_LOGS_ENABLED = env.bool("RLS_ACCESS_LOGS_ENABLED", default=True)
+RLS_ACCESS_POLICIES_ENABLED = env.bool("RLS_ACCESS_POLICIES_ENABLED", default=True)
+RLS_ACCESS_REQUEST_COMMENTS_ENABLED = env.bool("RLS_ACCESS_REQUEST_COMMENTS_ENABLED", default=True)
+RLS_ACCESS_REQUESTS_ENABLED = env.bool("RLS_ACCESS_REQUESTS_ENABLED", default=True)
+RLS_API_KEYS_ENABLED = env.bool("RLS_API_KEYS_ENABLED", default=True)
+RLS_API_USAGE_METRICS_ENABLED = env.bool("RLS_API_USAGE_METRICS_ENABLED", default=True)
+RLS_APPROVAL_DELEGATIONS_ENABLED = env.bool("RLS_APPROVAL_DELEGATIONS_ENABLED", default=True)
 RLS_ASSETS_ENABLED = env.bool("RLS_ASSETS_ENABLED", default=True)
+RLS_AUDIT_EVENT_RETENTION_POLICIES_ENABLED = env.bool(
+    "RLS_AUDIT_EVENT_RETENTION_POLICIES_ENABLED", default=True
+)
+RLS_AUDIT_EVENTS_ENABLED = env.bool("RLS_AUDIT_EVENTS_ENABLED", default=True)
+RLS_AUDIT_MERKLE_SNAPSHOTS_ENABLED = env.bool("RLS_AUDIT_MERKLE_SNAPSHOTS_ENABLED", default=True)
+RLS_BAAS_API_KEY_ENABLED = env.bool("RLS_BAAS_API_KEY_ENABLED", default=True)
+RLS_BAAS_CUSTOMER_BILLING_REPORT_ENABLED = env.bool(
+    "RLS_BAAS_CUSTOMER_BILLING_REPORT_ENABLED", default=True
+)
+RLS_BAAS_USAGE_RECORD_ENABLED = env.bool("RLS_BAAS_USAGE_RECORD_ENABLED", default=True)
+RLS_BREACH_ENABLED = env.bool("RLS_BREACH_ENABLED", default=True)
+RLS_COMPLIANCE_REPORTS_ENABLED = env.bool("RLS_COMPLIANCE_REPORTS_ENABLED", default=True)
+RLS_COMPLIANCE_RUNS_ENABLED = env.bool("RLS_COMPLIANCE_RUNS_ENABLED", default=True)
+# Phase 271.1.1 — Stripe Connect account table RLS kill-switch.
+RLS_CONNECT_ACCOUNTS_ENABLED = env.bool("RLS_CONNECT_ACCOUNTS_ENABLED", default=True)
+RLS_CONNECT_PAYOUTS_ENABLED = env.bool("RLS_CONNECT_PAYOUTS_ENABLED", default=True)
+RLS_CONSENT_ENABLED = env.bool("RLS_CONSENT_ENABLED", default=True)
+RLS_CONTRACTS_ENABLED = env.bool("RLS_CONTRACTS_ENABLED", default=True)
+RLS_CONTRACTS_LINEAGE_EDGE_ARCHIVES_ENABLED = env.bool(
+    "RLS_CONTRACTS_LINEAGE_EDGE_ARCHIVES_ENABLED", default=True
+)
+RLS_CONTRACTS_LINEAGE_EDGES_ENABLED = env.bool("RLS_CONTRACTS_LINEAGE_EDGES_ENABLED", default=True)
+RLS_DATA_CLASSIFICATIONS_ENABLED = env.bool("RLS_DATA_CLASSIFICATIONS_ENABLED", default=True)
+RLS_DATA_EXPORT_JOBS_ENABLED = env.bool("RLS_DATA_EXPORT_JOBS_ENABLED", default=True)
+RLS_DATA_MESH_DOMAINS_ENABLED = env.bool("RLS_DATA_MESH_DOMAINS_ENABLED", default=True)
+RLS_DATA_MOVEMENT_CONFIG_ENABLED = env.bool("RLS_DATA_MOVEMENT_CONFIG_ENABLED", default=True)
+RLS_DATABRICKS_COST_BUDGETS_ENABLED = env.bool("RLS_DATABRICKS_COST_BUDGETS_ENABLED", default=True)
+RLS_DATABRICKS_COST_LEDGER_ENABLED = env.bool("RLS_DATABRICKS_COST_LEDGER_ENABLED", default=True)
+RLS_DATABRICKS_CREDENTIALS_ENABLED = env.bool("RLS_DATABRICKS_CREDENTIALS_ENABLED", default=True)
+RLS_DATABRICKS_OBO_TOKENS_ENABLED = env.bool("RLS_DATABRICKS_OBO_TOKENS_ENABLED", default=True)
+RLS_DATABRICKS_UC_CHANGE_REQUESTS_ENABLED = env.bool(
+    "RLS_DATABRICKS_UC_CHANGE_REQUESTS_ENABLED", default=True
+)
+RLS_DATABRICKS_USER_BINDINGS_ENABLED = env.bool(
+    "RLS_DATABRICKS_USER_BINDINGS_ENABLED", default=True
+)
+RLS_DATABRICKS_WORKSPACES_ENABLED = env.bool("RLS_DATABRICKS_WORKSPACES_ENABLED", default=True)
 RLS_DATASETS_ENABLED = env.bool("RLS_DATASETS_ENABLED", default=True)
+RLS_DPIA_ENABLED = env.bool("RLS_DPIA_ENABLED", default=True)
+RLS_DQ_ALERTING_RULES_ENABLED = env.bool("RLS_DQ_ALERTING_RULES_ENABLED", default=True)
+RLS_DQ_ANOMALIES_ENABLED = env.bool("RLS_DQ_ANOMALIES_ENABLED", default=True)
+RLS_DQ_RUNS_ENABLED = env.bool("RLS_DQ_RUNS_ENABLED", default=True)
+RLS_DQ_TRENDS_ENABLED = env.bool("RLS_DQ_TRENDS_ENABLED", default=True)
+# Phase 232.2 — DSAR tables tenant isolation policies
+RLS_DSAR_ENABLED = env.bool("RLS_DSAR_ENABLED", default=True)
+RLS_EMAIL_DELIVERIES_ENABLED = env.bool("RLS_EMAIL_DELIVERIES_ENABLED", default=True)
+RLS_ENTITLEMENTS_ENABLED = env.bool("RLS_ENTITLEMENTS_ENABLED", default=True)
+RLS_ERASURE_REQUESTS_ENABLED = env.bool("RLS_ERASURE_REQUESTS_ENABLED", default=True)
+RLS_EVENTS_ENABLED = env.bool("RLS_EVENTS_ENABLED", default=True)
+RLS_EXPORT_RUN_COSTS_ENABLED = env.bool("RLS_EXPORT_RUN_COSTS_ENABLED", default=True)
+RLS_FAILED_JOB_DLQS_ENABLED = env.bool("RLS_FAILED_JOB_DLQS_ENABLED", default=True)
+RLS_FEATURE_FLAG_FLIP_APPROVALS_ENABLED = env.bool(
+    "RLS_FEATURE_FLAG_FLIP_APPROVALS_ENABLED", default=True
+)
+RLS_FIELD_ACCESS_POLICIES_ENABLED = env.bool("RLS_FIELD_ACCESS_POLICIES_ENABLED", default=True)
+RLS_FILES_ENABLED = env.bool("RLS_FILES_ENABLED", default=True)
+RLS_IDEMPOTENCY_KEYS_ENABLED = env.bool("RLS_IDEMPOTENCY_KEYS_ENABLED", default=True)
+RLS_IMPERSONATION_SESSIONS_ENABLED = env.bool("RLS_IMPERSONATION_SESSIONS_ENABLED", default=True)
+RLS_INGESTION_TEMPLATES_ENABLED = env.bool("RLS_INGESTION_TEMPLATES_ENABLED", default=True)
+RLS_INVOICES_ENABLED = env.bool("RLS_INVOICES_ENABLED", default=True)
+RLS_JOBS_ENABLED = env.bool("RLS_JOBS_ENABLED", default=True)
+RLS_LISTINGS_ENABLED = env.bool("RLS_LISTINGS_ENABLED", default=True)
+RLS_MARKETPLACE_CONNECTIONS_ENABLED = env.bool("RLS_MARKETPLACE_CONNECTIONS_ENABLED", default=True)
+RLS_MARKETPLACE_MAPPINGS_ENABLED = env.bool("RLS_MARKETPLACE_MAPPINGS_ENABLED", default=True)
+RLS_MARKETPLACE_SAVED_SEARCH_ENABLED = env.bool(
+    "RLS_MARKETPLACE_SAVED_SEARCH_ENABLED", default=True
+)
+RLS_MARKETPLACE_SYNC_JOBS_ENABLED = env.bool("RLS_MARKETPLACE_SYNC_JOBS_ENABLED", default=True)
+RLS_MARKETPLACE_TRUST_SIGNAL_CONFIG_ENABLED = env.bool(
+    "RLS_MARKETPLACE_TRUST_SIGNAL_CONFIG_ENABLED", default=True
+)
+RLS_ML_AB_TESTS_ENABLED = env.bool("RLS_ML_AB_TESTS_ENABLED", default=True)
+RLS_ML_MODELS_ENABLED = env.bool("RLS_ML_MODELS_ENABLED", default=True)
+RLS_ML_MODEL_VERSIONS_ENABLED = env.bool("RLS_ML_MODEL_VERSIONS_ENABLED", default=True)
+RLS_OPENLINEAGE_DEAD_LETTERS_ENABLED = env.bool(
+    "RLS_OPENLINEAGE_DEAD_LETTERS_ENABLED", default=True
+)
+RLS_OPENLINEAGE_INBOUND_EVENTS_ENABLED = env.bool(
+    "RLS_OPENLINEAGE_INBOUND_EVENTS_ENABLED", default=True
+)
+RLS_OPENLINEAGE_INGEST_API_KEYS_ENABLED = env.bool(
+    "RLS_OPENLINEAGE_INGEST_API_KEYS_ENABLED", default=True
+)
+RLS_ORDERS_ENABLED = env.bool("RLS_ORDERS_ENABLED", default=True)
+RLS_PIPELINE_DEPENDENCIES_ENABLED = env.bool("RLS_PIPELINE_DEPENDENCIES_ENABLED", default=True)
+RLS_PIPELINE_RUN_DEPENDENCIES_ENABLED = env.bool(
+    "RLS_PIPELINE_RUN_DEPENDENCIES_ENABLED", default=True
+)
+RLS_PREVIEW_RESULTS_ENABLED = env.bool("RLS_PREVIEW_RESULTS_ENABLED", default=True)
+# Phase 232.6 — processor registry + agreement inventory tables
+RLS_PROCESSOR_AGREEMENTS_ENABLED = env.bool("RLS_PROCESSOR_AGREEMENTS_ENABLED", default=True)
+RLS_REFRESH_TOKENS_ENABLED = env.bool("RLS_REFRESH_TOKENS_ENABLED", default=True)
+RLS_REQUEST_DEDUPLICATION_ENABLED = env.bool("RLS_REQUEST_DEDUPLICATION_ENABLED", default=True)
+RLS_RETENTION_POLICIES_ENABLED = env.bool("RLS_RETENTION_POLICIES_ENABLED", default=True)
+RLS_ROLES_ENABLED = env.bool("RLS_ROLES_ENABLED", default=True)
+# Phase 232.4 — RoPA generation history table
+RLS_ROPA_GENERATIONS_ENABLED = env.bool("RLS_ROPA_GENERATIONS_ENABLED", default=True)
+RLS_SCHEDULED_EXPORT_RUNS_ENABLED = env.bool("RLS_SCHEDULED_EXPORT_RUNS_ENABLED", default=True)
+RLS_SCHEDULED_EXPORTS_ENABLED = env.bool("RLS_SCHEDULED_EXPORTS_ENABLED", default=True)
+RLS_SCHEDULED_INGESTIONS_ENABLED = env.bool("RLS_SCHEDULED_INGESTIONS_ENABLED", default=True)
+RLS_SCHEDULED_MARKETPLACE_SYNCS_ENABLED = env.bool(
+    "RLS_SCHEDULED_MARKETPLACE_SYNCS_ENABLED", default=True
+)
+RLS_SEARCH_ANALYTICS_ENABLED = env.bool("RLS_SEARCH_ANALYTICS_ENABLED", default=True)
+RLS_SEARCH_INDEX_ENABLED = env.bool("RLS_SEARCH_INDEX_ENABLED", default=True)
+RLS_SECURITY_AUDIT_LOGS_ENABLED = env.bool("RLS_SECURITY_AUDIT_LOGS_ENABLED", default=True)
+RLS_SECURITY_INCIDENTS_ENABLED = env.bool("RLS_SECURITY_INCIDENTS_ENABLED", default=True)
+RLS_SEMANTIC_LDN_INBOXES_ENABLED = env.bool("RLS_SEMANTIC_LDN_INBOXES_ENABLED", default=True)
+RLS_SEMANTIC_LDN_PARTNER_KEYS_ENABLED = env.bool(
+    "RLS_SEMANTIC_LDN_PARTNER_KEYS_ENABLED", default=True
+)
+RLS_SEMANTIC_LDN_SIGNING_KEYS_ENABLED = env.bool(
+    "RLS_SEMANTIC_LDN_SIGNING_KEYS_ENABLED", default=True
+)
+RLS_SEMANTIC_LDN_SUBSCRIPTIONS_ENABLED = env.bool(
+    "RLS_SEMANTIC_LDN_SUBSCRIPTIONS_ENABLED", default=True
+)
+RLS_SEMANTIC_RESOURCE_VERSIONS_ENABLED = env.bool(
+    "RLS_SEMANTIC_RESOURCE_VERSIONS_ENABLED", default=True
+)
+RLS_SEMANTIC_RESOURCES_ENABLED = env.bool("RLS_SEMANTIC_RESOURCES_ENABLED", default=True)
+RLS_SEMANTIC_TENANT_ONTOLOGIES_ENABLED = env.bool(
+    "RLS_SEMANTIC_TENANT_ONTOLOGIES_ENABLED",
+    default=True,
+)
+RLS_SEMANTIC_TENANT_SPARQL_ENDPOINTS_ENABLED = env.bool(
+    "RLS_SEMANTIC_TENANT_SPARQL_ENDPOINTS_ENABLED", default=True
+)
+RLS_SOCIAL_COMMENTS_ENABLED = env.bool("RLS_SOCIAL_COMMENTS_ENABLED", default=True)
+RLS_SOCIAL_COMMUNITIES_ENABLED = env.bool("RLS_SOCIAL_COMMUNITIES_ENABLED", default=True)
+RLS_SOCIAL_RATINGS_ENABLED = env.bool("RLS_SOCIAL_RATINGS_ENABLED", default=True)
+RLS_SOCIAL_REVIEWS_ENABLED = env.bool("RLS_SOCIAL_REVIEWS_ENABLED", default=True)
+RLS_SUBSCRIPTIONS_ENABLED = env.bool("RLS_SUBSCRIPTIONS_ENABLED", default=True)
+RLS_TENANT_CONFIGS_ENABLED = env.bool("RLS_TENANT_CONFIGS_ENABLED", default=True)
+RLS_TENANT_USAGE_SUMMARIES_ENABLED = env.bool("RLS_TENANT_USAGE_SUMMARIES_ENABLED", default=True)
+RLS_TRANSFORMATION_PIPELINES_ENABLED = env.bool(
+    "RLS_TRANSFORMATION_PIPELINES_ENABLED", default=True
+)
+RLS_UC_CATALOGS_ENABLED = env.bool("RLS_UC_CATALOGS_ENABLED", default=True)
+RLS_UC_EXTERNAL_LOCATIONS_ENABLED = env.bool("RLS_UC_EXTERNAL_LOCATIONS_ENABLED", default=True)
+RLS_UC_MODELS_ENABLED = env.bool("RLS_UC_MODELS_ENABLED", default=True)
+RLS_UC_SCHEMAS_ENABLED = env.bool("RLS_UC_SCHEMAS_ENABLED", default=True)
+RLS_UC_STORAGE_CREDENTIALS_ENABLED = env.bool("RLS_UC_STORAGE_CREDENTIALS_ENABLED", default=True)
+RLS_UC_TABLES_ENABLED = env.bool("RLS_UC_TABLES_ENABLED", default=True)
+RLS_UC_VIEWS_ENABLED = env.bool("RLS_UC_VIEWS_ENABLED", default=True)
+RLS_UC_VOLUMES_ENABLED = env.bool("RLS_UC_VOLUMES_ENABLED", default=True)
+RLS_USAGE_RECORDS_ENABLED = env.bool("RLS_USAGE_RECORDS_ENABLED", default=True)
+RLS_USER_NOTIFICATIONS_ENABLED = env.bool("RLS_USER_NOTIFICATIONS_ENABLED", default=True)
+RLS_USER_ROLES_ENABLED = env.bool("RLS_USER_ROLES_ENABLED", default=True)
 RLS_USERS_ENABLED = env.bool("RLS_USERS_ENABLED", default=True)
 RLS_USER_TENANT_MEMBERSHIPS_ENABLED = env.bool(
     "RLS_USER_TENANT_MEMBERSHIPS_ENABLED",
     default=True,
 )
-RLS_AUDIT_EVENTS_ENABLED = env.bool("RLS_AUDIT_EVENTS_ENABLED", default=True)
-RLS_CONTRACTS_ENABLED = env.bool("RLS_CONTRACTS_ENABLED", default=True)
-RLS_LISTINGS_ENABLED = env.bool("RLS_LISTINGS_ENABLED", default=True)
-RLS_JOBS_ENABLED = env.bool("RLS_JOBS_ENABLED", default=True)
-RLS_SUBSCRIPTIONS_ENABLED = env.bool("RLS_SUBSCRIPTIONS_ENABLED", default=True)
-RLS_COMPLIANCE_RUNS_ENABLED = env.bool(
-    "RLS_COMPLIANCE_RUNS_ENABLED",
-    default=True,
+RLS_VIRTUAL_DATASETS_ENABLED = env.bool("RLS_VIRTUAL_DATASETS_ENABLED", default=True)
+RLS_WAREHOUSE_CONNECTION_ACLS_ENABLED = env.bool(
+    "RLS_WAREHOUSE_CONNECTION_ACLS_ENABLED", default=True
 )
-RLS_SEARCH_INDEX_ENABLED = env.bool("RLS_SEARCH_INDEX_ENABLED", default=True)
-RLS_SEMANTIC_TENANT_ONTOLOGIES_ENABLED = env.bool(
-    "RLS_SEMANTIC_TENANT_ONTOLOGIES_ENABLED",
-    default=True,
+RLS_WAREHOUSE_CONNECTIONS_ENABLED = env.bool("RLS_WAREHOUSE_CONNECTIONS_ENABLED", default=True)
+RLS_WEBHOOKS_ENABLED = env.bool("RLS_WEBHOOKS_ENABLED", default=True)
+# W3.6 (R2-P4/F13) — the out-of-band workflow cancellation signal
+# (workflow_cancellation_requests, RLS policy in orchestration 0015).
+RLS_WORKFLOW_CANCELLATION_REQUESTS_ENABLED = env.bool(
+    "RLS_WORKFLOW_CANCELLATION_REQUESTS_ENABLED", default=True
 )
-RLS_DATA_MESH_DOMAINS_ENABLED = env.bool(
-    "RLS_DATA_MESH_DOMAINS_ENABLED",
-    default=True,
-)
-RLS_CONSENT_ENABLED = env.bool("RLS_CONSENT_ENABLED", default=True)
-# Phase 232.2 — DSAR tables tenant isolation policies
-RLS_DSAR_ENABLED = env.bool("RLS_DSAR_ENABLED", default=True)
-# Phase 232.4 — RoPA generation history table
-RLS_ROPA_GENERATIONS_ENABLED = env.bool("RLS_ROPA_GENERATIONS_ENABLED", default=True)
-RLS_DPIA_ENABLED = env.bool("RLS_DPIA_ENABLED", default=True)
-RLS_BREACH_ENABLED = env.bool("RLS_BREACH_ENABLED", default=True)
-# Phase 232.6 — processor registry + agreement inventory tables
-RLS_PROCESSOR_AGREEMENTS_ENABLED = env.bool(
-    "RLS_PROCESSOR_AGREEMENTS_ENABLED",
-    default=True,
-)
-# Phase 271.1.1 — Stripe Connect account table RLS kill-switch.
-# Default True (enforced) per the Phase 260 D-260.4 fail-closed
-# shape; ops sets "off" to disable RLS for forensic inspection.
-RLS_CONNECT_ACCOUNTS_ENABLED = env.bool(
-    "RLS_CONNECT_ACCOUNTS_ENABLED",
-    default=True,
-)
+RLS_WORKFLOW_INSTANCES_ENABLED = env.bool("RLS_WORKFLOW_INSTANCES_ENABLED", default=True)
+RLS_WRANGLING_SESSIONS_ENABLED = env.bool("RLS_WRANGLING_SESSIONS_ENABLED", default=True)
 # Phase 232.6 — destination bucket for processor agreement artefacts (Terraform: meshant-<env>-processor-agreements).
 PROCESSOR_AGREEMENTS_S3_BUCKET = env("PROCESSOR_AGREEMENTS_S3_BUCKET", default="")
 
@@ -2162,11 +2540,37 @@ ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL = (
 # When set, worker authenticates with Authorization: ApiKey <HUB_WORKER_API_KEY> and X-Tenant-ID header
 HUB_WORKER_API_KEY = env("HUB_WORKER_API_KEY", default=None)
 
+# W1.14 — per-file cap on the worker internal process-file path.
+# Enforced BEFORE the request body is fully read (bounded read, never a
+# whole-file memory load on an oversized upload).
+WORKER_INTERNAL_MAX_FILE_BYTES = env.int(
+    "WORKER_INTERNAL_MAX_FILE_BYTES", default=100 * 1024 * 1024
+)
+
 # Billing (Stripe): optional; when set, subscription/customer creation uses Stripe (test key sk_test_... for tests)
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default=None)
 STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default=None)
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default=None)
 STRIPE_MARKETPLACE_WEBHOOK_SECRET = env("STRIPE_MARKETPLACE_WEBHOOK_SECRET", default=None)
+# W2.10 (oss-release-remediation, pilot 4.3) — optional PATH to a file
+# holding an ADDITIONAL webhook signing secret, read PER REQUEST by
+# hub.apps.billing.views._webhook_secret_candidates (Docker-secrets /
+# K8s-mounted-secret rotation pattern: the file can appear or change
+# without a process restart).  The Stripe E2E listener writes its
+# per-session ``whsec_`` there after the API has booted; a stale file
+# never blocks the env secrets — signature verification tries every
+# candidate.  Unset (default) = file source disabled.
+STRIPE_WEBHOOK_SECRET_FILE = env("STRIPE_WEBHOOK_SECRET_FILE", default=None)
+# W2.0 (oss-release-remediation) — canonical Stripe price IDs for the
+# BASE plan tiers, provisioned in the Stripe dashboard and recorded in
+# the .env.test-mirrored config. PRO is the charged checkout path
+# (seed_default_plans wires it into the seeded plan; billing/services
+# uses plan.stripe_price_id directly). FREE is deliberately optional:
+# free plans create LOCAL-ONLY subscriptions (billing/services.py) —
+# Stripe cannot create a $0 recurring price — so the entry exists to
+# make the tier→price mapping explicit and stays blank.
+STRIPE_PRO_PRICE_ID = env("STRIPE_PRO_PRICE_ID", default="")
+STRIPE_FREE_PRICE_ID = env("STRIPE_FREE_PRICE_ID", default="")
 # Phase 271.2 — Stripe Connect webhook signing secret.
 # Separate from STRIPE_WEBHOOK_SECRET so Connect webhooks can be
 # routed through a separate Stripe Dashboard webhook registration
@@ -2396,6 +2800,14 @@ else:
 
 # Phase 93.6: timeout (seconds) for individual event handlers
 EVENT_HANDLER_TIMEOUT_SECONDS = env.int("EVENT_HANDLER_TIMEOUT_SECONDS", default=30)
+
+# W4.1 (R2-B3/B4): worker-side event-bus listener switch.  The worker
+# entrypoint (services/worker/main.py) starts one Redis pub/sub listener
+# thread per active subscriber when this is on.  Deployment contract:
+# set it in BOTH worker and api services — the API reads the same flag
+# to disarm the in-process webhook delivery fallbacks (Phase 226 G11),
+# so a deployment with the worker listener never double-delivers.
+EVENT_BUS_LISTENER_ENABLED = env.bool("EVENT_BUS_LISTENER_ENABLED", default=False)
 
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     # Use localhost with port from env, or the standard test port as default.
@@ -2632,8 +3044,85 @@ SECURE_HSTS_SECONDS = env.int(
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
 SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
 
+# Trust X-Forwarded-Proto=https as the TLS terminator's signal (the
+# Traefik edge sets it on staging/prod). Off by default; the test stack
+# enables it so HSTS emission can be exercised without a local TLS edge.
+if env.bool("TRUST_X_FORWARDED_PROTO", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Secure cookies (set to True in production with HTTPS)
 SECURE_COOKIES = env.bool("SECURE_COOKIES", default=False)
+# Databricks control plane (openspec add-databricks-control-plane task 0b.7) —
+# session-refresh policy knobs: the re-auth countdown window and the
+# absolute Hub-session lifetime (independent of Databricks binding expiry).
+SESSION_REAUTH_COUNTDOWN_SECONDS = env.int("SESSION_REAUTH_COUNTDOWN_SECONDS", default=300)
+ABSOLUTE_SESSION_LIFETIME_SECONDS = env.int("ABSOLUTE_SESSION_LIFETIME_SECONDS", default=12 * 3600)
+
+# SQL-warehouse connection pool knobs (openspec add-databricks-sql-warehouses
+# task 3.5): the per-tenant borrow bound, the idle-timeout the reaper
+# sweeps against, and the daemon reaper's wake cadence.
+DATABRICKS_WAREHOUSE_POOL_MAX_PER_TENANT = env.int(
+    "DATABRICKS_WAREHOUSE_POOL_MAX_PER_TENANT", default=20
+)
+DATABRICKS_WAREHOUSE_POOL_IDLE_TIMEOUT_SECONDS = env.int(
+    "DATABRICKS_WAREHOUSE_POOL_IDLE_TIMEOUT_SECONDS", default=300
+)
+DATABRICKS_WAREHOUSE_POOL_REAP_INTERVAL_SECONDS = env.int(
+    "DATABRICKS_WAREHOUSE_POOL_REAP_INTERVAL_SECONDS", default=60
+)
+
+# Databricks job-run cost-estimate rate (openspec add-databricks-jobs
+# task 4.4): the heuristic USD-per-DBH base rate feeding the stored
+# duration-x-size estimate (attribution lands with P7). The service
+# reads this via getattr with the same 0.55 default — declared here so
+# ops can override per environment.
+DATABRICKS_JOB_COST_ESTIMATE_DBH_RATE = env.float(
+    "DATABRICKS_JOB_COST_ESTIMATE_DBH_RATE", default=0.55
+)
+
+# Delta Sharing snapshot job knobs (openspec add-delta-sharing-server
+# task 5.4): the freshness TTL the snapshot stamp carries, the Hub S3
+# key prefix every snapshot object lives under, and the row cap the
+# production source read applies when materializing a table.
+DELTA_SHARE_SNAPSHOT_TTL_SECONDS = env.int("DELTA_SHARE_SNAPSHOT_TTL_SECONDS", default=86400)
+DELTA_SHARE_SNAPSHOT_STORAGE_PREFIX = env.str(
+    "DELTA_SHARE_SNAPSHOT_STORAGE_PREFIX", default="delta-share-snapshots"
+)
+DELTA_SHARE_SNAPSHOT_MAX_ROWS = env.int("DELTA_SHARE_SNAPSHOT_MAX_ROWS", default=1_000_000)
+
+# dlt staging sentinel cache TTL (openspec wire-databricks-dlt-movement
+# task 6.4): the once-per-tenant managed-volume creation marker's cache
+# lifetime — a cache miss re-runs the CREATE (idempotent by the 2.4
+# executor's contract), so the TTL bounds the re-check cadence only.
+DLT_STAGING_VOLUME_CACHE_TTL_SECONDS = env.int(
+    "DLT_STAGING_VOLUME_CACHE_TTL_SECONDS", default=86400
+)
+
+# W3.10 — dlt pipeline STATE dir (processed keys, DATABRICKS_SOURCE SQL
+# cursors — the W3.3/W3.4 correctness anchor).  Default to a
+# VOLUME-BACKED path (the compose named volume, mounted into every
+# container that runs pipelines); dlt's own default is /tmp (ephemeral
+# per container — a re-create wiped the state and re-ingested
+# everything).  Applied through ``dlt.config["pipelines.pipelines_dir"]``
+# in hub/data_movement/dlt_pipeline._get_dlt — the ENV VAR
+# ``DLT_PIPELINES_DIR`` is set for observability only; dlt 1.30 IGNORES
+# it (the 6.7 trap).  Where the dir is not creatable (host dev without
+# the mount) the injection falls back to dlt's writable default with a
+# warning — the state is ephemeral THERE, never silently wrong in a
+# deployment.
+DLT_PIPELINES_DIR = env("DLT_PIPELINES_DIR", default="/dlt-data/pipelines")
+
+# dlt filesystem staging destination (285.6 ingestion spine). The dlt
+# filesystem destination refuses to run without a ``bucket_url`` and no
+# runtime config source provided one (no env/TOML) — every ingestion run
+# FAILED at ``step=sync`` with
+# ``ConfigFieldMissingException: Missing 1 field(s) ... bucket_url``
+# (JOURNEY-INGESTION-001 E2E). Deployments point staging at their object
+# store via the env var (``s3://bucket/prefix``); the default keeps a
+# worker-local directory so the test stack and single-box deploys work
+# with zero configuration.
+DLT_FILESYSTEM_BUCKET_URL = env.str("DLT_FILESYSTEM_BUCKET_URL", default="file:///app/dlt-staging")
+
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
 
@@ -2668,6 +3157,15 @@ if ENVIRONMENT == "production":
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
+    # W1.18 — SECURE_SSL_REDIRECT=True would 301 the internal container
+    # healthcheck (``curl -f http://localhost:8000/health/live/`` — an
+    # internal HTTP request that bypasses the Traefik edge, so it carries
+    # no X-Forwarded-Proto header). Health paths are exempt from the
+    # redirect: they disclose nothing and the compose/K8s probes must
+    # reach them over plain internal HTTP. Pattern intentionally matches
+    # the bare ``health`` prefix (no trailing-slash requirement).
+    SECURE_REDIRECT_EXEMPT = [r"^health"]
+
 # Content Security Policy (CSP) - Django 6 Enhancement
 # For advanced CSP, consider using django-csp package
 # Basic CSP configuration via SecurityMiddleware
@@ -2678,6 +3176,15 @@ SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY", default="strict-origin-wh
 # Django 6 default: DENY (already set via XFrameOptionsMiddleware)
 X_FRAME_OPTIONS = env("X_FRAME_OPTIONS", default="DENY")
 
+# Content-Security-Policy — emitted by csp.middleware.CSPMiddleware
+# (django-csp, registered in MIDDLEWARE). django-csp reads the policy
+# from CONTENT_SECURITY_POLICY["DIRECTIVES"]; an empty directive list
+# means no policy and no header. The test stack sets a docs-UI-compatible
+# value via CSP_DEFAULT_SRC; production may set a stricter policy via env.
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {"default-src": env.list("CSP_DEFAULT_SRC", default=[])},
+}
+
 # CSRF Protection
 CSRF_COOKIE_HTTPONLY = env.bool(
     "CSRF_COOKIE_HTTPONLY", default=True
@@ -2685,9 +3192,15 @@ CSRF_COOKIE_HTTPONLY = env.bool(
 CSRF_COOKIE_SAMESITE = env(
     "CSRF_COOKIE_SAMESITE", default="Lax"
 )  # Options: 'Strict', 'Lax', 'None'
+# W1.18 (oss-release-remediation): cookie domains default to None
+# (host-only) in EVERY environment — the pre-W1.18 default baked the
+# vendor domain ".meshant.com" into the shipped settings, silently
+# scoping cookies to a domain a deployer may not own. Host-only is the
+# secure default; set the env var explicitly (staging does) only when
+# cookies must span subdomains of one registrable domain.
 CSRF_COOKIE_DOMAIN = env(
     "CSRF_COOKIE_DOMAIN",
-    default=".meshant.com" if ENVIRONMENT in ("staging", "production") else None,
+    default=None,
 )
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
@@ -2700,9 +3213,11 @@ SESSION_COOKIE_HTTPONLY = env.bool("SESSION_COOKIE_HTTPONLY", default=True)
 # session cookie from being sent on ANY cross-site request, including
 # top-level navigations — a stronger CSRF mitigation than Lax.
 SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="Strict")
+# W1.18 — same host-only default as CSRF_COOKIE_DOMAIN (see above); the
+# refresh-token cookies reuse this domain too (auth/views.py).
 SESSION_COOKIE_DOMAIN = env(
     "SESSION_COOKIE_DOMAIN",
-    default=".meshant.com" if ENVIRONMENT in ("staging", "production") else None,
+    default=None,
 )
 SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=1209600)  # 2 weeks default
 
@@ -2712,9 +3227,16 @@ GRAPHQL_QUERY_COMPLEXITY_LIMIT = env.int("GRAPHQL_QUERY_COMPLEXITY_LIMIT", defau
 # Password hashing: use fast MD5 hasher in tests to avoid ~300 ms per
 # create_user() call (PBKDF2 default does 600 k iterations).  This gives
 # a 50-100x speedup on test suites that create thousands of users.
-if is_test_env:
+# The test-stack gunicorn (ENVIRONMENT=test, NOT under pytest) must also
+# accept MD5 hashes: SDK/live-API suites create users under pytest and
+# authenticate through the API — with a PBKDF2-only list those logins
+# fail 400 ("Invalid email or password") because the md5$ prefix can't
+# be verified.
+if is_test_env or ENVIRONMENT == "test":
     PASSWORD_HASHERS = [
         "django.contrib.auth.hashers.MD5PasswordHasher",
+        "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+        "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
     ]
 
 # Rate Limiting
@@ -2732,6 +3254,29 @@ else:
 # so many login attempts in sequence do not hit 429. Uses platform max for AUTH (20/min).
 # Set RATE_LIMIT_E2E_RELAX=true for api-service when running E2E (e.g. in .env.dev or docker-compose).
 RATE_LIMIT_E2E_RELAX = env.bool("RATE_LIMIT_E2E_RELAX", default=False)
+
+# R2-B1 (oss-release-remediation W1.1) — the RegisterThrottle's per-IP
+# rate on public registration (hub/apps/auth/throttles.py). Production
+# default 10/min: the 11th register within the minute is 429. Test
+# environments relax it so the shared E2E stack's persona seeding
+# (dozens of registrations per batch from one IP) is not throttled —
+# the 11th-register-429 contract is pinned by tests that override the
+# rate explicitly. An explicit env var wins over both defaults.
+AUTH_REGISTER_RATE_LIMIT = env(
+    "AUTH_REGISTER_RATE_LIMIT",
+    default="1000/min" if is_test_env else "10/min",
+)
+
+# D4 (oss-release-remediation W1.5) — the SSOThrottle's per-IP rate on
+# the SSO endpoints (hub/apps/auth/throttles.py). Production default
+# 10/min; test environments relax it so the E2E stack's SSO scenarios
+# are not throttled (the 11th-callback-429 contract is pinned by tests
+# that override the rate explicitly).
+AUTH_SSO_RATE_LIMIT = env(
+    "AUTH_SSO_RATE_LIMIT",
+    default="1000/min" if is_test_env else "10/min",
+)
+
 
 # Legacy settings (kept for backward compatibility, but not used by new middleware)
 RATE_LIMIT_PER_TENANT = env.int("RATE_LIMIT_PER_TENANT", default=200)
@@ -2945,6 +3490,23 @@ LINEAGE_ARCHIVE_S3_BUCKET = env.str(
 )
 
 # ===========================================================================
+# Phase 228 F1 — cross-tenant marketplace lineage capability flag
+# ===========================================================================
+# Consumed by ``feature_flags.is_capability_enabled("lineage.cross_tenant_
+# marketplace")`` (the listing-lineage endpoint's 404 hardening gate).
+# Default OFF in prod/staging (rollout gate F1.25 pen-test + F1.26 PIA/DPO
+# sign-off); ON in the test environment so fixtures exercise the full
+# surface — parity with ``hub.apps.api.capabilities.get_capabilities``'
+# documented test default (all lineage flags True under ENVIRONMENT=test).
+# Without this wiring the SPA capability manifest reports the capability
+# available (path-derived) while the endpoint silently 404s — the split
+# that made the UC-MKT-LINEAGE E2E specs skip as "flag off".
+LINEAGE_CROSS_TENANT_MARKETPLACE_ENABLED = env.bool(
+    "LINEAGE_CROSS_TENANT_MARKETPLACE_ENABLED",
+    default=ENVIRONMENT == "test",
+)
+
+# ===========================================================================
 # Phase 228 F5 (228.F5.DoD.6) — per-tenant rollout overrides
 # ===========================================================================
 # When ``CAPABILITY_FLAGS["<name>"] == False`` the per-tenant
@@ -2976,7 +3538,7 @@ except (ValueError, TypeError):
 # ===========================================================================
 # Phase 228 F3 (228.F3.10) — Lineage Impact Dispatcher DB connection pool
 # ===========================================================================
-# REQ-LIN-F3-005 mandates a dedicated DB connection pool of 5–10 connections
+# REQ-LIN-F3-005 mandates a dedicated DB connection pool of 5-10 connections
 # for the dispatcher so notification storms cannot starve request handlers.
 #
 # Deployment model: the dispatcher runs in the existing ``job_low`` worker

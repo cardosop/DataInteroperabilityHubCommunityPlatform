@@ -51,9 +51,10 @@ def dq_service_available() -> bool:
 
         client = DQServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except Exception:
         return False
+    else:
+        return is_healthy
 
 
 class VirtualizationServiceQualityIntegrationTest(TestCase):
@@ -211,10 +212,7 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 entry
                 for entry in execution.execution_log
                 if isinstance(entry, dict)
-                and (
-                    "quality" in str(entry).lower()
-                    or "dq" in str(entry).lower()
-                )
+                and ("quality" in str(entry).lower() or "dq" in str(entry).lower())
             ]
             self.assertGreater(
                 len(quality_entries),

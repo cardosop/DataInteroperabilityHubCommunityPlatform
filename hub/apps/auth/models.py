@@ -54,18 +54,8 @@ class APIKey(models.Model):
         blank=True,
         help_text="Custom API gateway rate limit (requests per hour); null uses tier/tenant default",
     )
-    # BaaS: optional tier for usage/quota (single API key model — D2)
-    # Phase 313.1 — paid-layer FK: declared only when the baas app is
-    # installed; absent in core-only mode (no BaaS tiers exist there).
-    if not settings.HUB_CORE_ONLY:
-        tier = models.ForeignKey(
-            "baas.APITierModel",
-            on_delete=models.RESTRICT,
-            related_name="auth_api_keys",
-            null=True,
-            blank=True,
-            help_text="BaaS API tier for this key (null for non-BaaS keys)",
-        )
+    # Phase 313 paid-ward FK — the tier link lives on the paid layer's
+    # assignment table (see the property below); core has no FK in either mode.
     revoked_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -98,15 +88,66 @@ class APIKey(models.Model):
     class Meta:
         db_table = "api_keys"
         ordering = ["-created_at"]
-        # Phase 313.1 — tier_id index exists only with the conditional
-        # BaaS tier FK (see field declaration above).
         indexes = [
             models.Index(fields=["tenant", "user"]),
             models.Index(fields=["key_hash"]),
-        ] + ([models.Index(fields=["tier_id"])] if not settings.HUB_CORE_ONLY else [])
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.tenant.name})"
+
+    # Phase 313 paid-ward FK — the tier link lives on the paid layer's
+    # assignment table. This property preserves the pre-split attribute API
+    # for paid consumers; the provider/setter are registered from the paid
+    # app's AppConfig.ready(). In core-only mode reads return None and
+    # writes raise (no tiers exist there).
+    @property
+    def tier(self):
+        """BaaS tier for this key (paid-ward assignment; None without one)."""
+        # ``_state.adding`` is the real "unsaved" signal: this model's UUID
+        # primary key carries its default at __init__ time, so ``pk is None``
+        # is False for brand-new instances and the guard never fired.
+        if self._state.adding:
+            return getattr(self, "_pending_tier", None)
+        from hub.apps.core.commercial_hooks import get_api_key_tier
+
+        return get_api_key_tier(self)
+
+    @tier.setter
+    def tier(self, value):
+        # Unsaved instances MUST stash the tier until save() persists the
+        # assignment — writing it now inserts ``baas_api_key_tier_assignments``
+        # for an api_keys row that does not exist yet, and the deferrable FK
+        # fires at commit (IntegrityError).  ``pk is None`` cannot detect
+        # this state here: UUIDField applies its default during __init__, so
+        # the pk is already populated when this setter runs (found by the
+        # paid BaaS CLI/SDK E2E parity run — POST /api/v1/baas/api-keys/
+        # 500'd with "Key (api_key_id)=(...) is not present in table api_keys").
+        if self._state.adding:
+            self._pending_tier = value
+            return
+        from hub.apps.core.commercial_hooks import set_api_key_tier
+
+        set_api_key_tier(self, value)
+
+    @property
+    def tier_id(self):
+        """Paid-ward FK mirror of the legacy tier column (tier pk, or None).
+
+        Keeps ``api_key.tier_id`` meaningful for callers that used the
+        column id directly (e.g. per-tenant rate-limit structure checks).
+        """
+        tier = self.tier
+        return tier.id if tier is not None else None
+
+    def save(self, *args, **kwargs):
+        pending = getattr(self, "_pending_tier", None)
+        super().save(*args, **kwargs)
+        if pending is not None:
+            from hub.apps.core.commercial_hooks import set_api_key_tier
+
+            set_api_key_tier(self, pending)
+            self._pending_tier = None
 
     @staticmethod
     def generate_key() -> str:

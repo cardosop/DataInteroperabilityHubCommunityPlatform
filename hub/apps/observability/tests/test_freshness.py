@@ -284,7 +284,9 @@ class FreshnessMonitorEdgeCasesTest(TestCase):
         )
 
         self.assertIsNotNone(metric)
-        self.assertIsNotNone(metric.schema_hash, "schema_hash must be set when schema_json provided")
+        self.assertIsNotNone(
+            metric.schema_hash, "schema_hash must be set when schema_json provided"
+        )
         self.assertEqual(len(metric.schema_hash), 64, "schema_hash must be SHA-256 (64 hex chars)")
         # Same schema → same hash
         metric2 = FreshnessMonitor.record_metric(
@@ -294,8 +296,9 @@ class FreshnessMonitorEdgeCasesTest(TestCase):
             freshness_sla=FreshnessSLA.DAILY,
             schema_json=schema,
         )
-        self.assertEqual(metric.schema_hash, metric2.schema_hash,
-                         "Same schema must produce identical hash")
+        self.assertEqual(
+            metric.schema_hash, metric2.schema_hash, "Same schema must produce identical hash"
+        )
 
     def test_detect_stale_data_without_resource_filter(self):
         """Test detect_stale_data returns records across multiple resources when unfiltered"""
@@ -331,8 +334,9 @@ class FreshnessMonitorEdgeCasesTest(TestCase):
         # Unfiltered detection should return records for all stale resources
         stale_data = FreshnessMonitor.detect_stale_data(tenant_id=str(self.tenant.id))
 
-        self.assertGreaterEqual(len(stale_data), 2,
-                              "Expected stale records for at least 2 resources")
+        self.assertGreaterEqual(
+            len(stale_data), 2, "Expected stale records for at least 2 resources"
+        )
         # Records should have asset_id set (no dataset)
         for record in stale_data:
             self.assertIn("dataset_id", record)

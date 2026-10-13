@@ -1,7 +1,7 @@
 # Architecture Decision Records — Index
 
-**Last updated**: 2026-05-17  
-**Total ADRs**: 36 across 11 topic areas  
+**Last updated**: 2026-09-14  
+**Total ADRs**: 39 across 11 topic areas  
 **280.C.6.3**: Decision summaries added for all ADRs.
 
 ## Decision Table
@@ -23,6 +23,8 @@
 | ADR-DSF-002 | Upload surface & CORS posture | Presigned S3 URLs for direct browser→S3 uploads; API never touches file bytes; CORS allow-list per-environment | Datasets/Files | Accepted | 2026-05-12 | 260.0 |
 | ADR-DSF-003 | Purge idempotency + distributed locks | File purge uses Redis Redlock for distributed mutual exclusion; purge is idempotent (repeatable without side effects) | Datasets/Files | Accepted | 2026-05-12 | 260.0 |
 | ADR-DSF-004 | Minimum ClamAV engine version | ClamAV engine ≥1.4.0 required; version handshake at startup; older engines reject with clear error | Datasets/Files | Accepted | 2026-05-12 | 260.0 |
+| ADR-DB-REG-001 | Databricks Registration-First Operating Model | BYO workspace registration is the default operating model; hub-side provisioning is the flag-gated, signoff-required, audit-trailed exception | Databricks | Accepted | 2026-09-13 | P8 |
+
 | ADR-DSF-005 | FILES/DATASETS error-code layering | Domain-specific error codes (FILE_*, DATASET_*) with consistent HTTP→code mapping; audit events on every error | Datasets/Files | Accepted | 2026-05-12 | 260.0 |
 | ADR-DSF-006 | EICAR fixtures + CI antivirus | EICAR test files in test fixtures; CI runs ClamAV in Docker; production scan path identically exercised in CI | Datasets/Files | Accepted | 2026-05-12 | 260.0 |
 | ADR-DSF-007 | SHA‑256 uniqueness & tenant isolation | SHA-256 deduplication scoped per-tenant (not global); prevents cross-tenant data leakage via hash collision | Datasets/Files | Accepted | 2026-05-12 | 260.0 |

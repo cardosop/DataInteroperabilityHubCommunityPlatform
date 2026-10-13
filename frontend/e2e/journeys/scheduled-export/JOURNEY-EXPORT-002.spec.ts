@@ -19,6 +19,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { createScheduledExportViaApi } from '../../fixtures/api-assets';
 import { getTenantAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -35,11 +36,11 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs @critica
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
       if (page.url().includes('/403')) {
-        test.skip(true, 'Scheduled exports role-gated (403)');
+        test.skip(page.url().includes('/403'), 'Scheduled exports role-gated (403)');
         return;
       }
 
@@ -66,19 +67,19 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs @critica
         }
       );
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth may have expired');
+        test.skip(page.url().includes('/login'), 'Redirected to login — auth may have expired');
         return;
       }
 
       // Wait for error/not-found content to appear
       await page
-        .locator('.error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]')
+        .locator('.error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => {});
 
       const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       const hasNotFoundText =
         (await page.locator('text=/not found|404|does not exist/i').count()) > 0;
       const is404 = page.url().includes('/404') || page.url().includes('/not-found');
@@ -92,6 +93,10 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs @critica
   test.describe('Edge', () => {
     test('export detail page renders run history section when export exists', async ({ page }) => {
       const testUser = await getTenantAdminUser();
+      // Seed an export via the API — this Edge test runs before any
+      // create test in the batch, so the list legitimately starts empty
+      // (b7: unconditional "No exports in list" skip).
+      await createScheduledExportViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
@@ -99,23 +104,22 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs @critica
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        test.skip(true, 'Redirected to login/403 — auth or role gated');
+        test.skip(page.url().includes('/login') || page.url().includes('/403'), 'Redirected to login/403 — auth or role gated');
         return;
       }
 
-      // Try to navigate to the first export in the list
-      const firstExportLink = page.locator(
-        '.scheduled-export-list-page a[href*="/scheduled-exports/"], ' +
-          '.scheduled-export-list-page tr a, ' +
-          '.scheduled-export-list-page [data-testid="export-row"] a'
-      ).first();
+      // Navigate to the first export row. The rows are
+      // <tr data-testid="scheduled-export-row" role="button"> with an
+      // onClick handler — there are no anchors (b7: the a[href*=...]
+      // probe matched nothing).
+      const firstExportRow = page.getByTestId('scheduled-export-row').first();
 
-      if ((await firstExportLink.count()) === 0) {
-        test.skip(true, 'No exports in list — cannot test detail page run history');
+      if ((await firstExportRow.count()) === 0) {
+        test.skip((await firstExportRow.count()) === 0, 'No exports in list — cannot test detail page run history');
         return;
       }
 
-      await firstExportLink.click();
+      await firstExportRow.click();
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
 

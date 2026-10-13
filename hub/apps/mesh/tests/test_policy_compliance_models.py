@@ -260,7 +260,7 @@ class ComplianceReportModelTest(TestCase):
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user
         )
-        from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+        from hub.apps.assets.models import Asset, AssetStatus
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -365,7 +365,7 @@ class ComplianceReportModelTest(TestCase):
         other_tenant = Tenant.objects.create(
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
-        from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+        from hub.apps.assets.models import Asset, AssetStatus
 
         other_asset = Asset.objects.create(
             tenant=other_tenant,

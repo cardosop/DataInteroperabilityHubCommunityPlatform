@@ -6,7 +6,7 @@ Service for API analytics and reporting.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
@@ -99,8 +99,8 @@ class APIAnalyticsService:
     @staticmethod
     def get_endpoint_popularity(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         """
@@ -161,8 +161,8 @@ class APIAnalyticsService:
     @staticmethod
     def get_usage_trends(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         granularity: str = "hour",
     ) -> list[dict[str, Any]]:
         """
@@ -239,8 +239,8 @@ class APIAnalyticsService:
     @staticmethod
     def get_performance_metrics(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> dict[str, Any]:
         """
         Get performance metrics summary.
@@ -304,8 +304,8 @@ class APIAnalyticsService:
     @staticmethod
     def get_analytics_dashboard(
         tenant_id: str | None = None,
-        start_date: timezone.datetime | None = None,
-        end_date: timezone.datetime | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> dict[str, Any]:
         """
         Get complete analytics dashboard data.

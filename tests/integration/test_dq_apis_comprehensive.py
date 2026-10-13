@@ -244,11 +244,15 @@ class TestDQRunRetrieveAPI(TestCase):
 
         # Create tenant and users
         self.tenant_a = TenantFactory.create_tenant(
-            name=f"Tenant A {uuid.uuid4().hex[:8]}", slug="tenant-a", status=TenantStatus.ACTIVE
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
+            slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
         )
 
         self.tenant_b = TenantFactory.create_tenant(
-            name=f"Tenant B {uuid.uuid4().hex[:8]}", slug="tenant-b", status=TenantStatus.ACTIVE
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
+            slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
         )
 
         self.user_a = UserFactory.create_user(
@@ -914,7 +918,9 @@ class TestDQScorecardsAPI(TestCase):
         """Test tenant isolation for scorecards"""
         # Create another tenant
         tenant_b = TenantFactory.create_tenant(
-            name=f"Tenant B {uuid.uuid4().hex[:8]}", slug="tenant-b", status=TenantStatus.ACTIVE
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
+            slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
         )
 
         user_b = UserFactory.create_user(
@@ -992,11 +998,15 @@ class TestDQRunListAPI(TestCase):
 
         # Create tenants and users
         self.tenant_a = TenantFactory.create_tenant(
-            name=f"Tenant A {uuid.uuid4().hex[:8]}", slug="tenant-a", status=TenantStatus.ACTIVE
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
+            slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
         )
 
         self.tenant_b = TenantFactory.create_tenant(
-            name=f"Tenant B {uuid.uuid4().hex[:8]}", slug="tenant-b", status=TenantStatus.ACTIVE
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
+            slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
         )
 
         self.user_a = UserFactory.create_user(

@@ -14,7 +14,7 @@ from hub.apps.contracts.normalization import (
     NormalizationStatus,
     normalize_odcs_to_hubcontract,
 )
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)

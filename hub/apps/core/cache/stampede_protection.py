@@ -13,7 +13,7 @@ from functools import wraps
 from typing import Any
 
 from django.core.cache import cache as django_cache
-from django_redis import get_redis_connection
+from django_redis import get_redis_connection  # type: ignore[import-untyped]
 
 LOCK_TTL = 5  # seconds — max time a recompute can hold the lock
 WAIT_TIMEOUT = 2  # seconds — max time to poll for lock release

@@ -21,7 +21,9 @@ Usage::
 
 import uuid
 
+from django.db import DatabaseError
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 
 def ensure_activation_prereqs(asset, tenant, user):
@@ -52,7 +54,7 @@ def ensure_activation_prereqs(asset, tenant, user):
             details_json={"scan_mode": "internal"},
             executed_by_prefect=True,
         )
-    except Exception:
+    except (ValueError, ValidationError, DatabaseError):
         job = None
 
     return ComplianceRun.objects.create(

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 from datahub_cli.main import cli
-from tests.use_cases.conftest import extract_id, unique_key
+from tests.use_cases.conftest import extract_id, register_asset_cleanup, unique_key
 
 pytestmark = pytest.mark.mvp
 
@@ -56,6 +56,7 @@ class TestMidJourneyFailure:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """Creating two assets with the same key: second should fail cleanly.
 
@@ -70,6 +71,7 @@ class TestMidJourneyFailure:
         assert result1.exit_code == 0, f"First asset creation failed: {result1.output[:300]}"
         asset1_id = extract_id(result1.output)
         assert asset1_id, f"Could not extract asset ID from: {result1.output[:200]}"
+        register_asset_cleanup(cleanup_registry, asset1_id)
 
         # Step 2: Try to create a second asset with the same key (should fail)
         result2 = _invoke_asset_create(runner, "Mid-Journey Asset 2", asset_key)
@@ -100,6 +102,7 @@ class TestMidJourneyFailure:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """Running compliance on a non-existent asset leaves the system intact.
 
@@ -112,6 +115,7 @@ class TestMidJourneyFailure:
         assert create_result.exit_code == 0, f"Asset creation failed: {create_result.output[:300]}"
         asset_id = extract_id(create_result.output)
         assert asset_id
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         # Now try a compliance run that might fail (depends on backend state)
         compliance_result = runner.invoke(
@@ -174,6 +178,7 @@ class TestMidJourneyFailure:
         self,
         runner,
         authenticated_config,
+        cleanup_registry,
     ):
         """A failed 'get' on a non-existent resource should not affect subsequent operations.
 
@@ -186,6 +191,7 @@ class TestMidJourneyFailure:
         assert create_result.exit_code == 0, f"Asset creation failed: {create_result.output[:300]}"
         asset_id = extract_id(create_result.output)
         assert asset_id
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         # Step 2: Make a failed query (wrong ID)
         bad_get = runner.invoke(
@@ -214,7 +220,7 @@ class TestMidJourneyFailure:
 class TestRecoveryAfterError:
     """Verify that the system recovers cleanly after transient failures."""
 
-    def test_recreate_after_delete(self, runner, authenticated_config):
+    def test_recreate_after_delete(self, runner, authenticated_config, cleanup_registry):
         """Creating an asset after deleting one with the same key should succeed.
 
         This verifies the full create→delete→recreate lifecycle works without
@@ -227,27 +233,29 @@ class TestRecoveryAfterError:
         assert create1.exit_code == 0, f"Initial creation failed: {create1.output[:300]}"
         asset_id = extract_id(create1.output)
         assert asset_id
+        # Belt-and-braces: if the in-test delete is blocked/skipped below,
+        # teardown still removes the asset via the API.
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         # Delete
         delete_result = runner.invoke(cli, ["assets", "delete", asset_id])
         # Deletion may require confirmation or additional flags; accept
         # non-zero exit if the API blocks deletion of certain states
-        if delete_result.exit_code != 0:
+        if delete_result.exit_code != 0 and _midjourney_error_contains(
+            delete_result.output,
+            [
+                "cannot delete",
+                "not allowed",
+                "active",
+                "has dependencies",
+            ],
+        ):
             # Asset might not be deletable in DRAFT state or may require
             # --force.  Skip the rest of the test if the API blocks deletion.
-            if _midjourney_error_contains(
-                delete_result.output,
-                [
-                    "cannot delete",
-                    "not allowed",
-                    "active",
-                    "has dependencies",
-                ],
-            ):
-                pytest.skip(
-                    f"Asset deletion blocked by API (legitimate constraint): "
-                    f"{delete_result.output[:200]}"
-                )
+            pytest.skip(
+                f"Asset deletion blocked by API (legitimate constraint): "
+                f"{delete_result.output[:200]}"
+            )
 
         # Re-create with the same key
         create2 = _invoke_asset_create(runner, "Recreate Asset v2", asset_key)
@@ -255,6 +263,7 @@ class TestRecoveryAfterError:
             # Success — the old asset was properly cleaned up
             new_id = extract_id(create2.output)
             assert new_id, f"Recreated asset missing ID: {create2.output[:200]}"
+            register_asset_cleanup(cleanup_registry, new_id)
         else:
             # The API may require the old asset to be fully purged first
             assert _midjourney_error_contains(

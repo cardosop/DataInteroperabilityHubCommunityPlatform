@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 try:
-    import jsonschema
+    import jsonschema  # type: ignore[import-untyped]
     from jsonschema import Draft202012Validator, SchemaError, ValidationError
 
     JSONSCHEMA_AVAILABLE = True
@@ -49,14 +49,15 @@ def validate_json_file(file_path: Path) -> tuple[bool, str, dict]:
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-        return True, "", data
     except json.JSONDecodeError as e:
         return False, f"Invalid JSON: {e}", {}
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return False, f"Error reading file: {e}", {}
+    else:
+        return True, "", data
 
 
-def validate_json_schema(schema_data: dict, file_path: Path) -> tuple[bool, str]:
+def validate_json_schema(schema_data: dict, _file_path: Path) -> tuple[bool, str]:
     """
     Validate that a dictionary is valid JSON Schema.
 
@@ -73,7 +74,6 @@ def validate_json_schema(schema_data: dict, file_path: Path) -> tuple[bool, str]
     try:
         # Validate the schema itself
         Draft202012Validator.check_schema(schema_data)
-        return True, ""
     except SchemaError as e:
         return False, f"Invalid JSON Schema: {e}"
     except Exception:
@@ -81,13 +81,16 @@ def validate_json_schema(schema_data: dict, file_path: Path) -> tuple[bool, str]
         try:
             if jsonschema:
                 jsonschema.validate(instance={}, schema=schema_data)
-            return True, ""
         except Exception as validation_error:
             return False, f"Schema validation failed: {validation_error}"
+        else:
+            return True, ""
+    else:
+        return True, ""
 
 
 def validate_schema_version_consistency(
-    schema_data: dict, version_dir: str, schema_path: Path
+    schema_data: dict, version_dir: str, _schema_path: Path
 ) -> tuple[bool, list[str]]:
     """
     Validate that schema file matches its version directory.
@@ -126,32 +129,33 @@ def validate_schema_version_consistency(
 
     # Check $id field contains version (with v prefix)
     schema_id = schema_data.get("$id", "")
-    if schema_id and expected_pattern:
-        if not re.search(expected_pattern, schema_id):
-            errors.append(
-                f"$id field '{schema_id}' does not contain expected version pattern '{expected_pattern}'"
-            )
+    if schema_id and expected_pattern and not re.search(expected_pattern, schema_id):
+        errors.append(
+            f"$id field '{schema_id}' does not contain expected version pattern '{expected_pattern}'"
+        )
 
     # Check schema field pattern (if present) - should contain version with v prefix
     schema_url = schema_data.get("schema", "")
-    if schema_url and expected_pattern:
-        if not re.search(expected_pattern, schema_url):
-            errors.append(
-                f"schema URL '{schema_url}' does not contain expected version pattern '{expected_pattern}'"
-            )
+    if schema_url and expected_pattern and not re.search(expected_pattern, schema_url):
+        errors.append(
+            f"schema URL '{schema_url}' does not contain expected version pattern '{expected_pattern}'"
+        )
 
     # Check version field (if present) - should match version without v prefix
     version_field = schema_data.get("version", "")
-    if version_field and expected_version_pattern:
-        if not re.search(expected_version_pattern, str(version_field)):
-            errors.append(
-                f"version field '{version_field}' does not match expected pattern '{expected_version_pattern}'"
-            )
+    if (
+        version_field
+        and expected_version_pattern
+        and not re.search(expected_version_pattern, str(version_field))
+    ):
+        errors.append(
+            f"version field '{version_field}' does not match expected pattern '{expected_version_pattern}'"
+        )
 
     return len(errors) == 0, errors
 
 
-def validate_schema_structure(schema_data: dict, schema_path: Path) -> tuple[bool, list[str]]:
+def validate_schema_structure(schema_data: dict, _schema_path: Path) -> tuple[bool, list[str]]:
     """
     Validate that schema has required structure.
 
@@ -205,7 +209,7 @@ def validate_odps_schemas(
     if strict and not JSONSCHEMA_AVAILABLE:
         return False, ["jsonschema library is required in strict mode"]
 
-    required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+    required_versions = ["v4.2", "v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
 
     # Filter versions if specified
     if version_filter:

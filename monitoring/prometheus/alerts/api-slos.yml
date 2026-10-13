@@ -1,0 +1,127 @@
+# Phase 277.B.049 — API endpoint SLO breach alerts.
+groups:
+  - name: api_slo_alerts
+    rules:
+      # ── Latency alerts (p95 > target for 20m) ────────────────────
+      - alert: ApiLoginLatencyHigh
+        expr: api:login_latency_p95_5m > 0.5
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Login p95 latency {{ $value | humanizeDuration }} exceeds 500ms target"
+          runbook_url: "https://github.com/cardosop/DataInteroperabilityHub/blob/main/docs/slo/api-endpoints.md"
+
+      - alert: ApiAssetListLatencyHigh
+        expr: api:asset_list_latency_p95_5m > 0.2
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Asset list p95 latency {{ $value | humanizeDuration }} exceeds 200ms target"
+
+      - alert: ApiMarketplaceListLatencyHigh
+        expr: api:marketplace_list_latency_p95_5m > 0.5
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace list p95 latency {{ $value | humanizeDuration }} exceeds 500ms target"
+
+      - alert: ApiComplianceTriggerLatencyHigh
+        expr: api:compliance_trigger_latency_p95_5m > 2.0
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Compliance trigger p95 latency {{ $value | humanizeDuration }} exceeds 2s target"
+
+      - alert: ApiAuditWriteLatencyHigh
+        expr: api:audit_write_latency_p95_5m > 0.050
+        for: 20m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit write p95 latency {{ $value | humanizeDuration }} exceeds 50ms target — hot-path bottleneck"
+
+      - alert: ApiSparqlLatencyHigh
+        expr: api:sparql_latency_p95_5m > 5.0
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SPARQL p95 latency {{ $value | humanizeDuration }} exceeds 5s target"
+
+      - alert: ApiRecordsLatencyHigh
+        expr: api:records_latency_p95_5m > 30.0
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Records API p95 latency {{ $value | humanizeDuration }} exceeds 30s target"
+
+      - alert: ApiChainLatencyHigh
+        expr: api:chain_latency_p95_5m > 0.050
+        for: 20m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Chain execution p95 latency {{ $value | humanizeDuration }} exceeds 50ms target"
+
+      - alert: ApiSearchLatencyHigh
+        expr: api:search_latency_p95_5m > 0.1
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Search p95 latency {{ $value | humanizeDuration }} exceeds 100ms target"
+
+      # ── Error rate alerts (error_rate > target for 20m) ───────────
+      - alert: ApiLoginErrorRateHigh
+        expr: api:login_error_rate_5m > 0.005
+        for: 20m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Login error rate {{ $value | humanizePercentage }} exceeds 0.5% target"
+
+      - alert: ApiAssetListErrorRateHigh
+        expr: api:asset_list_error_rate_5m > 0.001
+        for: 20m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Asset list error rate {{ $value | humanizePercentage }} exceeds 0.1% target"
+
+      - alert: ApiAuditWriteErrorRateHigh
+        expr: api:audit_write_error_rate_5m > 0.0001
+        for: 20m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit write error rate {{ $value | humanizePercentage }} exceeds 0.01% target — hot-path failure"
+
+  - name: auth_login_alerts
+    rules:
+      # Phase 277.B.050 — brute-force detection.
+      - alert: AuthLoginFailureRateHigh
+        expr: rate(auth_login_total{status="failure"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High login failure rate — possible brute-force attack"
+          description: >
+            Login failure rate is {{ $value | humanize }}/s. Check for
+            brute-force or credential-stuffing attack. Correlate with
+            AuthLoginRateLimited alert.
+          runbook_url: "https://github.com/cardosop/DataInteroperabilityHub/blob/main/docs/runbooks/RB-SEC-001-credential-rotation.md"
+
+      - alert: AuthLoginRateLimited
+        expr: rate(auth_login_total{status="rate_limited"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Login rate limiting active — elevated login attempts"
+          description: "{{ $value | humanize }}/s rate-limited login attempts detected."

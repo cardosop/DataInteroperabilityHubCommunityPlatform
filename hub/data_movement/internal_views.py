@@ -3,9 +3,18 @@
 
 Called by Prefect workers to fetch pipeline config and report results.
 NOT exposed to external clients — gated by INTERNAL_API_KEY header.
+
+W3.7 (R2-P6) — FAIL-CLOSED auth (no dev fallback: without
+``INTERNAL_API_KEY`` configured the endpoint rejects every request —
+the pre-fix fallback returned 200 to anyone) and MASKED output (the
+sibling-endpoint contract: the config leaves the hub masked via the
+app CredentialManagers and NO resolved credential material is ever
+returned).
 """
 
 from __future__ import annotations
+
+import hmac
 
 import structlog
 from django.http import HttpRequest, JsonResponse
@@ -21,13 +30,21 @@ _INTERNAL_API_KEY = "x-internal-api-key"
 
 
 def _verify_internal(request: HttpRequest) -> bool:
-    """Verify the request comes from an authorized internal worker."""
+    """Verify the request comes from an authorized internal worker.
+
+    Fail-closed: no ``INTERNAL_API_KEY`` configured → every request is
+    rejected (the endpoint is unavailable until the operator provisions
+    the key — never a dev fallback). The comparison is timing-safe
+    (P.8 — a shared secret compared with a plain ``==`` leaks prefix
+    information over the network).
+    """
     from django.conf import settings
 
     expected = getattr(settings, "INTERNAL_API_KEY", None)
     if not expected:
-        return True  # dev mode — no key configured
-    return request.headers.get(_INTERNAL_API_KEY) == expected
+        return False
+    presented = request.headers.get(_INTERNAL_API_KEY) or ""
+    return hmac.compare_digest(presented, expected)
 
 
 @csrf_exempt
@@ -41,15 +58,19 @@ def internal_pipeline_config(
     GET /api/v1/data-movement/internal/config/{direction}/{id}/
     """
     if not _verify_internal(request):
-        return JsonResponse({"error": "unauthorized"}, status=403)
+        return JsonResponse({"error": "unauthorized"}, status=401)
 
     try:
         if direction == "ingestion":
-            from hub.data_movement.dlt_credentials import resolve_credentials
             from hub.data_movement.dlt_pipeline import SOURCE_MAP
 
             obj = ScheduledIngestion.objects.get(id=resource_id)
-            config = obj.source_config or {}
+            # W3.7 — the sibling-endpoint masking contract: the DECRYPTED
+            # config (legacy plaintext rows included) leaves masked; the
+            # resolved credential material is never returned.
+            from hub.apps.scheduled_ingestion.credential_manager import CredentialManager
+
+            config = CredentialManager.get_masked_credentials(obj)
             source_type = obj.source_type
             credential_ref = getattr(obj, "credential_ref", None)
             dlt_source = SOURCE_MAP.get(source_type, "filesystem")
@@ -61,16 +82,18 @@ def internal_pipeline_config(
                     "dlt_source": dlt_source,
                     "config": config,
                     "credential_ref": credential_ref,
-                    "credentials": resolve_credentials(credential_ref),
                     "tenant_id": str(obj.tenant_id),
                 }
             )
         else:
-            from hub.data_movement.dlt_credentials import resolve_credentials
             from hub.data_movement.dlt_pipeline import DESTINATION_MAP
 
             obj = ScheduledExport.objects.get(id=resource_id)
-            config = obj.destination_config or {}
+            # W3.7 — the sibling-endpoint masking contract (see the
+            # ingestion branch).
+            from hub.apps.scheduled_export.credential_manager import CredentialManager
+
+            config = CredentialManager.get_masked_credentials(obj)
             destination_type = obj.destination_type
             credential_ref = getattr(obj, "credential_ref", None)
             dlt_dest = DESTINATION_MAP.get(destination_type, "filesystem")
@@ -82,14 +105,13 @@ def internal_pipeline_config(
                     "dlt_destination": dlt_dest,
                     "config": config,
                     "credential_ref": credential_ref,
-                    "credentials": resolve_credentials(credential_ref),
                     "tenant_id": str(obj.tenant_id),
                 }
             )
     except (ScheduledIngestion.DoesNotExist, ScheduledExport.DoesNotExist):
         return JsonResponse({"error": "not found"}, status=404)
     except Exception as e:
-        logger.error(
+        logger.exception(
             "internal_pipeline_config_failed",
             direction=direction,
             resource_id=resource_id,

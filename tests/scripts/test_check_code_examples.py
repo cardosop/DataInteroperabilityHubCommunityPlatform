@@ -207,8 +207,8 @@ response = requests.get(url  # Missing closing parenthesis
         examples = checker.find_code_examples()
         python_examples = [e for e in examples if e.language == "python"]
 
-        valid_example = [e for e in python_examples if "valid_example" in e.source_file][0]
-        invalid_example = [e for e in python_examples if "syntax_error" in e.source_file][0]
+        valid_example = next(e for e in python_examples if "valid_example" in e.source_file)
+        invalid_example = next(e for e in python_examples if "syntax_error" in e.source_file)
 
         # Valid Python should pass
         result_valid = checker.validate_python_syntax(valid_example)

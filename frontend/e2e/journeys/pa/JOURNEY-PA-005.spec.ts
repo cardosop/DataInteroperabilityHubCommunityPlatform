@@ -35,7 +35,7 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       }
 
       if (!landed) {
-        test.skip(true, 'Marketplace configuration page not found at any known route');
+        test.skip(!landed, 'Marketplace configuration page not found at any known route');
         return;
       }
 

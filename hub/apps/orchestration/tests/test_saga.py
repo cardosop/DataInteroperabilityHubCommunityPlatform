@@ -30,7 +30,7 @@ class SagaPatternTest(TestCase):
         self.execution_log = []
         self.compensation_log = []
 
-    def _create_success_action(self, step_name: str, output_data: dict = None):
+    def _create_success_action(self, step_name: str, output_data: dict | None = None):
         """Create a successful forward action"""
         # Capture reference to execution_log to ensure closure uses current instance
         execution_log = self.execution_log
@@ -50,7 +50,7 @@ class SagaPatternTest(TestCase):
 
         return action
 
-    def _create_failure_action(self, step_name: str, error_message: str = None):
+    def _create_failure_action(self, step_name: str, error_message: str | None = None):
         """Create a failing forward action"""
         # Capture reference to execution_log to ensure closure uses current instance
         execution_log = self.execution_log
@@ -322,9 +322,11 @@ class SagaPatternTest(TestCase):
             ),
         ]
 
-        with self.assertRaises(SagaCompensationError) as cm:
-            with self.assertRaises(SagaExecutionError):
-                orchestrator.execute(steps)
+        with (
+            self.assertRaises(SagaCompensationError) as cm,
+            self.assertRaises(SagaExecutionError),
+        ):
+            orchestrator.execute(steps)
 
         # Verify compensation was attempted but failed
         self.assertEqual(orchestrator.get_status(), SagaStatus.COMPENSATION_FAILED)

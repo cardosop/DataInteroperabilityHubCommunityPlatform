@@ -108,7 +108,7 @@ def profile_asset_create(num_iterations: int = 100) -> dict[str, Any]:
 
         # Measure total time
         _, exec_time = measure_time(
-            lambda: Asset.objects.create(
+            lambda key=key, i=i: Asset.objects.create(
                 tenant=tenant,
                 key=f"{key}-timed",
                 name=f"Test Asset {i} Timed",
@@ -214,7 +214,7 @@ def profile_asset_activate(num_iterations: int = 50) -> dict[str, Any]:
 
         # Measure total time
         asset.refresh_from_db()
-        _, exec_time = measure_time(lambda: asset.can_activate())
+        _, exec_time = measure_time(lambda asset=asset: asset.can_activate())
         execution_times.append(exec_time)
 
         # Cleanup

@@ -1,0 +1,103 @@
+{
+  "title": "Tenant Usage",
+  "tags": [
+    "hub",
+    "tenant",
+    "usage"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Per-Tenant Job Counts",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(tenant_running_jobs) by (tenant_id)",
+          "legendFormat": "{{tenant_id}} Running"
+        },
+        {
+          "expr": "sum(tenant_queued_jobs) by (tenant_id)",
+          "legendFormat": "{{tenant_id}} Queued"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "title": "Per-Tenant DQ Runs",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(dq_runs_total[5m])) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "title": "Per-Tenant Compliance Runs",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(compliance_runs_total[5m])) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 4,
+      "title": "Per-Tenant Contract Validations",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(contract_validations_total[5m])) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "title": "Rate Limit Usage",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate_limit_remaining) by (tenant_id)",
+          "legendFormat": "{{tenant_id}} Remaining"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      }
+    }
+  ]
+}

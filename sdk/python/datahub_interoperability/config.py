@@ -2,8 +2,6 @@
 SDK Configuration
 """
 
-from typing import Optional
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -23,7 +21,7 @@ class DataHubClientConfig(BaseModel):
     model_config = ConfigDict(frozen=True)  # Immutable config
 
     base_url: str = Field(..., description="Base URL for the API")
-    api_token: Optional[str] = Field(None, description="API token for authentication")
+    api_token: str | None = Field(None, description="API token for authentication")
     timeout: float = Field(30.0, description="Request timeout in seconds")
     max_retries: int = Field(3, description="Maximum number of retries")
     user_agent: str = Field("datahub-interoperability-sdk/1.0.0", description="User agent string")

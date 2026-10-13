@@ -151,9 +151,7 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             if "unavailable" in err:
                 pass  # Service unavailable — skip gracefully
             else:
-                self.fail(
-                    f"Compliance validation failed unexpectedly on a compliant asset: {e}"
-                )
+                self.fail(f"Compliance validation failed unexpectedly on a compliant asset: {e}")
 
     def test_cross_tenant_access_with_entitlement(self):
         """Test cross-tenant source access with proper entitlement"""
@@ -256,14 +254,13 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         Creating a virtual dataset in one tenant should not expose its
         query executions or results to a user from a different tenant.
         """
+        # Create asset, file, dataset in self.tenant
+        from hub.apps.assets.models import AssetSourceType
         from hub.apps.core.services.base import NotFoundError
         from hub.apps.virtualization.models import (
             QueryExecution,
             QueryExecutionStatus,
         )
-
-        # Create asset, file, dataset in self.tenant
-        from hub.apps.assets.models import AssetSourceType
 
         asset = Asset.objects.create(
             tenant=self.tenant,
@@ -280,7 +277,7 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             content_type="text/csv",
             status="ACTIVE",
         )
-        dataset = Dataset.objects.create(
+        _dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=asset,
             file=file_obj,
@@ -336,14 +333,13 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         ``dataset.status != VirtualDatasetStatus.ACTIVE`` and raises
         ``ValidationError(code="DATASET_NOT_ACTIVE")``.
         """
+        # Create an INACTIVE virtual dataset
+        from hub.apps.assets.models import AssetSourceType
         from hub.apps.virtualization.models import (
             QueryExecutionMode,
             VirtualDataset,
             VirtualDatasetStatus,
         )
-
-        # Create an INACTIVE virtual dataset
-        from hub.apps.assets.models import AssetSourceType
 
         asset = Asset.objects.create(
             tenant=self.tenant,
@@ -395,10 +391,9 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         Production code: dataset_service.py:356-362 checks for existing
         (tenant_id, name, version) and raises ConflictError on collision.
         """
-        from hub.apps.core.services.base import ConflictError
-
         # Create a real asset so source validation passes
         from hub.apps.assets.models import AssetSourceType
+        from hub.apps.core.services.base import ConflictError
 
         asset = Asset.objects.create(
             tenant=self.tenant,
@@ -423,10 +418,7 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
-        sources = [
-            {"type": "federated_asset", "asset_id": str(asset.id),
-             "name": "dup-source"}
-        ]
+        sources = [{"type": "federated_asset", "asset_id": str(asset.id), "name": "dup-source"}]
 
         # First creation should succeed
         first = self.service.create_virtual_dataset(

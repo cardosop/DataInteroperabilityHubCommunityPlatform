@@ -2,7 +2,7 @@
 Phase 20 — Security Hardening: Static Validation Tests
 =======================================================
 
-Validates all 7 security hardening items (20.1–20.7) plus 4 review gap
+Validates all 7 security hardening items (20.1-20.7) plus 4 review gap
 fixes by statically parsing the relevant config / infrastructure files.
 
 No Docker, AWS, Kubernetes or database runtime needed — every check

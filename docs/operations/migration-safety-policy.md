@@ -1,6 +1,6 @@
 # Database Migration Safety Policy — Meshant Platform
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-09-02 (U.7 data rehearsal + data-loss veto section)
 **Applies to:** All Django apps under `hub/apps/`
 **Enforced by:** CI gate `lint-rls-policies` + `check_migrations`
 
@@ -97,3 +97,46 @@ For SEV1 incidents requiring immediate schema changes:
 - `scripts/lint_rls_policies.py` — every new model with `tenant_id` must have paired RLS migration
 - `scripts/check_migration_count.py` — fail if any app >200 migrations (squash required)
 - `python manage.py makemigrations --check --dry-run` — fail if uncommitted migrations detected
+
+## Data Rehearsal + Data-Loss Veto (Phase U.7)
+
+Before the internal beta cohort is invited (and before any release
+promotion), the migration rehearsal SHALL pass on a dedicated disposable
+database seeded ONLY with synthetic data (E2E provisioners) — never raw
+production data, never the beta staging database itself.
+
+**Runner**: `bash infrastructure/scripts/migration-rehearsal.sh`
+(dry-run: `--dry-run`; Makefile: `make rehearsal-migration` with per-op
+`APPROVALS="--approve-data-loss <app>.<migration> ..."`).
+
+**Stages**: create disposable DB → full forward migrate from zero →
+synthetic dataset via the E2E provisioners (`seed_default_plans`,
+`ensure_e2e_user_roles`, `ensure_e2e_subscription`, `init_tenant_configs`,
+`ensure_user_tenant_memberships`) → data-loss veto drill per discovered
+`DeleteModel` (insert sentinel rows at the predecessor, apply the drop,
+prove the rows are destroyed, reverse, re-apply) → idempotence
+(`makemigrations --check` + `migrate --check` exit 0) → cleanup.
+
+**The veto**: every `migrations.DeleteModel` op is DISCOVERED from the tree
+(`infrastructure/scripts/discover_delete_models.py` — never a hardcoded
+count; a new DeleteModel cannot slip past unexamined). An op without an
+explicit `--approve-data-loss <app>.<migration>` BLOCKS the rehearsal
+(exit 3) and the go/no-go (U.8) reads it as NO-GO. Approve an op ONLY
+after recording its justification below. A PERMANENT drop additionally
+requires machine-verified proof that no runtime reader/writer of the
+table remains (enforced by the rehearsal contract suite,
+`make test-rehearsal-migration`).
+
+### Recorded approvals (rehearsal passed 2026-09-03)
+
+| Op | Table | Fate | Justification |
+|----|-------|------|---------------|
+| `core.0005_remove_eventoutbox_event_outbox_status_created_idx_and_more` | `event_outbox` | permanent drop | Superseded by the `Event` store + write-behind buffer (Phase 313). Legacy DB-backed outbox (`OutboxPublisher`/`process_event_outbox` command) retired with the table — no runtime reader/writer remains (machine-checked). Reprocessing is covered by `replay_events` against `events_event`. |
+| `tenants.0097_fix_notification_opt_outs_on_tenant` | `limit_dimensions` | drop + recreate (`0104_limitdimension_and_more`) | Old limit-dimension schema replaced by the Phase-313 limits model; recreated empty by 0104 and repopulated from defaults/`backfill_enterprise_limits`. |
+| `scheduled_ingestion.0005_remove_ingestiontemplate_ingestion_te_tenant__idx_and_more` | `ingestion_templates` | drop + recreate (`0010_recreate_ingestion_templates`) | Old template schema replaced by the new template model; templates are rebuildable configuration (system templates re-seeded). |
+
+**Contract suites**: `make test-rehearsal-migration` (discovery-driven veto,
+stage order, E2E-provisioner dataset, dangling-reference pin) and
+`make test-rehearsal-helm` (lint + full-chart renders + the
+semantic/dq/datacontract production path) — both wired into
+`test-infra-staging-pipeline` and the CI `infra-staging-scripts` job.

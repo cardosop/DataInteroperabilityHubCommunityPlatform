@@ -9,7 +9,7 @@ import jwt as pyjwt
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.tenants.models import Tenant
@@ -341,3 +341,175 @@ class JWTSecurityTest(TestCase):
         self.assertEqual(payload["tenant_id"], str(self.tenant.id))
         self.assertEqual(payload["email"], self.user.email)
         self.assertIn("authz_version", payload)
+
+
+class JWTMutationCoverageTests(TestCase):
+    """Detector tests for the W16 mutation run on jwt_utils.
+
+    Each test pins behaviour that a specific mutant of the first run
+    (2026-08-30, mutmut-security-money.yml baseline) silently broke —
+    the suite survived 32 mutants, every one of them an unobserved branch
+    or an unasserted claim. Re-running mutmut must show these killed.
+    """
+
+    def setUp(self):
+        from hub.apps.users.models import Role, UserRole
+
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"JWT Mut {uid}",
+            slug=f"jwt-mut-{uid}",
+        )
+        self.user = User.objects.create_user(
+            email=f"jwtmut-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            display_name="Mutation Hunter",
+        )
+        self.role = Role.objects.create(name=f"data-engineer-{uid}")
+        UserRole.objects.create(user=self.user, role=self.role)
+
+    # ── tenant derivation (mutants: `tenant_id is not None` flip, constant-None) ──
+
+    def test_tenant_id_derived_from_user_when_not_passed(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user, tenant_id=None)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["tenant_id"] == str(self.user.tenant.id)
+
+    def test_tenantless_user_produces_no_tenant_claim(self):
+        loner = User.objects.create_user(
+            email=f"loner-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=None,
+        )
+        token = JWTTokenGenerator.generate_access_token(user=loner)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert "tenant_id" not in payload
+
+    def test_tenant_slug_claim_matches_user_tenant(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["tenant_slug"] == self.tenant.slug
+
+    # ── roles derivation (mutants: roles-None default, attr string, list→None) ──
+
+    def test_roles_derived_from_user_roles(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["roles"] == [self.role.name]
+
+    def test_explicit_roles_override_derived(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user, roles=["explicit-role"])
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["roles"] == ["explicit-role"]
+
+    # ── display_name / scopes / refresh_token_id claims (string + constant mutants) ──
+
+    def test_display_name_claim_present_when_set(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["name"] == "Mutation Hunter"
+
+    def test_scopes_claim_round_trips(self):
+        token = JWTTokenGenerator.generate_access_token(
+            user=self.user, scopes=["read:assets", "write:assets"]
+        )
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["scopes"] == ["read:assets", "write:assets"]
+
+    def test_refresh_token_id_claim_round_trips(self):
+        token = JWTTokenGenerator.generate_access_token(
+            user=self.user, refresh_token_id="refresh-abc-123"
+        )
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["refresh_token_id"] == "refresh-abc-123"
+
+    def test_nbf_claim_present_and_numeric(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert isinstance(payload["nbf"], int)
+
+    # ── issuer (attr-string + fallback-string mutants) ──
+
+    def test_iss_uses_configured_issuer(self):
+        with override_settings(JWT_ISSUER="test-issuer-w16"):
+            token = JWTTokenGenerator.generate_access_token(user=self.user)
+            payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["iss"] == "test-issuer-w16"
+
+    def test_iss_falls_back_to_hub_when_unset(self):
+        original = getattr(settings, "JWT_ISSUER", None)
+        try:
+            if hasattr(settings, "JWT_ISSUER"):
+                delattr(settings, "JWT_ISSUER")
+            token = JWTTokenGenerator.generate_access_token(user=self.user)
+            payload = JWTTokenGenerator.decode_access_token(token)
+            assert payload["iss"] == "hub"
+        finally:
+            if original is not None:
+                settings.JWT_ISSUER = original
+
+    # ── algorithm branch strings (RS256 mutants) ──
+
+    def test_rs256_round_trip_uses_keypair(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode()
+        public_pem = (
+            private_key.public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode()
+        )
+        with override_settings(
+            JWT_ALGORITHM="RS256",
+            JWT_PRIVATE_KEY=private_pem,
+            JWT_PUBLIC_KEY=public_pem,
+        ):
+            token = JWTTokenGenerator.generate_access_token(user=self.user)
+            payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["sub"] == str(self.user.id)
+
+    # ── verify_version default + private validator branches (bool-flip mutants) ──
+
+    def test_decode_default_rejects_stale_token(self):
+        token = JWTTokenGenerator.generate_access_token(user=self.user)
+        self.user.token_version += 1
+        self.user.save(update_fields=["token_version"])
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload is None
+
+    def test_validate_token_version_none_payload_is_false(self):
+        assert not JWTTokenGenerator._validate_token_version(None)
+
+    def test_validate_token_version_missing_sub_is_false(self):
+        assert not JWTTokenGenerator._validate_token_version({"email": "x@y.z"})
+
+    def test_validate_token_version_unknown_user_is_false(self):
+        assert not JWTTokenGenerator._validate_token_version({"sub": str(uuid.uuid4())})
+
+    def test_validate_token_version_missing_authz_version_defaults_to_zero(self):
+        # payload without authz_version → default 0, but user.token_version
+        # defaults to 1 on this model — so the check must reject. A mutant
+        # flipping the default to 1 would silently accept the token.
+        assert not JWTTokenGenerator._validate_token_version({"sub": str(self.user.id)})
+        assert not JWTTokenGenerator.validate_token_version({"sub": str(self.user.id)}, self.user)
+
+    # ── staticmethod contract (decorator-removal mutants) ──
+
+    def test_generate_access_token_callable_positionally_on_class(self):
+        token = JWTTokenGenerator.generate_access_token(self.user)
+        assert isinstance(token, str)
+
+    def test_decode_callable_positionally_on_class(self):
+        token = JWTTokenGenerator.generate_access_token(self.user)
+        payload = JWTTokenGenerator.decode_access_token(token)
+        assert payload["sub"] == str(self.user.id)

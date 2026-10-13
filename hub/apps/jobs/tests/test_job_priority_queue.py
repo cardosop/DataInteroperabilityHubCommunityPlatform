@@ -7,6 +7,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django_rq import get_queue
+from redis.exceptions import RedisError
 
 from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
 from hub.apps.jobs.utils import (
@@ -44,7 +45,7 @@ class JobPriorityQueueTest(TestCase):
             try:
                 queue = get_queue(queue_name)
                 queue.empty()
-            except Exception:
+            except (RedisError, KeyError):
                 pass
 
     def test_get_job_priority_explicit(self):

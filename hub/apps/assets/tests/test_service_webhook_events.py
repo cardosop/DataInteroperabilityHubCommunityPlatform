@@ -25,7 +25,6 @@ mocking — we exercise the real AssetService against real DB rows.
 
 from __future__ import annotations
 
-import contextlib
 import uuid
 from unittest.mock import patch
 
@@ -36,7 +35,6 @@ from django.test import TestCase, override_settings
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
 from hub.apps.core.events.models import Event
-from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
@@ -245,9 +243,7 @@ class AssetServiceUpdateAssetEventTest(_OnCommitImmediateMixin, TestCase):
             "Asset status must be ACTIVE after successful update.",
         )
         self.assertTrue(updated_evs, "asset.updated event missing after successful activation")
-        self.assertTrue(
-            activated_evs, "asset.activated event missing after successful activation"
-        )
+        self.assertTrue(activated_evs, "asset.activated event missing after successful activation")
         self.assertLessEqual(
             updated_evs[-1].timestamp,
             activated_evs[-1].timestamp,

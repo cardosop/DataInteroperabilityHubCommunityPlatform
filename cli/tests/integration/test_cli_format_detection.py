@@ -24,18 +24,7 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 def _create_test_api_key():
@@ -83,8 +72,8 @@ print(api_key_value)
         )
         if result.returncode == 0:
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 if line and len(line) > 20:
                     cleaned = line.replace("-", "").replace("_", "")
                     if (
@@ -237,7 +226,7 @@ spec:
 class TestCLIFormatDetection:
     """Tests for CLI format detection and auto-detection"""
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_auto_detection_odps_vs_odcs_json(self, odps_json_file, odcs_json_file, setup_config):
         """Test auto-detection of ODPS vs ODCS from JSON files"""
         runner = CliRunner()
@@ -267,7 +256,7 @@ class TestCLIFormatDetection:
         odcs_data = json.loads(result_odcs.output)
         assert odcs_data.get("original_spec_type") == "ODCS" or "id" in odcs_data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_auto_detection_odps_vs_odcs_yaml(self, odps_yaml_file, odcs_yaml_file, setup_config):
         """Test auto-detection of ODPS vs ODCS from YAML files"""
         runner = CliRunner()
@@ -297,7 +286,7 @@ class TestCLIFormatDetection:
 
         assert result_odcs.exit_code == 0, f"ODCS YAML creation failed: {result_odcs.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_original_spec_type_display_in_list(self, odps_json_file, odcs_json_file, setup_config):
         """Test that `original_spec_type` is displayed correctly in list command"""
         runner = CliRunner()
@@ -359,7 +348,7 @@ class TestCLIFormatDetection:
         # At least one should be found
         assert odps_found or odcs_found, "Created contracts not found in list"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_odps_format_support_in_contract_commands(self, odps_json_file, setup_config):
         """Test ODPS format support in all contract commands"""
         runner = CliRunner()
@@ -443,7 +432,7 @@ class TestCLIFormatDetection:
         # May succeed or fail depending on contract validity, but should not crash
         assert result_lint.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_format_detection_from_file_extension(
         self, odps_json_file, odps_yaml_file, setup_config
     ):
@@ -482,7 +471,7 @@ class TestCLIFormatDetection:
         )
         assert result_yaml.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_format_override_with_spec_type(self, odps_json_file, setup_config):
         """Test format override with --spec-type option"""
         runner = CliRunner()

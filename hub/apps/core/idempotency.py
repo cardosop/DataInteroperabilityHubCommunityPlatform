@@ -256,7 +256,9 @@ class IdempotencyService:
         try:
             tenant_uuid = uuid.UUID(tenant_part)
         except ValueError:
-            raise IdempotencyKeyMalformed("Idempotency-Key tenant prefix MUST be a valid UUID.")
+            raise IdempotencyKeyMalformed(
+                "Idempotency-Key tenant prefix MUST be a valid UUID."
+            ) from None
         # Reject non-canonical (uppercase / mixed-case) UUIDs. The
         # canonical lowercase string from ``str(uuid.UUID(...))`` is
         # the wire form server + SDK agree on; anything else would

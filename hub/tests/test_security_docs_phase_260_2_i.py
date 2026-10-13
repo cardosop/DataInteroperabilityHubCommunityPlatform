@@ -52,7 +52,7 @@ class TestThreatModelDatasetsFilesStructure:
         assert "Capability flag" in body or "Trust boundaries" in body
 
     def test_threat_model_pinned_backend_tests_exist(self):
-        """Pinned-by rows MUST reference modules that exist (doc–code contract)."""
+        """Pinned-by rows MUST reference modules that exist (doc-code contract)."""
         repo = REPO_ROOT
         must_exist = [
             "hub/apps/files/tests/security/test_idor.py",
@@ -82,12 +82,14 @@ class TestThreatModelDatasetsFilesStructure:
     def test_threat_model_requires_security_sign_off_worded(self):
         body = THREAT_MODEL_PATH.read_text(encoding="utf-8")
         lower = body.lower()
-        assert "sign-off" in lower and "security" in body
+        assert "sign-off" in lower
+        assert "security" in body
 
     def test_threat_model_requires_pre_merge_sign_off(self):
         body = THREAT_MODEL_PATH.read_text(encoding="utf-8")
         lower = body.lower()
-        assert "pre-merge" in lower and "sign-off" in lower
+        assert "pre-merge" in lower
+        assert "sign-off" in lower
 
 
 class TestPenTestScope260Structure:

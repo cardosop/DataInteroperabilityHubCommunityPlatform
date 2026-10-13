@@ -8,11 +8,42 @@
  * Route is gated to TENANT_ADMIN / DPO / LEGAL_ADMIN / SECURITY_ADMIN /
  * PLATFORM_ADMIN — tests use getTenantAdminUser.
  *
+ * Gate contract (close-test-coverage-gaps 2.4): every skip is CONDITIONAL
+ * (no-test-skip-true clean); guarded expects were replaced by direct
+ * asserts where the component GUARANTEES the markup (breadcrumbs, item
+ * type badge, item title link, action buttons, select-all, footer
+ * view-all), or by conditional skips where the state is genuinely
+ * data-dependent (no pending items).
+ *
  * @critical — approval latency directly impacts marketplace time-to-value
  * and governance SLA compliance.
  */
 import { test, expect } from '@playwright/test';
-import { getTenantAdminUser, loginUser } from '../../fixtures/auth';
+import { getTenantAdminUser, getTestUser, loginUser } from '../../fixtures/auth';
+import { createPendingAccessRequestsViaApi } from '../../fixtures/api-assets';
+
+function inboxLocator(page: import('@playwright/test').Page) {
+  return page
+    .locator(
+      '[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty',
+    )
+    .first();
+}
+
+async function navigateToInbox(page: import('@playwright/test').Page) {
+  const user = await getTenantAdminUser();
+  await loginUser(page, user);
+  test.skip(page.url().includes('/login'), 'Could not authenticate as TENANT_ADMIN');
+  await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
+  // intentional: best-effort readiness wait — the caller's skip/assert below is the primary pass/fail; a timeout here just falls through to it.
+  await inboxLocator(page)
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .catch(() => null);
+  test.skip(
+    page.url().includes('/403') || page.url().includes('/login'),
+    'Role gate or auth redirect',
+  );
+}
 
 test.describe('Unified Approval Inbox (278.V.3) @critical', () => {
   test.setTimeout(120000);
@@ -21,34 +52,11 @@ test.describe('Unified Approval Inbox (278.V.3) @critical', () => {
     test('route /governance/my-approvals is navigable and renders page shell', async ({
       page,
     }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate as TENANT_ADMIN');
+      await navigateToInbox(page);
 
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-
-      // Wait for either the inbox or a known terminal state (403 = role denied)
-      await page
-        .locator(
-          '[data-testid="my-approvals-inbox"], .my-approvals-inbox, .error-display, [data-testid="error-display"]',
-        )
-        .first()
-        .waitFor({ state: 'visible', timeout: 30000 })
-        .catch(() => null);
-
-      const url = page.url();
-      // Role-gated: 403 or redirect to login means the test user lacks the
-      // required role — skip with diagnostic rather than failing.
-      if (url.includes('/403')) {
-        test.skip(true, 'TENANT_ADMIN user does not have access to /governance/my-approvals — role gate active');
-        return;
-      }
-      if (url.includes('/login')) {
-        test.skip(true, 'Redirected to login — auth session expired');
-        return;
-      }
-
-      // Page must have rendered the inbox or empty state (both valid)
+      // Page must have rendered the inbox or empty state (both valid) —
+      // the 404 fall-through this spec used to hit (before the route
+      // landed) renders NEITHER, so this assert is the no-404 contract.
       const inboxOrEmpty =
         (await page.locator('.my-approvals-inbox, [data-testid="my-approvals-inbox"]').count()) > 0;
       expect(inboxOrEmpty).toBe(true);
@@ -57,102 +65,74 @@ test.describe('Unified Approval Inbox (278.V.3) @critical', () => {
     test('inbox renders with header, breadcrumbs, and title', async ({
       page,
     }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
+      await navigateToInbox(page);
 
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox')
-        .first()
-        .waitFor({ state: 'visible', timeout: 30000 })
-        .catch(() => null);
-
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect — cannot verify');
-        return;
-      }
-
-      // Breadcrumbs must show Governance > My Approvals
+      // Breadcrumbs render unconditionally in the loaded state — direct
+      // assert (no count guard).
       const breadcrumbs = page.locator('.breadcrumbs, [data-testid="breadcrumbs"]').first();
-      if ((await breadcrumbs.count()) > 0) {
-        const bcText = await breadcrumbs.textContent();
-        expect(bcText).toContain('Governance');
-        expect(bcText).toContain('My Approvals');
-      }
+      await expect(breadcrumbs).toBeVisible({ timeout: 10000 });
+      const bcText = await breadcrumbs.textContent();
+      expect(bcText).toContain('Governance');
+      expect(bcText).toContain('My Approvals');
 
-      // Title must be present
-      const hasTitle =
-        (await page.locator('.my-approvals-inbox__title, h2').count()) > 0;
-      expect(hasTitle).toBe(true);
+      // Title renders unconditionally in the loaded state — direct assert.
+      await expect(
+        page.locator('.my-approvals-inbox__title').first(),
+      ).toBeVisible({ timeout: 10000 });
     });
 
     test('inbox shows count badge when items are present', async ({ page }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
-
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
+      await navigateToInbox(page);
+      // Seed REAL pending work via the authenticated browser session
+      // (2.4 root cause: zero PENDING requests made every item-dependent
+      // test skip). page.request shares the UI's own auth channel — no
+      // separate Bearer path to drift.
+      const seeded = await createPendingAccessRequestsViaApi(page, await getTestUser(), 3);
+      test.skip(seeded === 0, 'Could not seed pending approval items');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      // intentional: best-effort readiness wait — the caller's asserts below are the primary pass/fail; a timeout here just falls through to them.
+      await inboxLocator(page)
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
       const hasItems = (await page.locator('.my-approvals-inbox__list li').count()) > 0;
-      if (hasItems) {
-        // Count badge should show a positive number
-        const countBadge = page.locator('.my-approvals-inbox__count');
-        if ((await countBadge.count()) > 0) {
-          const countText = await countBadge.textContent();
-          const count = parseInt(countText?.trim() ?? '0', 10);
-          expect(count).toBeGreaterThan(0);
-        }
-      }
-      // If no items, empty state is acceptable (verified in empty-state test)
+      test.skip(!hasItems, 'No pending items — count badge only renders with items');
+
+      // Count badge is guaranteed by the component whenever items.length
+      // > 0 — direct assert, and it must show a positive number.
+      const countBadge = page.locator('.my-approvals-inbox__count');
+      await expect(countBadge).toBeVisible({ timeout: 5000 });
+      const countText = await countBadge.textContent();
+      const count = parseInt(countText?.trim() ?? '0', 10);
+      expect(count).toBeGreaterThan(0);
     });
 
     test('inbox items render type badge and priority class', async ({
       page,
     }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
-
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
+      await navigateToInbox(page);
+      // Seed REAL pending work via the authenticated browser session
+      // (2.4 root cause: zero PENDING requests made every item-dependent
+      // test skip). page.request shares the UI's own auth channel — no
+      // separate Bearer path to drift.
+      const seeded = await createPendingAccessRequestsViaApi(page, await getTestUser(), 3);
+      test.skip(seeded === 0, 'Could not seed pending approval items');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      // intentional: best-effort readiness wait — the caller's asserts below are the primary pass/fail; a timeout here just falls through to them.
+      await inboxLocator(page)
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
       const items = page.locator('.my-approvals-inbox__list li');
       const itemCount = await items.count();
+      test.skip(itemCount === 0, 'No pending approval items — cannot verify type badges');
 
-      if (itemCount === 0) {
-        test.skip(true, 'No pending approval items — cannot verify type badges');
-        return;
-      }
-
-      // First item must have type badge and priority class
+      // Item markup is guaranteed by the component — direct asserts.
       const firstItem = items.first();
       const typeBadge = firstItem.locator('.my-approvals-inbox__item-type');
-      if ((await typeBadge.count()) > 0) {
-        const typeText = await typeBadge.textContent();
-        expect(typeText?.trim().length).toBeGreaterThan(0);
-      }
+      await expect(typeBadge).toBeVisible({ timeout: 5000 });
+      expect((await typeBadge.textContent())?.trim().length).toBeGreaterThan(0);
 
-      // Priority class must be one of the valid values
       const classList = await firstItem.getAttribute('class');
       const hasPriorityClass =
         classList?.includes('my-approvals-inbox__item--high') ||
@@ -164,57 +144,51 @@ test.describe('Unified Approval Inbox (278.V.3) @critical', () => {
     test('inbox items have Approve and Reject action buttons', async ({
       page,
     }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
-
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
+      await navigateToInbox(page);
+      // Seed REAL pending work via the authenticated browser session
+      // (2.4 root cause: zero PENDING requests made every item-dependent
+      // test skip). page.request shares the UI's own auth channel — no
+      // separate Bearer path to drift.
+      const seeded = await createPendingAccessRequestsViaApi(page, await getTestUser(), 3);
+      test.skip(seeded === 0, 'Could not seed pending approval items');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      // intentional: best-effort readiness wait — the caller's asserts below are the primary pass/fail; a timeout here just falls through to them.
+      await inboxLocator(page)
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
       const items = page.locator('.my-approvals-inbox__list li');
-      if ((await items.count()) === 0) {
-        test.skip(true, 'No pending items — cannot verify action buttons');
-        return;
-      }
+      test.skip(
+        (await items.count()) === 0,
+        'No pending items — cannot verify action buttons',
+      );
 
-      // First item must have action buttons
+      // Every item carries its actions array — the buttons are guaranteed.
       const actions = items.first().locator('.my-approvals-inbox__item-actions button, .btn');
-      const actionCount = await actions.count();
-      expect(actionCount).toBeGreaterThanOrEqual(1);
+      expect(await actions.count()).toBeGreaterThanOrEqual(1);
     });
 
     test('item title links to access request detail page', async ({ page }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
-
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
+      await navigateToInbox(page);
+      // Seed REAL pending work via the authenticated browser session
+      // (2.4 root cause: zero PENDING requests made every item-dependent
+      // test skip). page.request shares the UI's own auth channel — no
+      // separate Bearer path to drift.
+      const seeded = await createPendingAccessRequestsViaApi(page, await getTestUser(), 3);
+      test.skip(seeded === 0, 'Could not seed pending approval items');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      // intentional: best-effort readiness wait — the caller's asserts below are the primary pass/fail; a timeout here just falls through to them.
+      await inboxLocator(page)
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
       const itemTitle = page.locator('.my-approvals-inbox__item-title').first();
-      if ((await itemTitle.count()) === 0) {
-        test.skip(true, 'No items with titles — cannot verify navigation');
-        return;
-      }
+      test.skip(
+        (await itemTitle.count()) === 0,
+        'No items with titles — cannot verify navigation',
+      );
 
+      // The title Link is guaranteed per item — direct asserts.
       const href = await itemTitle.getAttribute('href');
       expect(href).toBeTruthy();
       expect(href).toContain('/governance/access-requests/');
@@ -223,23 +197,9 @@ test.describe('Unified Approval Inbox (278.V.3) @critical', () => {
 
   test.describe('Failure / Edge', () => {
     test('empty state shown when no pending approvals', async ({ page }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
+      await navigateToInbox(page);
 
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
-        .waitFor({ state: 'visible', timeout: 30000 })
-        .catch(() => null);
-
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
-      // Either empty state or list is visible — both are valid
+      // Either empty state or list is visible — both are valid.
       const hasEmpty = (await page.locator('.my-approvals-inbox__empty').count()) > 0;
       const hasList = (await page.locator('.my-approvals-inbox__list').count()) > 0;
       expect(hasEmpty || hasList).toBe(true);
@@ -255,57 +215,55 @@ test.describe('Unified Approval Inbox (278.V.3) @critical', () => {
     });
 
     test('footer "View all" link navigates to /governance', async ({ page }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
-
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
+      await navigateToInbox(page);
+      // Seed REAL pending work via the authenticated browser session
+      // (2.4 root cause: zero PENDING requests made every item-dependent
+      // test skip). page.request shares the UI's own auth channel — no
+      // separate Bearer path to drift.
+      const seeded = await createPendingAccessRequestsViaApi(page, await getTestUser(), 3);
+      test.skip(seeded === 0, 'Could not seed pending approval items');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      // intentional: best-effort readiness wait — the caller's asserts below are the primary pass/fail; a timeout here just falls through to them.
+      await inboxLocator(page)
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
-      const viewAll = page.locator('.my-approvals-inbox__view-all, .my-approvals-inbox__empty-link').first();
-      if ((await viewAll.count()) > 0) {
-        const href = await viewAll.getAttribute('href');
-        expect(href).toContain('/governance');
-      }
-      // If no "View all" link (e.g. no items + different empty state layout),
-      // that's fine — the page loaded successfully.
+      // The component renders the link in BOTH states — the footer
+      // view-all when items exist, the empty-link when not — so the union
+      // is guaranteed and the assert is direct.
+      const viewAll = page
+        .locator('.my-approvals-inbox__view-all, .my-approvals-inbox__empty-link')
+        .first();
+      await expect(viewAll).toBeVisible({ timeout: 5000 });
+      expect(await viewAll.getAttribute('href')).toContain('/governance');
     });
 
     test('bulk actions bar visible when items present', async ({ page }) => {
-      const user = await getTenantAdminUser();
-      await loginUser(page, user);
-      test.skip(page.url().includes('/login'), 'Could not authenticate');
-
-      await page.goto('/governance/my-approvals', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator('[data-testid="my-approvals-inbox"], .my-approvals-inbox, .my-approvals-inbox__empty')
-        .first()
+      await navigateToInbox(page);
+      // Seed REAL pending work via the authenticated browser session
+      // (2.4 root cause: zero PENDING requests made every item-dependent
+      // test skip). page.request shares the UI's own auth channel — no
+      // separate Bearer path to drift.
+      const seeded = await createPendingAccessRequestsViaApi(page, await getTestUser(), 3);
+      test.skip(seeded === 0, 'Could not seed pending approval items');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      // intentional: best-effort readiness wait — the caller's asserts below are the primary pass/fail; a timeout here just falls through to them.
+      await inboxLocator(page)
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        test.skip(true, 'Role gate or auth redirect');
-        return;
-      }
-
       const hasList = (await page.locator('.my-approvals-inbox__list li').count()) > 0;
-      if (!hasList) {
-        test.skip(true, 'No pending items — bulk actions bar only renders when items exist');
-        return;
-      }
+      test.skip(
+        !hasList,
+        'No pending items — bulk actions bar only renders when items exist',
+      );
 
-      // Bulk actions bar should have a select-all checkbox
-      const selectAll = page.locator('.my-approvals-inbox__select-all');
-      expect(await selectAll.count()).toBeGreaterThanOrEqual(0);
+      // Select-all renders whenever items.length > 0 — direct assert (the
+      // previous toBeGreaterThanOrEqual(0) was a tautology that never
+      // caught a missing bar).
+      await expect(
+        page.locator('.my-approvals-inbox__select-all'),
+      ).toBeVisible({ timeout: 5000 });
     });
   });
 });

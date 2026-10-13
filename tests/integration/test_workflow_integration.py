@@ -50,12 +50,13 @@ class WorkflowIntegrationTest(TestCase):
         self.assertIn(
             response.status_code,
             [200, 201, 400],
-            f"Contract creation request completed, got {response.status_code}"
+            f"Contract creation request completed, got {response.status_code}",
         )
 
     def test_asset_list_workflow(self):
         """GET /api/v1/assets/ returns assets from real DB."""
         response = self.client.get("/api/v1/assets/")
-        self.assertEqual(response.status_code, 200,
-            f"Asset list should return 200, got {response.status_code}")
+        self.assertEqual(
+            response.status_code, 200, f"Asset list should return 200, got {response.status_code}"
+        )
         self.assertIn("results", response.data, "Response should contain results key")

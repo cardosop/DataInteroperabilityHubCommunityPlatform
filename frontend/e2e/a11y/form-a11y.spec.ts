@@ -18,14 +18,14 @@ test.describe('Form Accessibility', () => {
     // tasks.md § 226.H.staging-run cycle 9 — Fix 27.
     await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
     if (!(await page.title())) {
-      test.skip(true, 'App not running');
+      test.skip(!(await page.title()), 'App not running');
       return;
     }
 
     // Email input should have a label
     const emailInput = page.locator('input[type="email"], input[name="email"]');
     if ((await emailInput.count()) === 0) {
-      test.skip(true, 'Login form email input not found; form may not be available');
+      test.skip((await emailInput.count()) === 0, 'Login form email input not found; form may not be available');
       return;
     }
     const ariaLabel = await emailInput.getAttribute('aria-label');
@@ -39,7 +39,7 @@ test.describe('Form Accessibility', () => {
   test('required fields have indicators', async ({ page }) => {
     await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
     if (!(await page.title())) {
-      test.skip(true, 'App not running');
+      test.skip(!(await page.title()), 'App not running');
       return;
     }
 

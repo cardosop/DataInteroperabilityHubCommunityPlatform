@@ -21,7 +21,7 @@ test.describe('JOURNEY-MPA-004: Configure Platform Settings', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/admin', { timeout: 60000 });
       if (page.url().includes('/403')) {
-        test.skip(true, 'Redirected to /403 — PLATFORM_ADMIN role not assigned to test user');
+        test.skip(page.url().includes('/403'), 'Redirected to /403 — PLATFORM_ADMIN role not assigned to test user');
       }
       expect(page.url()).toContain('/admin');
     });

@@ -31,11 +31,17 @@ BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=UTC)
 
 
 def _extract_yaml_journey_ids(filepath: Path) -> set[str]:
-    """Extract all JOURNEY-XX-NNN IDs from the YAML file."""
+    """Extract all journey IDs from the YAML file.
+
+    close-test-coverage-gaps 6.1 — widened shape: multi-segment letter
+    groups with an OPTIONAL numeric suffix (JOURNEY-ERROR-BOUNDARY,
+    JOURNEY-TA-BILLING-UPGRADE, …).
+    """
     if not filepath.exists():
         return set()
     content = filepath.read_text()
-    return set(re.findall(r"JOURNEY-[A-Z]+-\d+", content))
+    ids = set(re.findall(r"JOURNEY-[A-Z]+(?:-[A-Z]+)*(?:-\d+)?", content))
+    return {jid for jid in ids if jid != "JOURNEY-XXX"}
 
 
 def _extract_marked_journey_ids(scan_dirs: list[Path]) -> set[str]:
@@ -53,10 +59,10 @@ def _extract_marked_journey_ids(scan_dirs: list[Path]) -> set[str]:
                 try:
                     with open(filepath, encoding="utf-8", errors="ignore") as fh:
                         content = fh.read()
-                except Exception:
+                except OSError:
                     continue
                 for match in re.finditer(
-                    r'(?:pytest\.mark\.journey|@pytest\.mark\.journey)\s*\(\s*["\'](JOURNEY-[A-Z]+-\d+)["\']',
+                    r'(?:pytest\.mark\.journey|@pytest\.mark\.journey)\s*\(\s*["\'](JOURNEY-[A-Z]+(?:-[A-Z]+)*(?:-\d+)?)["\']',
                     content,
                 ):
                     marked.add(match.group(1))

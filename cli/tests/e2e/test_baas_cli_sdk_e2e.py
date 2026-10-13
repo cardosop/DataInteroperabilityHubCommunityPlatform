@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -32,7 +34,11 @@ import uuid
 from datetime import datetime, timedelta
 
 import pytest
-import requests
+
+# Phase U / U.3 — the public tree excludes hub.apps.baas (paid);
+# these suites drive full-mode baas flows, so the whole module
+# skips cleanly there instead of collection/runtime erroring.
+pytest.importorskip("hub.apps.baas")
 from click.testing import CliRunner
 
 # Add SDK to path for imports
@@ -48,19 +54,27 @@ from datahub_interoperability import BaaSAPI, DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import BaaSValidationError, NotFoundError
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get("http://localhost:8000/api/v1/", timeout=2)
-        return response.status_code < 600
-    except Exception:
-        return False
+def _api_base_url() -> str:
+    """Base API URL, honouring the same env vars as the rest of the suite.
+
+    This used to be the literal ``http://localhost:8000/api/v1/``.  The test
+    stack publishes the API on ``API_TEST_PORT`` (8001 in
+    ``docker-compose.test.yml``, and what ``make test-batch-9-3*`` exports),
+    so the hardcoded port never answered and every test in this module
+    skipped as "API service not available" — the paid BaaS CLI/SDK parity
+    contract was never actually exercised.
+    """
+    explicit = os.environ.get("DATAHUB_BASE_URL") or os.environ.get("API_BASE_URL")
+    if explicit:
+        return explicit.rstrip("/") + "/"
+    port = os.environ.get("API_TEST_PORT", "8000")
+    return f"http://localhost:{port}/api/v1/"
 
 
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 def setup_authentication():
@@ -168,8 +182,8 @@ except Exception as e:
             )
             in_key = False
             api_key = None
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "AUTH_API_KEY_START":
                     in_key = True
                     continue
@@ -225,7 +239,7 @@ def baas_api(sdk_client):
     return BaaSAPI(sdk_client)
 
 
-@pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+@pytest.mark.skipif(not api_available(), reason="API service not available")
 class TestBaaSCLISDKE2E:
     """End-to-end tests for BaaS CLI/SDK workflows"""
 

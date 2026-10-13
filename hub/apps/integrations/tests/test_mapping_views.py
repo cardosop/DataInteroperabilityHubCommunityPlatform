@@ -448,25 +448,138 @@ class MarketplaceMappingViewSetTest(TestCase):
         for field in required_fields:
             self.assertIn(field, response.data, f"Field {field} missing from response")
 
-    def test_mapping_list_only_get_and_delete_methods(self):
-        """Test that only GET and DELETE methods are allowed (API key auth for consistency)"""
+    def test_mapping_write_methods_contract(self):
+        """POST/PATCH are supported (SDK create_mapping/update_mapping); PUT is not."""
         api_client = APIClient()
         api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
-        # POST should not be allowed
-        response = api_client.post("/api/v1/integrations/marketplace/mappings/", {}, format="json")
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-        # PUT should not be allowed
+        # POST creates a mapping (empty body fails serializer validation, not 405)
+        response = api_client.post("/api/v1/integrations/marketplace/mappings/", {}, format="json")
+        self.assertNotEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        # PATCH updates a mapping (empty body fails serializer validation, not 405)
+        response = api_client.patch(
+            f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/", {}, format="json"
+        )
+        self.assertNotEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        # PUT remains unsupported
         response = api_client.put(
             f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/", {}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-        # PATCH should not be allowed
-        response = api_client.patch(
+    def test_create_mapping_success(self):
+        """POST creates a mapping for a real tenant asset."""
+        new_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
+            name="New Test Asset",
+        )
+
+        response = self.client.post(
+            "/api/v1/integrations/marketplace/mappings/",
+            {
+                "connection_id": str(self.connection.id),
+                "hub_asset_id": str(new_asset.id),
+                "external_listing_id": "ext-listing-created",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["external_listing_id"], "ext-listing-created")
+        self.assertEqual(response.data["hub_asset_id"], str(new_asset.id))
+
+        mapping = MarketplaceMapping.objects.get(id=response.data["id"])
+        self.assertEqual(mapping.connection, self.connection)
+        self.assertEqual(mapping.hub_asset, new_asset)
+
+    def test_create_mapping_rejects_foreign_asset(self):
+        """POST with an asset from another tenant must not create a mapping."""
+        other_tenant = Tenant.objects.create(
+            name=f"Other {uuid.uuid4().hex[:8]}", slug=f"other-{uuid.uuid4().hex[:8]}"
+        )
+        other_asset = Asset.objects.create(
+            tenant=other_tenant, key="other-asset", name="Other Asset"
+        )
+
+        response = self.client.post(
+            "/api/v1/integrations/marketplace/mappings/",
+            {
+                "connection_id": str(self.connection.id),
+                "hub_asset_id": str(other_asset.id),
+                "external_listing_id": "ext-listing-foreign",
+            },
+            format="json",
+        )
+
+        self.assertNotEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(
+            MarketplaceMapping.objects.filter(external_listing_id="ext-listing-foreign").exists()
+        )
+
+    def test_create_mapping_requires_write_permission(self):
+        """POST requires integrations:write scope."""
+        user_no_write = User.objects.create_user(
+            email=f"nowrite-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        data_provider_role = Role.objects.filter(tenant=self.tenant, name="DATA_PROVIDER").first()
+        if not data_provider_role:
+            data_provider_role = Role.objects.create(
+                tenant=self.tenant,
+                name="DATA_PROVIDER",
+                description="Data Provider Role",
+            )
+        user_no_write.user_roles.create(role=data_provider_role)
+
+        plaintext_key = APIKey.generate_key()
+        APIKey.objects.create(
+            tenant=self.tenant,
+            user=user_no_write,
+            key_hash=APIKey.hash_key(plaintext_key),
+            name="Read Only API Key",
+            scopes=["integrations:read"],
+        )
+
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {plaintext_key}")
+        response = api_client.post(
+            "/api/v1/integrations/marketplace/mappings/",
+            {
+                "connection_id": str(self.connection.id),
+                "hub_asset_id": str(self.asset.id),
+                "external_listing_id": "ext-listing-noscope",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_mapping_success(self):
+        """PATCH updates a mapping's sync_metadata."""
+        response = self.client.patch(
+            f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/",
+            {"sync_metadata": {"last_sync_status": "SUCCESS", "last_sync_errors": []}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(self.mapping.id))
+
+        self.mapping.refresh_from_db()
+        self.assertEqual(self.mapping.sync_metadata["last_sync_status"], "SUCCESS")
+
+    def test_update_mapping_empty_body_rejected(self):
+        """PATCH with an empty body returns 400."""
+        response = self.client.patch(
             f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/", {}, format="json"
         )
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def tearDown(self):
         """Reconnect signals after test"""

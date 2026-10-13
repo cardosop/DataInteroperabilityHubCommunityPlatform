@@ -285,7 +285,8 @@ async def test_export_odcs_format_conversion_integration(contracts_api, real_api
             "id" in yaml_result.get("content", "").lower()
             or "apiversion" in yaml_result.get("content", "").lower()
         )
-        assert json_has_id and yaml_has_id, f"JSON has_id={json_has_id}, YAML has_id={yaml_has_id}"
+        assert json_has_id, f"JSON has_id={json_has_id}, YAML has_id={yaml_has_id}"
+        assert yaml_has_id, f"JSON has_id={json_has_id}, YAML has_id={yaml_has_id}"
     finally:
         # Cleanup: try to delete the contract
         try:

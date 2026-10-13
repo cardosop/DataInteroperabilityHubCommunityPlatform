@@ -33,24 +33,19 @@ class SSOIntegrationTest(TestCase):
         self.config = TenantConfig.objects.create(
             tenant=self.tenant,
             sso_config={
-                "saml": {"sso_url": "https://saml.example.com/sso", "role_mapping": {}},
                 "oidc": {
                     "authorization_endpoint": "https://oidc.example.com/auth",
                     "client_id": "test-client-id",
-                    "role_mapping": {},
+                    "issuer": "https://oidc.example.com",
+                    "jwks_uri": "https://oidc.example.com/jwks.json",
                 },
             },
         )
 
-    def test_saml_provider_retrieval_returns_provider(self):
-        """Test SAML provider retrieval returns provider."""
+    def test_saml_provider_retrieval_returns_none(self):
+        """SAML is retired (W1.5/D4) — provider retrieval is OIDC-only."""
         provider = SSOService.get_provider(str(self.tenant.id), "SAML")
-        self.assertIsNotNone(provider)
-
-    def test_saml_provider_retrieval_has_correct_tenant_id(self):
-        """Test SAML provider retrieval has correct tenant_id."""
-        provider = SSOService.get_provider(str(self.tenant.id), "SAML")
-        self.assertEqual(provider.tenant_id, str(self.tenant.id))
+        self.assertIsNone(provider)
 
     def test_oidc_provider_retrieval_returns_provider(self):
         """Test OIDC provider retrieval returns provider."""
@@ -62,20 +57,14 @@ class SSOIntegrationTest(TestCase):
         provider = SSOService.get_provider(str(self.tenant.id), "OIDC")
         self.assertEqual(provider.tenant_id, str(self.tenant.id))
 
-    def test_sso_login_url_generation_saml_returns_url(self):
-        """SAML login URL targets the configured sso_url with expected params."""
+    def test_sso_login_url_generation_saml_returns_none(self):
+        """SAML login URLs are retired (W1.5/D4) — the service returns None."""
         saml_url = SSOService.get_sso_login_url(
             tenant_id=str(self.tenant.id),
             provider_type="SAML",
             redirect_uri="https://example.com/callback",
         )
-        self.assertIsNotNone(saml_url)
-        self.assertIsInstance(saml_url, str)
-        parsed = urllib.parse.urlparse(saml_url)
-        self.assertEqual(parsed.scheme, "https")
-        self.assertEqual(parsed.hostname, "saml.example.com")
-        self.assertEqual(parsed.path, "/sso")
-        self.assertIn("SAMLRequest", parsed.query)
+        self.assertIsNone(saml_url)
 
     def test_sso_login_url_generation_oidc_returns_url(self):
         """OIDC login URL targets the configured authorization_endpoint with
@@ -118,7 +107,7 @@ class SSOIntegrationTest(TestCase):
         import uuid
 
         invalid_tenant_id = str(uuid.uuid4())
-        provider = SSOService.get_provider(invalid_tenant_id, "SAML")
+        provider = SSOService.get_provider(invalid_tenant_id, "OIDC")
         self.assertIsNone(provider)
 
     # ========== EDGE CASES ==========
@@ -144,5 +133,5 @@ class SSOIntegrationTest(TestCase):
             kyc_status="UNVERIFIED",
         )
 
-        provider = SSOService.get_provider(str(tenant_no_config.id), "SAML")
+        provider = SSOService.get_provider(str(tenant_no_config.id), "OIDC")
         self.assertIsNone(provider)

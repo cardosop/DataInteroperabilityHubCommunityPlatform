@@ -387,7 +387,6 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
             self._map_privacy_compliance_section_v2_2_2(hub_contract, odcs_doc)
 
             self.log_generation_complete(contract_id, name, self.target_version)
-            return odcs_doc
 
         except ODCSGenerationError:
             # Re-raise ODCS errors as-is
@@ -405,6 +404,8 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
                 },
                 cause=e,
             ) from e
+        else:
+            return odcs_doc
 
     def _map_schema_section_v2_2_2(
         self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
@@ -799,7 +800,6 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
             self._map_privacy_compliance_section(hub_contract, odcs_doc)
 
             self.log_generation_complete(contract_id, name, self.target_version)
-            return odcs_doc
 
         except ODCSGenerationError:
             # Re-raise ODCS errors as-is
@@ -817,6 +817,8 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
                 },
                 cause=e,
             ) from e
+        else:
+            return odcs_doc
 
     def _map_schema_section_v3_0_1(
         self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
@@ -1227,7 +1229,6 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             self._map_privacy_compliance_section(hub_contract, odcs_doc)
 
             self.log_generation_complete(contract_id, name, target_version)
-            return odcs_doc
 
         except ODCSGenerationError:
             # Re-raise ODCS errors as-is
@@ -1245,6 +1246,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 },
                 cause=e,
             ) from e
+        else:
+            return odcs_doc
 
     def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract info section to ODCS info section."""
@@ -1580,11 +1583,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_lifecycle = {}
 
         # Map data_source
-        if lifecycle.get("data_source"):
-            if isinstance(lifecycle["data_source"], str) or isinstance(
-                lifecycle["data_source"], dict
-            ):
-                odcs_lifecycle["data_source"] = lifecycle["data_source"]
+        if lifecycle.get("data_source") and isinstance(lifecycle["data_source"], (str, dict)):
+            odcs_lifecycle["data_source"] = lifecycle["data_source"]
 
         # Map refresh_cadence
         if lifecycle.get("refresh_cadence"):
@@ -1849,7 +1849,6 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             self._map_privacy_compliance_section(hub_contract, odcs_doc)
 
             self.log_generation_complete(contract_id, name, target_version)
-            return odcs_doc
 
         except ODCSGenerationError:
             # Re-raise ODCS errors as-is
@@ -1867,6 +1866,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 },
                 cause=e,
             ) from e
+        else:
+            return odcs_doc
 
     def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract info section to ODCS info section."""
@@ -2203,11 +2204,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_lifecycle = {}
 
         # Map data_source
-        if lifecycle.get("data_source"):
-            if isinstance(lifecycle["data_source"], str) or isinstance(
-                lifecycle["data_source"], dict
-            ):
-                odcs_lifecycle["data_source"] = lifecycle["data_source"]
+        if lifecycle.get("data_source") and isinstance(lifecycle["data_source"], (str, dict)):
+            odcs_lifecycle["data_source"] = lifecycle["data_source"]
 
         # Map refresh_cadence
         if lifecycle.get("refresh_cadence"):
@@ -2469,7 +2467,6 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
             self._map_privacy_compliance_section_v3_0_0_preview(hub_contract, odcs_doc)
 
             self.log_generation_complete(contract_id, name, self.target_version)
-            return odcs_doc
 
         except ODCSGenerationError:
             # Re-raise ODCS errors as-is
@@ -2487,6 +2484,8 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
                 },
                 cause=e,
             ) from e
+        else:
+            return odcs_doc
 
     def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """
@@ -3350,8 +3349,6 @@ def generate_odcs_from_hubcontract(
             tenant_id=effective_tenant_id,
         )
 
-        return odcs_doc
-
     except ODCSGenerationError as e:
         # Calculate duration for failed generation
         duration = time.time() - start_time
@@ -3437,6 +3434,8 @@ def generate_odcs_from_hubcontract(
             },
             cause=e,
         ) from e
+    else:
+        return odcs_doc
 
 
 def _legacy_generate_odcs_from_hubcontract(
@@ -3448,7 +3447,8 @@ def _legacy_generate_odcs_from_hubcontract(
     This was the original implementation before the registry system.
     Now replaced by generate_odcs_from_hubcontract() which uses the registry.
     """
-    try:
+
+    def _build() -> dict[str, Any]:
         # Validate input
         if not isinstance(hub_contract, dict):
             raise ODCSGenerationError(
@@ -3584,10 +3584,11 @@ def _legacy_generate_odcs_from_hubcontract(
 
         return odcs_doc
 
-    except (ODCSGenerationError, ODCSExportError):
-        # Re-raise ODCS errors as-is
-        raise
+    try:
+        result = _build()
     except Exception as e:
+        if isinstance(e, (ODCSGenerationError, ODCSExportError)):
+            raise
         # Wrap unexpected errors
         logger.error(
             "odcs_generation_unexpected_error",
@@ -3605,6 +3606,8 @@ def _legacy_generate_odcs_from_hubcontract(
             },
             cause=e,
         ) from e
+    else:
+        return result
 
 
 def generate_odcs_from_schema(
@@ -3638,7 +3641,9 @@ def generate_odcs_from_schema(
     Raises:
         ODCSGenerationError: If inferred_schema is invalid or missing required fields
     """
-    try:
+
+    def _build() -> dict[str, Any]:
+        nonlocal contract_id, contract_name
         if not isinstance(inferred_schema, dict):
             raise ODCSGenerationError(
                 message=f"inferred_schema must be a dictionary, got {type(inferred_schema).__name__}",
@@ -3673,7 +3678,7 @@ def generate_odcs_from_schema(
         # Build ODCS contract
         # Normalize odcs_version format (remove 'v' prefix if present)
         normalized_odcs_version = odcs_version
-        if normalized_odcs_version.startswith("v") or normalized_odcs_version.startswith("V"):
+        if normalized_odcs_version.startswith(("v", "V")):
             normalized_odcs_version = normalized_odcs_version[1:]
 
         odcs_contract = {
@@ -3844,10 +3849,11 @@ def generate_odcs_from_schema(
 
         return odcs_contract
 
-    except (ODCSGenerationError, ODCSExportError):
-        # Re-raise ODCS errors as-is
-        raise
+    try:
+        result = _build()
     except Exception as e:
+        if isinstance(e, (ODCSGenerationError, ODCSExportError)):
+            raise
         # Wrap unexpected errors
         logger.error(
             "odcs_generation_from_schema_unexpected_error",
@@ -3865,3 +3871,5 @@ def generate_odcs_from_schema(
             },
             cause=e,
         ) from e
+    else:
+        return result

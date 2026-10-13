@@ -53,7 +53,12 @@ test.describe('Feature: Dataset Retire (Phase 260.4.A.6)', () => {
       return;
     }
     // noverify: navigation-only — opens the dataset detail page; no mutation.
-    await firstRow.click();
+    // Click the NAME CELL, not the row center: the row's Asset column
+    // holds a <Link to=/assets/<id>> (stopPropagation), and Playwright's
+    // row click lands on the row's center — often inside that link — so
+    // the row's own navigate('/datasets/<id>') never fires and the test
+    // lands on the ASSET detail (b7 re-run #4).
+    await firstRow.locator('td:has(strong)').first().click();
     await waitForAppMainReady(page, { timeout: 60_000 });
 
     // The detail page MUST show the Retire CTA on an ACTIVE dataset.

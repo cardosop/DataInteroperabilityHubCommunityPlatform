@@ -5,29 +5,62 @@ Tests complete workflows and real-world usage scenarios.
 """
 
 import json
+import os
 
 import pytest
 from click.testing import CliRunner
 from datahub_cli.config import Config
+from datahub_cli.config import config as global_config
 from datahub_cli.main import cli
+from tests.use_cases.conftest import _setup_cli_auth, unique_key
+
+
+def _arm_real_auth() -> None:
+    """Point the GLOBAL config at the live backend with real credentials.
+
+    The CLI's api_client reads ``datahub_cli.config.config`` — a local
+    ``Config()`` instance in a test is invisible to it, so every test that
+    configured a throwaway instance ran UNauthenticated and failed
+    (measured 2026-08-28).  Same fixture pattern as
+    ``cli/tests/use_cases/conftest.py::authenticated_config``.
+    """
+    global_config.clear_auth()
+    global_config.set_api_base_url("http://localhost:8001/api/v1")
+    assert _setup_cli_auth("http://localhost:8001/api/v1", global_config), (
+        "Could not set up CLI authentication for E2E test"
+    )
 
 
 class TestCompleteWorkflows:
     """E2E tests for complete workflows"""
 
     def test_contract_creation_workflow(self, runner, temp_config_dir, api_base_url, temp_file):
+        _arm_real_auth()
         """Test complete contract creation workflow"""
         config = Config()
         config.set_api_base_url(api_base_url)
 
-        # Create contract file
-        file_path, _content = temp_file(".yaml", "name: Test Contract\nversion: 1.0")
+        # Create contract file — a VALID ODCS v3 document (the invalid
+        # "name:/version:" stub used to fail normalization with
+        # "Auto-detected spec type: ODCS", measured 2026-08-28).
+        file_path, _content = temp_file(
+            ".yaml",
+            "apiVersion: odcs.io/v3.0.0\n"
+            "kind: DataContract\n"
+            "id: e2e-cli-contract\n"
+            "name: E2E CLI Contract\n"
+            "version: 1.0.0\n"
+            "schema:\n"
+            "  fields:\n"
+            "    - name: id\n"
+            "      type: string\n",
+        )
 
         # Create contract
         result = runner.invoke(cli, ["contracts", "create", "--file", file_path])
 
         # Should either succeed or fail gracefully
-        assert result.exit_code == 0
+        assert result.exit_code == 0, f"contracts create failed: {result.output[:300]}"
 
         # If creation succeeded, try to get it
         if result.exit_code == 0:
@@ -36,15 +69,24 @@ class TestCompleteWorkflows:
 
     def test_asset_management_workflow(self, runner, temp_config_dir, api_base_url):
         """Test complete asset management workflow"""
+        _arm_real_auth()
         config = Config()
         config.set_api_base_url(api_base_url)
 
         # Create asset
         result = runner.invoke(
-            cli, ["assets", "create", "--name", "E2E Test Asset", "--key", "e2e-test-asset"]
+            cli,
+            [
+                "assets",
+                "create",
+                "--name",
+                "E2E Test Asset",
+                "--key",
+                unique_key("e2e-test-asset"),
+            ],
         )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 0, f"assets create failed: {result.output[:300]}"
 
         # If creation succeeded, try to list it
         if result.exit_code == 0:
@@ -55,16 +97,20 @@ class TestCompleteWorkflows:
         self, runner, temp_config_dir, api_base_url, temp_file, tmp_path
     ):
         """Test complete file upload and download workflow"""
+        _arm_real_auth()
         config = Config()
         config.set_api_base_url(api_base_url)
 
         # Create test file
         file_path, _content = temp_file(".csv", "col1,col2\nval1,val2")
 
-        # Upload file
-        upload_result = runner.invoke(cli, ["files", "upload", file_path])
+        # Upload file — per-run unique name (the unique_active_filename_
+        # per_tenant index rejects re-uploads of a name left ACTIVE by a
+        # previous run; measured 2026-08-28).
+        upload_name = f"{unique_key('e2e-cli-upload')}.csv"
+        upload_result = runner.invoke(cli, ["files", "upload", file_path, "--name", upload_name])
 
-        assert upload_result.exit_code == 0
+        assert upload_result.exit_code == 0, f"upload failed: {upload_result.output[:300]}"
 
         # If upload succeeded, try to list files
         if upload_result.exit_code == 0:
@@ -73,6 +119,7 @@ class TestCompleteWorkflows:
 
     def test_job_monitoring_workflow(self, runner, temp_config_dir, api_base_url):
         """Test complete job monitoring workflow"""
+        _arm_real_auth()
         config = Config()
         config.set_api_base_url(api_base_url)
 
@@ -92,6 +139,7 @@ class TestRealAPIScenarios:
 
     def test_authenticated_workflow(self, runner, temp_config_dir, api_base_url):
         """Test workflow with authentication"""
+        _arm_real_auth()
         config = Config()
         config.set_api_base_url(api_base_url)
 
@@ -117,8 +165,7 @@ class TestRealAPIScenarios:
 
     def test_paginated_results(self, runner, temp_config_dir, api_base_url):
         """Test handling paginated results"""
-        config = Config()
-        config.set_api_base_url(api_base_url)
+        _arm_real_auth()
 
         # List with pagination
         result = runner.invoke(cli, ["contracts", "list", "--limit", "10", "--offset", "0"])
@@ -128,8 +175,7 @@ class TestRealAPIScenarios:
 
     def test_filtered_queries(self, runner, temp_config_dir, api_base_url):
         """Test filtered queries"""
-        config = Config()
-        config.set_api_base_url(api_base_url)
+        _arm_real_auth()
 
         # List with filters
         result = runner.invoke(
@@ -145,9 +191,7 @@ class TestCICDScenarios:
 
     def test_non_interactive_usage(self, runner, temp_config_dir):
         """Test non-interactive CLI usage (CI/CD scenario)"""
-        config = Config()
-        config.set_api_base_url("http://localhost:8000/api/v1")
-        config.set_api_key("ci-cd-api-key")
+        _arm_real_auth()
 
         # Should work without prompts
         result = runner.invoke(cli, ["contracts", "list"], input="")
@@ -177,22 +221,27 @@ class TestCICDScenarios:
                 # If not JSON, that's OK for this test
                 pass
 
-    def test_batch_operations(self, runner, temp_config_dir):
-        """Test batch operations (CI/CD scenario)"""
-        config = Config()
-        config.set_api_base_url("http://localhost:8000/api/v1")
+    def test_batch_operations(self, runner, temp_config_dir, temp_file):
+        """Test batch operations (automation scenario)"""
+        _arm_real_auth()
 
-        # List multiple resources
-        commands = [
-            ["contracts", "list", "--format", "json"],
-            ["assets", "list", "--format", "json"],
-            ["jobs", "list", "--format", "json"],
-        ]
+        # Create assets in a batch, then list them.
+        for i in range(2):
+            result = runner.invoke(
+                cli,
+                [
+                    "assets",
+                    "create",
+                    "--name",
+                    f"Batch Asset {i}",
+                    "--key",
+                    unique_key("batch-e2e"),
+                ],
+            )
+            assert result.exit_code == 0, f"Batch create failed: {result.output[:300]}"
 
-        for cmd in commands:
-            result = runner.invoke(cli, cmd)
-            # Should all work consistently
-            assert result.exit_code == 0
+        list_result = runner.invoke(cli, ["assets", "list", "--limit", "10"])
+        assert list_result.exit_code == 0
 
 
 class TestErrorRecoveryE2E:
@@ -200,35 +249,31 @@ class TestErrorRecoveryE2E:
 
     def test_recovery_from_network_error(self, runner, temp_config_dir):
         """Test recovery from network error"""
-        config = Config()
-        config.set_api_base_url("http://invalid-host:8000/api/v1")
+        # Point the GLOBAL config at an unreachable host.
+        global_config.clear_auth()
+        global_config.set_api_base_url("http://invalid-host:8000/api/v1")
 
         # First command fails
         result1 = runner.invoke(cli, ["contracts", "list"])
         assert result1.exit_code != 0
 
-        # Update config and retry
-        config.set_api_base_url("http://localhost:8000/api/v1")
+        # Recover: arm real auth against the live backend and retry.
+        _arm_real_auth()
         result2 = runner.invoke(cli, ["contracts", "list"])
-
-        # Should either succeed or fail gracefully (depending on API availability)
         assert result2.exit_code == 0
 
     def test_recovery_from_auth_error(self, runner, temp_config_dir, api_base_url):
         """Test recovery from authentication error"""
-        config = Config()
-        config.set_api_base_url(api_base_url)
-        config.clear_auth()
+        # Unauthenticated global config against the live backend fails.
+        global_config.clear_auth()
+        global_config.set_api_base_url("http://localhost:8001/api/v1")
 
-        # First command fails with auth error
         result1 = runner.invoke(cli, ["contracts", "list"])
         assert result1.exit_code != 0
 
-        # Set API key and retry
-        config.set_api_key("test-api-key")
+        # Recover: arm real auth and retry.
+        _arm_real_auth()
         result2 = runner.invoke(cli, ["contracts", "list"])
-
-        # Should either succeed or fail gracefully
         assert result2.exit_code == 0
 
 
@@ -272,8 +317,15 @@ def runner():
 
 @pytest.fixture
 def api_base_url():
-    """API base URL fixture"""
-    return "http://localhost:8000/api/v1"
+    """API base URL fixture — honour the test stack's published port.
+
+    This used to hardcode localhost:8000, which the test stack does NOT
+    publish on; every CLI call in this file therefore hit a dead port
+    ("Connection refused") no matter what the global config said
+    (measured 2026-08-28).
+    """
+    port = os.environ.get("API_TEST_PORT", "8001")
+    return f"http://localhost:{port}/api/v1"
 
 
 @pytest.fixture

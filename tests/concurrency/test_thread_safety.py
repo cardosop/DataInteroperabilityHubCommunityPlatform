@@ -3,6 +3,7 @@ Thread safety tests: multi-threaded access to services/cache,
 shared state protection. Real cache and DB; no mocks.
 """
 
+import contextlib
 import threading
 
 from django.core.cache import cache
@@ -90,10 +91,10 @@ class ThreadSafetyTest(ConcurrencyTestBase):
                 with lock:
                     results.append(False)
             finally:
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # teardown cleanup: close errors must not mask the worker result
                     connection.close()
-                except Exception:
-                    pass  # Ignore connection close errors in teardown
 
         threads = [threading.Thread(target=query) for _ in range(6)]
         for t in threads:

@@ -11,6 +11,7 @@ None of these tests require database access — they validate env vars,
 regex patterns, import contracts, and function return values.
 """
 
+import contextlib
 import os
 import re
 import socket
@@ -22,11 +23,12 @@ from django.test import override_settings
 def _otel_packages_available() -> bool:
     """Check whether OpenTelemetry packages are importable."""
     try:
-        import opentelemetry  # noqa: F401
-        import opentelemetry.instrumentation.django  # noqa: F401
-        return True
+        import opentelemetry
+        import opentelemetry.instrumentation.django
     except ImportError:
         return False
+    else:
+        return True
 
 
 def _jaeger_reachable(host: str = "jaeger-test", port: int = 6831) -> bool:
@@ -36,9 +38,10 @@ def _jaeger_reachable(host: str = "jaeger-test", port: int = 6831) -> bool:
         sock.settimeout(1)
         sock.connect((host, port))
         sock.close()
-        return True
-    except (socket.error, OSError):
+    except OSError:
         return False
+    else:
+        return True
 
 
 class TestTracing:
@@ -62,7 +65,7 @@ class TestTracing:
         BatchSpanProcessor thread so subsequent tests are not affected.
         """
         if not _otel_packages_available():
-            pytest.skip("OpenTelemetry packages not installed")
+            pytest.skip("OpenTelemetry packages not installed")  # noqa: skip-in-body
 
         provider = None
         try:
@@ -90,10 +93,8 @@ class TestTracing:
             # BatchSpanProcessor thread doesn't keep running (and logging
             # gRPC errors trying to reach the non-existent otel-collector).
             if provider is not None:
-                try:
+                with contextlib.suppress(Exception):
                     provider.shutdown()
-                except Exception:
-                    pass
 
     def test_trace_context_in_logs(self):
         """Test that trace context (trace_id, span_id) is added to logs."""
@@ -130,7 +131,7 @@ class TestTracing:
     def test_trace_context_propagation(self):
         """Test that trace context propagator loads and has the expected API."""
         if not _otel_packages_available():
-            pytest.skip("OpenTelemetry packages not installed")
+            pytest.skip("OpenTelemetry packages not installed")  # noqa: skip-in-body
 
         try:
             from opentelemetry.trace.propagation.tracecontext import (
@@ -170,7 +171,7 @@ class TestTracing:
     def test_tracing_instrumentation(self):
         """Test that Django and HTTP client instrumentors are installed."""
         if not _otel_packages_available():
-            pytest.skip("OpenTelemetry packages not installed")
+            pytest.skip("OpenTelemetry packages not installed")  # noqa: skip-in-body
 
         try:
             from opentelemetry.instrumentation.django import DjangoInstrumentor
@@ -198,6 +199,7 @@ class TestTracing:
         # If OTEL is available, verify a real trace ID matches the pattern
         if _otel_packages_available():
             from opentelemetry import trace
+
             tracer = trace.get_tracer(__name__)
             span = tracer.start_span("format-test")
             trace_id_hex = format(span.get_span_context().trace_id, "032x")

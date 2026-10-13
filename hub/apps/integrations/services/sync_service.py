@@ -1,5 +1,6 @@
 """Sync workflow methods for MarketplaceIntegrationService."""
 
+import contextlib
 from typing import Any
 
 import structlog
@@ -88,7 +89,7 @@ class SyncServiceMixin:
             span_context = create_span(span_name, kind=1)
             span = span_context.__enter__() if span_context else None
 
-            try:
+            def _build() -> MarketplaceSyncJob:
                 # Get connection
                 try:
                     connection = self.get_resource_or_raise(
@@ -145,11 +146,11 @@ class SyncServiceMixin:
 
                 # Create and start workflow instance
                 try:
-                    from hub.apps.orchestration.registry import WorkflowRegistry
-                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
                     from hub.apps.marketplace.workflows.marketplace_sync import (
                         MarketplaceSyncWorkflow,
                     )
+                    from hub.apps.orchestration.registry import WorkflowRegistry
+                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
                     # Initialize workflow engine and registry
                     engine = WorkflowEngine()
@@ -291,6 +292,8 @@ class SyncServiceMixin:
 
                 return sync_job
 
+            try:
+                result = _build()
             except (ValidationError, NotFoundError) as e:
                 if span:
                     record_span_exception(e)
@@ -310,6 +313,8 @@ class SyncServiceMixin:
                     },
                 )
                 raise ServiceError(f"Failed to create sync job: {e}") from e
+            else:
+                return result
         finally:
             if span_context:
                 try:
@@ -387,7 +392,7 @@ class SyncServiceMixin:
             span_context = create_span(span_name, kind=1)
             span = span_context.__enter__() if span_context else None
 
-            try:
+            def _build() -> MarketplaceSyncJob:
                 # Get connection
                 try:
                     connection = self.get_resource_or_raise(
@@ -438,11 +443,11 @@ class SyncServiceMixin:
 
                 # Create and start workflow instance
                 try:
-                    from hub.apps.orchestration.registry import WorkflowRegistry
-                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
                     from hub.apps.marketplace.workflows.marketplace_sync import (
                         MarketplaceSyncWorkflow,
                     )
+                    from hub.apps.orchestration.registry import WorkflowRegistry
+                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
                     # Initialize workflow engine and registry
                     engine = WorkflowEngine()
@@ -583,6 +588,8 @@ class SyncServiceMixin:
 
                 return sync_job
 
+            try:
+                result = _build()
             except (ValidationError, NotFoundError) as e:
                 if span:
                     record_span_exception(e)
@@ -602,6 +609,293 @@ class SyncServiceMixin:
                     },
                 )
                 raise ServiceError(f"Failed to create sync job: {e}") from e
+            else:
+                return result
+        finally:
+            if span_context:
+                try:
+                    span_context.__exit__(None, None, None)
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
+
+    @transaction.atomic
+    def sync_bidirectional(
+        self,
+        connection_id: str,
+        tenant_id: str,
+        user_id: str,
+        asset_ids: list[str],
+        listing_ids: list[str],
+        options: dict[str, Any] | None = None,
+        request: Any | None = None,
+    ) -> MarketplaceSyncJob:
+        """
+        Synchronize both directions (PUSH hub assets + PULL marketplace listings).
+
+        Creates ONE ``BIDIRECTIONAL`` sync job and runs the push workflow
+        followed by the pull workflow.  Backs
+        ``POST /integrations/marketplace/sync/`` with
+        ``direction=BIDIRECTIONAL``.
+
+        Args:
+            connection_id: The ID of the marketplace connection to use.
+            tenant_id: The ID of the tenant.
+            user_id: The ID of the user initiating the sync.
+            asset_ids: List of Hub asset IDs to push to the marketplace.
+            listing_ids: List of marketplace listing IDs to pull.
+            options: Optional dictionary of sync options.
+            request: Optional request object for audit logging and tracing context.
+
+        Returns:
+            The created MarketplaceSyncJob instance.
+
+        Raises:
+            NotFoundError: If connection not found.
+            ValidationError: If input data is invalid.
+            ServiceError: For other unexpected errors.
+        """
+        from django.contrib.auth import get_user_model
+        from opentelemetry.trace import StatusCode
+
+        from hub.apps.observability.span_instrumentation import (
+            add_span_attributes,
+            create_span,
+            record_span_exception,
+            set_span_status,
+        )
+        from hub.apps.tenants.models import Tenant
+
+        User = get_user_model()
+        span_name = "MarketplaceIntegrationService.sync_bidirectional"
+        effective_tenant_id = tenant_id or self.tenant_id
+        effective_user_id = user_id or self.user_id
+        span = None
+        span_context = None
+
+        try:
+            span_context = create_span(span_name, kind=1)
+            span = span_context.__enter__() if span_context else None
+
+            def _build() -> MarketplaceSyncJob:
+                # Get connection (same validation as PUSH/PULL)
+                try:
+                    connection = self.get_resource_or_raise(
+                        MarketplaceConnection, connection_id, tenant_id=effective_tenant_id
+                    )
+                except (DjangoValidationError, ValidationError) as e:
+                    raise NotFoundError(
+                        f"Connection {connection_id} not found",
+                        details={"connection_id": connection_id, "error": str(e)},
+                    ) from e
+
+                if not connection.is_active:
+                    raise ValidationError(
+                        f"Connection {connection_id} is not active",
+                        details={"connection_id": connection_id, "is_active": False},
+                    )
+
+                if not asset_ids or not isinstance(asset_ids, list):
+                    raise ValidationError(
+                        "asset_ids must be a non-empty list",
+                        details={"asset_ids_type": type(asset_ids).__name__},
+                    )
+                if not listing_ids or not isinstance(listing_ids, list):
+                    raise ValidationError(
+                        "listing_ids must be a non-empty list",
+                        details={"listing_ids_type": type(listing_ids).__name__},
+                    )
+
+                tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
+                user_obj = self.get_resource_or_raise(User, effective_user_id)
+
+                sync_job = MarketplaceSyncJob.objects.create(
+                    tenant=tenant_obj,
+                    connection=connection,
+                    direction=SyncDirection.BIDIRECTIONAL.value,
+                    status=SyncStatus.PENDING.value,
+                    metadata={
+                        "asset_ids": asset_ids,
+                        "listing_ids": listing_ids,
+                        "options": options or {},
+                        "request_id": self.request_id,
+                    },
+                )
+
+                # Run the push leg then the pull leg through the same
+                # workflow machinery the single-direction syncs use.
+                try:
+                    from hub.apps.marketplace.workflows.marketplace_sync import (
+                        MarketplaceSyncWorkflow,
+                    )
+                    from hub.apps.orchestration.registry import WorkflowRegistry
+                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
+
+                    engine = WorkflowEngine()
+                    registry = WorkflowRegistry()
+                    MarketplaceSyncWorkflow.register_workflow(registry)
+                    MarketplaceSyncWorkflow.register_tasks(engine)
+
+                    for leg_name, leg_input in (
+                        (
+                            "marketplace_sync_push",
+                            {
+                                "connection_id": connection_id,
+                                "asset_ids": asset_ids,
+                                "tenant_id": effective_tenant_id,
+                                "user_id": effective_user_id,
+                                "sync_job_id": str(sync_job.id),
+                                "options": options or {},
+                            },
+                        ),
+                        (
+                            "marketplace_sync_pull",
+                            {
+                                "connection_id": connection_id,
+                                "listing_ids": listing_ids,
+                                "filters": {},
+                                "tenant_id": effective_tenant_id,
+                                "user_id": effective_user_id,
+                                "sync_job_id": str(sync_job.id),
+                                "options": options or {},
+                            },
+                        ),
+                    ):
+                        try:
+                            workflow_instance = engine.create_instance(
+                                workflow_name=leg_name,
+                                workflow_version=MarketplaceSyncWorkflow.WORKFLOW_VERSION,
+                                input_data=leg_input,
+                                tenant_id=effective_tenant_id,
+                                created_by_id=effective_user_id,
+                            )
+                            workflow_instance.state_data = {
+                                "connection_id": connection_id,
+                                "sync_job_id": str(sync_job.id),
+                            }
+                            workflow_instance.save(update_fields=["state_data"])
+                            workflow_instance = engine.start_instance(str(workflow_instance.id))
+                            try:
+                                workflow_instance = engine.execute_instance(
+                                    str(workflow_instance.id)
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to execute {leg_name} synchronously, "
+                                    f"will run in background: {e}",
+                                    exc_info=True,
+                                )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to create {leg_name} workflow for "
+                                f"bidirectional sync {sync_job.id}: {e}",
+                                exc_info=True,
+                            )
+                            sync_job.metadata[f"{leg_name}_error"] = str(e)
+                            sync_job.save(update_fields=["metadata", "updated_at"])
+                except Exception as e:
+                    logger.error(
+                        f"Failed to initialise bidirectional workflows for "
+                        f"sync {sync_job.id}: {e}",
+                        exc_info=True,
+                    )
+                    sync_job.metadata["workflow_error"] = str(e)
+                    sync_job.save(update_fields=["metadata", "updated_at"])
+
+                if span:
+                    add_span_attributes(
+                        {
+                            "sync_job.id": str(sync_job.id),
+                            "sync_job.direction": SyncDirection.BIDIRECTIONAL.value,
+                            "sync_job.connection_id": connection_id,
+                            "sync_job.asset_count": len(asset_ids),
+                            "sync_job.listing_count": len(listing_ids),
+                        }
+                    )
+                    set_span_status(StatusCode.OK)
+
+                try:
+                    from hub.apps.audit.utils import create_audit_event
+
+                    create_audit_event(
+                        resource_type="MARKETPLACE_SYNC_JOB",
+                        action="SYNC_JOB_CREATED",
+                        actor_user=user_obj,
+                        tenant=tenant_obj,
+                        resource_id=str(sync_job.id),
+                        result="SUCCESS",
+                        details={
+                            "sync_job_id": str(sync_job.id),
+                            "connection_id": connection_id,
+                            "direction": SyncDirection.BIDIRECTIONAL.value,
+                            "asset_count": len(asset_ids),
+                            "listing_count": len(listing_ids),
+                            "request_id": self.request_id,
+                        },
+                        request=request,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to create audit log for sync job creation {sync_job.id}: {e}",
+                        exc_info=True,
+                    )
+
+                try:
+                    self.publish_sync_job_created(
+                        sync_job_id=str(sync_job.id),
+                        connection_id=connection_id,
+                        direction=SyncDirection.BIDIRECTIONAL.value,
+                        tenant_id=effective_tenant_id,
+                        user_id=effective_user_id,
+                        request_id=self.request_id,
+                    )
+                    MarketplaceEventPublisher.publish_sync_started(
+                        self,
+                        sync_job_id=str(sync_job.id),
+                        connection_id=connection_id,
+                        direction=SyncDirection.BIDIRECTIONAL.value,
+                        tenant_id=effective_tenant_id,
+                        user_id=effective_user_id,
+                        correlation_id=self.request_id,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to publish sync events for {sync_job.id}: {e}",
+                        exc_info=True,
+                    )
+
+                logger.info(
+                    f"Created marketplace sync job {sync_job.id} (BIDIRECTIONAL) "
+                    f"for connection {connection_id}"
+                )
+
+                return sync_job
+
+            try:
+                result = _build()
+            except (ValidationError, NotFoundError) as e:
+                if span:
+                    record_span_exception(e)
+                    set_span_status(StatusCode.ERROR)
+                raise
+            except Exception as e:
+                if span:
+                    record_span_exception(e)
+                    set_span_status(StatusCode.ERROR)
+                logger.error(
+                    f"Unexpected error creating bidirectional sync job: {e}",
+                    exc_info=True,
+                    extra={
+                        "connection_id": connection_id,
+                        "tenant_id": effective_tenant_id,
+                        "user_id": effective_user_id,
+                    },
+                )
+                raise ServiceError(f"Failed to create sync job: {e}") from e
+            else:
+                return result
         finally:
             if span_context:
                 try:
@@ -616,7 +910,7 @@ class SyncServiceMixin:
         self,
         tenant_id: str,
         sync_job_id: str,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Retrieve a marketplace sync job by its ID.
@@ -673,8 +967,6 @@ class SyncServiceMixin:
                 )
                 set_span_status(StatusCode.OK)
 
-            return sync_job
-
         except NotFoundError as e:
             if span:
                 record_span_exception(e)
@@ -693,6 +985,8 @@ class SyncServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to retrieve sync job: {e}") from e
+        else:
+            return sync_job
         finally:
             if span_context:
                 try:
@@ -711,7 +1005,7 @@ class SyncServiceMixin:
         status: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> list[MarketplaceSyncJob]:
         """
         List marketplace sync jobs for a tenant.
@@ -742,11 +1036,11 @@ class SyncServiceMixin:
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> list[MarketplaceSyncJob]:
             filters = {"tenant_id": effective_tenant_id}
             if connection_id:
                 filters["connection_id"] = connection_id
@@ -786,6 +1080,8 @@ class SyncServiceMixin:
 
             return list(sync_jobs)
 
+        try:
+            result = _build()
         except ValidationError as e:
             if span:
                 record_span_exception(e)
@@ -806,6 +1102,8 @@ class SyncServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to list sync jobs: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -864,11 +1162,11 @@ class SyncServiceMixin:
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceSyncJob:
             # Get sync job
             try:
                 sync_job = self.get_resource_or_raise(
@@ -892,6 +1190,7 @@ class SyncServiceMixin:
                             SyncStatus.COMPLETED.value,
                             SyncStatus.FAILED.value,
                             SyncStatus.PARTIAL.value,
+                            SyncStatus.CANCELLED.value,
                         ],
                     },
                 )
@@ -901,7 +1200,7 @@ class SyncServiceMixin:
             user_obj = self.get_resource_or_raise(User, effective_user_id)
 
             # Update sync job status
-            sync_job.status = SyncStatus.FAILED.value  # Mark as failed with cancellation
+            sync_job.status = SyncStatus.CANCELLED.value
             sync_job.completed_at = timezone.now()
             if reason:
                 sync_job.add_error(f"Job cancelled: {reason}", save=False)
@@ -916,10 +1215,7 @@ class SyncServiceMixin:
 
                     job_id = sync_job.metadata["job_id"]
                     job = Job.objects.get(id=job_id)
-                    if (
-                        job.status == JobStatus.PENDING.value
-                        or job.status == JobStatus.RUNNING.value
-                    ):
+                    if job.status in (JobStatus.PENDING.value, JobStatus.RUNNING.value):
                         job.status = JobStatus.CANCELLED.value
                         job.save(update_fields=["status", "updated_at"])
                 except Exception as e:
@@ -990,6 +1286,8 @@ class SyncServiceMixin:
 
             return sync_job
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError) as e:
             if span:
                 record_span_exception(e)
@@ -1009,6 +1307,8 @@ class SyncServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to cancel sync job: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -1298,14 +1598,14 @@ class SyncServiceMixin:
         span_context = None
         span = None
 
-        try:
-            # Create distributed tracing span
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create distributed tracing span
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
-            effective_tenant_id = tenant_id or self.tenant_id
-            effective_user_id = user_id or self.user_id
+        effective_tenant_id = tenant_id or self.tenant_id
+        effective_user_id = user_id or self.user_id
 
+        def _build() -> ScheduledMarketplaceSync:
             if span:
                 add_span_attributes(
                     {
@@ -1359,7 +1659,7 @@ class SyncServiceMixin:
                     )
                 # Validate cron expression
                 try:
-                    from croniter import croniter
+                    from croniter import croniter  # type: ignore[import-untyped]
 
                     croniter(schedule_config["cron"])
                 except Exception as e:
@@ -1460,6 +1760,8 @@ class SyncServiceMixin:
 
             return scheduled_sync
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             if span:
                 record_span_exception(e)
@@ -1479,6 +1781,8 @@ class SyncServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to create scheduled sync: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -1572,10 +1876,8 @@ class SyncServiceMixin:
                 tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
                 user_obj = None
                 if self.user_id:
-                    try:
+                    with contextlib.suppress(NotFoundError):  # User might not exist
                         user_obj = self.get_resource_or_raise(User, self.user_id)
-                    except NotFoundError:
-                        pass  # User might not exist
 
                 create_audit_event(
                     resource_type="SCHEDULED_MARKETPLACE_SYNC",

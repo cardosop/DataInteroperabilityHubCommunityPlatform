@@ -49,6 +49,8 @@ export {
   ChevronRight,
   X,
   Inbox,
+  Bell,
+  HelpCircle,
 } from 'lucide-react';
 
 // Graph toolbar

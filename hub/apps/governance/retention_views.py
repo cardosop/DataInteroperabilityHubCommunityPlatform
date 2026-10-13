@@ -7,6 +7,7 @@ REST API views for retention policy management.
 import structlog
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -155,7 +156,7 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **kwargs):
         """
         Update retention policy via service layer (Phase 12.1.2).
 
@@ -190,7 +191,7 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """Delete retention policy"""
         instance = self.get_object()
 
@@ -207,3 +208,74 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
 
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["get"], url_path="dashboard")
+    def dashboard(self, request):
+        """GET /api/v1/governance/retention-policies/dashboard/
+
+        Operational snapshot for the Phase 232.7 retention dashboard
+        (SPA RetentionDashboardPage). The service existed since 232.7
+        but was never wired to an HTTP route — the SPA has been calling
+        this path and 404ing, and the path-derived capability
+        ``compliance_retention_enforcer`` stayed permanently false
+        (b6 skip root cause).
+        """
+        from .retention_auto_enforcer import retention_enforcement_dashboard
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"detail": "Tenant context required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            return Response(retention_enforcement_dashboard(tenant_id=str(tenant_id)))
+        except Exception:
+            logger.exception("retention_dashboard_failed")
+            return Response(
+                {"detail": "Retention dashboard unavailable"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["get"], url_path="quarterly-report")
+    def quarterly_report(self, request):
+        """GET /api/v1/governance/retention-policies/quarterly-report/?period=YYYY-Qn
+
+        Quarterly tombstone/hard-delete audit counts for the 232.7
+        dashboard (SPA RetentionDashboardPage — shipped alongside the
+        dashboard call, never exposed on the backend).
+        """
+        from .retention_auto_enforcer import (
+            quarterly_period_bounds,
+            quarterly_retention_compliance_snapshot,
+        )
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"detail": "Tenant context required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        period = (request.query_params.get("period") or "").strip()
+        try:
+            year_str, quarter_str = period.split("-")
+            year = int(year_str)
+            quarter = int(quarter_str.removeprefix("Q"))
+            quarterly_period_bounds(year, quarter)  # raises ValueError for bad input
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "period must be YYYY-Qn (e.g. 2026-Q3)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            return Response(
+                quarterly_retention_compliance_snapshot(
+                    tenant_id=str(tenant_id), year=year, quarter=quarter
+                )
+            )
+        except Exception:
+            logger.exception("retention_quarterly_report_failed")
+            return Response(
+                {"detail": "Quarterly report unavailable"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

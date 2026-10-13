@@ -108,8 +108,10 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
                 f"Validation returned {validate_response.status_code} — 500 indicates unhandled error",
             )
 
-        # Step 5: Create asset
-        asset_data = {"key": "product-catalog", "name": "Product Catalog", "visibility": "INTERNAL"}
+        # Step 5: Create asset (no deprecated "visibility" body field —
+        # it is a derived @property as of Phase 250.3.B; INTERNAL is the
+        # default for ACTIVE assets and the field is silently ignored)
+        asset_data = {"key": "product-catalog", "name": "Product Catalog"}
         asset_response = client.post("/api/v1/assets/", asset_data, format="json")
         self.assertEqual(asset_response.status_code, status.HTTP_201_CREATED)
         asset_id = asset_response.data["id"]
@@ -236,7 +238,6 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
         )
         # 500 is a server bug — service unavailable should return 503
         self.assertIn(  # noqa: broad-status-codes
-
             validate_response.status_code,
             [
                 status.HTTP_200_OK,
@@ -346,7 +347,6 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
         )
         # 500 is a server bug — service unavailable should return 503
         self.assertIn(  # noqa: broad-status-codes
-
             validate_response.status_code,
             [
                 status.HTTP_200_OK,
@@ -800,7 +800,6 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
             )
         # May return 200, 202, 404 if endpoint not implemented, or 503 if Prefect service unavailable
         self.assertIn(  # noqa: broad-status-codes
-
             trigger_response.status_code,
             [
                 status.HTTP_200_OK,
@@ -846,7 +845,6 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
         )
         # 500 is a server bug — service unavailable should return 503
         self.assertIn(  # noqa: broad-status-codes
-
             validate_response.status_code,
             [
                 status.HTTP_200_OK,
@@ -889,8 +887,10 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
         # Prepare contract for activation (validate and normalize)
         self.prepare_contract_for_activation(contract_id)
 
-        # Create asset
-        asset_data = {"key": "automated-asset", "name": "Automated Asset", "visibility": "INTERNAL"}
+        # Create asset (no deprecated "visibility" body field — derived
+        # @property as of Phase 250.3.B; INTERNAL is the default for
+        # ACTIVE assets and the field is silently ignored)
+        asset_data = {"key": "automated-asset", "name": "Automated Asset"}
         asset_response = client.post("/api/v1/assets/", asset_data, format="json")
         asset_id = asset_response.data["id"]
 

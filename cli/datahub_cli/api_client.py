@@ -125,7 +125,7 @@ class APIClient:
                     # Last attempt failed - raise exception
                     raise click.ClickException(
                         f"API request failed after {max_retries} attempts: {e}"
-                    )
+                    ) from None
 
         if response is None:
             raise click.ClickException("API request failed: No response received")
@@ -171,15 +171,17 @@ class APIClient:
         json_data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: int | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """POST request
 
         Args:
             timeout: Request timeout in seconds. Defaults to 30 for regular requests,
                     120 for workflow operations
+            params: Query-string parameters (some POST endpoints accept filters).
         """
         response = self._request(
-            "POST", endpoint, json_data=json_data, files=files, timeout=timeout
+            "POST", endpoint, json_data=json_data, files=files, timeout=timeout, params=params
         )
         return self._handle_response(response)
 
@@ -229,11 +231,12 @@ class APIClient:
 
         try:
             json_data = response.json()
-            # Ensure we always return a dict or list, never None
-            return json_data if json_data is not None else {}
         except ValueError:
             # Response is not JSON - return empty dict
             return {}
+        else:
+            # Ensure we always return a dict or list, never None
+            return json_data if json_data is not None else {}
 
 
 # Global API client instance

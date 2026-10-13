@@ -38,9 +38,12 @@ def _find_conftest_files() -> list[Path]:
 def _is_fixture_function(node: ast.FunctionDef) -> bool:
     """True if the function is decorated with @pytest.fixture."""
     for decorator in node.decorator_list:
-        if isinstance(decorator, ast.Call) and hasattr(decorator.func, "attr"):
-            if decorator.func.attr == "fixture":
-                return True
+        if (
+            isinstance(decorator, ast.Call)
+            and hasattr(decorator.func, "attr")
+            and decorator.func.attr == "fixture"
+        ):
+            return True
         if isinstance(decorator, ast.Attribute) and decorator.attr == "fixture":
             return True
         if isinstance(decorator, ast.Name) and decorator.id == "fixture":

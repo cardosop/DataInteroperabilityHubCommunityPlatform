@@ -172,7 +172,6 @@ class CKANConnector(DataMarketplaceConnector):
                 try:
                     response = self.client.request(method, endpoint, **kwargs)
                     response.raise_for_status()
-                    return response
                 except httpx.HTTPStatusError as e:
                     # Retry on 5xx errors (server errors)
                     if e.response.status_code >= 500 and attempt < self.max_retries:
@@ -204,6 +203,8 @@ class CKANConnector(DataMarketplaceConnector):
                     raise HubConnectionError(
                         f"CKAN API unreachable after {self.max_retries + 1} attempts: {e}"
                     ) from e
+                else:
+                    return response
 
         # Execute with circuit breaker protection.
         # execute_request already handles httpx.HTTPStatusError, httpx.RequestError,
@@ -381,7 +382,6 @@ class CKANConnector(DataMarketplaceConnector):
                         logger.warning(f"Failed to fetch package {package_id}: {e}")
                         continue
 
-            return listings
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise HubConnectionError(f"CKAN API endpoint not found: {e}") from e
@@ -389,6 +389,8 @@ class CKANConnector(DataMarketplaceConnector):
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
             raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+        else:
+            return listings
 
     def _list_listings_via_search(
         self,
@@ -418,7 +420,9 @@ class CKANConnector(DataMarketplaceConnector):
 
             if fq_parts:
                 # Join multiple filter queries with AND
-                params["fq"] = " AND ".join(fq_parts)  # type: ignore[assignment]  # str → dict value; mypy narrows dict key type
+                params["fq"] = " AND ".join(
+                    fq_parts
+                )  # str → dict value; mypy narrows dict key type
 
         try:
             response = self._request_with_retry(
@@ -440,7 +444,6 @@ class CKANConnector(DataMarketplaceConnector):
                     logger.warning(f"Failed to convert package to listing: {e}")
                     continue
 
-            return listings
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise HubConnectionError(f"CKAN API endpoint not found: {e}") from e
@@ -448,6 +451,8 @@ class CKANConnector(DataMarketplaceConnector):
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
             raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+        else:
+            return listings
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
         """
@@ -467,7 +472,7 @@ class CKANConnector(DataMarketplaceConnector):
         if listing_id is None or (isinstance(listing_id, str) and not listing_id.strip()):
             raise ValueError("listing id must be non-empty")
         if not isinstance(listing_id, str):
-            raise ValueError("listing id must be a string")
+            raise TypeError("listing id must be a string")
         try:
             response = self._request_with_retry(
                 "GET", "/api/3/action/package_show", params={"id": listing_id}
@@ -561,10 +566,7 @@ class CKANConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to CKAN instance
         """
         # Get package to retrieve resources
-        try:
-            package = self.get_listing(listing_id)
-        except NotFoundError:
-            raise
+        package = self.get_listing(listing_id)
 
         # Extract resources from package metadata
         package_data = package.metadata.get("ckan_package", {})
@@ -673,7 +675,7 @@ class CKANConnector(DataMarketplaceConnector):
         )
 
     def _listing_to_ckan_package(
-        self, listing: MarketplaceListing, create: bool = False
+        self, listing: MarketplaceListing, _create: bool = False
     ) -> dict[str, Any]:
         """Convert MarketplaceListing to CKAN package format."""
         package_data: dict[str, Any] = {
@@ -686,7 +688,9 @@ class CKANConnector(DataMarketplaceConnector):
 
         if listing.tags:
             # CKAN API expects tags as list of dicts with 'name' key
-            package_data["tags"] = [{"name": str(tag)} for tag in listing.tags]  # type: ignore[assignment]  # list-of-dict → JSON; mypy narrows dict key type
+            package_data["tags"] = [
+                {"name": str(tag)} for tag in listing.tags
+            ]  # list-of-dict → JSON; mypy narrows dict key type
 
         if listing.category:
             package_data["owner_org"] = listing.category
@@ -752,7 +756,7 @@ class CKANConnector(DataMarketplaceConnector):
             if isinstance(value, dict):
                 # Check if keys look like language codes (2-letter lowercase)
                 is_language_keyed = all(
-                    isinstance(k, str) and len(k) == 2 and k.islower() for k in value.keys()
+                    isinstance(k, str) and len(k) == 2 and k.islower() for k in value
                 )
 
                 if is_language_keyed:
@@ -943,10 +947,7 @@ class CKANConnector(DataMarketplaceConnector):
                         try:
                             import json
 
-                            if isinstance(value, str):
-                                schema_data = json.loads(value)
-                            else:
-                                schema_data = value
+                            schema_data = json.loads(value) if isinstance(value, str) else value
                             if isinstance(schema_data, dict):
                                 odcs_metadata["schema"] = schema_data
                         except (json.JSONDecodeError, TypeError):
@@ -957,10 +958,7 @@ class CKANConnector(DataMarketplaceConnector):
                         try:
                             import json
 
-                            if isinstance(value, str):
-                                quality_data = json.loads(value)
-                            else:
-                                quality_data = value
+                            quality_data = json.loads(value) if isinstance(value, str) else value
                             if isinstance(quality_data, dict):
                                 odcs_metadata["quality"] = quality_data
                         except (json.JSONDecodeError, TypeError):
@@ -971,10 +969,7 @@ class CKANConnector(DataMarketplaceConnector):
                         try:
                             import json
 
-                            if isinstance(value, str):
-                                sla_data = json.loads(value)
-                            else:
-                                sla_data = value
+                            sla_data = json.loads(value) if isinstance(value, str) else value
                             if isinstance(sla_data, dict):
                                 odcs_metadata["sla"] = sla_data
                         except (json.JSONDecodeError, TypeError):
@@ -1072,32 +1067,27 @@ class CKANConnector(DataMarketplaceConnector):
             raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
         # Download the resource
-        try:
-            # Validate destination path
-            if not destination_path:
-                raise ValueError("destination_path cannot be empty")
+        # Validate destination path
+        if not destination_path:
+            raise ValueError("destination_path cannot be empty")
 
-            # Create destination directory if it doesn't exist
-            dest_dir = os.path.dirname(destination_path)
-            if dest_dir:
-                os.makedirs(dest_dir, exist_ok=True)
+        # Create destination directory if it doesn't exist
+        dest_dir = os.path.dirname(destination_path)
+        if dest_dir:
+            os.makedirs(dest_dir, exist_ok=True)
 
-            # Check if destination is a directory (invalid)
-            if os.path.exists(destination_path) and os.path.isdir(destination_path):
-                raise OSError(f"Destination path is a directory, not a file: {destination_path}")
+        # Check if destination is a directory (invalid)
+        if os.path.exists(destination_path) and os.path.isdir(destination_path):
+            raise OSError(f"Destination path is a directory, not a file: {destination_path}")
 
-            # If destination file exists and has no write bits (e.g. chmod 0o444), fail before
-            # downloading. Use mode bits so we detect read-only even when process is root.
-            if os.path.exists(destination_path) and os.path.isfile(destination_path):
-                try:
-                    dest_mode = os.stat(destination_path).st_mode
-                    if not (dest_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)):
-                        raise PermissionError(
-                            f"Destination path is not writable: {destination_path}"
-                        )
-                except PermissionError:
-                    raise
+        # If destination file exists and has no write bits (e.g. chmod 0o444), fail before
+        # downloading. Use mode bits so we detect read-only even when process is root.
+        if os.path.exists(destination_path) and os.path.isfile(destination_path):
+            dest_mode = os.stat(destination_path).st_mode
+            if not (dest_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)):
+                raise PermissionError(f"Destination path is not writable: {destination_path}")
 
+        def _download() -> str:
             # Download file with retry logic
             download_response = None
             max_download_retries = 2
@@ -1162,24 +1152,29 @@ class CKANConnector(DataMarketplaceConnector):
                     f"Downloaded resource {resource_id} to {destination_path} "
                     f"({bytes_written} bytes)"
                 )
-                return destination_path
             except OSError as e:
                 # Clean up temp file on error
                 if os.path.exists(temp_path):
                     with contextlib.suppress(Exception):
                         os.unlink(temp_path)
                 raise OSError(f"Failed to write to destination path {destination_path}: {e}") from e
+            else:
+                return destination_path
+
+        try:
+            result = _download()
         except httpx.RequestError as e:
             raise HubConnectionError(f"Failed to download resource: {e}") from e
-        except OSError:
-            # Re-raise IOError as-is
-            raise
         except (NotFoundError, PermissionError, HubConnectionError, OSError, ValueError):
-            # Expected error types — propagate as-is
+            # Expected error types (incl. IOError) — propagate as-is.
+            # The former separate ``except OSError: raise`` clause was
+            # unreachable-shadowed by this tuple — merged.
             raise
         except Exception as e:
             # Unexpected errors — wrap for consistent error handling
             raise HubConnectionError(f"Unexpected error downloading resource: {e}") from e
+        else:
+            return result
 
     def map_to_hub_asset(
         self, listing: MarketplaceListing, sync_job_id: str | None = None
@@ -1388,10 +1383,7 @@ class CKANConnector(DataMarketplaceConnector):
         # Compare metadata (simplified comparison)
         existing_metadata = existing.metadata or {}
         new_metadata = new.metadata or {}
-        if existing_metadata != new_metadata:
-            return True
-
-        return False
+        return existing_metadata != new_metadata
 
     def sync_pull(
         self,

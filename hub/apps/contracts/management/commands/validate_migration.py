@@ -70,7 +70,7 @@ class Command(BaseCommand):
             help="Include detailed statistics in report (default: True)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         tenant_id = options.get("tenant_id")
         contract_ids_str = options.get("contract_ids")
         report_path = options.get("report_path")
@@ -84,7 +84,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("Starting migration validation..."))
 
-        try:
+        def _run_validation() -> None:
             # Initialize validator
             validator = MigrationValidator(tenant_id=tenant_id)
 
@@ -130,6 +130,8 @@ class Command(BaseCommand):
                     self.style.SUCCESS("\nValidation completed successfully - no issues found")
                 )
 
+        try:
+            _run_validation()
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Validation failed: {e!s}"))
             logger.exception("Migration validation command failed")

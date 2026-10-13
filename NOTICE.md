@@ -20,7 +20,6 @@ package distributions):
 - google-cloud-bigquery (Apache-2.0)
 - databricks-sql-connector (Apache-2.0)
 - PyAthena (MIT)
-- delta-sharing (Apache-2.0)
 - rdflib (BSD-3-Clause)
 - Redis-py (MIT)
 - Structlog (MIT/Apache-2.0)

@@ -63,7 +63,7 @@ def check_metrics_endpoint(api_url: str, timeout: int = 30) -> tuple[bool, str, 
         return False, f"Metrics endpoint timeout after {timeout}s", None
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to metrics endpoint", None
-    except Exception as e:
+    except (requests.RequestException, ValueError) as e:
         return False, f"Error checking metrics endpoint: {e!s}", None
 
 
@@ -85,7 +85,7 @@ def verify_metric_names(
 
 
 def verify_prometheus_scraping(
-    prometheus_url: str, api_url: str, timeout: int = 60
+    prometheus_url: str, _api_url: str, timeout: int = 60
 ) -> tuple[bool, str]:
     """
     Verify that Prometheus can scrape metrics from the API service.
@@ -126,7 +126,7 @@ def verify_prometheus_scraping(
 
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to Prometheus"
-    except Exception as e:
+    except (requests.RequestException, ValueError) as e:
         return False, f"Error checking Prometheus: {e!s}"
 
 
@@ -140,8 +140,8 @@ def verify_metric_format(metrics_content: str) -> tuple[bool, list[str]]:
     errors = []
     lines = metrics_content.split("\n")
 
-    for i, line in enumerate(lines, 1):
-        line = line.strip()
+    for i, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
 

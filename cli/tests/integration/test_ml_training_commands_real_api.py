@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -33,25 +35,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
-            + "/health/",
-            timeout=2,
-        )
-        # Accept 200 (healthy) or 503 (unhealthy but service is running)
-        # 503 means service is up but dependencies may have issues
-        return response.status_code in (200, 503)
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip(
             "API service not available at http://localhost:8000. Start with: docker-compose up -d api db redis"
         )
@@ -65,7 +52,7 @@ def runner():
 
 
 @pytest.fixture
-def api_key(api_available):
+def api_key(api_service_available):
     """Get API key from config or environment"""
     api_key = config.get_api_key()
     if not api_key:
@@ -78,7 +65,7 @@ def api_key(api_available):
 
 
 @pytest.fixture
-def test_asset(api_available, api_key):
+def test_asset(api_service_available, api_key):
     """Create a test asset for ML model"""
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -103,7 +90,7 @@ def test_asset(api_available, api_key):
             break
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             if attempt < max_retries - 1:
-                time.sleep(1)  # noqa: sleep-needed — retry loop
+                time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.skip(f"Failed to create test asset after {max_retries} attempts: {e}")
@@ -124,7 +111,7 @@ def test_asset(api_available, api_key):
 
 
 @pytest.fixture
-def test_model(api_available, api_key, test_asset):
+def test_model(api_service_available, api_key, test_asset):
     """Create a test ML model"""
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -149,7 +136,7 @@ def test_model(api_available, api_key, test_asset):
             break
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             if attempt < max_retries - 1:
-                time.sleep(1)  # noqa: sleep-needed — retry loop
+                time.sleep(1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.skip(f"Failed to create test model after {max_retries} attempts: {e}")
@@ -172,7 +159,7 @@ def test_model(api_available, api_key, test_asset):
 
 
 @pytest.fixture
-def test_dataset(api_available, api_key):
+def test_dataset(api_service_available, api_key):
     """Create a test dataset for training"""
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
@@ -207,11 +194,11 @@ def test_dataset(api_available, api_key):
                     )
                     last_error = f"Rate limit exceeded, retrying after {retry_after} seconds"
                     if attempt < max_retries - 1:
-                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                 except (ValueError, KeyError):
                     if attempt < max_retries - 1:
-                        time.sleep(3)  # noqa: sleep-needed — retry loop
+                        time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
             # If not 201 and not 429, retry unless it's a client error (4xx) that's not rate limit
             if (
@@ -223,7 +210,7 @@ def test_dataset(api_available, api_key):
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_error = str(e)
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.fail(
@@ -286,31 +273,31 @@ def test_dataset(api_available, api_key):
                     )
                     last_error = f"Rate limit exceeded, retrying after {retry_after} seconds"
                     if attempt < max_retries - 1:
-                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                 except (ValueError, KeyError):
                     if attempt < max_retries - 1:
-                        time.sleep(3)  # noqa: sleep-needed — retry loop
+                        time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
             # If not successful and not 429, check error
             if file_complete_response.status_code >= 400:
                 last_error = f"HTTP {file_complete_response.status_code}: {file_complete_response.text[:200]}"
                 if attempt < max_retries - 1:
-                    time.sleep(2)  # noqa: sleep-needed — retry loop
+                    time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
                 else:
                     break
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_error = f"Connection/Timeout: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 break
         except Exception as e:
             last_error = f"Unexpected error: {type(e).__name__}: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 break
@@ -338,7 +325,7 @@ def test_dataset(api_available, api_key):
                     f"File {file_id} is not ACTIVE (status: {file_data.get('status')}). "
                     f"Cannot create dataset from inactive file. "
                     f"File completion: {file_complete_response.status_code if file_complete_response else 'N/A'}, "
-                    f"File update: {file_update_response.status_code if file_update_response else 'N/A'}"
+                    f"File update: {file_complete_response.status_code if file_complete_response else 'N/A'}"
                 )
     except Exception:
         # If verification fails, log but continue - dataset creation will fail with better error
@@ -368,11 +355,11 @@ def test_dataset(api_available, api_key):
                     )
                     last_error = f"Rate limit exceeded, retrying after {retry_after} seconds"
                     if attempt < max_retries - 1:
-                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop
+                        time.sleep(retry_after + 1)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
                 except (ValueError, KeyError):
                     if attempt < max_retries - 1:
-                        time.sleep(3)  # noqa: sleep-needed — retry loop
+                        time.sleep(3)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                         continue
             # If not 201 and not 429, check if it's a client error
             if 400 <= dataset_response.status_code < 500 and dataset_response.status_code != 429:
@@ -383,7 +370,7 @@ def test_dataset(api_available, api_key):
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_error = f"Connection/Timeout error: {type(e).__name__}: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.fail(
@@ -394,7 +381,7 @@ def test_dataset(api_available, api_key):
             # Catch all other exceptions (RequestException, JSONDecodeError, etc.)
             last_error = f"Unexpected error: {type(e).__name__}: {e!s}"
             if attempt < max_retries - 1:
-                time.sleep(2)  # noqa: sleep-needed — retry loop
+                time.sleep(2)  # noqa: sleep-needed — retry loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                 continue
             else:
                 pytest.fail(
@@ -441,14 +428,14 @@ def test_dataset(api_available, api_key):
 class TestMLTrainingCommandsRealAPI:
     """Integration tests for ML training commands with real API"""
 
-    def test_training_command_group_accessible(self, runner, api_available):
+    def test_training_command_group_accessible(self, runner, api_service_available):
         """Test that training command group is accessible"""
         result = runner.invoke(cli, ["ml", "training", "--help"])
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Training job commands" in result.output
 
     def test_training_submit_command_structure(
-        self, runner, api_available, api_key, test_model, test_dataset
+        self, runner, api_service_available, api_key, test_model, test_dataset
     ):
         """Test training submit command structure with real API"""
         config_json = json.dumps({"epochs": 10, "batch_size": 32, "learning_rate": 0.001})
@@ -490,7 +477,7 @@ class TestMLTrainingCommandsRealAPI:
                 pass  # Output may not be JSON if there's an error message
 
     def test_training_submit_with_file_config(
-        self, runner, api_available, api_key, test_model, test_dataset
+        self, runner, api_service_available, api_key, test_model, test_dataset
     ):
         """Test training submit with config file"""
         config_data = {"epochs": 10, "batch_size": 32, "learning_rate": 0.001}
@@ -529,7 +516,7 @@ class TestMLTrainingCommandsRealAPI:
         finally:
             os.unlink(config_file)
 
-    def test_training_list_command(self, runner, api_available, api_key):
+    def test_training_list_command(self, runner, api_service_available, api_key):
         """Test training list command with real API"""
         result = runner.invoke(cli, ["ml", "training", "list", "--format", "json"])
 
@@ -545,7 +532,7 @@ class TestMLTrainingCommandsRealAPI:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_training_list_with_filters(self, runner, api_available, api_key, test_model):
+    def test_training_list_with_filters(self, runner, api_service_available, api_key, test_model):
         """Test training list with filters"""
         result = runner.invoke(
             cli,
@@ -569,7 +556,7 @@ class TestMLTrainingCommandsRealAPI:
         # Should succeed or fail with expected errors
         assert result.exit_code == 0, f"List with filters failed: {result.output}"
 
-    def test_training_get_command_structure(self, runner, api_available, api_key):
+    def test_training_get_command_structure(self, runner, api_service_available, api_key):
         """Test training get command structure"""
         # Use a valid format job ID (even if job doesn't exist)
         test_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
@@ -591,7 +578,7 @@ class TestMLTrainingCommandsRealAPI:
             ]
         ), f"Unexpected error: {result.output[:500]}"
 
-    def test_training_cancel_command_structure(self, runner, api_available, api_key):
+    def test_training_cancel_command_structure(self, runner, api_service_available, api_key):
         """Test training cancel command structure"""
         test_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -612,7 +599,7 @@ class TestMLTrainingCommandsRealAPI:
             ]
         ), f"Unexpected error: {result.output[:500]}"
 
-    def test_training_logs_command_structure(self, runner, api_available, api_key):
+    def test_training_logs_command_structure(self, runner, api_service_available, api_key):
         """Test training logs command structure"""
         test_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -633,7 +620,7 @@ class TestMLTrainingCommandsRealAPI:
             ]
         ), f"Unexpected error: {result.output[:500]}"
 
-    def test_training_logs_with_lines(self, runner, api_available, api_key):
+    def test_training_logs_with_lines(self, runner, api_service_available, api_key):
         """Test training logs with lines parameter"""
         test_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -656,7 +643,7 @@ class TestMLTrainingCommandsRealAPI:
             ]
         ), f"Unexpected error: {result.output[:500]}"
 
-    def test_training_submit_invalid_uuid(self, runner, api_available):
+    def test_training_submit_invalid_uuid(self, runner, api_service_available):
         """Test training submit with invalid UUID"""
         result = runner.invoke(
             cli,
@@ -676,7 +663,7 @@ class TestMLTrainingCommandsRealAPI:
         assert result.exit_code != 0, "Should fail with invalid UUID"
         assert "Invalid" in result.output or "UUID" in result.output
 
-    def test_training_submit_invalid_json(self, runner, api_available):
+    def test_training_submit_invalid_json(self, runner, api_service_available):
         """Test training submit with invalid JSON"""
         result = runner.invoke(
             cli,
@@ -696,7 +683,7 @@ class TestMLTrainingCommandsRealAPI:
         assert result.exit_code != 0, "Should fail with invalid JSON"
         assert "Invalid JSON" in result.output or "JSON" in result.output
 
-    def test_training_list_table_format(self, runner, api_available, api_key):
+    def test_training_list_table_format(self, runner, api_service_available, api_key):
         """Test training list with table format"""
         result = runner.invoke(cli, ["ml", "training", "list", "--format", "table"])
 
@@ -707,7 +694,7 @@ class TestMLTrainingCommandsRealAPI:
             # Verify table format indicators
             assert "Job ID" in result.output or "No training jobs found" in result.output
 
-    def test_training_get_table_format(self, runner, api_available, api_key):
+    def test_training_get_table_format(self, runner, api_service_available, api_key):
         """Test training get with table format"""
         test_job_id = f"test-job-{uuid.uuid4().hex[:8]}"
 
@@ -729,7 +716,7 @@ class TestMLTrainingCommandsRealAPI:
         ), f"Unexpected error: {result.output[:500]}"
 
     def test_complete_training_workflow(
-        self, runner, api_available, api_key, test_model, test_dataset
+        self, runner, api_service_available, api_key, test_model, test_dataset
     ):
         """
         Test complete training workflow: submit → list → get → logs → cancel

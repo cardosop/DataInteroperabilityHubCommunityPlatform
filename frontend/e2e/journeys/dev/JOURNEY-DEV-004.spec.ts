@@ -44,12 +44,18 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
   test.describe('Failure', () => {
     test('webhook detail with non-existent id shows error', async ({ page }) => {
       const devUser = await getExternalDeveloperUser();
-      await loginAndNavigateToRoute(page, devUser, '/webhooks', {
-        timeout: 45000,
-        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
-      });
-      await page.goto('/webhooks/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      // Navigate via the shared helper, NOT a raw page.goto: the helper
+      // injects fresh tokens before the full-page navigation (the in-memory
+      // access token dies on reload — Phase 11.1 keeps it out of
+      // localStorage). A raw goto raced the reload-hydration refresh, the
+      // detail fetch fired unauthenticated and rendered AUTH_UNAUTHORIZED
+      // instead of the 404 boundary.
+      await loginAndNavigateToRoute(
+        page,
+        devUser,
+        '/webhooks/00000000-0000-0000-0000-000000000000',
+        { timeout: 45000 },
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.webhook-detail-page .webhook-detail-dl',
         waitAfterLoad: 8000,

@@ -75,16 +75,16 @@ class CostTrackingTest(TestCase):
         # Calculate costs
         cost = CostTrackingManager.calculate_run_costs(str(run.id))
 
-        self.assertIsNotNone(cost)
-        self.assertEqual(cost.run, run)
-        self.assertEqual(cost.scheduled_ingestion, self.scheduled_ingestion)
-        self.assertGreater(cost.total_cost_usd, Decimal("0.0"))
-        self.assertGreater(cost.storage_cost_usd, Decimal("0.0"))
-        self.assertGreater(cost.compute_cost_usd, Decimal("0.0"))
-        self.assertGreater(cost.network_cost_usd, Decimal("0.0"))
-        self.assertIn("storage", cost.cost_breakdown_json)
-        self.assertIn("compute", cost.cost_breakdown_json)
-        self.assertIn("network", cost.cost_breakdown_json)
+        assert cost is not None
+        assert cost.run == run
+        assert cost.scheduled_ingestion == self.scheduled_ingestion
+        assert cost.total_cost_usd > Decimal("0.0")
+        assert cost.storage_cost_usd > Decimal("0.0")
+        assert cost.compute_cost_usd > Decimal("0.0")
+        assert cost.network_cost_usd > Decimal("0.0")
+        assert "storage" in cost.cost_breakdown_json
+        assert "compute" in cost.cost_breakdown_json
+        assert "network" in cost.cost_breakdown_json
 
     def test_get_cost_report(self):
         """Test getting cost report"""
@@ -118,8 +118,8 @@ class CostTrackingTest(TestCase):
             end_date=timezone.now(),
         )
 
-        self.assertIn("summary", report)
-        self.assertGreater(report["summary"]["total_cost_usd"], 0.0)
-        self.assertEqual(report["summary"]["total_runs"], 2)
-        self.assertIn("cost_by_ingestion", report)
-        self.assertIn("daily_trends", report)
+        assert "summary" in report
+        assert report["summary"]["total_cost_usd"] > 0.0
+        assert report["summary"]["total_runs"] == 2
+        assert "cost_by_ingestion" in report
+        assert "daily_trends" in report

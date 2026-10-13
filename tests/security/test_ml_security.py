@@ -31,12 +31,14 @@ class MLSecurityTestBase(TestCase):
             slug=f"ml-security-tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            ml_enabled=True,
         )
         self.tenant_b = Tenant.objects.create(
             name="ML Security Tenant B",
             slug=f"ml-security-tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            ml_enabled=True,
         )
         self.user_a = self._create_user("mlseca@example.com", self.tenant_a)
         self.user_b = self._create_user("mlsecb@example.com", self.tenant_b)

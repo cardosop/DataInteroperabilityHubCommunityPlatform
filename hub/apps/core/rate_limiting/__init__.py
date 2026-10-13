@@ -7,7 +7,7 @@ Also note: api/request_middleware + contracts.odps_rate_limiting keep their
 own independent implementations — this package is the shared service layer.
 """
 
-from hub.apps.core.rate_limiting.service import (  # noqa: F401
+from hub.apps.core.rate_limiting.service import (
     RateLimitResult,
     check_rate_limit,
     get_rate_limit_headers,

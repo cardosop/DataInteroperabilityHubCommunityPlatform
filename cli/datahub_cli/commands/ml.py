@@ -61,7 +61,7 @@ def list_models(
         try:
             validate_uuid(asset_id, "asset-id")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
         params["asset_id"] = asset_id
 
     try:
@@ -117,7 +117,7 @@ def list_models(
                     raise handle_ml_api_error(response.text, response.status_code, "ml/models/")
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to list models: {e}")
+        raise click.ClickException(f"Failed to list models: {e}") from None
 
 
 @models.command("get")
@@ -135,7 +135,7 @@ def get_model(model_id: str, output_format: str):
     try:
         validate_uuid(model_id, "model-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     try:
         # API endpoint: /api/v1/ml/models/{id}/
@@ -174,7 +174,7 @@ def get_model(model_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to get model: {e}")
+        raise click.ClickException(f"Failed to get model: {e}") from None
 
 
 @models.command("create")
@@ -228,7 +228,7 @@ def create_model(
         if contract_id:
             validate_uuid(contract_id, "contract-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Build request data
     # Note: odh_model_name is not sent to API - service fetches it from ODH
@@ -274,7 +274,7 @@ def create_model(
                     raise handle_ml_api_error(response.text, response.status_code, "ml/models/")
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to create model: {e}")
+        raise click.ClickException(f"Failed to create model: {e}") from None
 
 
 @models.command("update")
@@ -311,7 +311,7 @@ def update_model(
         if status:
             validate_model_status(status)
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Build request data
     data = {}
@@ -359,7 +359,7 @@ def update_model(
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to update model: {e}")
+        raise click.ClickException(f"Failed to update model: {e}") from None
 
 
 @models.command("delete")
@@ -377,7 +377,7 @@ def delete_model(model_id: str, output_format: str):
     try:
         validate_uuid(model_id, "model-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     try:
         # API endpoint: /api/v1/ml/models/{id}/
@@ -402,7 +402,7 @@ def delete_model(model_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to delete model: {e}")
+        raise click.ClickException(f"Failed to delete model: {e}") from None
 
 
 @models.command("versions")
@@ -420,15 +420,19 @@ def list_model_versions(model_id: str, output_format: str):
     try:
         validate_uuid(model_id, "model-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
-    try:
+    def _resolve_odh_model_id() -> str:
         # First get the model to find its ODH model ID
         model = api_client.get(f"ml/models/{model_id}/")
         odh_model_id = model.get("odh_model_id")
 
         if not odh_model_id:
             raise click.ClickException("Model does not have an ODH model ID")
+        return odh_model_id
+
+    try:
+        odh_model_id = _resolve_odh_model_id()
 
         # Search for all models with the same ODH model ID
         # API endpoint: /api/v1/ml/models/ with search parameter
@@ -477,7 +481,7 @@ def list_model_versions(model_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to list model versions: {e}")
+        raise click.ClickException(f"Failed to list model versions: {e}") from None
 
 
 @ml.group("inference")
@@ -495,13 +499,13 @@ def inference():
     default="table",
     help="Output format",
 )
-def deploy_model(model_id: str, config: str | None, output_format: str):
+def deploy_inference_model(model_id: str, config: str | None, output_format: str):
     """Deploy a model for inference"""
     # Validate parameters
     try:
         validate_uuid(model_id, "model-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Parse config
     config_data = {}
@@ -512,13 +516,13 @@ def deploy_model(model_id: str, config: str | None, output_format: str):
                 with open(config, encoding="utf-8") as f:
                     config_data = json.load(f)
             except Exception as e:
-                raise click.ClickException(f"Failed to read config file: {e}")
+                raise click.ClickException(f"Failed to read config file: {e}") from e
         else:
             # Try to parse as JSON string
             try:
                 config_data = validate_json(config, "config")
             except ODHMLModelParameterError as e:
-                raise click.ClickException(str(e))
+                raise click.ClickException(str(e)) from e
 
     # Build request data
     from typing import Any
@@ -549,8 +553,8 @@ def deploy_model(model_id: str, config: str | None, output_format: str):
         # But if it's not, provide a user-friendly message
         error_msg = str(e)
         if "Not authenticated" in error_msg or "Authentication" in error_msg:
-            raise click.ClickException(error_msg)
-        raise click.ClickException(f"Failed to deploy model: {error_msg}")
+            raise click.ClickException(error_msg) from None
+        raise click.ClickException(f"Failed to deploy model: {error_msg}") from e
 
 
 @inference.command("predict")
@@ -574,13 +578,13 @@ def predict(deployment_id: str, input_data: str, output_format: str):
             with open(input_data, encoding="utf-8") as f:
                 input_json = json.load(f)
         except Exception as e:
-            raise click.ClickException(f"Failed to read input file: {e}")
+            raise click.ClickException(f"Failed to read input file: {e}") from e
     else:
         # Try to parse as JSON string
         try:
             input_json = validate_json(input_data, "input")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
 
     # Build request data
     data = {"deployment_id": deployment_id, "input": input_json}
@@ -606,8 +610,8 @@ def predict(deployment_id: str, input_data: str, output_format: str):
         # But if it's not, provide a user-friendly message
         error_msg = str(e)
         if "Not authenticated" in error_msg or "Authentication" in error_msg:
-            raise click.ClickException(error_msg)
-        raise click.ClickException(f"Failed to run prediction: {error_msg}")
+            raise click.ClickException(error_msg) from None
+        raise click.ClickException(f"Failed to run prediction: {error_msg}") from e
 
 
 @inference.command("list")
@@ -636,7 +640,7 @@ def list_deployments(
         try:
             validate_uuid(model_id, "model-id")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
         params["model_id"] = model_id
 
     try:
@@ -686,8 +690,8 @@ def list_deployments(
         # But if it's not, provide a user-friendly message
         error_msg = str(e)
         if "Not authenticated" in error_msg or "Authentication" in error_msg:
-            raise click.ClickException(error_msg)
-        raise click.ClickException(f"Failed to list deployments: {error_msg}")
+            raise click.ClickException(error_msg) from None
+        raise click.ClickException(f"Failed to list deployments: {error_msg}") from e
 
 
 @inference.command("get")
@@ -727,8 +731,8 @@ def get_deployment(deployment_id: str, output_format: str):
         # But if it's not, provide a user-friendly message
         error_msg = str(e)
         if "Not authenticated" in error_msg or "Authentication" in error_msg:
-            raise click.ClickException(error_msg)
-        raise click.ClickException(f"Failed to get deployment: {error_msg}")
+            raise click.ClickException(error_msg) from None
+        raise click.ClickException(f"Failed to get deployment: {error_msg}") from e
 
 
 @inference.command("undeploy")
@@ -757,8 +761,8 @@ def undeploy(deployment_id: str, output_format: str):
         # But if it's not, provide a user-friendly message
         error_msg = str(e)
         if "Not authenticated" in error_msg or "Authentication" in error_msg:
-            raise click.ClickException(error_msg)
-        raise click.ClickException(f"Failed to undeploy deployment: {error_msg}")
+            raise click.ClickException(error_msg) from None
+        raise click.ClickException(f"Failed to undeploy deployment: {error_msg}") from e
 
 
 @inference.command("metrics")
@@ -812,8 +816,8 @@ def get_metrics(
         # But if it's not, provide a user-friendly message
         error_msg = str(e)
         if "Not authenticated" in error_msg or "Authentication" in error_msg:
-            raise click.ClickException(error_msg)
-        raise click.ClickException(f"Failed to get metrics: {error_msg}")
+            raise click.ClickException(error_msg) from None
+        raise click.ClickException(f"Failed to get metrics: {error_msg}") from e
 
 
 @ml.group("training")
@@ -839,7 +843,7 @@ def submit_training(model_id: str, dataset_id: str, config: str, output_format: 
         validate_uuid(model_id, "model-id")
         validate_uuid(dataset_id, "dataset-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Parse config - can be JSON string or file path
     training_config = None
@@ -849,13 +853,13 @@ def submit_training(model_id: str, dataset_id: str, config: str, output_format: 
             with open(config, encoding="utf-8") as f:
                 training_config = json.load(f)
         except Exception as e:
-            raise click.ClickException(f"Failed to read config file: {e}")
+            raise click.ClickException(f"Failed to read config file: {e}") from e
     else:
         # Try to parse as JSON string
         try:
             training_config = json.loads(config)
         except json.JSONDecodeError:
-            raise click.ClickException(f"Invalid JSON in config: {config}")
+            raise click.ClickException(f"Invalid JSON in config: {config}") from None
 
     # Validate config is a dict
     if not isinstance(training_config, dict):
@@ -891,7 +895,7 @@ def submit_training(model_id: str, dataset_id: str, config: str, output_format: 
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to submit training job: {e}")
+        raise click.ClickException(f"Failed to submit training job: {e}") from None
 
 
 @training.command("list")
@@ -918,7 +922,7 @@ def list_training_jobs(
         try:
             validate_uuid(model_id, "model-id")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
         params["model_id"] = model_id
 
     if status:
@@ -980,7 +984,7 @@ def list_training_jobs(
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to list training jobs: {e}")
+        raise click.ClickException(f"Failed to list training jobs: {e}") from None
 
 
 @training.command("get")
@@ -1038,7 +1042,7 @@ def get_training_job(job_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to get training job: {e}")
+        raise click.ClickException(f"Failed to get training job: {e}") from None
 
 
 @training.command("cancel")
@@ -1077,7 +1081,7 @@ def cancel_training_job(job_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to cancel training job: {e}")
+        raise click.ClickException(f"Failed to cancel training job: {e}") from None
 
 
 @training.command("logs")
@@ -1132,7 +1136,7 @@ def get_training_logs(job_id: str, lines: int | None, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to get training logs: {e}")
+        raise click.ClickException(f"Failed to get training logs: {e}") from None
 
 
 @ml.group("serving")
@@ -1156,7 +1160,7 @@ def deploy_model_serving(model_id: str, endpoint: str | None, output_format: str
     try:
         validate_uuid(model_id, "model-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Build request data
     from typing import Any
@@ -1193,7 +1197,7 @@ def deploy_model_serving(model_id: str, endpoint: str | None, output_format: str
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to deploy model for serving: {e}")
+        raise click.ClickException(f"Failed to deploy model for serving: {e}") from None
 
 
 @serving.command("predict")
@@ -1212,7 +1216,7 @@ def predict_serving(model_id: str, input_data: str, output_format: str):
     try:
         validate_uuid(model_id, "model-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Parse input data
     input_json = None
@@ -1222,13 +1226,13 @@ def predict_serving(model_id: str, input_data: str, output_format: str):
             with open(input_data, encoding="utf-8") as f:
                 input_json = json.load(f)
         except Exception as e:
-            raise click.ClickException(f"Failed to read input file: {e}")
+            raise click.ClickException(f"Failed to read input file: {e}") from e
     else:
         # Try to parse as JSON string
         try:
             input_json = validate_json(input_data, "input")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
 
     # Resolve deployment_id from model_id — the predict endpoint requires
     # deployment_id, not model_id.  List deployments for this model and
@@ -1292,7 +1296,7 @@ def predict_serving(model_id: str, input_data: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to run prediction: {e}")
+        raise click.ClickException(f"Failed to run prediction: {e}") from None
 
 
 @serving.command("list")
@@ -1321,7 +1325,7 @@ def list_serving(
         try:
             validate_uuid(model_id, "model-id")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
         params["model_id"] = model_id
 
     try:
@@ -1370,7 +1374,7 @@ def list_serving(
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to list serving deployments: {e}")
+        raise click.ClickException(f"Failed to list serving deployments: {e}") from None
 
 
 @serving.command("get")
@@ -1428,7 +1432,7 @@ def get_serving(serving_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to get serving deployment: {e}")
+        raise click.ClickException(f"Failed to get serving deployment: {e}") from None
 
 
 @serving.command("undeploy")
@@ -1467,7 +1471,7 @@ def undeploy_serving(serving_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to undeploy serving deployment: {e}")
+        raise click.ClickException(f"Failed to undeploy serving deployment: {e}") from None
 
 
 @serving.command("metrics")
@@ -1524,7 +1528,7 @@ def get_serving_metrics(serving_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to get serving metrics: {e}")
+        raise click.ClickException(f"Failed to get serving metrics: {e}") from None
 
 
 @serving.group("ab-test")
@@ -1550,10 +1554,10 @@ def create_ab_test(model_id: str, variant_id: str, traffic_split: str, output_fo
         validate_uuid(model_id, "model-id")
         validate_uuid(variant_id, "variant-id")
     except ODHMLModelParameterError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     # Validate traffic split format (e.g., "50:50" or "70:30")
-    try:
+    def _parse_traffic_split() -> tuple[int, int]:
         parts = traffic_split.split(":")
         if len(parts) != 2:
             raise ValueError("Traffic split must be in format 'X:Y' (e.g., '50:50')")
@@ -1563,10 +1567,14 @@ def create_ab_test(model_id: str, variant_id: str, traffic_split: str, output_fo
             raise ValueError("Traffic split percentages must be between 0 and 100")
         if base_percent + variant_percent != 100:
             raise ValueError("Traffic split percentages must sum to 100")
+        return base_percent, variant_percent
+
+    try:
+        base_percent, variant_percent = _parse_traffic_split()
     except ValueError as e:
         raise click.ClickException(
             f"Invalid traffic split format: {e}. Use format 'X:Y' where X+Y=100 (e.g., '50:50')"
-        )
+        ) from e
 
     # Build request data
     data = {
@@ -1603,7 +1611,7 @@ def create_ab_test(model_id: str, variant_id: str, traffic_split: str, output_fo
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to create A/B test: {e}")
+        raise click.ClickException(f"Failed to create A/B test: {e}") from None
 
 
 @ab_test.command("list")
@@ -1625,7 +1633,7 @@ def list_ab_tests(model_id: str | None, output_format: str):
         try:
             validate_uuid(model_id, "model-id")
         except ODHMLModelParameterError as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
         params["model_id"] = model_id
 
     try:
@@ -1683,7 +1691,7 @@ def list_ab_tests(model_id: str | None, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to list A/B tests: {e}")
+        raise click.ClickException(f"Failed to list A/B tests: {e}") from None
 
 
 @ab_test.command("get")
@@ -1757,7 +1765,7 @@ def get_ab_test(ab_test_id: str, output_format: str):
                     )
         except (ImportError, AttributeError):
             pass
-        raise click.ClickException(f"Failed to get A/B test: {e}")
+        raise click.ClickException(f"Failed to get A/B test: {e}") from None
 
 
 # ── 118E.7: deploy/undeploy/rollback/plan/marketplace ────
@@ -1801,7 +1809,7 @@ def deploy_model(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to deploy model: {e}")
+        raise click.ClickException(f"Failed to deploy model: {e}") from e
 
 
 @ml.command("undeploy")
@@ -1832,7 +1840,7 @@ def undeploy_model(model_id: str, output_format: str = "table"):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to undeploy model: {e}")
+        raise click.ClickException(f"Failed to undeploy model: {e}") from e
 
 
 @ml.command("rollback")
@@ -1869,7 +1877,7 @@ def rollback_model(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to rollback model: {e}")
+        raise click.ClickException(f"Failed to rollback model: {e}") from e
 
 
 @ml.group("plan")
@@ -1898,7 +1906,7 @@ def show_ml_plan(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get ML plan: {e}")
+        raise click.ClickException(f"Failed to get ML plan: {e}") from e
 
 
 @ml_plan.command("limits")
@@ -1931,7 +1939,7 @@ def show_ml_limits(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get ML limits: {e}")
+        raise click.ClickException(f"Failed to get ML limits: {e}") from e
 
 
 @ml.command("marketplace-publish")
@@ -1974,4 +1982,4 @@ def marketplace_publish(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to publish model: {e}")
+        raise click.ClickException(f"Failed to publish model: {e}") from e

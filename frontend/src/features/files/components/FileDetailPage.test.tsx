@@ -392,7 +392,7 @@ describe('FileDetailPage (Phase 260.4.B)', () => {
   });
 
   describe('rename UI (Phase 260.4.C)', () => {
-    function setupRenameStubs(file = makeFile()) {
+    function setupRenameStubs(file = makeFile(), nameRef?: { current: string }) {
       setupMockGet((url) => {
         if (url.includes(`files/${FILE_ID}/scan-status/`)) {
           return Promise.resolve({
@@ -400,7 +400,10 @@ describe('FileDetailPage (Phase 260.4.B)', () => {
           });
         }
         if (url.includes(`files/${FILE_ID}/`)) {
-          return Promise.resolve({ data: file });
+          // The backend serves the RENAMED payload on refetch — the
+          // nameRef holder lets the save test mutate it via the POST
+          // mock (the re-validated detail query must see the new name).
+          return Promise.resolve({ data: { ...file, name: nameRef?.current ?? file.name } });
         }
         if (url.includes('audit/audit-events/resource-activity/')) {
           return Promise.resolve({ data: { results: [] } });
@@ -461,13 +464,15 @@ describe('FileDetailPage (Phase 260.4.B)', () => {
     });
 
     it('Save fires POST /files/{id}/rename/ and closes the editor on success', async () => {
-      setupRenameStubs();
+      const nameRef = { current: 'sample.csv' };
+      setupRenameStubs(makeFile(), nameRef);
       vi.mocked(mockClient.post).mockImplementation((url: string, body) => {
         if (url.includes(`files/${FILE_ID}/rename/`)) {
           // Backend returns the canonical serialised file payload —
           // the cache patch in ``useRenameFile`` keys on this shape.
+          nameRef.current = (body as { name: string }).name;
           return Promise.resolve({
-            data: makeFile({ name: (body as { name: string }).name }),
+            data: makeFile({ name: nameRef.current }),
           }) as never;
         }
         return Promise.reject(new Error(`unexpected POST ${url}`)) as never;

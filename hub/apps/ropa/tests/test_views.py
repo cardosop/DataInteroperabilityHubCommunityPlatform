@@ -155,3 +155,78 @@ class RopaApiTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         ids = [r["id"] for r in res.data["results"]]
         self.assertIn(str(gen.id), ids)
+
+    @pytest.mark.integration
+    @pytest.mark.journey("JOURNEY-CPO-017")
+    @pytest.mark.uc("UC-COMP-009")
+    def test_update_metadata_patch_persists_summary_notes(self):
+        """276.B.104 — lifecycle edit step: PATCH merges DPO notes into summary_json."""
+        self.client.force_authenticate(user=self.user)
+        gen = RopaGeneration.objects.create(
+            tenant=self.tenant,
+            regulation="GDPR",
+            output_format=RopaOutputFormat.JSON,
+            status=RopaGenerationStatus.COMPLETED,
+            summary_json={"asset_count": 3},
+            gaps_json=[],
+        )
+        res = self.client.patch(
+            f"/api/v1/ropa/generations/{gen.id}/update/",
+            {"summary_json": {"asset_count": 3, "notes": "Reviewed with legal"}},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        gen.refresh_from_db()
+        self.assertEqual(gen.summary_json.get("notes"), "Reviewed with legal")
+        self.assertEqual(gen.summary_json.get("asset_count"), 3)
+
+    @pytest.mark.integration
+    @pytest.mark.journey("JOURNEY-CPO-017")
+    @pytest.mark.uc("UC-COMP-009")
+    def test_remove_deletes_generation_and_emits_audit_event(self):
+        """276.B.104 — lifecycle retire step: DELETE removes the row and audits."""
+        from hub.apps.audit.models import AuditEvent
+
+        self.client.force_authenticate(user=self.user)
+        gen = RopaGeneration.objects.create(
+            tenant=self.tenant,
+            regulation="GDPR",
+            output_format=RopaOutputFormat.JSON,
+            status=RopaGenerationStatus.COMPLETED,
+            summary_json={"asset_count": 0},
+            gaps_json=[],
+        )
+        res = self.client.delete(f"/api/v1/ropa/generations/{gen.id}/delete/")
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            RopaGeneration.objects.filter(pk=gen.pk, tenant=self.tenant).exists()
+        )
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                tenant=self.tenant,
+                action="ROPA_DELETED",
+                resource_id=str(gen.id),
+            ).exists()
+        )
+
+    @pytest.mark.integration
+    def test_remove_cross_tenant_isolation_404(self):
+        """Retire is tenant-scoped: tenant B cannot delete tenant A's record."""
+        self.client.force_authenticate(user=self.user)
+        other = Tenant.objects.create(
+            name=f"ropa-other-{uuid.uuid4().hex[:8]}",
+            slug=f"ropa-other-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        gen = RopaGeneration.objects.create(
+            tenant=other,
+            regulation="GDPR",
+            output_format=RopaOutputFormat.JSON,
+            status=RopaGenerationStatus.COMPLETED,
+            summary_json={},
+            gaps_json=[],
+        )
+        res = self.client.delete(f"/api/v1/ropa/generations/{gen.id}/delete/")
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(RopaGeneration.objects.filter(pk=gen.pk).exists())

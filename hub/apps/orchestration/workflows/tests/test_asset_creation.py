@@ -5,6 +5,8 @@ Unit tests for Asset Creation/Activation Workflow
 import uuid
 from unittest.mock import MagicMock, patch
 
+import pytest
+from django.conf import settings as _settings
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
@@ -18,6 +20,17 @@ from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+
+# The asset-creation workflow suite exercises the paid layers (semantic
+# mapping, marketplace product-first flow, legacy visibility kwarg);
+# the module is skipped in core-only mode.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="asset-creation workflow suite exercises the paid layers (semantic/marketplace)",
+    ),
+]
 
 
 class AssetCreationWorkflowUnitTest(TestCase):
@@ -406,7 +419,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
         self.assertEqual(result["validation_status"], "VALID")
         self.assertTrue(result["already_validated"])
 
-    @patch("hub.apps.orchestration.workflows.asset_creation.map_asset_to_semantic")
+    @patch("hub.apps.semantic.utils.map_asset_to_semantic")
     def test_activate_asset_task(self, mock_semantic):
         """Test activating asset"""
         asset = Asset.objects.create(
@@ -1055,7 +1068,6 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
             tenant_id=str(self.tenant.id),
             key=f"test-asset-step-events-{uuid.uuid4().hex[:8]}",
             name="Test Asset Step Events",
-            visibility=AssetVisibility.INTERNAL,
             auto_activate=False,
             send_notifications=False,
             created_by_id=str(self.user.id),
@@ -1148,7 +1160,6 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
             tenant_id=str(self.tenant.id),
             key=f"test-asset-regression-{uuid.uuid4().hex[:8]}",
             name="Test Asset Regression",
-            visibility=AssetVisibility.INTERNAL,
             auto_activate=False,
             send_notifications=False,
             created_by_id=str(self.user.id),
@@ -1922,7 +1933,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
                     if hasattr(kwargs, "get") or isinstance(kwargs, dict):
                         # This is a mock, so we'll create DQRun later when we have the asset
                         pass
-                except:
+                except Exception:
                     pass
 
                 # Try to find an actual DQRun and return its workflow instance

@@ -36,18 +36,16 @@ SKIP_PATTERNS = ["CHANGELOG.md"]  # Changelog links are release artifacts
 
 def _is_internal(url: str) -> bool:
     """Check if a URL is an internal document reference."""
-    if url.startswith("http://") or url.startswith("https://"):
+    if url.startswith(("http://", "https://")):
         return False
-    if url.startswith("mailto:") or url.startswith("#"):
-        return False
-    return True
+    return not (url.startswith(("mailto:", "#")))
 
 
 def _resolve_link(source_path: Path, target: str) -> Path | None:
     """Resolve a relative link target against the source file's directory."""
     # Strip anchor
     if "#" in target:
-        target = target.split("#")[0]
+        target = target.split("#", maxsplit=1)[0]
     if not target:
         return None
 
@@ -83,7 +81,7 @@ def check_links(internal_only: bool = False) -> dict:
 
         try:
             content = md_file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         # Find markdown links: [text](url)

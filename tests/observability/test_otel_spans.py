@@ -8,6 +8,7 @@ correlation_id in span attributes.
 
 import re
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -21,7 +22,7 @@ HUB_DIR = REPO_ROOT / "hub"
 class TestOTelSpanSetup:
     """OpenTelemetry is configured in all services."""
 
-    _SERVICE_NAMES = [
+    _SERVICE_NAMES: ClassVar[list] = [
         "semantic-service",
         "compliance-service",
         "dq-service",

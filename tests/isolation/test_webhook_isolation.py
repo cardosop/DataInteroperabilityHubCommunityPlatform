@@ -73,6 +73,6 @@ class TestWebhookIsolation:
 
     def test_webhook_db_scoping(self, tenant_a, tenant_b):
         """ORM confirms webhooks are tenant-scoped."""
-        a_ids = set(str(w.id) for w in Webhook.objects.filter(tenant=tenant_a))
-        b_ids = set(str(w.id) for w in Webhook.objects.filter(tenant=tenant_b))
+        a_ids = {str(w.id) for w in Webhook.objects.filter(tenant=tenant_a)}
+        b_ids = {str(w.id) for w in Webhook.objects.filter(tenant=tenant_b)}
         assert a_ids.isdisjoint(b_ids)

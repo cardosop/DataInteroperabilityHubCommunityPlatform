@@ -14,6 +14,8 @@ Tests verify that the system continues to work correctly after migrations and co
 import json
 import uuid
 
+import pytest
+from django.conf import settings as _settings
 from django.db import transaction
 from rest_framework import status
 
@@ -35,7 +37,7 @@ from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
 
-def create_valid_odcs_3_0_2(contract_id: str = None, with_marketplace: bool = True) -> dict:
+def create_valid_odcs_3_0_2(contract_id: str | None = None, with_marketplace: bool = True) -> dict:
     """Create a valid ODCS 3.0.2 document for testing"""
     if contract_id is None:
         contract_id = f"test-odcs-{uuid.uuid4().hex[:12]}"
@@ -72,7 +74,7 @@ def create_valid_odcs_3_0_2(contract_id: str = None, with_marketplace: bool = Tr
     return contract
 
 
-def create_valid_odps_4_1(product_id: str = None) -> dict:
+def create_valid_odps_4_1(product_id: str | None = None) -> dict:
     """Create a valid ODPS 4.1 document for testing"""
     if product_id is None:
         product_id = f"test-product-{uuid.uuid4().hex[:12]}"
@@ -105,7 +107,7 @@ def create_valid_odps_4_1(product_id: str = None) -> dict:
     }
 
 
-def create_dcs_contract_data(contract_id: str = None) -> dict:
+def create_dcs_contract_data(contract_id: str | None = None) -> dict:
     """Create a DCS (deprecated) contract data for testing migration"""
     if contract_id is None:
         contract_id = f"test-dcs-{uuid.uuid4().hex[:12]}"
@@ -216,6 +218,14 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
         self.assertEqual(response_data["original_spec_type"], OriginalSpecType.ODCS)
         self.assertEqual(response_data["original_spec_version"], "3.0.2")
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_odps_contract_creation_still_works(self):
         """Test that ODPS contract creation still works after code removal"""
         odps_data = create_valid_odps_4_1()
@@ -293,6 +303,14 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
         self.assertTrue(len(contract.normalization_warnings) > 0)
         self.assertIn("migrated", contract.normalization_warnings[0].lower())
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_odcs_to_odps_migration_creates_links(self):
         """Test that ODCS to ODPS migration creates correct bidirectional links"""
         # Create ODCS contract with marketplace metadata
@@ -387,6 +405,14 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
         self.assertIn(str(contract1.id), contract_ids)
         self.assertIn(str(contract2.id), contract_ids)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_contract_filtering_still_works(self):
         """Test that contract filtering still works after code removal"""
         # Create ODCS and ODPS contracts
@@ -417,6 +443,14 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
         odcs_contracts = [c for c in results if c["original_spec_type"] == OriginalSpecType.ODCS]
         self.assertTrue(len(odcs_contracts) > 0)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_contract_linking_still_works(self):
         """Test that contract linking still works after code removal"""
         # Create ODCS contract
@@ -471,6 +505,14 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
 
     # ========== TESTS FOR MIGRATION RESULTS CORRECTNESS ==========
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_migration_validator_validates_links(self):
         """Test that migration validator correctly validates bidirectional links"""
         # Create ODCS contract
@@ -583,6 +625,14 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
             # Pricing plans and access methods may or may not be preserved
             # The test verifies that marketplace metadata structure is preserved
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Product-First flow runs the paid marketplace "
+            "ProductCreationWorkflow — core-only returns "
+            "FEATURE_NOT_AVAILABLE (404) by design."
+        ),
+    )
     def test_migration_validator_detects_data_loss(self):
         """Test that migration validator detects data loss"""
         # Create ODCS contract

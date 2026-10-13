@@ -100,8 +100,7 @@ class VersioningListVersionsIntegrationTest(_VersioningTestBase):
             {"resource_id": str(self.asset.id)},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data,
-                      "Missing resource_type must produce an error message")
+        self.assertIn("error", response.data, "Missing resource_type must produce an error message")
 
     def test_list_versions_missing_resource_id_returns_400(self):
         response = self.client.get(
@@ -109,8 +108,7 @@ class VersioningListVersionsIntegrationTest(_VersioningTestBase):
             {"resource_type": "contract"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data,
-                      "Missing resource_id must produce an error message")
+        self.assertIn("error", response.data, "Missing resource_id must produce an error message")
 
     def test_list_versions_invalid_resource_type_returns_400(self):
         response = self.client.get(
@@ -118,8 +116,7 @@ class VersioningListVersionsIntegrationTest(_VersioningTestBase):
             {"resource_type": "invalid", "resource_id": str(self.asset.id)},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data,
-                      "Invalid resource_type must produce an error message")
+        self.assertIn("error", response.data, "Invalid resource_type must produce an error message")
 
     def test_list_versions_invalid_uuid_returns_400(self):
         """Non-UUID resource_id is rejected at the parameter-validation layer."""
@@ -231,8 +228,9 @@ class VersioningGetVersionIntegrationTest(_VersioningTestBase):
         # 404 responses may have an empty body; the status code alone
         # confirms the resource is correctly treated as not-found.
         if response.data is not None:
-            self.assertIn("error", response.data,
-                          "Non-existent version ID must produce an error message")
+            self.assertIn(
+                "error", response.data, "Non-existent version ID must produce an error message"
+            )
 
     def test_get_version_tenant_isolation_returns_404_for_other_tenant(self):
         other_tenant = Tenant.objects.create(
@@ -314,8 +312,7 @@ class VersioningCompareIntegrationTest(_VersioningTestBase):
             {"resource_type": "contract", "id_b": str(self.c2.id)},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data,
-                      "Missing id_a must produce an error message")
+        self.assertIn("error", response.data, "Missing id_a must produce an error message")
 
     def test_compare_missing_id_b_returns_400(self):
         """Missing id_b is rejected with 400."""
@@ -324,8 +321,7 @@ class VersioningCompareIntegrationTest(_VersioningTestBase):
             {"resource_type": "contract", "id_a": str(self.c1.id)},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data,
-                      "Missing id_b must produce an error message")
+        self.assertIn("error", response.data, "Missing id_b must produce an error message")
 
     def test_compare_invalid_resource_type_returns_400(self):
         """An invalid resource_type for the compare endpoint is rejected."""
@@ -338,8 +334,7 @@ class VersioningCompareIntegrationTest(_VersioningTestBase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data,
-                      "Invalid resource_type must produce an error message")
+        self.assertIn("error", response.data, "Invalid resource_type must produce an error message")
 
     def test_compare_unauthenticated_returns_401(self):
         """Compare endpoint requires authentication."""

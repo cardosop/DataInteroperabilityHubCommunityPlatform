@@ -44,12 +44,12 @@ def _make_tenant(**kwargs):
     from hub.apps.tenants.models import Tenant
 
     uid = uuid.uuid4().hex[:8]
-    defaults = dict(
-        name=f"Threshold Tenant {uid}",
-        slug=f"threshold-tenant-{uid}",
-        status="ACTIVE",
-        kyc_status="UNVERIFIED",
-    )
+    defaults = {
+        "name": f"Threshold Tenant {uid}",
+        "slug": f"threshold-tenant-{uid}",
+        "status": "ACTIVE",
+        "kyc_status": "UNVERIFIED",
+    }
     defaults.update(kwargs)
     return Tenant.objects.create(**defaults)
 

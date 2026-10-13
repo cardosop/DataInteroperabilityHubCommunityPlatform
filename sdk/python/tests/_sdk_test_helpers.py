@@ -16,18 +16,18 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Dict, List, Optional
 
 import pytest
+import requests
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 
 # ── Canonical helpers ────────────────────────────────────────────────
 
 # Session-level cache so each tenant's API key is provisioned at most once
-# per pytest session.  docker compose exec takes 5–15 s; without caching
+# per pytest session.  docker compose exec takes 5-15 s; without caching
 # a function-scoped fixture re-provisions the key for every single test.
-_api_key_cache: Dict[str, str] = {}
+_api_key_cache: dict[str, str] = {}
 
 
 def check_api_available(api_base_url: str) -> bool:
@@ -36,9 +36,10 @@ def check_api_available(api_base_url: str) -> bool:
         import requests
 
         response = requests.get(f"{api_base_url}/", timeout=2)
-        return response.status_code < 600
-    except Exception:
+    except requests.RequestException:
         return False
+    else:
+        return response.status_code < 600
 
 
 def setup_authentication_for_sdk_tests(
@@ -47,9 +48,9 @@ def setup_authentication_for_sdk_tests(
     tenant_slug: str,
     tenant_name: str,
     api_key_name: str,
-    scopes: List[str],
-    extra_tenant_setup: Optional[str] = None,
-) -> Optional[str]:
+    scopes: list[str],
+    extra_tenant_setup: str | None = None,
+) -> str | None:
     """Provision a test tenant, user, and API key via ``docker compose exec``.
 
     Args:
@@ -69,7 +70,7 @@ def setup_authentication_for_sdk_tests(
 
     # Method 1: Session-level cache — avoid re-provisioning the same
     # tenant's API key across multiple test files (docker compose exec
-    # takes 5–15 s per call).
+    # takes 5-15 s per call).
     if cache_key in _api_key_cache:
         return _api_key_cache[cache_key]
 
@@ -198,7 +199,7 @@ print(api_key_value)
     for compose_cmd, manage_py_path in _COMPOSE_ATTEMPTS:
         try:
             result = subprocess.run(
-                compose_cmd + ["python", manage_py_path, "shell"],
+                [*compose_cmd, "python", manage_py_path, "shell"],
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
@@ -207,14 +208,14 @@ print(api_key_value)
             )
             if result.returncode == 0:
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) > 40:
                         cleaned = line.replace("-", "").replace("_", "")
                         if cleaned.isalnum() and " " not in line:
                             _api_key_cache[cache_key] = line
                             return line
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
     # Method 3: Use environment variables (after docker compose exec
@@ -262,7 +263,7 @@ print(api_key_value)
                     if api_key_value:
                         _api_key_cache[cache_key] = api_key_value
                         return api_key_value
-    except Exception:
+    except (requests.RequestException, ValueError, AttributeError):
         pass
 
     return None
@@ -277,14 +278,19 @@ def create_real_api_config(
     tenant_slug: str,
     tenant_name: str,
     api_key_name: str,
-    scopes: List[str],
-    extra_tenant_setup: Optional[str] = None,
+    scopes: list[str],
+    extra_tenant_setup: str | None = None,
+    timeout: float = 30.0,
 ) -> DataHubClientConfig | None:
     """Return a :class:`DataHubClientConfig` or call ``pytest.skip``.
 
     This is the canonical factory used by all mesh/integration test files.
     Individual files create thin fixture wrappers that call this with their
     specific tenant parameters.
+
+    ``timeout``: per-request SDK timeout. Heavyweight flows (ODPS export /
+    product-first, DE-1) have steps that legitimately take 90-140s — their
+    fixtures pass a larger value; fast suites keep the 30s default.
     """
     if api_base_url is None:
         api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
@@ -310,7 +316,7 @@ def create_real_api_config(
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=30.0,
+        timeout=timeout,
         max_retries=3,
         user_agent="DataHub-SDK-Test",
         enable_logging=False,

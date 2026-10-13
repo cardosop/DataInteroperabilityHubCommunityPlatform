@@ -166,7 +166,7 @@ class TestExecutor:
                 else:
                     print(f"⚠️  {service_name} is not available on {host}:{port}")
                     all_available = False
-            except Exception as e:
+            except OSError as e:
                 print(f"⚠️  Could not check {service_name}: {e}")
                 all_available = False
 
@@ -331,10 +331,7 @@ class TestExecutor:
         # Add marker filtering
         if config.get("markers"):
             markers = config["markers"]
-            if isinstance(markers, list):
-                marker_expr = " and ".join(markers)
-            else:
-                marker_expr = markers
+            marker_expr = " and ".join(markers) if isinstance(markers, list) else markers
             cmd.extend(["-m", marker_expr])
 
         # Add coverage if requested
@@ -401,7 +398,7 @@ class TestExecutor:
                             json_coverage = json.load(f)
                             if json_coverage:
                                 result.coverage_data = json_coverage
-                    except Exception as e:
+                    except (OSError, json.JSONDecodeError) as e:
                         print(f"Warning: Could not load coverage JSON: {e}")
 
             # Determine status
@@ -433,7 +430,7 @@ class TestExecutor:
             )
             result.output = f"Timeout after {config['timeout']} seconds"
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             result.end_time = time.time()
             result.duration = result.end_time - result.start_time
             result.exit_code = 1

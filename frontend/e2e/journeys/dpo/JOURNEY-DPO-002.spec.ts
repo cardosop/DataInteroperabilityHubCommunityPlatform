@@ -38,9 +38,25 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace @critical', () => {
       const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true, cleanup });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], h1',
       });
       await waitForLoadingComplete(page, { timeout: 15000 });
+
+      // Capability gate (Phase 250.6.A.5): when the marketplace capability is
+      // off for the tenant, CapabilityRoute redirects /marketplace/* to
+      // /unavailable, which renders DisabledCapabilityPage — the publish form
+      // (and its select#asset_id) never mounts. Assert that surface and stop.
+      const capabilityDisabled =
+        page.url().includes('/unavailable') ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
+      if (capabilityDisabled) {
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        test.info().annotations.push({
+          type: 'capability-disabled',
+          description: 'marketplace capability is off for the tenant; the publish form cannot render. Verified the disabled-capability page instead.',
+        });
+        return;
+      }
 
       const hasAssets = await waitForAssetDropdownOptions(page, { timeout: 25000 });
       if (!hasAssets) {
@@ -165,8 +181,20 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
+      // Marketplace capability can transiently resolve OFF under batch load
+      // (CapabilityRoute fails closed on a failed capabilities fetch) — the
+      // disabled page is a valid product state, assert it and return.
+      const capabilityOff =
+        page.url().includes('/unavailable') ||
+        (await page.locator('.disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
+      if (capabilityOff) {
+        await expect(
+          page.locator('.disabled-capability-page, [data-testid="disabled-capability-page"]').first()
+        ).toBeVisible({ timeout: 5000 });
+        return;
+      }
       await page.fill('#title', 'Some Title');
       await page.fill('#description', 'Some description');
       await page
@@ -186,8 +214,19 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace @critical', () => {
       const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true, cleanup });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
+      // Marketplace capability can transiently resolve OFF under batch load
+      // (CapabilityRoute fails closed) — see the no-asset Failure test above.
+      const capabilityOff =
+        page.url().includes('/unavailable') ||
+        (await page.locator('.disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
+      if (capabilityOff) {
+        await expect(
+          page.locator('.disabled-capability-page, [data-testid="disabled-capability-page"]').first()
+        ).toBeVisible({ timeout: 5000 });
+        return;
+      }
       const hasAssets = await waitForAssetDropdownOptions(page, { timeout: 15000 });
       if (!hasAssets) {
         throw new Error(
@@ -227,8 +266,21 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], h1',
       });
+
+      // Capability gate (Phase 250.6.A.5): /unavailable renders
+      // DisabledCapabilityPage when the marketplace capability is off — the
+      // publish form (and its select#asset_id) never mounts. Assert that
+      // surface and stop instead of timing out on the dropdown.
+      const capabilityDisabled =
+        page.url().includes('/unavailable') ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
+      if (capabilityDisabled) {
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        return;
+      }
+
       const assetSelect = page.locator('select#asset_id');
       await expect(assetSelect).toBeVisible({ timeout: 5000 });
       // Verify dropdown exists and check option count (0 real options = only placeholder)

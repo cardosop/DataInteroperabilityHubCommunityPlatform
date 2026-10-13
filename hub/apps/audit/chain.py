@@ -74,13 +74,10 @@ def _normalize_timestamp(value: Any) -> str | None:
         # Already serialized — trust upstream normalization.
         return value
     if isinstance(value, datetime):
-        if value.tzinfo is None:
-            # Defensive: a naive datetime in the chain would let two events
-            # with the same wall-clock seconds in different timezones hash
-            # to the same canonical. Force UTC interpretation.
-            value = value.replace(tzinfo=UTC)
-        else:
-            value = value.astimezone(UTC)
+        # Defensive: a naive datetime in the chain would let two events
+        # with the same wall-clock seconds in different timezones hash
+        # to the same canonical. Force UTC interpretation.
+        value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
         return value.isoformat()
     return str(value)
 
@@ -105,20 +102,22 @@ def canonical_form(event: Any) -> bytes:
         # column value, not the related object — looking it up via getattr is
         # safe because Django exposes the column attribute even when the
         # related object is unloaded (saves us an unintended FK query).
-        def get(key: str, default: Any = None) -> Any:  # type: ignore[no-redef]  # intentional inner-scope redefinition, avoid FK query
+        def get(
+            key: str, default: Any = None
+        ) -> Any:  # intentional inner-scope redefinition, avoid FK query
             return getattr(event, key, default)
 
     payload: dict[str, Any] = {}
-    for field in _CANONICAL_FIELDS:
-        raw = get(field)
-        if field in ("id", "tenant_id", "actor_user_id", "resource_id"):
-            payload[field] = _normalize_uuid(raw)
-        elif field in ("details_json", "full_details_json"):
+    for field_name in _CANONICAL_FIELDS:
+        raw = get(field_name)
+        if field_name in ("id", "tenant_id", "actor_user_id", "resource_id"):
+            payload[field_name] = _normalize_uuid(raw)
+        elif field_name in ("details_json", "full_details_json"):
             # Already JSON-shaped; serializing via json.dumps with sort_keys
             # ensures nested dict ordering doesn't perturb the hash.
-            payload[field] = raw
+            payload[field_name] = raw
         else:
-            payload[field] = raw
+            payload[field_name] = raw
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
         "utf-8"
     )
@@ -380,7 +379,7 @@ def merkle_root(leaves: Iterable[str]) -> str:
     layer = leaf_bytes
     while len(layer) > 1:
         if len(layer) % 2 == 1:
-            layer = layer + [layer[-1]]
+            layer = [*layer, layer[-1]]
         next_layer: list[bytes] = []
         for i in range(0, len(layer), 2):
             h = hashlib.sha256()

@@ -365,7 +365,6 @@ class ErrorHandlingTest(TestCase):
         # Should return 400 (bad request), 403 (forbidden e.g. subscription), 404, or 405
         self.assertIn(response.status_code, [400, 403, 404, 405])  # noqa: broad-status-codes
 
-
     def test_403_forbidden_error_handling(self):
         """Test 403 forbidden error handling"""
         # Try to access admin-only endpoint

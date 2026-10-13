@@ -76,11 +76,11 @@ class MappingServiceMixin:
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceMapping:
             # Get connection
             try:
                 connection = self.get_resource_or_raise(
@@ -211,6 +211,8 @@ class MappingServiceMixin:
 
             return mapping
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             if span:
                 record_span_exception(e)
@@ -231,6 +233,8 @@ class MappingServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to create mapping: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -245,7 +249,7 @@ class MappingServiceMixin:
         self,
         mapping_id: str,
         tenant_id: str | None = None,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Retrieve a marketplace mapping by its ID.
@@ -301,8 +305,6 @@ class MappingServiceMixin:
                 )
                 set_span_status(StatusCode.OK)
 
-            return mapping
-
         except NotFoundError as e:
             if span:
                 record_span_exception(e)
@@ -321,6 +323,8 @@ class MappingServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to retrieve mapping: {e}") from e
+        else:
+            return mapping
         finally:
             if span_context:
                 try:
@@ -338,7 +342,7 @@ class MappingServiceMixin:
         hub_asset_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> list[MarketplaceMapping]:
         """
         List marketplace mappings for a tenant.
@@ -385,7 +389,7 @@ class MappingServiceMixin:
                     raise ValidationError(
                         f"Invalid connection_id format: {connection_id}",
                         details={"connection_id": connection_id},
-                    )
+                    ) from None
             if hub_asset_id:
                 try:
                     # Validate hub_asset_id is valid UUID
@@ -397,7 +401,7 @@ class MappingServiceMixin:
                     raise ValidationError(
                         f"Invalid hub_asset_id format: {hub_asset_id}",
                         details={"hub_asset_id": hub_asset_id},
-                    )
+                    ) from None
 
             mappings = MarketplaceMapping.objects.filter(**filters)[offset : offset + limit]
 
@@ -494,11 +498,11 @@ class MappingServiceMixin:
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceMapping:
             # Get mapping
             try:
                 mapping = self.get_resource_or_raise(
@@ -641,6 +645,8 @@ class MappingServiceMixin:
 
             return mapping
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError) as e:
             if span:
                 record_span_exception(e)
@@ -660,6 +666,8 @@ class MappingServiceMixin:
                 },
             )
             raise ServiceError(f"Failed to update mapping: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:

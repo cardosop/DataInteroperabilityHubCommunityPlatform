@@ -19,7 +19,7 @@ All errors include:
 """
 
 import time
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import structlog
@@ -27,7 +27,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-class RecoveryStrategy(str, Enum):
+class RecoveryStrategy(StrEnum):
     """Error recovery strategies"""
 
     RETRY = "retry"
@@ -169,7 +169,7 @@ class ODCSValidationError(ODCSError):
     def __init__(
         self,
         message: str,
-        error_code: str = None,
+        error_code: str | None = None,
         user_message: str | None = None,
         context: dict[str, Any] | None = None,
         field_path: str | None = None,

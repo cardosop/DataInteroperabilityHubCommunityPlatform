@@ -23,15 +23,31 @@ cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-python3}"
 # Resolve relative interpreters (venv/bin/python) against the PRIVATE repo
 # root — the post-commit verification runs inside the public checkout where
-# a relative path would not exist.
+# a relative path would not exist. Plain `python3` (PATH lookup) must keep
+# working: the repo-root/$PYTHON form only wins when that file actually
+# exists, otherwise fall back to PATH.
 if [[ "$PYTHON" != /* ]]; then
-  PYTHON="$(cd "$(dirname "$0")/.." && pwd)/$PYTHON"
+  RESOLVED="$(cd "$(dirname "$0")/.." && pwd)/$PYTHON"
+  if [ -x "$RESOLVED" ]; then
+    PYTHON="$RESOLVED"
+  elif command -v "$PYTHON" >/dev/null 2>&1; then
+    PYTHON="$(command -v "$PYTHON")"
+  fi
 fi
 
 PRIVATE_SHA="$(git rev-parse --short HEAD)"
 REPLACE_TEXT_FILE="$(mktemp /tmp/publish_replace_text.XXXXXX.txt)"
 
 trap 'rm -f "$REPLACE_TEXT_FILE"' EXIT
+
+# Tree builder — sourced so scripts/tests/test_publish_tree.py can exercise
+# the real build (313.DoD.5). Uses the same PYTHON resolution as above.
+# shellcheck disable=SC1091
+source scripts/publish_tree.sh
+# Pre-flight gates — sourced so scripts/tests/test_publish_gates.py can
+# exercise the real gitleaks gate (Phase P.8).
+# shellcheck disable=SC1091
+source scripts/publish_gates.sh
 
 PUBLIC_REMOTE="${PUBLIC_REMOTE:-public}"
 PUBLIC_REPO_DIR="${PUBLIC_REPO_DIR:-../DataInteroperabilityHub-public}"
@@ -45,13 +61,6 @@ log() { echo "[publish] $*"; }
 log "GATE-29 boundary scan"
 "$PYTHON" scripts/check_core_boundary.py
 
-log "gitleaks (tracked tree)"
-if command -v gitleaks >/dev/null 2>&1; then
-  gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --log-level=warn
-else
-  log "gitleaks CLI absent — SKIPPING (CI runs gitleaks-action)"
-fi
-
 log "copyleft audit (requirements.txt closure)"
 "$PYTHON" scripts/check_copyleft.py
 
@@ -60,88 +69,30 @@ log "copyleft audit (requirements.txt closure)"
 "$PYTHON" scripts/build_replace_text.py --out "$REPLACE_TEXT_FILE"
 
 # ---------------------------------------------------------------------------
-# Build the core tree
+# Build the core tree (scripts/publish_tree.sh — sourced above)
 # ---------------------------------------------------------------------------
-log "building core tree"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 STAGING="$WORK/tree"
-mkdir -p "$STAGING"
+build_publish_tree "$STAGING" "$REPLACE_TEXT_FILE"
 
-# Exclusion entries are file paths or trailing-slash dir prefixes
-# (manifest-generated) — the python filter handles both forms.
-"$PYTHON" - "$WORK/files.txt" <<'PYEOF'
-import sys
-out_path = sys.argv[1]
-excl = [l.strip() for l in open("scripts/publish_paths_exclude.txt") if l.strip() and not l.startswith("#")]
-import subprocess
-files = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.splitlines()
-# "!prefix" entries re-include paths otherwise excluded (e.g. helm/ is
-# excluded wholesale, "!helm/community/" ships the community chart).
-negations = [e[1:] for e in excl if e.startswith("!")]
-plain = [e for e in excl if not e.startswith("!")]
-keep = []
-for f in files:
-    excluded = any(f == e or f.startswith(e) for e in plain if e.endswith("/")) or f in plain
-    if excluded and not any(f == e or f.startswith(e) for e in negations if e.endswith("/")):
-        continue
-    keep.append(f)
-open(out_path, "w").write("\n".join(keep) + "\n")
-PYEOF
-
-# Extract the INDEX state (not the working tree): the publishable source of
-# truth is the committed/staged content — uncommitted moves/edits must be
-# staged (or committed) before they ship, and untracked files never leak.
-git checkout-index -f --prefix="$STAGING/" --stdin < "$WORK/files.txt"
-
-# The frontend prebuild (scripts/sync-shared.sh) requires the repo-root
-# shared/ INSIDE the frontend build context (compose builds frontend with
-# context ./frontend; the private CI copies shared/ in before building).
-# Mirror that here so the public tree's frontend builds out of the box.
-if [ -d "$STAGING/shared" ] && [ -d "$STAGING/frontend" ]; then
-  mkdir -p "$STAGING/frontend/shared"
-  cp -r "$STAGING/shared/." "$STAGING/frontend/shared/"
-fi
-
-# overlay (patched worker Dockerfile, license/community files)
-if [ -d scripts/publish_public_overlay ]; then
-  cp -r scripts/publish_public_overlay/. "$STAGING/"
-fi
-
-# Sanitize the staged tree with the same replace mappings as the history
-# scrub — leaked values + internal hostnames must never enter sync commits.
-"$PYTHON" - "$STAGING" "$REPLACE_TEXT_FILE" <<'PYEOF'
-import sys
-from pathlib import Path
-
-staging, replace_file = Path(sys.argv[1]), Path(sys.argv[2])
-pairs = []
-for line in replace_file.read_text().splitlines():
-    if "==>" in line:
-        old, _, new = line.partition("==>")
-        pairs.append((old, new))
-text_suffixes = (".md", ".py", ".yml", ".yaml", ".toml", ".txt", ".json", ".sh", ".ini", ".cfg", ".html", ".js", ".ts", ".tsx", ".cjs", ".mjs", ".css")
-for path in staging.rglob("*"):
-    if not path.is_file() or not path.suffix.lower() in text_suffixes:
-        continue
-    try:
-        content = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        continue
-    for old, new in pairs:
-        content = content.replace(old, new)
-    path.write_text(content, encoding="utf-8")
-PYEOF
-
-log "tree built: $(find "$STAGING" -type f | wc -l) files (sanitized)"
-
-# Authoritative post-build gate: the SANITIZED tree must be clean.
-HOSTNAME_HITS="$(grep -rIlE 'staging\.hub\.meshant\.com|wiki\.internal|grafana\.internal' "$STAGING" 2>/dev/null || true)"
-if [ -n "$HOSTNAME_HITS" ]; then
-  log "ERROR: internal hostnames remain after sanitization:"
-  echo "$HOSTNAME_HITS"
+# gitleaks on the BUILT tree (W0.4b fix — the previous pre-flight ran
+# against the raw working directory, catching untracked local artifacts
+# and the pre-rewrite docs that the exclusions deliberately drop). A
+# missing CLI is a hard failure, never a skip (Phase P.8): a publish is
+# the one non-recoverable leak path and local publishes run outside CI.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  log "ERROR: gitleaks CLI not found — refusing to publish an unscanned tree."
   exit 1
 fi
+log "gitleaks (built publish tree)"
+# Scan from INSIDE the tree with a relative --source: the config's
+# path allowlists match repo-relative paths, and an absolute --source
+# records absolute paths that never match (W0.4b finding).
+CONFIG_ABS="$(cd "$(dirname "$0")/.." && pwd)/.gitleaks.toml"
+(cd "$STAGING" && gitleaks detect --no-git --source . \
+    --config "$CONFIG_ABS" \
+    --redact --no-banner --log-level=warn)
 
 # ---------------------------------------------------------------------------
 # Sync to the public repo
@@ -176,9 +127,10 @@ git tag -f "$TAG"
 # GATE-29 + gitleaks + compose config must all pass here.
 log "post-commit verification (public checkout)"
 "$PYTHON" scripts/check_core_boundary.py
-if command -v gitleaks >/dev/null 2>&1; then
-  gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --log-level=warn
-fi
+# Same hard gate as the pre-flight: the public tree was assembled from the
+# tracked tree in THIS run — rescanning it here catches sanitizer or
+# overlay mistakes before they reach the mirror.
+require_gitleaks .
 docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml config -q
 
 git push -q "$PUBLIC_REMOTE" mirror/public-core

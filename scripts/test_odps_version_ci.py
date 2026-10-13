@@ -23,7 +23,6 @@ import sys
 from pathlib import Path
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
@@ -161,7 +160,7 @@ def test_version_detection(version: str) -> tuple[bool, list[str]]:
     # For .x versions, detection returns the normalized version (e.g., "3.x")
     # For exact versions, it should return the exact version
     if version.endswith(".x"):
-        if not detected.startswith(version.split(".")[0] + "."):
+        if not detected.startswith(version.split(".", maxsplit=1)[0] + "."):
             errors.append(
                 f"Version detection from schema URL failed: expected {version} family, got {detected}"
             )
@@ -177,7 +176,7 @@ def test_version_detection(version: str) -> tuple[bool, list[str]]:
     # For .x versions, the version field contains a specific version (e.g., "3.9")
     # Detection should normalize it to the .x version
     if version.endswith(".x"):
-        if not detected_from_version.startswith(version.split(".")[0] + "."):
+        if not detected_from_version.startswith(version.split(".", maxsplit=1)[0] + "."):
             errors.append(
                 f"Version detection from version field failed: expected {version} family, got {detected_from_version}"
             )

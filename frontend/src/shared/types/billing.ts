@@ -84,6 +84,7 @@ export interface Invoice {
   invoice_pdf_url?: string;
   hosted_invoice_url?: string;
   category?: 'BASE' | 'ML_AI';
+  created_at?: string;
 }
 
 // ── Upgrade / Downgrade ────────────────────────────────────────────────────

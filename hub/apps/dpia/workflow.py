@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -12,7 +12,9 @@ from hub.apps.audit import event_types
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.dpia.models import Dpia, DpiaStatus, ResidualRiskLevel
 from hub.apps.dpia.services.review_due import default_next_review_due
-from hub.apps.tenants.models import Tenant
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
 
 
 def _ensure_dpia_feature(tenant: Tenant) -> None:

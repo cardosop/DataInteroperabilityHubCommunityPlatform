@@ -10,4 +10,4 @@ class JobsConfig(AppConfig):
 
     def ready(self):
         """Import signals and business rules when app is ready"""
-        import hub.apps.jobs.business_rules  # noqa: F401 - Import to register business rules
+        import hub.apps.jobs.business_rules

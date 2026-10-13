@@ -10,9 +10,12 @@ for 100% metadata-view auditing.
 from __future__ import annotations
 
 import hashlib
-import uuid
+from typing import TYPE_CHECKING
 
-from hub.apps.tenants.models import Tenant
+if TYPE_CHECKING:
+    import uuid
+
+    from hub.apps.tenants.models import Tenant
 
 # 10% default sample rate (deterministic, no ``random`` — tests stay stable).
 _SAMPLE_MOD = 100

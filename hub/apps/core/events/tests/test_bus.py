@@ -7,6 +7,7 @@ import uuid
 from datetime import timedelta
 from unittest.mock import Mock
 
+import redis
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -58,8 +59,15 @@ class EventBusTest(TestCase):
             self.event_bus.publish(event_type="InvalidEventType", data={})
 
     def test_publish_event_redis_failure(self):
-        """Test publishing event when Redis fails."""
-        self.redis_client.publish.side_effect = Exception("Redis error")
+        """Test publishing event when Redis fails.
+
+        The injected failure is a REAL ``redis.RedisError`` subclass
+        (``ConnectionError`` — exactly what a dead Redis raises): the
+        bus's graceful-degradation contract is scoped to Redis
+        operational errors, while a bare ``Exception`` is a programming
+        error and SHOULD propagate as ``EventPublishError``.
+        """
+        self.redis_client.publish.side_effect = redis.exceptions.ConnectionError("Redis error")
 
         # Should still persist event
         event_id = self.event_bus.publish(

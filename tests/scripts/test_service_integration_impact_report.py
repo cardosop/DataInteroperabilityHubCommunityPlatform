@@ -259,10 +259,10 @@ class TestServiceIntegrationImpactReport(unittest.TestCase):
         matrix = report["integration_matrix"]
         service_integrations = report["service_integrations"]
 
-        for source in matrix.keys():
+        for source in matrix:
             if source in service_integrations:
                 outbound = service_integrations[source]["outbound"]
-                for target in matrix[source].keys():
+                for target in matrix[source]:
                     matrix_value = matrix[source][target]
                     if target in outbound:
                         integration_value = outbound[target]["call_count"]
@@ -486,10 +486,10 @@ class TestServiceIntegrationImpactReportIntegration(unittest.TestCase):
         service_integrations = report["service_integrations"]
 
         # For each service pair, check if matrix values match integration data
-        for source in matrix.keys():
+        for source in matrix:
             if source in service_integrations:
                 outbound = service_integrations[source]["outbound"]
-                for target in matrix[source].keys():
+                for target in matrix[source]:
                     matrix_value = matrix[source][target]
                     if target in outbound:
                         integration_value = outbound[target]["call_count"]

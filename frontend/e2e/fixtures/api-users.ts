@@ -82,48 +82,40 @@ export async function inviteUserViaApi(
     Authorization: `Bearer ${token}`,
   };
 
-  // Try primary invite endpoint
-  const inviteEndpoints = ['/auth/invite/', '/admin/users/invite/', '/users/invite/'];
-  let lastError: unknown;
-
-  for (const endpoint of inviteEndpoints) {
-    const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ email, role }),
-    });
-    if (resp.status === 404) continue; // Try next endpoint
-    if (!resp.ok) {
-      // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
-      const body = await resp.text().catch(() => '');
-      lastError = new Error(`Invite user failed: ${resp.status} ${body}`);
-      continue;
-    }
-    const data = (await resp.json()) as {
-      id?: string;
-      user_id?: string;
-      invitation_token?: string;
-      token?: string;
+  // Canonical API (Phase 24.7.2): POST /users/ is the UserViewSet.create —
+  // it creates the user with role assignment AND sends the invitation.
+  // The legacy endpoint list (/auth/invite/, /admin/users/invite/,
+  // /users/invite/, POST /admin/users/) was fully stale — every entry 404s
+  // — so the old fixture always threw and the spec fell back to mutating
+  // an EXISTING user, while the re-fetch looked up the never-created
+  // invited email (JOURNEY-TA-002 role-add failure).
+  const rolesResp = await fetch(`${API_BASE_URL}/users/roles/`, { headers });
+  const roleId = (async () => {
+    if (!rolesResp.ok) return undefined;
+    const data = (await rolesResp.json()) as {
+      results?: Array<{ id?: string; name?: string; code?: string }>;
     };
-    const userId = data.id || data.user_id;
-    if (!userId) throw new Error('Invite response missing user id');
-    return { userId, invitationToken: data.invitation_token || data.token };
-  }
+    const roles = Array.isArray(data) ? data : data.results ?? [];
+    return roles.find((r) => r.name === role || r.code === role)?.id;
+  })();
 
-  // Fallback: create user directly via admin API
-  const createResp = await fetch(`${API_BASE_URL}/admin/users/`, {
+  const createResp = await fetch(`${API_BASE_URL}/users/`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ email, role, password: 'TempPass123!' }),
+    body: JSON.stringify({
+      email,
+      role_ids: (await roleId) ? [await roleId] : [],
+      send_invitation: true,
+    }),
   });
   if (!createResp.ok) {
     // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
     const body = await createResp.text().catch(() => '');
-    throw lastError || new Error(`Create user fallback failed: ${createResp.status} ${body}`);
+    throw new Error(`Invite user failed: ${createResp.status} ${body}`);
   }
-  const data = (await createResp.json()) as { id?: string };
-  if (!data.id) throw new Error('Create user response missing id');
-  return { userId: data.id };
+  const data = (await createResp.json()) as { id?: string; invitation_token?: string };
+  if (!data.id) throw new Error('Invite response missing user id');
+  return { userId: data.id, invitationToken: data.invitation_token };
 }
 
 /**

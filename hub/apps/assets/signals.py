@@ -5,11 +5,12 @@ After any Asset save the search_vector field is refreshed asynchronously
 via an RQ job on job_low so the hot save path is not blocked.
 Failures are logged at WARNING level and never propagate to callers.
 """
+
 from __future__ import annotations
 
 import logging
 
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from redis.exceptions import RedisError
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 _PRIOR_ASSET_STATUS_ATTR = "_pre_save_status_for_tombstone"
 
 
-def _capture_prior_asset_status(sender, instance, **kwargs):
+def _capture_prior_asset_status(sender, instance, **_kwargs):
     """pre_save listener — record the prior status so the post_save
     handler can detect ACTIVE→RETIRED transitions exactly once.
 
@@ -55,7 +56,7 @@ def _capture_prior_asset_status(sender, instance, **kwargs):
     setattr(instance, _PRIOR_ASSET_STATUS_ATTR, prior.status)
 
 
-def _fire_asset_tombstone_if_retired(sender, instance, **kwargs):
+def _fire_asset_tombstone_if_retired(sender, instance, **_kwargs):
     """post_save listener — fires ``tombstone_resource`` when status
     flipped to RETIRED.
 
@@ -78,6 +79,7 @@ def _fire_asset_tombstone_if_retired(sender, instance, **kwargs):
                 REASON_ASSET_RETIRED,
                 dispatch_tombstone,
             )
+
             dispatch_tombstone(
                 resource_type="ASSET",
                 resource_id=instance.pk,
@@ -87,17 +89,24 @@ def _fire_asset_tombstone_if_retired(sender, instance, **kwargs):
             # Transient infrastructure failure — best-effort tombstone.
             logger.warning(
                 "asset_tombstone_dispatch_failed asset_id=%s error=%s",
-                instance.pk, exc,
+                instance.pk,
+                exc,
             )
         except DatabaseError as exc:
             # Database error during tombstone dispatch — still
             # best-effort, but log at ERROR.
             logger.error(
                 "asset_tombstone_dispatch_db_error asset_id=%s error=%s",
-                instance.pk, exc, exc_info=True,
+                instance.pk,
+                exc,
+                exc_info=True,
             )
 
-    transaction.on_commit(_dispatch)
+    # Test-mode-safe deferral: run_after_commit dispatches synchronously
+    # under pytest/TESTING and defers to on_commit in production.
+    from hub.apps.core.after_commit import run_after_commit
+
+    run_after_commit(_dispatch)
 
 
 # Wire both signals at module import time.  The contracts AppConfig
@@ -120,72 +129,27 @@ _connect_asset_tombstone_signals()
 
 
 @receiver(post_save, sender="assets.Asset")
-def rebuild_asset_search_vector(sender, instance, **kwargs):
+def rebuild_asset_search_vector(sender, instance, **_kwargs):
     """Enqueue a search vector rebuild for the saved Asset after commit.
 
     Deferring to on_commit avoids enqueue (and synchronous RQ in tests) while
     the request or TestCase outer transaction still holds DB locks — the same
     pattern as datacontract cache invalidation in contracts/signals.py.
 
-    Phase 250.1.F (closes B2-5) — the rebuild is GATED on
-    ``status != DRAFT``. DRAFT assets are not searchable, so building a
-    vector for them wastes a ``job_low`` slot on every ``asset_create``
-    workflow step (Phase 250.1.A). The first enqueue happens on the
-    activation save (DRAFT → ACTIVE) inside the asset-activation saga
-    at ``hub.apps.orchestration.workflows.asset_activation_saga
-    .activate_asset``, sharing the same ``transaction.on_commit`` as
-    the activation itself. Subsequent saves of a non-DRAFT asset
-    (renames / description edits / domain edits / status transitions
-    to PUBLIC or RETIRED) continue to enqueue so the vector tracks
-    the searchable text.
+    Every save enqueues — including DRAFT creates and rollbacks to DRAFT.
+    Phase 250.1.F had gated the rebuild on ``status != DRAFT`` as a
+    ``job_low``-slot optimization, but that silently broke the Phase 226
+    G12 platform promise ("after a successful create, the resource is
+    queryable via the unified search index within 20s"). DRAFT assets are
+    tenant-scoped in search (RLS), so indexing them adds no cross-tenant
+    discoverability — it restores owner findability and makes search a
+    lossless index of the tenant's resources.
 
-    **Rollback to DRAFT clears the stale vector** (audit-pass GAP-A):
-    ``compensate_activation`` in the asset-activation saga flips a
-    previously-activated asset back to DRAFT via
-    ``asset.save(update_fields=['status', 'updated_at'])``. Without an
-    explicit clear the asset would be DRAFT in the DB but its
-    ``search_vector`` column would still hold the activated-state
-    tsvector — and ``hub/apps/search/views.py:614-632`` filters by
-    ``search_vector__isnull=False``, so the rolled-back asset would
-    keep appearing in search results. We use the prior-status
-    captured by the pre_save handler ``_capture_prior_asset_status``
-    (``_PRIOR_ASSET_STATUS_ATTR``) to detect non-DRAFT → DRAFT
-    transitions and synchronously NULL the column inside the same
-    transaction as the rollback save so the post-commit state is
-    consistent (no window where status=DRAFT but vector populated).
+    The rollback-to-DRAFT path previously NULLed the vector so rolled-back
+    assets vanished from search (audit-pass GAP-A); it now re-indexes them
+    as DRAFT — the coherent behaviour, since a rollback means "this is WIP
+    again" and WIP must stay findable by its owner.
     """
-    from hub.apps.assets.models import Asset, AssetStatus
-
-    new_status = getattr(instance, "status", None)
-    if new_status == AssetStatus.DRAFT:
-        # Suppress the rebuild while in DRAFT. Once activated the
-        # next save (or any later metadata edit) will land here with
-        # a non-DRAFT status and the on_commit enqueue will fire.
-        prior_status = getattr(instance, _PRIOR_ASSET_STATUS_ATTR, None)
-        if (
-            prior_status is not None
-            and prior_status != AssetStatus.DRAFT
-            and instance.pk is not None
-        ):
-            # Rollback path: prior was ACTIVE/PUBLIC/RETIRED; the
-            # row had a populated vector that's now stale. Clear it
-            # synchronously (inside the same transaction as the
-            # status flip) so the searchability invariant holds the
-            # moment the transaction commits. The filter avoids a
-            # write when the column is already NULL.
-            try:
-                Asset.objects.filter(
-                    pk=instance.pk,
-                    search_vector__isnull=False,
-                ).update(search_vector=None)
-            except DatabaseError as exc:  # DB error during vector clear — best-effort
-                logger.warning(
-                    "asset_search_vector_clear_failed "
-                    "asset_id=%s prior_status=%s error=%s",
-                    instance.pk, prior_status, exc,
-                )
-        return
-
     pk = instance.pk
 
     def _enqueue():
@@ -198,22 +162,21 @@ def rebuild_asset_search_vector(sender, instance, **kwargs):
         except (ConnectionError, TimeoutError, OSError, ImportError) as exc:
             # Transient infrastructure / import failure — best-effort.
             logger.warning(
-                "asset_search_vector_enqueue_failed "
-                "asset_id=%s error=%s",
+                "asset_search_vector_enqueue_failed asset_id=%s error=%s",
                 pk,
                 exc,
             )
-        except (RedisError, RuntimeError) as exc:
+        except (RedisError, RuntimeError):
             # Redis/RQ operational error — log at ERROR so SRE can
             # distinguish infra failures from coding errors.
             # Programming errors (AttributeError, TypeError, KeyError,
             # NameError) are NOT caught — they propagate so tests/CI
             # catch bugs before production.
-            logger.error(
-                "asset_search_vector_enqueue_redis_or_rq_error "
-                "asset_id=%s error=%s",
-                pk,
-                exc,
-            )
+            logger.exception("asset_search_vector_enqueue_redis_or_rq_error asset_id=%s error=", pk)
 
-    transaction.on_commit(_enqueue)
+    # Test-mode-safe deferral: run_after_commit enqueues synchronously
+    # under pytest/TESTING (the TestCase wrapper's outer transaction never
+    # commits during the test body) and defers to on_commit in production.
+    from hub.apps.core.after_commit import run_after_commit
+
+    run_after_commit(_enqueue)

@@ -125,15 +125,17 @@ class Django6JSONFieldWorkflowTest(TestCase):
             created_by=self.user,
         )
 
-        # Query by tag
+        # Query by tag (tenant-scoped to avoid --reuse-db cross-contamination)
         contracts_with_tag1 = Contract.objects.filter(
-            hub_contract_json__info__tags__contains=["tag1"]
+            tenant=self.tenant,
+            hub_contract_json__info__tags__contains=["tag1"],
         )
         self.assertEqual(contracts_with_tag1.count(), 1)
         self.assertEqual(contracts_with_tag1.first().id, contract1.id)
 
         contracts_with_tag2 = Contract.objects.filter(
-            hub_contract_json__info__tags__contains=["tag2"]
+            tenant=self.tenant,
+            hub_contract_json__info__tags__contains=["tag2"],
         )
         self.assertEqual(contracts_with_tag2.count(), 2)
 
@@ -435,22 +437,24 @@ class Django6DatabaseOperationsTest(TestCase):
 
         # Verify transaction rollback: contract created inside the atomic block
         # must be rolled back when the exception is raised.
-        with self.assertRaises(Exception, msg="Transaction must raise and roll back") as cm:
-            with transaction.atomic():
-                Contract.objects.create(
-                    tenant=self.tenant,
-                    asset=asset,
-                    version=999,
-                    status=ContractStatus.DRAFT,
-                    original_spec_type=OriginalSpecType.ODCS,
-                    original_spec_version="1.0.0",
-                    original_format=OriginalFormat.JSON,
-                    original_raw="{}",
-                    hub_contract_version="1.0.0",
-                    hub_contract_json={"test": "rollback"},
-                    created_by=self.user,
-                )
-                raise Exception("Test rollback")
+        with (
+            self.assertRaises(Exception, msg="Transaction must raise and roll back") as cm,
+            transaction.atomic(),
+        ):
+            Contract.objects.create(
+                tenant=self.tenant,
+                asset=asset,
+                version=999,
+                status=ContractStatus.DRAFT,
+                original_spec_type=OriginalSpecType.ODCS,
+                original_spec_version="1.0.0",
+                original_format=OriginalFormat.JSON,
+                original_raw="{}",
+                hub_contract_version="1.0.0",
+                hub_contract_json={"test": "rollback"},
+                created_by=self.user,
+            )
+            raise Exception("Test rollback")
 
         # Confirm the exception is our rollback trigger, not a DB error from create()
         self.assertIn(

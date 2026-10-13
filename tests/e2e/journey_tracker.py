@@ -139,8 +139,7 @@ class JourneyMetrics:
         # SKIPPED is an intentional omission, not a failure — a journey can succeed
         # even when some optional steps are skipped.
         successful_steps = sum(
-            1 for s in self.steps
-            if s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
+            1 for s in self.steps if s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
         )
 
         self.completion_rate = (completed_steps / total_steps) * 100.0
@@ -296,9 +295,7 @@ class JourneyTracker:
         """
         journey = self._get_journey(journey_id)
         # Guard: reject completion when any step is still IN_PROGRESS.
-        in_progress = [
-            s for s in journey.steps if s.status == StepStatus.IN_PROGRESS
-        ]
+        in_progress = [s for s in journey.steps if s.status == StepStatus.IN_PROGRESS]
         if in_progress:
             raise RuntimeError(
                 f"Cannot complete journey '{journey.journey_id}': "

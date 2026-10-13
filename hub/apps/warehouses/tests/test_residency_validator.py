@@ -72,7 +72,9 @@ class WarehouseModelResidencyValidationTests(TestCase):
     def setUp(self):
         import uuid
 
-        _uid = lambda: uuid.uuid4().hex[:8]
+        def _uid() -> str:
+            return uuid.uuid4().hex[:8]
+
         self.eu_tenant = Tenant.objects.create(
             name=f"EU Corp {_uid()}",
             slug=f"eu-corp-{_uid()}",

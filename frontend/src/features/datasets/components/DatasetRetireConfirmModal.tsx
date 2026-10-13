@@ -1,38 +1,29 @@
 /**
- * Phase 260.4.A.2 — confirmation modal for the destructive Retire
- * action on a dataset.
+ * Phase 260.4.A.2 — dataset retire confirmation modal.
  *
- * Pass-2 P2-1 compliance: the modal MUST list the consequences
- * explicitly (this cannot be undone, the row is hard-deleted after
- * the retention window) AND require the user to tick an "I
- * understand" checkbox before the Retire CTA enables. This is a
- * two-step gate against accidental clicks on a tombstone-class
- * action.
- *
- * Accessibility (WCAG 2.1 AA):
- *   - ``role="dialog"`` + ``aria-modal="true"``
- *   - headline associated via ``aria-labelledby``
- *   - Esc key closes the dialog (the standard escape hatch)
- *   - the focus-on-mount lands on the Cancel button (safer
- *     default than landing on the destructive CTA)
+ * Pass-2 P2-1 contract (unit-tested in DatasetRetireConfirmModal.test.tsx
+ * and pinned by frontend/e2e/features/dataset-retire.spec.ts):
+ *   - explicit consequences copy (irreversible + retention window +
+ *     hard-deletion) and the dataset name
+ *   - "I understand" acknowledge checkbox
+ *     ``data-testid="dataset-retire-confirm-acknowledge"``
+ *   - destructive confirm CTA ``data-testid="dataset-retire-confirm-cta"``,
+ *     disabled until the checkbox is ticked (and while ``isPending``)
+ *   - container ``data-testid="dataset-retire-confirm-modal"`` with
+ *     role="dialog", aria-modal="true", aria-labelledby
+ *   - Cancel (``dataset-retire-confirm-cancel``) and Esc both call
+ *     ``onCancel`` and never ``onConfirm``
  */
+import { useEffect, useState } from 'react';
+import { Button } from '../../../shared/components/Button';
 
-import { useEffect, useId, useRef, useState, type JSX } from 'react';
-
-import './DatasetRetireConfirmModal.css';
-
-export interface DatasetRetireConfirmModalProps {
+interface DatasetRetireConfirmModalProps {
   open: boolean;
-  /** Display name of the dataset being retired (drives the headline). */
   datasetName: string;
-  /**
-   * Per-tenant retention window in days (drives the consequences
-   * copy: "the row will be hard-deleted after N days").
-   */
+  /** Tenant retention window (days) — surfaced in the consequences copy. */
   retentionDays: number;
   onConfirm: () => void;
   onCancel: () => void;
-  /** True while the parent's retire mutation is in flight. */
   isPending?: boolean;
 }
 
@@ -43,105 +34,68 @@ export function DatasetRetireConfirmModal({
   onConfirm,
   onCancel,
   isPending = false,
-}: DatasetRetireConfirmModalProps): JSX.Element | null {
+}: DatasetRetireConfirmModalProps) {
   const [acknowledged, setAcknowledged] = useState(false);
-  const titleId = useId();
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Reset acknowledgement on close so a re-open starts from scratch.
+  // Reset the acknowledge gate whenever the modal (re)opens.
   useEffect(() => {
-    if (!open) {
-      setAcknowledged(false);
-    } else {
-      // Land focus on the Cancel button — safer default than landing
-      // on the destructive CTA.
-      cancelButtonRef.current?.focus();
-    }
+    if (open) setAcknowledged(false);
   }, [open]);
 
-  // Esc key closes — standard dialog hotkey.
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onCancel();
-      }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
   }, [open, onCancel]);
 
   if (!open) return null;
 
-  const ctaDisabled = !acknowledged || isPending;
-
   return (
     <div
-      className="dataset-retire-confirm-overlay"
-      onClick={() => onCancel()}
-      data-testid="dataset-retire-confirm-overlay"
+      className="modal-overlay"
+      data-testid="dataset-retire-confirm-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dataset-retire-modal-title"
     >
-      <div
-        className="dataset-retire-confirm-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        data-testid="dataset-retire-confirm-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="dataset-retire-confirm-header">
-          <h2 id={titleId}>Retire dataset</h2>
-        </header>
-        <div className="dataset-retire-confirm-body">
-          <p>
-            You're about to retire <strong>{datasetName}</strong>. This action
-            cannot be undone. Once retired:
-          </p>
-          <ul>
-            <li>The dataset disappears from the default list view.</li>
-            <li>
-              No new compliance / DQ runs can be scheduled against it; consumers
-              with active entitlements lose download access.
-            </li>
-            <li>
-              The row is permanently / hard-deleted{' '}
-              <strong>{retentionDays} days</strong> after retirement, per your
-              tenant's retention policy.
-            </li>
-          </ul>
-          <label className="dataset-retire-confirm-acknowledge-label">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => setAcknowledged(e.target.checked)}
-              data-testid="dataset-retire-confirm-acknowledge"
-              disabled={isPending}
-            />{' '}
-            I understand this cannot be undone.
-          </label>
-        </div>
-        <footer className="dataset-retire-confirm-footer">
-          <button
-            type="button"
-            ref={cancelButtonRef}
-            className="dataset-retire-confirm-cancel"
-            onClick={() => onCancel()}
-            disabled={isPending}
+      <div className="modal-content">
+        <h2 id="dataset-retire-modal-title">Retire dataset</h2>
+        <p>
+          Retiring <strong>{datasetName}</strong> is irreversible. Retired
+          datasets stay readable for {retentionDays} days and are then
+          hard-deleted. This cannot be undone.
+        </p>
+        <label className="dataset-retire-acknowledge">
+          <input
+            type="checkbox"
+            data-testid="dataset-retire-confirm-acknowledge"
+            checked={acknowledged}
+            onChange={(e) => setAcknowledged(e.target.checked)}
+          />
+          I understand this dataset will be retired.
+        </label>
+        <div className="modal-actions">
+          <Button
+            variant="secondary"
             data-testid="dataset-retire-confirm-cancel"
+            onClick={onCancel}
+            disabled={isPending}
           >
             Cancel
-          </button>
-          <button
-            type="button"
-            className="dataset-retire-confirm-cta"
-            onClick={() => onConfirm()}
-            disabled={ctaDisabled}
+          </Button>
+          <Button
+            variant="danger"
             data-testid="dataset-retire-confirm-cta"
+            disabled={!acknowledged || isPending}
+            loading={isPending}
+            onClick={onConfirm}
           >
-            {isPending ? 'Retiring…' : 'Retire dataset'}
-          </button>
-        </footer>
+            Retire dataset
+          </Button>
+        </div>
       </div>
     </div>
   );

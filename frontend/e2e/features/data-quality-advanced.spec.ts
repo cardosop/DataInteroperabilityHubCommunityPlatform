@@ -22,13 +22,37 @@
  *   shape for a fresh E2E run.
  */
 import { expect, test } from '@playwright/test';
-import { getTestUser } from '../fixtures/auth';
+import { environmentSkipGuard } from '../fixtures/envPolicy.cjs';
+import { getTenantAdminUser, getTestUser } from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Data Quality — Advanced features (Phase 240.4.A)', () => {
   test('Anomalies dashboard renders + filters are present', async ({ page }) => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/dq/anomalies');
+
+    // Gate-off terminal states: /dq/* is CapabilityRoute-gated on the
+    // runtime data_quality_advanced flag (strict === true).
+    // /coming-soon (MVP mode) = the surface is genuinely out of scope.
+    // /unavailable = the gate failed CLOSED under batch churn — a
+    // transient snapshot-fetch failure (W16-guarded: raises in CI, skips
+    // locally).
+    test.skip(
+      page.url().includes('/coming-soon'),
+      'data_quality_advanced out of MVP scope — dashboard not exercisable',
+    );
+    if (page.url().includes('/unavailable')) {
+      environmentSkipGuard(
+        'data_quality_advanced gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load',
+      );
+    }
+    test.skip(
+      page.url().includes('/unavailable'),
+      'data_quality_advanced gate bounced to /unavailable — transient snapshot failure',
+    );
+    if (page.url().includes('/unavailable') || page.url().includes('/coming-soon')) {
+      return;
+    }
 
     // Heading + filter controls.
     await expect(
@@ -45,6 +69,29 @@ test.describe('Data Quality — Advanced features (Phase 240.4.A)', () => {
   }) => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/dq/trends');
+
+    // Gate-off terminal states: /dq/* is CapabilityRoute-gated on the
+    // runtime data_quality_advanced flag (strict === true).
+    // /coming-soon (MVP mode) = the surface is genuinely out of scope.
+    // /unavailable = the gate failed CLOSED under batch churn — a
+    // transient snapshot-fetch failure (W16-guarded: raises in CI, skips
+    // locally).
+    test.skip(
+      page.url().includes('/coming-soon'),
+      'data_quality_advanced out of MVP scope — dashboard not exercisable',
+    );
+    if (page.url().includes('/unavailable')) {
+      environmentSkipGuard(
+        'data_quality_advanced gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load',
+      );
+    }
+    test.skip(
+      page.url().includes('/unavailable'),
+      'data_quality_advanced gate bounced to /unavailable — transient snapshot failure',
+    );
+    if (page.url().includes('/unavailable') || page.url().includes('/coming-soon')) {
+      return;
+    }
 
     await expect(
       page.getByRole('heading', { name: /dq trends/i }),
@@ -67,6 +114,29 @@ test.describe('Data Quality — Advanced features (Phase 240.4.A)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/dq/scorecards');
 
+    // Gate-off terminal states: /dq/* is CapabilityRoute-gated on the
+    // runtime data_quality_advanced flag (strict === true).
+    // /coming-soon (MVP mode) = the surface is genuinely out of scope.
+    // /unavailable = the gate failed CLOSED under batch churn — a
+    // transient snapshot-fetch failure (W16-guarded: raises in CI, skips
+    // locally).
+    test.skip(
+      page.url().includes('/coming-soon'),
+      'data_quality_advanced out of MVP scope — dashboard not exercisable',
+    );
+    if (page.url().includes('/unavailable')) {
+      environmentSkipGuard(
+        'data_quality_advanced gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load',
+      );
+    }
+    test.skip(
+      page.url().includes('/unavailable'),
+      'data_quality_advanced gate bounced to /unavailable — transient snapshot failure',
+    );
+    if (page.url().includes('/unavailable') || page.url().includes('/coming-soon')) {
+      return;
+    }
+
     await expect(
       page.getByRole('heading', { name: /dq scorecards/i }),
     ).toBeVisible({ timeout: 15000 });
@@ -85,6 +155,29 @@ test.describe('Data Quality — Advanced features (Phase 240.4.A)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/dq/rca');
 
+    // Gate-off terminal states: /dq/* is CapabilityRoute-gated on the
+    // runtime data_quality_advanced flag (strict === true).
+    // /coming-soon (MVP mode) = the surface is genuinely out of scope.
+    // /unavailable = the gate failed CLOSED under batch churn — a
+    // transient snapshot-fetch failure (W16-guarded: raises in CI, skips
+    // locally).
+    test.skip(
+      page.url().includes('/coming-soon'),
+      'data_quality_advanced out of MVP scope — dashboard not exercisable',
+    );
+    if (page.url().includes('/unavailable')) {
+      environmentSkipGuard(
+        'data_quality_advanced gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load',
+      );
+    }
+    test.skip(
+      page.url().includes('/unavailable'),
+      'data_quality_advanced gate bounced to /unavailable — transient snapshot failure',
+    );
+    if (page.url().includes('/unavailable') || page.url().includes('/coming-soon')) {
+      return;
+    }
+
     await expect(
       page.getByRole('heading', { name: /root cause analysis/i }),
     ).toBeVisible({ timeout: 15000 });
@@ -94,8 +187,36 @@ test.describe('Data Quality — Advanced features (Phase 240.4.A)', () => {
   test('Alerting rule CRUD: tenant admin can create + see + delete a rule', async ({
     page,
   }) => {
-    const user = await getTestUser();
+    // The alerting-rules surface is TENANT_ADMIN/PLATFORM_ADMIN-only —
+    // AlertingRuleManager renders "Tenant admin access required" (no
+    // rules heading, no rule-new-btn) for other roles. The default test
+    // user is a DATA_PROVIDER DPO, so this CRUD test must run as the
+    // seeded tenant admin (e2e_admin) (b7 re-run #2).
+    const user = await getTenantAdminUser();
     await loginAndNavigateToRoute(page, user, '/dq/alerting-rules');
+
+    // Gate-off terminal states: /dq/* is CapabilityRoute-gated on the
+    // runtime data_quality_advanced flag (strict === true).
+    // /coming-soon (MVP mode) = the surface is genuinely out of scope.
+    // /unavailable = the gate failed CLOSED under batch churn — a
+    // transient snapshot-fetch failure (W16-guarded: raises in CI, skips
+    // locally).
+    test.skip(
+      page.url().includes('/coming-soon'),
+      'data_quality_advanced out of MVP scope — dashboard not exercisable',
+    );
+    if (page.url().includes('/unavailable')) {
+      environmentSkipGuard(
+        'data_quality_advanced gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load',
+      );
+    }
+    test.skip(
+      page.url().includes('/unavailable'),
+      'data_quality_advanced gate bounced to /unavailable — transient snapshot failure',
+    );
+    if (page.url().includes('/unavailable') || page.url().includes('/coming-soon')) {
+      return;
+    }
 
     await expect(
       page.getByRole('heading', { name: /dq alerting rules/i }),
@@ -106,9 +227,21 @@ test.describe('Data Quality — Advanced features (Phase 240.4.A)', () => {
     const ruleName = `e2e-rule-${Date.now()}`;
     await page.getByLabel(/^name/i).fill(ruleName);
     await page.getByLabel(/^threshold/i).fill('80');
-    // EMAIL channel is selected by default → ``recipients`` field appears.
+    // EMAIL channel is selected by default → ``emails`` channel-config
+    // field (labelled "Recipients") appears.
     await page.getByLabel(/recipients/i).fill('oncall@e2e.test');
     await page.getByRole('button', { name: /^create$/i }).click();
+
+    // Fail fast on a rejected create (e.g. channel-config contract
+    // drift): the form surfaces the backend 400 in a role=alert banner
+    // instead of silently staying open.  Asserting the banner stays
+    // absent and the form closes beats a 10s timeout on the row.
+    await expect(page.getByTestId('rule-form-error')).toHaveCount(0, {
+      timeout: 10000,
+    });
+    await expect(page.getByTestId('rule-form')).toHaveCount(0, {
+      timeout: 10000,
+    });
 
     // Row appears in the list.
     await expect(page.getByText(ruleName)).toBeVisible({ timeout: 10000 });

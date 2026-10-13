@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @receiver(pre_save, sender=ComplianceRun)
 def compliance_run_cache_prior_status(
-    sender,
+    sender,  # Django keyword-dispatches signal receivers
     instance: ComplianceRun,
     **_kwargs,
 ) -> None:
@@ -37,7 +37,7 @@ def compliance_run_cache_prior_status(
 
 @receiver(post_save, sender=ComplianceRun)
 def emit_compliance_completed_webhook_on_terminal_transition(
-    sender,
+    sender,  # Django keyword-dispatches signal receivers
     instance: ComplianceRun,
     created: bool,
     update_fields=None,
@@ -83,8 +83,14 @@ def emit_compliance_completed_webhook_on_terminal_transition(
                 publish_compliance_check_completed,
             )
 
+            # Phase P.9 — the webhook publisher reads tenant-scoped rows
+            # (run + tenant) and runs on_commit outside the request
+            # cycle; scope it per the RLS contract.
+            from hub.apps.tenants.request_tenant import tenant_context
+
             stub = CR(pk=run_pk, tenant_id=tenant_pk)
-            publish_compliance_check_completed(stub)
+            with tenant_context(tenant_pk):
+                publish_compliance_check_completed(stub)
 
         transaction.on_commit(_emit)
     except Exception:
@@ -99,17 +105,18 @@ def emit_compliance_completed_webhook_on_terminal_transition(
 
 @receiver(post_save, sender=ComplianceRun)
 def invalidate_marketplace_cache_when_listed_asset_compliance_updates(
-    sender,
+    sender,  # Django keyword-dispatches signal receivers
     instance: ComplianceRun,
-    created: bool,
+    created: bool,  # Django keyword-dispatches signal receivers
     update_fields=None,
     **_kwargs,
 ) -> None:
     """
     Bust marketplace listing detail cache when a succeeded asset run may change serialized badge data.
 
-    ``ListingSerializer.latest_compliance_run`` reads from ``asset.compliance_runs``; ``retrieve``
-    caches the JSON response. Fail-soft: never raise from the signal.
+    ``ListingSerializer.compliance_grade`` reads the latest succeeded run's
+    ``overall_status`` (Phase 278.V.6); ``retrieve`` caches the JSON
+    response. Fail-soft: never raise from the signal.
     """
     if instance.status != ComplianceRunStatus.SUCCEEDED:
         return
@@ -123,15 +130,14 @@ def invalidate_marketplace_cache_when_listed_asset_compliance_updates(
     asset_pk = instance.asset_id
 
     def _invalidate() -> None:
-        from hub.apps.marketplace.caching import invalidate_marketplace_caches
-        from hub.apps.marketplace.models import Listing
+        # Marketplace is paid-layer — the invalidation resolves through
+        # the commercial hook (marketplace registers the provider from
+        # its AppConfig.ready()). Core-only deployments have no provider
+        # and the call no-ops: no marketplace cache exists to invalidate.
+        from hub.apps.core.commercial_hooks import invalidate_listing_caches_for_asset
 
         try:
-            listing_ids = Listing.objects.filter(asset_id=asset_pk).values_list(
-                "pk", flat=True,
-            )
-            for listing_pk in listing_ids:
-                invalidate_marketplace_caches(str(listing_pk))
+            invalidate_listing_caches_for_asset(asset_pk)
         except Exception:
             logger.exception(
                 "marketplace_cache_invalidation_compliance_signal_failed",
@@ -152,10 +158,10 @@ def invalidate_marketplace_cache_when_listed_asset_compliance_updates(
 
 @receiver(post_save, sender=Asset)
 def enqueue_compliance_intake_scan_on_asset_created(
-    sender,
+    sender,  # Django keyword-dispatches signal receivers
     instance: Asset,
     created: bool,
-    **kwargs,
+    **_kwargs,
 ) -> None:
     """Fail-soft (D231.11): never raise from signal — log and continue."""
     if not created:
@@ -163,10 +169,15 @@ def enqueue_compliance_intake_scan_on_asset_created(
     try:
         from hub.apps.tenants.models import Tenant
 
+        # Phase P.9 — the Tenant read is tenant-scoped; signal handlers
+        # run outside the request cycle, so scope per the RLS contract.
+        from hub.apps.tenants.request_tenant import tenant_context
+
         try:
-            tenant = Tenant.objects.only("compliance_intake_gate_enabled").get(
-                pk=instance.tenant_id,
-            )
+            with tenant_context(instance.tenant_id):
+                tenant = Tenant.objects.only("compliance_intake_gate_enabled").get(
+                    pk=instance.tenant_id,
+                )
         except Tenant.DoesNotExist:
             # Tenant was deleted or is not visible in the current
             # transaction (e.g. test rollback).  This is a normal

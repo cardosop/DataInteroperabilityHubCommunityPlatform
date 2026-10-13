@@ -6,6 +6,8 @@ This directory contains JSON Schema files for validating Open Data Product Stand
 
 ```
 schemas/odps/
+├── v4.2/
+│   └── odps-schema.json    # ODPS 4.2 schema
 ├── v4.1/
 │   └── odps-schema.json    # ODPS 4.1 schema
 ├── v4.0/

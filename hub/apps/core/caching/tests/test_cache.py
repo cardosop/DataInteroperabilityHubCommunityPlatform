@@ -35,9 +35,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis.RedisError):
         return None
+    else:
+        return client
 
 
 class TestCacheKeyGenerator(TestCase):
@@ -171,7 +172,7 @@ class TestCacheInvalidator(TestCase):
             keys = self.redis_client.keys("other:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_invalidate_single_key(self):
@@ -275,7 +276,7 @@ class TestCacheWarmer(TestCase):
             keys = self.redis_client.keys("warm:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_warm_single_entry(self):
@@ -370,7 +371,7 @@ class TestCacheIntegration(TestCase):
             keys = self.redis_client.keys("integration:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_full_cache_lifecycle(self):

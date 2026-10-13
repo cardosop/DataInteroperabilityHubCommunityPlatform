@@ -210,8 +210,6 @@ class CircuitBreaker:
                 # Reset failure count on success
                 self.failure_count = 0
 
-            return result
-
         except Exception as e:
             # Failure
             self.failure_count += 1
@@ -230,7 +228,7 @@ class CircuitBreaker:
                 if self.failure_count >= self.failure_threshold:
                     self.state = CircuitState.OPEN
                     self.last_state_change_time = time.time()
-                    logger.error(
+                    logger.exception(
                         "circuit_breaker_opened",
                         name=self.name,
                         failure_count=self.failure_count,
@@ -238,6 +236,8 @@ class CircuitBreaker:
                     )
 
             raise
+        else:
+            return result
 
 
 class CircuitBreakerOpenError(Exception):
@@ -315,7 +315,7 @@ def with_retry(
                         time.sleep(delay)
                     else:
                         # No more attempts
-                        logger.error(
+                        logger.exception(
                             "retry_exhausted",
                             function=func.__name__,
                             attempts=max_attempts,

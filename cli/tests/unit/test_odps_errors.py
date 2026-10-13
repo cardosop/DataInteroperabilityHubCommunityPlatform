@@ -274,14 +274,83 @@ class TestHandleAPIError:
         assert "not found" in error.suggestion.lower() or "id" in error.suggestion.lower()
 
 
+class TestTopLevelCodeEnvelope:
+    """Top-level ``{"code": ..., "message": ...}`` envelopes (openspec
+    add-databricks-control-plane task 0.15).
+
+    The Databricks control-plane views answer errors with the code and
+    message at the TOP level (e.g. ``_MASKED_PROBE_FAILURE`` →
+    ``{"code": "DATABRICKS_AUTH_FAILED", "message": "Credentials rejected
+    by workspace"}``) — no nested ``error`` object. Before this pin, the
+    fallback path dropped the code (``HTTP_502``) and surfaced the RAW
+    JSON as the message."""
+
+    def test_handle_top_level_code_envelope(self):
+        error = handle_api_error(
+            json.dumps(
+                {"code": "DATABRICKS_AUTH_FAILED", "message": "Credentials rejected by workspace"}
+            ),
+            502,
+            "databricks/workspaces/<id>/test/",
+        )
+        assert isinstance(error, ODPSCLIError)
+        assert error.error_code == "DATABRICKS_AUTH_FAILED"
+        assert error.message == "Credentials rejected by workspace"
+
+    def test_handle_top_level_code_keeps_http_fallback(self):
+        """No code at all → message flows, code falls back to the generic
+        parse-path default (``ODPS_ERROR``); the ``HTTP_<status>`` fallback
+        only applies to unparseable bodies."""
+        error = handle_api_error(json.dumps({"message": "Something broke"}), 502)
+        assert error.error_code == "ODPS_ERROR"
+        assert error.message == "Something broke"
+
+    def test_nested_error_envelope_still_wins(self):
+        """The standard nested ``{"error": {...}}`` shape is unchanged."""
+        error = handle_api_error(
+            json.dumps({"error": {"code": "VALIDATION_FAILED", "message": "Bad input"}}),
+            400,
+        )
+        assert error.error_code == "VALIDATION_FAILED"
+        assert error.message == "Bad input"
+
+
+class TestErrorCodeRendering:
+    """Machine-readable codes reach the user's terminal (task 0.15).
+
+    ``ODPSCLIError`` is a ``ClickException``; ``show()`` renders it. The
+    code line must appear for structured codes so operators can search
+    docs/runbooks by code — while ``str()`` stays the plain message (pinned
+    by ``TestODPSCLIError.test_odps_cli_error_basic``)."""
+
+    def test_show_renders_code_line(self, capsys):
+        ODPSCLIError(
+            "Credentials rejected by workspace", error_code="DATABRICKS_AUTH_FAILED"
+        ).show()
+        captured = capsys.readouterr()
+        assert "Credentials rejected by workspace" in captured.err
+        assert "DATABRICKS_AUTH_FAILED" in captured.err
+
+    def test_show_omits_generic_fallback_codes(self, capsys):
+        """HTTP_502-style fallbacks are noise on every error — omitted."""
+        ODPSCLIError("Downstream failed", error_code="HTTP_502").show()
+        captured = capsys.readouterr()
+        assert "Downstream failed" in captured.err
+        assert "HTTP_502" not in captured.err
+
+    def test_str_stays_plain_message(self):
+        error = ODPSCLIError("Plain message", error_code="DATABRICKS_AUTH_FAILED")
+        assert str(error) == "Plain message"
+
+
 class TestValidateODPSVersion:
     """Test ODPS version validation"""
 
     def test_validate_valid_version(self):
         """Test validating valid ODPS version"""
-        validate_odps_version("4.1")
-        validate_odps_version("4.0")
-        validate_odps_version("3.2")
+        assert validate_odps_version("4.1") is None
+        assert validate_odps_version("4.0") is None
+        assert validate_odps_version("3.2") is None
 
     def test_validate_invalid_version_format(self):
         """Test validating invalid version format"""
@@ -298,7 +367,7 @@ class TestValidateODPSVersion:
 
     def test_validate_none_version(self):
         """Test validating None version (should pass)"""
-        validate_odps_version(None)
+        assert validate_odps_version(None) is None
 
 
 class TestValidateODCSVersion:
@@ -306,11 +375,11 @@ class TestValidateODCSVersion:
 
     def test_validate_valid_version(self):
         """Test validating valid ODCS version"""
-        validate_odcs_version("3.0.2")
-        validate_odcs_version("3.0.1")
-        validate_odcs_version("3.0.0")
-        validate_odcs_version("3.0.0-preview")
-        validate_odcs_version("2.2.2")
+        assert validate_odcs_version("3.0.2") is None
+        assert validate_odcs_version("3.0.1") is None
+        assert validate_odcs_version("3.0.0") is None
+        assert validate_odcs_version("3.0.0-preview") is None
+        assert validate_odcs_version("2.2.2") is None
 
     def test_validate_invalid_version_format_missing_minor(self):
         """Test validating invalid version format - missing minor"""
@@ -334,21 +403,21 @@ class TestValidateODCSVersion:
 
     def test_validate_none_version(self):
         """Test validating None version (should pass)"""
-        validate_odcs_version(None)
+        assert validate_odcs_version(None) is None
 
     def test_validate_version_with_suffix(self):
         """Test validating version with suffix"""
-        validate_odcs_version("3.0.0-preview")
+        assert validate_odcs_version("3.0.0-preview") is None
 
     def test_validate_version_with_patch(self):
         """Test validating version with patch number"""
-        validate_odcs_version("3.0.2")
-        validate_odcs_version("2.2.2")
+        assert validate_odcs_version("3.0.2") is None
+        assert validate_odcs_version("2.2.2") is None
 
     def test_validate_version_without_patch(self):
         """Test validating version without patch number"""
-        validate_odcs_version("3.0.0")
-        validate_odcs_version("3.0.1")
+        assert validate_odcs_version("3.0.0") is None
+        assert validate_odcs_version("3.0.1") is None
 
     def test_validate_invalid_suffix_format(self):
         """Test validating version with invalid suffix format"""
@@ -359,7 +428,7 @@ class TestValidateODCSVersion:
     def test_validate_non_string_version(self):
         """Test validating non-string version"""
         with pytest.raises(ODPSParameterError) as exc_info:
-            validate_odcs_version(3.0)  # type: ignore
+            validate_odcs_version(3.0)
         assert "must be a string" in str(exc_info.value).lower()
 
 
@@ -368,9 +437,9 @@ class TestValidateContractID:
 
     def test_validate_valid_id(self):
         """Test validating valid contract ID"""
-        validate_contract_id("contract-123")
-        validate_contract_id("odcs-456")
-        validate_contract_id("odps-789")
+        assert validate_contract_id("contract-123") is None
+        assert validate_contract_id("odcs-456") is None
+        assert validate_contract_id("odps-789") is None
 
     def test_validate_empty_id(self):
         """Test validating empty contract ID"""
@@ -386,8 +455,8 @@ class TestValidateContractID:
 
     def test_validate_id_with_type(self):
         """Test validating contract ID with type"""
-        validate_contract_id("odcs-123", "odcs")
-        validate_contract_id("odps-456", "odps")
+        assert validate_contract_id("odcs-123", "odcs") is None
+        assert validate_contract_id("odps-456", "odps") is None
 
 
 class TestValidateFileFormat:
@@ -468,12 +537,15 @@ class TestValidateMutuallyExclusiveOptions:
 
     def test_validate_mutually_exclusive_none_provided(self):
         """Test validating when neither option is provided (should pass)"""
-        validate_mutually_exclusive_options("extract-odcs", False, "link-odcs", None)
+        assert validate_mutually_exclusive_options("extract-odcs", False, "link-odcs", None) is None
 
     def test_validate_mutually_exclusive_one_provided(self):
         """Test validating when one option is provided (should pass)"""
-        validate_mutually_exclusive_options("extract-odcs", True, "link-odcs", None)
-        validate_mutually_exclusive_options("extract-odcs", False, "link-odcs", "odcs-123")
+        assert validate_mutually_exclusive_options("extract-odcs", True, "link-odcs", None) is None
+        assert (
+            validate_mutually_exclusive_options("extract-odcs", False, "link-odcs", "odcs-123")
+            is None
+        )
 
 
 class TestValidateRequiredOption:
@@ -481,7 +553,7 @@ class TestValidateRequiredOption:
 
     def test_validate_required_option_provided(self):
         """Test validating when required option is provided (should pass)"""
-        validate_required_option("extract-odcs", True)
+        assert validate_required_option("extract-odcs", True) is None
 
     def test_validate_required_option_missing(self):
         """Test validating when required option is missing"""

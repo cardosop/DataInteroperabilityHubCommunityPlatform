@@ -92,9 +92,11 @@ class TestAPIClientRequest:
         client = APIClient()
         client.auth_manager = _auth_manager_mock(authenticated=False)
 
-        with pytest.raises(ClickException, match="Not authenticated"):
-            with patch("datahub_cli.api_client.requests.request") as mock_request:
-                client._request("GET", "test")
+        with (
+            pytest.raises(ClickException, match="Not authenticated"),
+            patch("datahub_cli.api_client.requests.request") as mock_request,
+        ):
+            client._request("GET", "test")
         mock_request.assert_not_called()
 
     # -- retry on connection error ----------------------------------------

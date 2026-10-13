@@ -17,6 +17,7 @@ except ImportError:
     pytest = None
     pytestmark = None
 
+import contextlib
 import json
 import uuid
 
@@ -231,10 +232,8 @@ class WorkflowProgressEventsTest(TestCase):
 
         # Execute workflow (will fail at step2 due to invalid state transition).
         # Exception is expected; the test verifies resulting state below.
-        try:
+        with contextlib.suppress(Exception):
             self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected failure on invalid state transition
 
         instance.refresh_from_db()
 
@@ -246,8 +245,9 @@ class WorkflowProgressEventsTest(TestCase):
 
         # Workflow must be in FAILED state for step.failed event checks
         self.assertEqual(
-            instance.status, WorkflowStatus.FAILED,
-            f"Workflow must be FAILED after deliberate step failure; got {instance.status}"
+            instance.status,
+            WorkflowStatus.FAILED,
+            f"Workflow must be FAILED after deliberate step failure; got {instance.status}",
         )
 
         self.assertGreater(
@@ -264,9 +264,7 @@ class WorkflowProgressEventsTest(TestCase):
                 "step.failed event should include progress_percentage",
             )
             progress = event.data["progress_percentage"]
-            self.assertIsInstance(
-                progress, (int, float), "progress_percentage should be a number"
-            )
+            self.assertIsInstance(progress, (int, float), "progress_percentage should be a number")
             self.assertGreaterEqual(progress, 0.0, "progress_percentage should be >= 0")
             self.assertLessEqual(progress, 100.0, "progress_percentage should be <= 100")
             self.assertEqual(event.tenant_id, self.tenant.id)

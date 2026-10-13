@@ -1,5 +1,5 @@
 """
-Phase 234.1.5 – 234.1.7 — Merkle snapshot pipeline for the audit chain.
+Phase 234.1.5 - 234.1.7 — Merkle snapshot pipeline for the audit chain.
 
 The pipeline runs hourly per tenant (driven by
 :class:`hub.apps.jobs.models.JobType.AUDIT_MERKLE_SNAPSHOT`) and emits one
@@ -219,9 +219,9 @@ def _upload_with_object_lock(
     same surface for audit proofs.
     """
     try:
-        import boto3  # type: ignore[import-not-found]  # optional dependency; ImportError handled below
+        import boto3  # optional dependency; ImportError handled below
         from botocore.exceptions import (
-            ClientError,  # type: ignore[import-not-found]  # optional dependency; ImportError handled below
+            ClientError,  # optional dependency; ImportError handled below
         )
     except ImportError:
         logger.warning(
@@ -261,7 +261,7 @@ def _upload_with_object_lock(
         try:
             resp = client.put_object(Bucket=bucket, Key=key, Body=body)
         except ClientError as exc2:
-            logger.error(
+            logger.exception(
                 "audit_merkle_s3_put_failed",
                 extra={"key": key, "error": str(exc2)},
             )
@@ -436,17 +436,17 @@ def _snapshot_tenant_window_inner(
             tenant_id=tenant_id,
             period_start=period_start,
             period_end=period_end,
-            defaults=dict(
-                event_count=len(leaves),
-                first_chain_sequence=first_seq,
-                last_chain_sequence=last_seq,
-                root_hex=root_hex,
-                signature_hex=signature_hex,
-                signing_key_index=key_index,
-                s3_bucket="",
-                s3_key="",
-                s3_version_id="",
-            ),
+            defaults={
+                "event_count": len(leaves),
+                "first_chain_sequence": first_seq,
+                "last_chain_sequence": last_seq,
+                "root_hex": root_hex,
+                "signature_hex": signature_hex,
+                "signing_key_index": key_index,
+                "s3_bucket": "",
+                "s3_key": "",
+                "s3_version_id": "",
+            },
         )
 
     if not created:

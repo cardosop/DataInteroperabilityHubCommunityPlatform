@@ -17,13 +17,12 @@ def setup_opentelemetry_fastapi(service_name: str) -> object | None:
     Returns:
         Tracer instance or None if not enabled
     """
-    if not os.getenv("OPENTELEMETRY_ENABLED", "false").lower() == "true":
+    if os.getenv("OPENTELEMETRY_ENABLED", "false").lower() != "true":
         return None
 
     try:
         from opentelemetry import trace
         from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
@@ -66,23 +65,23 @@ def setup_opentelemetry_fastapi(service_name: str) -> object | None:
         # Instrument HTTP clients
         HTTPXClientInstrumentor().instrument()
 
-        return tracer
-
     except ImportError as e:
         import logging
 
         logger = logging.getLogger(__name__)
         logger.warning(f"OpenTelemetry not available: {e}")
         return None
-    except Exception as e:
+    except Exception:
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to setup OpenTelemetry: {e}")
+        logger.exception("Failed to setup OpenTelemetry")
         return None
+    else:
+        return tracer
 
 
-def get_tracer_fastapi(name: str = None) -> object | None:
+def get_tracer_fastapi(name: str | None = None) -> object | None:
     """
     Get OpenTelemetry tracer for FastAPI services.
 
@@ -92,7 +91,7 @@ def get_tracer_fastapi(name: str = None) -> object | None:
     Returns:
         Tracer instance or None if not enabled
     """
-    if not os.getenv("OPENTELEMETRY_ENABLED", "false").lower() == "true":
+    if os.getenv("OPENTELEMETRY_ENABLED", "false").lower() != "true":
         return None
 
     try:

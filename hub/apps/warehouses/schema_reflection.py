@@ -60,7 +60,9 @@ def reflect_and_populate(asset: Any, table_name: str | None = None) -> dict[str,
             result = connector.execute_query(
                 f"SELECT * FROM {table_name} LIMIT 100",
             )
-            sample_rows = [dict(zip([c.name for c in columns], row)) for row in result.rows]
+            sample_rows = [
+                dict(zip([c.name for c in columns], row, strict=False)) for row in result.rows
+            ]
         except Exception as exc:
             logger.warning(
                 "warehouse_sample_fetch_failed",

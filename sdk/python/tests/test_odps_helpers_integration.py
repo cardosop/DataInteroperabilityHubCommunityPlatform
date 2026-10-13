@@ -9,6 +9,7 @@ import os
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
+from datahub_interoperability.errors import DataHubError
 
 
 def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
@@ -25,7 +26,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
         key = get_api_key()
         if key:
             return key
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 2: Use credentials from environment to login and get JWT token
@@ -47,7 +48,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
             access_token = login_data.get("access_token")
             if access_token:
                 return access_token
-    except Exception:
+    except (requests.RequestException, ValueError, AttributeError):
         pass
 
     return None
@@ -71,6 +72,9 @@ def real_api_config():
     return DataHubClientConfig(
         base_url=api_url,
         api_token=api_token,
+        # ODPS product creation is workflow-backed and takes 60-120s —
+        # the 30s default read-times-out before the server responds.
+        timeout=120.0,
     )
 
 
@@ -196,7 +200,7 @@ async def test_odps_helper_methods_integration(real_api_config):
                 original_format="JSON",
                 odps_version="4.1",
             )
-        except Exception as e:
+        except (DataHubError, ValueError) as e:
             # Print full error details for debugging
             error_details = str(e)
             if hasattr(e, "details"):

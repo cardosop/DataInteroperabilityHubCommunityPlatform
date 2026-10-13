@@ -18,16 +18,24 @@ from hub.apps.core.events.subscribers import WorkflowStepSubscriber, WorkflowTri
 def _wait_for_event(event_type, timeout=2.0, **extra_filters):
     """Poll for an event to be persisted to the database.
 
-    Replaces ``time.sleep(0.1)`` patterns that are flaky under CI load
+    Replaces ``time.sleep(0.1)`` patterns that are flaky under CI load  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
     and waste wall-clock time on fast machines.  Returns the first matching
     Event or ``None`` if the deadline expires.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if Event.objects.filter(event_type=event_type, **extra_filters).exists():
-            return Event.objects.filter(event_type=event_type, **extra_filters).order_by("-timestamp").first()
-        time.sleep(0.01)
+            return (
+                Event.objects.filter(event_type=event_type, **extra_filters)
+                .order_by("-timestamp")
+                .first()
+            )
+        time.sleep(0.01)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
     return None
+
+
+import contextlib
+
 from hub.apps.orchestration.models import (
     StepStatus,
     WorkflowDefinition,
@@ -93,7 +101,9 @@ class TestWorkflowEventPublishing(TestCase):
             "workflow.created",
             data__workflow_instance_id=str(instance.id),
         )
-        self.assertIsNotNone(created_event, "workflow.created event should be published within timeout")
+        self.assertIsNotNone(
+            created_event, "workflow.created event should be published within timeout"
+        )
         self.assertEqual(created_event.data["workflow_instance_id"], str(instance.id))
         self.assertEqual(created_event.data["workflow_name"], self.wf_name)
         self.assertEqual(created_event.tenant_id, self.tenant.id)
@@ -208,10 +218,8 @@ class TestWorkflowEventPublishing(TestCase):
         ).count()
 
         # Execute workflow - should fail
-        try:
+        with contextlib.suppress(Exception):
             self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass
 
         instance.refresh_from_db()
 
@@ -359,10 +367,8 @@ class TestWorkflowEventPublishing(TestCase):
             data__workflow_instance_id=str(instance.id),
         ).count()
 
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         instance.refresh_from_db()
 
@@ -608,10 +614,8 @@ class TestWorkflowEventPublishing(TestCase):
             data__workflow_instance_id=str(instance.id),
         ).count()
 
-        try:
+        with contextlib.suppress(WorkflowExecutionError):  # Expected to fail
             self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass  # Expected to fail
 
         instance.refresh_from_db()
 
@@ -722,6 +726,7 @@ class TestWorkflowTriggerSubscriber(TestCase):
         """Test that handling an event with no mapping does nothing —
         no workflow instances are created and no error is raised."""
         from hub.apps.orchestration.models import WorkflowInstance
+
         initial_count = WorkflowInstance.objects.count()
         event = {
             "event_type": "unknown.event",
@@ -733,7 +738,8 @@ class TestWorkflowTriggerSubscriber(TestCase):
         self.subscriber._handle_event(event)
         # Should not create any workflow instances
         self.assertEqual(
-            WorkflowInstance.objects.count(), initial_count,
+            WorkflowInstance.objects.count(),
+            initial_count,
             "Unmapped events must not create workflow instances",
         )
 
@@ -1124,7 +1130,7 @@ class TestEventDrivenWorkflowIntegration(TestCase):
 
         # Handle event (this should trigger workflow)
         self.trigger_subscriber._handle_event(event)
-        time.sleep(  # noqa: sleep-needed — test timing requirement
+        time.sleep(  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             0.2
         )  # INTENTIONAL: brief yield for async event persistence and workflow execution
 

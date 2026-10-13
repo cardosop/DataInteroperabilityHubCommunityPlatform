@@ -98,7 +98,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding @critical'
           type: 'contract-create-failed',
           description: `Contract API creation returned ${contractRes.status()}: ${body.slice(0, 200)}`,
         });
-        test.skip(true, `Contract API creation failed with ${contractRes.status()}`);
+        test.skip(!contractRes.ok(), `Contract API creation failed with ${contractRes.status()}`);
         return;
       }
 

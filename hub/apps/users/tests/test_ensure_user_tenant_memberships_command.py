@@ -20,7 +20,7 @@ class EnsureUserTenantMembershipsCommandTest(TestCase):
             name="Membership Cmd T1",
             slug="membership-cmd-t1",
         )
-        user = User.objects.create_user(  # type: ignore[attr-defined]  # test: edge-case type exercise
+        user = User.objects.create_user(  # test: edge-case type exercise
             email="membership-cmd@example.com",
             password="testpass123",
             tenant=tenant,
@@ -55,7 +55,7 @@ class EnsureUserTenantMembershipsCommandTest(TestCase):
             name="Membership Cmd T2",
             slug="membership-cmd-t2",
         )
-        user = User.objects.create_user(  # type: ignore[attr-defined]  # test: edge-case type exercise
+        user = User.objects.create_user(  # test: edge-case type exercise
             email="membership-cmd-2@example.com",
             password="testpass123",
             tenant=tenant,

@@ -145,7 +145,7 @@ class TransformationPipeline(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "name", "version"], name="unique_pipeline_name_version_per_tenant"
-            )
+            ),
         ]
 
     def __str__(self):
@@ -520,6 +520,17 @@ class PipelineExecution(models.Model):
         blank=True,
         help_text="Execution metrics (duration, throughput, items processed, etc.)",
     )
+    # Phase 11 (run-transformation-on-databricks 11.4) — the Databricks
+    # run's stored DBU estimate: the exactly-once guard for the one
+    # dbt_run ledger row (the 10.6 terminal-transition discipline —
+    # re-checked under select_for_update; stored, not billed).
+    databricks_dbu = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="The Databricks run's DBU estimate (11.4) — NULL until recorded; the exactly-once ledger guard",
+    )
     idempotency_key = models.CharField(
         max_length=255,
         null=True,
@@ -799,14 +810,17 @@ class PipelineExecution(models.Model):
                 error_msg = self.job.error_message or "Job execution failed"
                 self.add_log_entry(f"Job failed: {error_msg}", "ERROR")
                 updated = True
-        elif job_status == JobStatus.CANCELLED and self.status != ExecutionStatus.CANCELLED:
+        elif (
+            job_status == JobStatus.CANCELLED
+            and self.status != ExecutionStatus.CANCELLED
+            and self.status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]
+        ):
             # Job cancelled, execution should be cancelled
-            if self.status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
-                self.status = ExecutionStatus.CANCELLED
-                if not self.completed_at:
-                    self.completed_at = timezone.now()
-                self.add_log_entry("Execution cancelled via job cancellation", "INFO")
-                updated = True
+            self.status = ExecutionStatus.CANCELLED
+            if not self.completed_at:
+                self.completed_at = timezone.now()
+            self.add_log_entry("Execution cancelled via job cancellation", "INFO")
+            updated = True
 
         if updated:
             self.save(

@@ -171,6 +171,7 @@ export function DQRunListPage() {
                 setStatusFilter(e.target.value as DQRunStatus | '');
                 setPage(1);
               }}
+              aria-label="Filter by status"
             >
               <option value="">All Statuses</option>
               <option value="PENDING">Pending</option>

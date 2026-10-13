@@ -24,10 +24,9 @@ test.describe('DQ, Compliance, Governance routes @critical', () => {
       try {
         await assertListPageLoads(page, '.dq-run-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
-        if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
-          return;
-        }
+        const backendTimeout = String(err).includes('BACKEND_TIMEOUT');
+        test.skip(backendTimeout, 'Backend timeout under parallel E2E load');
+        if (backendTimeout) return;
         throw err;
       }
     });
@@ -39,14 +38,19 @@ test.describe('DQ, Compliance, Governance routes @critical', () => {
       });
       if (!ok) return;
 
+      // /compliance is CPO-gated — the default E2E user is a DATA_PROVIDER,
+      // so a 403 redirect is the correct role-model outcome (same contract
+      // as the governance test below). CPO-side rendering is covered by the
+      // persona journeys (JOURNEY-CPO-001/002).
+      if (page.url().includes('/403')) return;
+
       expect(page.url()).toContain('/compliance');
       try {
         await assertListPageLoads(page, '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]');
       } catch (err) {
-        if (String(err).includes('BACKEND_TIMEOUT')) {
-          test.skip(true, 'Backend timeout under parallel E2E load');
-          return;
-        }
+        const backendTimeout = String(err).includes('BACKEND_TIMEOUT');
+        test.skip(backendTimeout, 'Backend timeout under parallel E2E load');
+        if (backendTimeout) return;
         throw err;
       }
     });
@@ -102,11 +106,9 @@ test.describe('DQ, Compliance, Governance routes @critical', () => {
 
       const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       if (!hasErrorDisplay) {
-        const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
-        if (stillLoading) {
-          test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
-          return;
-        }
+        const stillLoading = (await page.locator('[data-testid="skeleton-row"], [data-testid="detail-page-skeleton"], .skeleton, .loading-spinner').count()) > 0;
+        test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+        if (stillLoading) return;
       }
       expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
@@ -118,7 +120,7 @@ test.describe('DQ, Compliance, Governance routes @critical', () => {
           .first()
           .textContent()
           .catch(() => '');
-        if (errText && !/404|not found/i.test(errText)) {
+        if (errText && !/404|not[ _-]?found/i.test(errText)) {
           console.warn(
             `[DQ nil-UUID] Non-404 error displayed: "${errText?.slice(0, 300)}"`
           );
@@ -133,17 +135,19 @@ test.describe('DQ, Compliance, Governance routes @critical', () => {
       });
       if (!ok) return;
 
+      // CPO-gated route (see the compliance list test) — the role gate wins
+      // over the 404, so /403 is the correct outcome for the DPO user.
+      if (page.url().includes('/403')) return;
+
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
       const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       if (!hasErrorDisplay) {
-        const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
-        if (stillLoading) {
-          test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
-          return;
-        }
+        const stillLoading = (await page.locator('[data-testid="skeleton-row"], [data-testid="detail-page-skeleton"], .skeleton, .loading-spinner').count()) > 0;
+        test.skip(stillLoading, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
+        if (stillLoading) return;
       }
       expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
@@ -155,7 +159,7 @@ test.describe('DQ, Compliance, Governance routes @critical', () => {
           .first()
           .textContent()
           .catch(() => '');
-        if (errText && !/404|not found/i.test(errText)) {
+        if (errText && !/404|not[ _-]?found/i.test(errText)) {
           console.warn(
             `[Compliance nil-UUID] Non-404 error displayed: "${errText?.slice(0, 300)}"`
           );

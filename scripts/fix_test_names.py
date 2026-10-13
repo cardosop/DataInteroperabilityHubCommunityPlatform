@@ -52,7 +52,7 @@ def fix_file(filepath):
         lines = content.split("\n")
         last_imp = 0
         for i, ln in enumerate(lines):
-            if ln.startswith("import ") or ln.startswith("from "):
+            if ln.startswith(("import ", "from ")):
                 last_imp = i
         lines.insert(last_imp + 1, "import uuid")
         content = "\n".join(lines)

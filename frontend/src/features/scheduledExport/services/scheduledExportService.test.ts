@@ -276,7 +276,7 @@ describe('scheduledExportService', () => {
       expect(vi.mocked(mockClient.post)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/trigger/',
         triggerRequest,
-        { timeout: 60000 }
+        { timeout: 120000 }
       );
       expect(result.scheduled_export_id).toBe('export-1');
       expect(result.flow_run_id).toBe('flow-run-123');
@@ -300,9 +300,49 @@ describe('scheduledExportService', () => {
       expect(vi.mocked(mockClient.post)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/trigger/',
         {},
-        { timeout: 60000 }
+        { timeout: 120000 }
       );
       expect(result.flow_run_id).toBe('flow-run-456');
+    });
+
+    it('should unwrap the 207 deployment-sync envelope on create', async () => {
+      const createRequest: ScheduledExportCreateRequest = {
+        name: 'Envelope Export',
+        schedule_config: { cron: '0 2 * * *' },
+        destination_type: 'S3',
+        destination_config: { bucket: 'test-bucket' },
+        source_scope: { dataset_ids: ['dataset-1'] },
+      };
+
+      const mockCreatedExport: ScheduledExport = {
+        id: 'export-envelope',
+        tenant: 'tenant-1',
+        tenant_name: 'Test Tenant',
+        name: 'Envelope Export',
+        schedule_config: { cron: '0 2 * * *' },
+        destination_type: 'S3',
+        destination_config: { bucket: 'test-bucket' },
+        source_scope: { dataset_ids: ['dataset-1'] },
+        status: 'ACTIVE',
+        next_run_at: null,
+        last_run_at: null,
+        last_run_status: null,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      };
+
+      // 207 — resource created, Prefect deployment sync failed.
+      vi.mocked(mockClient.post).mockResolvedValue({
+        data: {
+          resource: mockCreatedExport,
+          deployment_sync: { status: 'failed', error: 'prefect unreachable' },
+        },
+      } as never);
+
+      const result = await scheduledExportService.create(createRequest);
+
+      expect(result.id).toBe('export-envelope');
+      expect(result.name).toBe('Envelope Export');
     });
   });
 

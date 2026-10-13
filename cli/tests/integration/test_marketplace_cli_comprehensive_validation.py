@@ -22,7 +22,16 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+
 hub = pytest.importorskip("hub")
+# Phase U / U.3 — marketplace is paid/excluded from the public
+# tree; the integrations guards were no-ops (integrations is core).
+_marketplace = pytest.importorskip("hub.apps.marketplace")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import contextlib
 import json
 import os
@@ -58,11 +67,9 @@ class MarketplaceLiveServerTestCase(LiveServerTestCase):
 
     def _post_teardown(self):
         """Override to handle teardown errors gracefully"""
-        try:
+        # Ignore teardown errors - they don't affect test validity
+        with contextlib.suppress(Exception):
             super()._post_teardown()
-        except Exception:
-            # Ignore teardown errors - they don't affect test validity
-            pass
 
     def setUp(self):
         """Set up test fixtures, handling database flush errors"""
@@ -177,11 +184,9 @@ class TestMarketplaceCLIComprehensiveValidation(MarketplaceLiveServerTestCase):
         config.clear_auth()
         # Note: super().tearDown() may fail with database flush errors in LiveServerTestCase
         # This is a known issue and doesn't affect test results
-        try:
+        # Ignore teardown errors - they don't affect test validity
+        with contextlib.suppress(Exception):
             super().tearDown()
-        except Exception:
-            # Ignore teardown errors - they don't affect test validity
-            pass
 
     # ========== Connection Commands Comprehensive Tests ==========
 
@@ -367,10 +372,7 @@ class TestMarketplaceCLIComprehensiveValidation(MarketplaceLiveServerTestCase):
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         assert len(connections) >= 3
 
         # Test filter by is_active
@@ -396,10 +398,7 @@ class TestMarketplaceCLIComprehensiveValidation(MarketplaceLiveServerTestCase):
         )
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        if isinstance(list_data, dict):
-            connections = list_data.get("results", [])
-        else:
-            connections = list_data
+        connections = list_data.get("results", []) if isinstance(list_data, dict) else list_data
         assert len(connections) <= 2
 
     def test_connections_list_output_formats(self):
@@ -439,7 +438,7 @@ class TestMarketplaceCLIComprehensiveValidation(MarketplaceLiveServerTestCase):
         result = self.runner.invoke(cli, ["marketplace", "connections", "list", "--format", "json"])
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        assert isinstance(list_data, list) or isinstance(list_data, dict)
+        assert isinstance(list_data, (list, dict))
 
     def test_connections_get_all_fields(self):
         """Test getting connection details with all fields"""
@@ -1126,7 +1125,7 @@ class TestMarketplaceCLIComprehensiveValidation(MarketplaceLiveServerTestCase):
         assert result.exit_code == 0
         try:
             output_json = json.loads(result.output)
-            assert isinstance(output_json, list) or isinstance(output_json, dict)
+            assert isinstance(output_json, (list, dict))
         except json.JSONDecodeError:
             # If not JSON, check for error message
             assert "error" in result.output.lower() or "No connectors found" in result.output
@@ -1325,4 +1324,4 @@ class TestMarketplaceCLIComprehensiveValidation(MarketplaceLiveServerTestCase):
         result = self.runner.invoke(cli, ["marketplace", "connections", "list", "--format", "json"])
         assert result.exit_code == 0
         list_data = json.loads(result.output)
-        assert isinstance(list_data, list) or isinstance(list_data, dict)
+        assert isinstance(list_data, (list, dict))

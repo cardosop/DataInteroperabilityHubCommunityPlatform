@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -107,7 +107,7 @@ class APIEffortEstimator:
     """Estimates effort for API development tasks."""
 
     # Base effort by gap type (hours)
-    BASE_EFFORT = {
+    BASE_EFFORT: ClassVar[dict] = {
         GapType.MISSING: {
             ComplexityLevel.SIMPLE: 3.0,  # Basic CRUD endpoint
             ComplexityLevel.MEDIUM: 6.0,  # CRUD with validation
@@ -129,7 +129,7 @@ class APIEffortEstimator:
     }
 
     # Complexity multipliers
-    COMPLEXITY_MULTIPLIERS = {
+    COMPLEXITY_MULTIPLIERS: ClassVar[dict] = {
         ComplexityLevel.SIMPLE: 1.0,
         ComplexityLevel.MEDIUM: 1.5,
         ComplexityLevel.COMPLEX: 2.0,
@@ -137,21 +137,21 @@ class APIEffortEstimator:
     }
 
     # Dependency effort (hours)
-    DATABASE_EFFORT = {
+    DATABASE_EFFORT: ClassVar[dict] = {
         "none": 0.0,
         "simple": 2.0,  # Add field, simple migration
         "medium": 4.0,  # Add model, relationships
         "complex": 8.0,  # Complex schema changes, data migration
     }
 
-    EXTERNAL_SERVICE_EFFORT = {
+    EXTERNAL_SERVICE_EFFORT: ClassVar[dict] = {
         "none": 0.0,
         "simple": 4.0,  # Simple API integration
         "medium": 8.0,  # Complex API integration, auth
         "complex": 16.0,  # Multiple services, error handling
     }
 
-    INFRASTRUCTURE_EFFORT = {
+    INFRASTRUCTURE_EFFORT: ClassVar[dict] = {
         "none": 0.0,
         "simple": 2.0,  # Configuration changes
         "medium": 4.0,  # New service setup
@@ -159,35 +159,35 @@ class APIEffortEstimator:
     }
 
     # Integration effort (hours)
-    SERVICE_INTEGRATION_EFFORT = {
+    SERVICE_INTEGRATION_EFFORT: ClassVar[dict] = {
         "none": 0.0,
         "single": 2.0,  # Single service integration
         "multiple": 4.0,  # Multiple services
         "complex": 8.0,  # Complex orchestration
     }
 
-    WORKFLOW_INTEGRATION_EFFORT = {
+    WORKFLOW_INTEGRATION_EFFORT: ClassVar[dict] = {
         "none": 0.0,
         "simple": 4.0,  # Simple workflow
         "complex": 8.0,  # Complex workflow with compensation
     }
 
     # Testing effort (hours) - typically 30-40% of development effort
-    UNIT_TEST_EFFORT = {
+    UNIT_TEST_EFFORT: ClassVar[dict] = {
         ComplexityLevel.SIMPLE: 1.0,
         ComplexityLevel.MEDIUM: 2.0,
         ComplexityLevel.COMPLEX: 4.0,
         ComplexityLevel.VERY_COMPLEX: 8.0,
     }
 
-    INTEGRATION_TEST_EFFORT = {
+    INTEGRATION_TEST_EFFORT: ClassVar[dict] = {
         ComplexityLevel.SIMPLE: 1.0,
         ComplexityLevel.MEDIUM: 2.0,
         ComplexityLevel.COMPLEX: 4.0,
         ComplexityLevel.VERY_COMPLEX: 8.0,
     }
 
-    E2E_TEST_EFFORT = {
+    E2E_TEST_EFFORT: ClassVar[dict] = {
         ComplexityLevel.SIMPLE: 0.5,
         ComplexityLevel.MEDIUM: 1.0,
         ComplexityLevel.COMPLEX: 2.0,
@@ -196,7 +196,7 @@ class APIEffortEstimator:
 
     # Documentation effort (hours)
     API_DOC_EFFORT = 0.5  # OpenAPI spec already exists, just review/update
-    CODE_DOC_EFFORT = {
+    CODE_DOC_EFFORT: ClassVar[dict] = {
         ComplexityLevel.SIMPLE: 0.5,
         ComplexityLevel.MEDIUM: 0.5,
         ComplexityLevel.COMPLEX: 1.0,

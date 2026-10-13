@@ -1,0 +1,87 @@
+# Traefik API Gateway Configuration
+# For Docker Compose deployment
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# API and Dashboard
+# insecure: false — dashboard is NOT exposed on the unsecured :8080 API port.
+# Access is via the secure router defined in routes.yml.tmpl (basicAuth + IP allowlist).
+# For local development with the insecure API endpoint, override with:
+#   TRAEFIK_API_INSECURE=true in your local .env (never commit this).
+api:
+  dashboard: true
+  # Phase U triage — the CI insecure-setting gate forbids an unauthenticated
+  # dashboard; the public tree must fail closed (the paid variant already
+  # uses basicAuth + IP allowlist). /api/version stays probeable.
+  insecure: false
+
+# Entrypoints
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+# Providers
+providers:
+  # Core-only: NO docker provider — all core routes are file-based, and the
+  # base traefik image's docker client is refused by modern daemons
+  # ("client version 1.24 is too old. Minimum supported API version is
+  # 1.44"). The full-mode stack keeps the docker provider via traefik.yml.
+  file:
+    filename: /etc/traefik/dynamic/routes.yml
+    watch: true
+
+# Certificates
+# 20.7: ACME email is read from the TRAEFIK_ACME_EMAIL environment variable.
+# Traefik natively expands ${VAR} in this file at startup.
+# Set TRAEFIK_ACME_EMAIL in .env.production (never commit a real address here).
+# Example: TRAEFIK_ACME_EMAIL=ops@yourdomain.com
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "${TRAEFIK_ACME_EMAIL}"
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+# Logging
+log:
+  level: INFO
+  format: json
+
+# Access Log
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: keep
+      names:
+        User-Agent: keep
+        Authorization: drop
+        Cookie: drop
+
+# Metrics
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    addRoutersLabels: true
+
+# Tracing
+# Note: Jaeger tracing removed in Traefik v3 - OpenTelemetry replaces specific tracing backends
+# For Traefik v3, use OpenTelemetry collector/exporter instead
+# tracing:
+#     traceContextHeaderName: "uber-trace-id"
+

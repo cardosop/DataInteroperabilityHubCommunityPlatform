@@ -113,7 +113,9 @@ class DataMeshDomain(models.Model):
             models.Index(fields=["workflow_instance"]),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "name"], name="unique_domain_name_per_tenant")
+            models.UniqueConstraint(
+                fields=["tenant", "name"], name="unique_domain_name_per_tenant"
+            ),
         ]
 
     def __str__(self):

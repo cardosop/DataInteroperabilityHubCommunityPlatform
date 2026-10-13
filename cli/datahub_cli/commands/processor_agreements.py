@@ -1,7 +1,7 @@
 """
 283.3.6.2 — Processor Agreements CLI commands.
 
-Processor register, Article 28 agreements, and asset–processor links.
+Processor register, Article 28 agreements, and asset-processor links.
 """
 
 from __future__ import annotations
@@ -12,7 +12,9 @@ import click
 
 from ..api_client import api_client
 
-BASE = "governance"
+# Backend mounts these viewsets at /api/v1/processor-agreements/
+# (hub/apps/api/urls.py -> hub.apps.processor_agreements.urls).
+BASE = "processor-agreements"
 
 
 @click.group()
@@ -87,6 +89,28 @@ def create_processor(
         click.echo(json.dumps(data, indent=2, default=str))
     else:
         click.echo(f"Created processor: {data.get('id')} — {data.get('name')}")
+
+
+@processors.command("get")
+@click.argument("processor_id")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def get_processor(processor_id: str, output_format: str):
+    """Get a registered processor by ID"""
+    data = api_client.get(f"{BASE}/processors/{processor_id}/")
+    if output_format == "json":
+        click.echo(json.dumps(data, indent=2, default=str))
+    else:
+        click.echo(f"ID: {data.get('id')}")
+        click.echo(f"Name: {data.get('name')}")
+        click.echo(f"Legal Name: {data.get('legal_name', '')}")
+        click.echo(f"Country: {data.get('country_code', '')}")
+        click.echo(f"Website: {data.get('website', '')}")
 
 
 @processors.command("delete")
@@ -199,12 +223,12 @@ def delete_agreement(agreement_id: str):
     click.echo(f"Deleted agreement: {agreement_id}")
 
 
-# ── Asset–Processor Link commands ───────────────────────────────────────────
+# ── Asset-Processor Link commands ───────────────────────────────────────────
 
 
 @processor_agreements.group("links")
 def links():
-    """Manage asset–processor links"""
+    """Manage asset-processor links"""
 
 
 @links.command("list")
@@ -218,7 +242,7 @@ def links():
     help="Output format",
 )
 def list_links(page: int, page_size: int, output_format: str):
-    """List asset–processor links"""
+    """List asset-processor links"""
     data = api_client.get(
         f"{BASE}/asset-processor-links/", params={"page": page, "page_size": page_size}
     )
@@ -266,6 +290,6 @@ def create_link(asset_id: str, processor_id: str, output_format: str):
 @click.argument("link_id")
 @click.confirmation_option(prompt="Are you sure you want to delete this link?")
 def delete_link(link_id: str):
-    """Delete an asset–processor link"""
+    """Delete an asset-processor link"""
     api_client.delete(f"{BASE}/asset-processor-links/{link_id}/")
     click.echo(f"Deleted link: {link_id}")

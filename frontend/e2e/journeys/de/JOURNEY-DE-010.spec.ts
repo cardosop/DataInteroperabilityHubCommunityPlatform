@@ -14,7 +14,12 @@ import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
-  test.setTimeout(90000);
+  // 240s: by tail-of-batch test runs the auth rate-limit budget is exhausted and
+  // loginAndNavigateToRoute's login path retries with backoff (~45s overhead) on
+  // top of its own 90-120s navigation timeout. 90s was too tight — the budget
+  // expired mid-poll and surfaced as "Test timeout ... Target page, context or
+  // browser has been closed" inside waitForAppMainReady (helpers.ts).
+  test.setTimeout(240000);
 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {

@@ -22,14 +22,20 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
       const testUser = await getTenantAdminUserOrTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps/upload', { timeout: 60000 });
       expect(page.url()).not.toContain('/login');
-      expect(page.url()).toContain('/odps/upload');
+      // Phase 211.A6 — backward-compat redirect: /odps/upload is
+      // consolidated into the contracts-create flow.
+      expect(page.url()).toContain('/contracts/create');
     });
 
     test('ODPS list loads', async ({ page }) => {
       const testUser = await getTenantAdminUserOrTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps', { timeout: 60000 });
       expect(page.url()).not.toContain('/login');
-      expect(page.url()).toContain('/odps');
+      // Phase 211.A6 — /odps redirects to /contracts with the ODPS
+      // spec_type preserved (the spec_type proves the redirect carried
+      // the ODPS context, not a generic contracts landing).
+      expect(page.url()).toContain('/contracts');
+      expect(page.url()).toContain('spec_type=ODPS');
     });
   });
 
@@ -60,10 +66,12 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
       const testUser = await getTenantAdminUserOrTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps/upload', { timeout: 60000 });
       expect(page.url()).not.toContain('/login');
-      expect(page.url()).toContain('/odps/upload');
+      // Phase 211.A6 — see the Success tests above for the redirect contract.
+      expect(page.url()).toContain('/contracts/create');
       await loginAndNavigateToRoute(page, testUser, '/odps', { timeout: 60000 });
       expect(page.url()).not.toContain('/login');
-      expect(page.url()).toContain('/odps');
+      expect(page.url()).toContain('/contracts');
+      expect(page.url()).toContain('spec_type=ODPS');
     });
   });
 });

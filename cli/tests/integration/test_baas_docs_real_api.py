@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -24,27 +26,15 @@ import os
 import subprocess
 
 import pytest
-import requests
 from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestBaaSDocsIntegration:
@@ -154,8 +144,8 @@ print(api_key_value)
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) > 20:  # API keys are typically long
                         return line
         except Exception as e:
@@ -164,7 +154,7 @@ print(api_key_value)
         return None
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_command_group_exists(self):
@@ -176,7 +166,7 @@ print(api_key_value)
         assert "Developer portal documentation commands" in result.output
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_show_default_format(self):
@@ -195,7 +185,7 @@ print(api_key_value)
         assert "OpenAPI" in result.output or "openapi" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_show_json_format(self):
@@ -222,7 +212,7 @@ print(api_key_value)
         assert "sdks" in output_data["endpoints"]
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_show_html_format(self):
@@ -241,7 +231,7 @@ print(api_key_value)
         assert "OpenAPI" in result.output or "openapi" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_show_markdown_format(self):
@@ -261,7 +251,7 @@ print(api_key_value)
         assert "##" in result.output  # Sub-headers
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_openapi_json_format(self):
@@ -284,7 +274,7 @@ print(api_key_value)
         assert output_data["openapi"].startswith("3.")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_openapi_default_format(self):
@@ -305,7 +295,7 @@ print(api_key_value)
         assert "paths" in output_data
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_openapi_yaml_format(self):
@@ -329,7 +319,7 @@ print(api_key_value)
             assert "PyYAML" in result.output or "yaml" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_sdks_default_format(self):
@@ -348,7 +338,7 @@ print(api_key_value)
         assert "JavaScript" in result.output or "javascript" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_sdks_table_format(self):
@@ -367,7 +357,7 @@ print(api_key_value)
         assert "JavaScript" in result.output or "javascript" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_sdks_json_format(self):
@@ -395,7 +385,7 @@ print(api_key_value)
         assert "install_command" in sdk_info
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_show_invalid_format(self):
@@ -407,7 +397,7 @@ print(api_key_value)
         assert "Invalid value" in result.output or "invalid choice" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_openapi_invalid_format(self):
@@ -419,7 +409,7 @@ print(api_key_value)
         assert "Invalid value" in result.output or "invalid choice" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
     def test_docs_sdks_invalid_format(self):

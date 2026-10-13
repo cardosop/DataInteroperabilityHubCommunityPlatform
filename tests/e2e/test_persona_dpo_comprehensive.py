@@ -1380,9 +1380,10 @@ class TestJOURNEYDPO018EditDatasetLink(E2ETestBase):
             )
             self.complete_file_upload(file_id, test_content=test_content)
             dataset_id = self.create_dataset(file_id, asset_id)
-            return dataset_id
         except Exception as exc:
             self.skipTest(f"Dataset creation failed: {exc}")
+        else:
+            return dataset_id
 
     def test_edit_dataset_link_to_asset_success(self):
         """PATCH /datasets/{id}/ with asset_id → 200."""

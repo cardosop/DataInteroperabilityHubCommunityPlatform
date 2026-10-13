@@ -200,8 +200,6 @@ class AlertingHappyPathE2E(TestCase):
     def test_rule_does_not_trigger_when_condition_not_met(self):
         """Rule whose threshold the current metric does NOT cross should
         not fire — no HTTP call, no audit event."""
-        from hub.apps.audit.event_types import DQ_ALERT_DELIVERED
-        from hub.apps.audit.models import AuditEvent
         from hub.apps.dq.alerting import DQAlertingService
         from hub.apps.dq.models import DQAlertingRule, DQAnomalySeverity
 
@@ -255,6 +253,7 @@ class AlertingHappyPathE2E(TestCase):
         from datetime import timedelta
 
         from django.utils import timezone
+
         from hub.apps.dq.alerting import DQAlertingService
         from hub.apps.dq.models import DQAlertingRule
 
@@ -282,7 +281,8 @@ class AlertingHappyPathE2E(TestCase):
         )
         DQAlertingService.evaluate_rules(self.dq_run)
         self.assertEqual(
-            len(responses.calls), 2,
+            len(responses.calls),
+            2,
             f"Expected 2 HTTP calls after dedup expiry, got {len(responses.calls)}",
         )
 
@@ -290,10 +290,10 @@ class AlertingHappyPathE2E(TestCase):
     def test_webhook_500_triggers_retry_handling(self):
         """When webhook returns 500, dispatcher handles it gracefully
         (no unhandled exception)."""
-        from hub.apps.dq.alerting import DQAlertingService
         from hub.apps.core.resilience.circuit_breaker import (
             reset_circuit_breaker_by_name,
         )
+        from hub.apps.dq.alerting import DQAlertingService
 
         # Ensure circuit breaker is not open from other tests
         reset_circuit_breaker_by_name("dq_alert_webhook")

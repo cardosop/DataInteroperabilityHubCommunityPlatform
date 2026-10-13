@@ -79,7 +79,7 @@ def generate_report(relationships: dict[str, list[dict]]):
     cross_app_relationships = 0
     by_type = defaultdict(int)
 
-    for app_name, rels in relationships.items():
+    for _app_name, rels in relationships.items():
         for rel in rels:
             total_relationships += 1
             by_type[rel["field_type"]] += 1
@@ -138,7 +138,7 @@ def generate_report(relationships: dict[str, list[dict]]):
     print()
 
     cross_app_rels = []
-    for app_name, rels in relationships.items():
+    for _app_name, rels in relationships.items():
         for rel in rels:
             if rel["is_cross_app"]:
                 cross_app_rels.append(rel)

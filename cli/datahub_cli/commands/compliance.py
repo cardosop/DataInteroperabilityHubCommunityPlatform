@@ -89,7 +89,7 @@ def run_compliance_check(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to run compliance check: {e}")
+        raise click.ClickException(f"Failed to run compliance check: {e}") from e
 
 
 @compliance.command("get")
@@ -149,7 +149,7 @@ def get_compliance_run(compliance_run_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get compliance run: {e}")
+        raise click.ClickException(f"Failed to get compliance run: {e}") from e
 
 
 @compliance.command("list")
@@ -209,7 +209,7 @@ def list_compliance_runs(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list compliance runs: {e}")
+        raise click.ClickException(f"Failed to list compliance runs: {e}") from e
 
 
 @compliance.command("report")
@@ -291,7 +291,7 @@ def generate_compliance_report(asset_id: str | None, regulation: str, output_for
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to generate compliance report: {e}")
+        raise click.ClickException(f"Failed to generate compliance report: {e}") from e
 
 
 # ── 118E.8: scan-async, scan-result, regulations ────────
@@ -330,7 +330,7 @@ def scan_async(file_id, regulations, output_format):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to submit scan: {e}")
+        raise click.ClickException(f"Failed to submit scan: {e}") from e
 
 
 @compliance.command("scan-result")
@@ -358,7 +358,7 @@ def scan_result(job_id, output_format):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get scan result: {e}")
+        raise click.ClickException(f"Failed to get scan result: {e}") from e
 
 
 @compliance.group("regulations")
@@ -403,7 +403,7 @@ def list_regulations(output_format):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list regulations: {e}")
+        raise click.ClickException(f"Failed to list regulations: {e}") from e
 
 
 @regulations_group.command("get")
@@ -429,4 +429,4 @@ def get_regulation(key, output_format):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get regulation: {e}")
+        raise click.ClickException(f"Failed to get regulation: {e}") from e

@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 'db_table': 'external_resource_references',
                 'ordering': ['created_at'],
                 'indexes': [models.Index(fields=['asset', 'resource_id'], name='external_re_asset_i_394b67_idx'), models.Index(fields=['connection_id'], name='external_re_connect_658633_idx')],
-                'constraints': [models.UniqueConstraint(fields=('asset', 'resource_id'), name='unique_external_resource_per_asset')],
+                'constraints': [models.UniqueConstraint(fields=['asset', 'resource_id'], name='unique_external_resource_per_asset')],
             },
         ),
     ]

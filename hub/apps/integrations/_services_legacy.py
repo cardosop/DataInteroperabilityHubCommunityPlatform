@@ -7,6 +7,7 @@ CRUD operations and connection testing with distributed tracing, audit logging,
 and event publishing.
 """
 
+import contextlib
 from typing import TYPE_CHECKING, Any, Optional
 
 import structlog
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
     from hub.apps.assets.models import Asset
     from hub.apps.contracts.models import Contract
+    from hub.apps.datasets.models import Dataset
+    from hub.apps.orchestration.models import WorkflowInstance, WorkflowStep
     from hub.apps.tenants.models import Tenant
 
     User = get_user_model()
@@ -145,19 +148,19 @@ class MarketplaceIntegrationService(
         User = get_user_model()
         span = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(
-                "marketplace_integration.create_connection",
-                attributes={
-                    "tenant_id": tenant_id,
-                    "user_id": user_id,
-                    "marketplace_type": marketplace_type,
-                    "connection_name": name,
-                },
-            )
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(
+            "marketplace_integration.create_connection",
+            attributes={
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "marketplace_type": marketplace_type,
+                "connection_name": name,
+            },
+        )
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceConnection:
             # Validate marketplace type
             valid_types = [mt.value for mt in MarketplaceType]
             if marketplace_type not in valid_types:
@@ -170,12 +173,12 @@ class MarketplaceIntegrationService(
             try:
                 tenant_obj = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                raise NotFoundError(f"Tenant with id {tenant_id} not found")
+                raise NotFoundError(f"Tenant with id {tenant_id} not found") from None
 
             try:
                 user_obj = User.objects.get(id=user_id)
             except User.DoesNotExist:
-                raise NotFoundError(f"User with id {user_id} not found")
+                raise NotFoundError(f"User with id {user_id} not found") from None
 
             # Validate via MarketplaceIntegrationBusinessRules before mutation
             payload_connection = MarketplaceConnection(
@@ -234,7 +237,7 @@ class MarketplaceIntegrationService(
                             raise ValidationError(
                                 f"Connection config '{key}' targets a private/reserved address: {ssrf_exc}",
                                 code="SSRF_VIOLATION",
-                            )
+                            ) from ssrf_exc
 
             # Create connection (nested atomic block acts as savepoint)
             try:
@@ -250,13 +253,13 @@ class MarketplaceIntegrationService(
                 raise ConflictError(
                     f"Connection with name '{name}' already exists for tenant {tenant_id}",
                     details={"name": name, "tenant_id": tenant_id},
-                )
+                ) from None
             except DjangoValidationError as e:
                 if "already exists" in str(e):
                     raise ConflictError(
                         f"Connection with name '{name}' already exists for tenant {tenant_id}",
                         details={"name": name, "tenant_id": tenant_id},
-                    )
+                    ) from None
                 raise
 
             # Record metrics
@@ -380,6 +383,8 @@ class MarketplaceIntegrationService(
 
             return connection
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             # Re-raise service errors
             if span:
@@ -406,6 +411,8 @@ class MarketplaceIntegrationService(
             raise ValidationError(
                 f"Failed to create marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -464,18 +471,18 @@ class MarketplaceIntegrationService(
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(
-                "marketplace_integration.update_connection",
-                attributes={
-                    "connection_id": connection_id,
-                    "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id,
-                },
-            )
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(
+            "marketplace_integration.update_connection",
+            attributes={
+                "connection_id": connection_id,
+                "tenant_id": effective_tenant_id,
+                "user_id": effective_user_id,
+            },
+        )
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceConnection:
             # Get connection
             connection = self.get_resource_or_raise(
                 MarketplaceConnection, connection_id, tenant_id=effective_tenant_id
@@ -486,23 +493,20 @@ class MarketplaceIntegrationService(
             original_values = {}
 
             # Update name if provided
-            if name is not None:
-                if name != connection.name:
-                    # Check for duplicate name
-                    if (
-                        MarketplaceConnection.objects.filter(
-                            tenant_id=effective_tenant_id, name=name
-                        )
-                        .exclude(id=connection_id)
-                        .exists()
-                    ):
-                        raise ConflictError(
-                            f"Connection with name '{name}' already exists for tenant {effective_tenant_id}",
-                            details={"name": name, "tenant_id": effective_tenant_id},
-                        )
-                    original_values["name"] = connection.name
-                    connection.name = name
-                    changes["name"] = name
+            if name is not None and name != connection.name:
+                # Check for duplicate name
+                if (
+                    MarketplaceConnection.objects.filter(tenant_id=effective_tenant_id, name=name)
+                    .exclude(id=connection_id)
+                    .exists()
+                ):
+                    raise ConflictError(
+                        f"Connection with name '{name}' already exists for tenant {effective_tenant_id}",
+                        details={"name": name, "tenant_id": effective_tenant_id},
+                    )
+                original_values["name"] = connection.name
+                connection.name = name
+                changes["name"] = name
 
             # Update config if provided
             if config is not None:
@@ -647,6 +651,8 @@ class MarketplaceIntegrationService(
 
             return connection
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             # Re-raise service errors
             if span:
@@ -672,6 +678,8 @@ class MarketplaceIntegrationService(
             raise ValidationError(
                 f"Failed to update marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -918,7 +926,7 @@ class MarketplaceIntegrationService(
                 try:
                     Tenant.objects.get(id=effective_tenant_id)
                 except Tenant.DoesNotExist:
-                    raise NotFoundError(f"Tenant with id {effective_tenant_id} not found")
+                    raise NotFoundError(f"Tenant with id {effective_tenant_id} not found") from None
 
             # Build query
             query = MarketplaceConnection.objects.all()
@@ -947,8 +955,6 @@ class MarketplaceIntegrationService(
                 f"Listed {len(connections)} marketplace connections for tenant {effective_tenant_id}"
             )
 
-            return connections
-
         except NotFoundError:
             # Re-raise service errors
             if span:
@@ -968,6 +974,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise
+        else:
+            return connections
         finally:
             if span_context:
                 try:
@@ -1035,8 +1043,6 @@ class MarketplaceIntegrationService(
                 )
                 set_span_status(StatusCode.OK)
 
-            return connection
-
         except NotFoundError as e:
             # Re-raise service errors
             if span:
@@ -1057,6 +1063,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise
+        else:
+            return connection
         finally:
             if span_context:
                 try:
@@ -1297,8 +1305,6 @@ class MarketplaceIntegrationService(
                 f"Tested marketplace connection {connection.id}: {'SUCCESS' if success else 'FAILED'}"
             )
 
-            return result
-
         except (NotFoundError, ValidationError) as e:
             # Re-raise service errors
             if span:
@@ -1322,6 +1328,8 @@ class MarketplaceIntegrationService(
             raise ValidationError(
                 f"Failed to test marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -1386,7 +1394,7 @@ class MarketplaceIntegrationService(
             span_context = create_span(span_name, kind=1)
             span = span_context.__enter__() if span_context else None
 
-            try:
+            def _build() -> MarketplaceSyncJob:
                 # Get connection
                 try:
                     connection = self.get_resource_or_raise(
@@ -1441,11 +1449,11 @@ class MarketplaceIntegrationService(
 
                 # Create and start workflow instance
                 try:
-                    from hub.apps.orchestration.registry import WorkflowRegistry
-                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
                     from hub.apps.marketplace.workflows.marketplace_sync import (
                         MarketplaceSyncWorkflow,
                     )
+                    from hub.apps.orchestration.registry import WorkflowRegistry
+                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
                     # Initialize workflow engine and registry
                     engine = WorkflowEngine()
@@ -1584,6 +1592,8 @@ class MarketplaceIntegrationService(
 
                 return sync_job
 
+            try:
+                result = _build()
             except (ValidationError, NotFoundError) as e:
                 if span:
                     record_span_exception(e)
@@ -1603,6 +1613,8 @@ class MarketplaceIntegrationService(
                     },
                 )
                 raise ServiceError(f"Failed to create sync job: {e}") from e
+            else:
+                return result
         finally:
             if span_context:
                 try:
@@ -1680,7 +1692,7 @@ class MarketplaceIntegrationService(
             span_context = create_span(span_name, kind=1)
             span = span_context.__enter__() if span_context else None
 
-            try:
+            def _build() -> MarketplaceSyncJob:
                 # Get connection
                 try:
                     connection = self.get_resource_or_raise(
@@ -1729,11 +1741,11 @@ class MarketplaceIntegrationService(
 
                 # Create and start workflow instance
                 try:
-                    from hub.apps.orchestration.registry import WorkflowRegistry
-                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
                     from hub.apps.marketplace.workflows.marketplace_sync import (
                         MarketplaceSyncWorkflow,
                     )
+                    from hub.apps.orchestration.registry import WorkflowRegistry
+                    from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
                     # Initialize workflow engine and registry
                     engine = WorkflowEngine()
@@ -1873,6 +1885,8 @@ class MarketplaceIntegrationService(
 
                 return sync_job
 
+            try:
+                result = _build()
             except (ValidationError, NotFoundError) as e:
                 if span:
                     record_span_exception(e)
@@ -1892,6 +1906,8 @@ class MarketplaceIntegrationService(
                     },
                 )
                 raise ServiceError(f"Failed to create sync job: {e}") from e
+            else:
+                return result
         finally:
             if span_context:
                 try:
@@ -1906,7 +1922,7 @@ class MarketplaceIntegrationService(
         self,
         tenant_id: str,
         sync_job_id: str,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Retrieve a marketplace sync job by its ID.
@@ -1963,8 +1979,6 @@ class MarketplaceIntegrationService(
                 )
                 set_span_status(StatusCode.OK)
 
-            return sync_job
-
         except NotFoundError as e:
             if span:
                 record_span_exception(e)
@@ -1983,6 +1997,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to retrieve sync job: {e}") from e
+        else:
+            return sync_job
         finally:
             if span_context:
                 try:
@@ -2001,7 +2017,7 @@ class MarketplaceIntegrationService(
         status: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> list[MarketplaceSyncJob]:
         """
         List marketplace sync jobs for a tenant.
@@ -2032,11 +2048,11 @@ class MarketplaceIntegrationService(
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> list[MarketplaceSyncJob]:
             filters = {"tenant_id": effective_tenant_id}
             if connection_id:
                 filters["connection_id"] = connection_id
@@ -2076,6 +2092,8 @@ class MarketplaceIntegrationService(
 
             return list(sync_jobs)
 
+        try:
+            result = _build()
         except ValidationError as e:
             if span:
                 record_span_exception(e)
@@ -2096,6 +2114,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to list sync jobs: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -2154,11 +2174,11 @@ class MarketplaceIntegrationService(
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceSyncJob:
             # Get sync job
             try:
                 sync_job = self.get_resource_or_raise(
@@ -2206,10 +2226,7 @@ class MarketplaceIntegrationService(
 
                     job_id = sync_job.metadata["job_id"]
                     job = Job.objects.get(id=job_id)
-                    if (
-                        job.status == JobStatus.PENDING.value
-                        or job.status == JobStatus.RUNNING.value
-                    ):
+                    if job.status in (JobStatus.PENDING.value, JobStatus.RUNNING.value):
                         job.status = JobStatus.CANCELLED.value
                         job.save(update_fields=["status", "updated_at"])
                 except Exception as e:
@@ -2280,6 +2297,8 @@ class MarketplaceIntegrationService(
 
             return sync_job
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError) as e:
             if span:
                 record_span_exception(e)
@@ -2299,6 +2318,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to cancel sync job: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -2361,11 +2382,11 @@ class MarketplaceIntegrationService(
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceMapping:
             # Get connection
             try:
                 connection = self.get_resource_or_raise(
@@ -2496,6 +2517,8 @@ class MarketplaceIntegrationService(
 
             return mapping
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             if span:
                 record_span_exception(e)
@@ -2516,6 +2539,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to create mapping: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -2534,7 +2559,7 @@ class MarketplaceIntegrationService(
         sync_job: MarketplaceSyncJob | None = None,
         tenant_id: str | None = None,
         user_id: str | None = None,
-        request: Any | None = None,
+        _request: Any | None = None,
         skip_resource_downloads: bool = False,
         skip_semantic_mapping: bool = False,
         data_strategy: str = "METADATA_ONLY",
@@ -2602,7 +2627,6 @@ class MarketplaceIntegrationService(
             record_span_exception,
             set_span_status,
         )
-        from hub.apps.semantic.utils import map_asset_to_semantic, map_contract_to_semantic
         from hub.apps.tenants.models import Tenant
 
         User = get_user_model()
@@ -2624,10 +2648,11 @@ class MarketplaceIntegrationService(
                 details={"data_strategy": data_strategy},
             )
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
+
+        def _build() -> Any:
 
             # Get tenant and user
             tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
@@ -2867,21 +2892,28 @@ class MarketplaceIntegrationService(
                     )
 
                     def map_asset_semantic():
-                        """Map asset to semantic layer."""
+                        """Map asset to semantic layer (commercial hook; the
+                        semantic app registers the dispatcher — mapping is
+                        non-critical and degrades to None in core-only mode)."""
+                        from hub.apps.core.commercial_hooks import map_via_semantic
+
                         try:
-                            return map_asset_to_semantic(asset, tenant=tenant_obj)
+                            return map_via_semantic("asset", asset=asset, tenant=tenant_obj)
                         except Exception as e:
                             logger.warning(f"Asset semantic mapping failed: {e}", exc_info=True)
                             return None
 
                     def map_odps_semantic():
-                        """Map ODPS contract to semantic layer."""
+                        """Map ODPS contract to semantic layer (commercial hook;
+                        degrades to None in core-only mode)."""
                         if not odps_contract:
                             return None
-                        try:
-                            from hub.apps.semantic.utils import map_odps_to_semantic
+                        from hub.apps.core.commercial_hooks import map_via_semantic
 
-                            return map_odps_to_semantic(odps_contract, tenant=tenant_obj)
+                        try:
+                            return map_via_semantic(
+                                "odps", contract=odps_contract, tenant=tenant_obj
+                            )
                         except Exception as odps_semantic_error:
                             # Fallback to standard contract mapping if ODPS-specific fails
                             logger.warning(
@@ -2889,7 +2921,9 @@ class MarketplaceIntegrationService(
                                 exc_info=True,
                             )
                             try:
-                                return map_contract_to_semantic(odps_contract, tenant=tenant_obj)
+                                return map_via_semantic(
+                                    "contract", contract=odps_contract, tenant=tenant_obj
+                                )
                             except Exception as e:
                                 logger.warning(
                                     f"ODPS contract semantic mapping failed: {e}", exc_info=True
@@ -2897,11 +2931,16 @@ class MarketplaceIntegrationService(
                                 return None
 
                     def map_odcs_semantic():
-                        """Map ODCS contract to semantic layer."""
+                        """Map ODCS contract to semantic layer (commercial hook;
+                        degrades to None in core-only mode)."""
                         if not odcs_contract:
                             return None
+                        from hub.apps.core.commercial_hooks import map_via_semantic
+
                         try:
-                            return map_contract_to_semantic(odcs_contract, tenant=tenant_obj)
+                            return map_via_semantic(
+                                "contract", contract=odcs_contract, tenant=tenant_obj
+                            )
                         except Exception as e:
                             logger.warning(
                                 f"ODCS contract semantic mapping failed: {e}", exc_info=True
@@ -3101,19 +3140,20 @@ class MarketplaceIntegrationService(
                             # Cleanup temp file
                             try:
                                 os.remove(downloaded_path)
-                            except Exception as e:
+                            except OSError as e:
                                 logger.debug(
                                     "integrations_non_critical_failed",
                                     extra={"error_type": type(e).__name__, "error": str(e)},
                                 )
 
-                            return {"file": file_obj, "dataset": dataset}
                         except Exception as e:
                             logger.warning(
                                 f"Failed to download and process resource {resource.resource_id}: {e}",
                                 exc_info=True,
                             )
                             return None
+                        else:
+                            return {"file": file_obj, "dataset": dataset}
 
                     # Execute downloads in parallel for performance
                     # Note: In test environments, use sequential execution to avoid transaction isolation issues
@@ -3264,6 +3304,8 @@ class MarketplaceIntegrationService(
 
             return asset
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError) as e:
             if span:
                 record_span_exception(e)
@@ -3284,6 +3326,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to create federated asset with contracts: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -4160,7 +4204,7 @@ class MarketplaceIntegrationService(
         self,
         mapping_id: str,
         tenant_id: str | None = None,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Retrieve a marketplace mapping by its ID.
@@ -4216,8 +4260,6 @@ class MarketplaceIntegrationService(
                 )
                 set_span_status(StatusCode.OK)
 
-            return mapping
-
         except NotFoundError as e:
             if span:
                 record_span_exception(e)
@@ -4236,6 +4278,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to retrieve mapping: {e}") from e
+        else:
+            return mapping
         finally:
             if span_context:
                 try:
@@ -4253,7 +4297,7 @@ class MarketplaceIntegrationService(
         hub_asset_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Any | None = None,
+        _request: Any | None = None,
     ) -> list[MarketplaceMapping]:
         """
         List marketplace mappings for a tenant.
@@ -4300,7 +4344,7 @@ class MarketplaceIntegrationService(
                     raise ValidationError(
                         f"Invalid connection_id format: {connection_id}",
                         details={"connection_id": connection_id},
-                    )
+                    ) from None
             if hub_asset_id:
                 try:
                     # Validate hub_asset_id is valid UUID
@@ -4312,7 +4356,7 @@ class MarketplaceIntegrationService(
                     raise ValidationError(
                         f"Invalid hub_asset_id format: {hub_asset_id}",
                         details={"hub_asset_id": hub_asset_id},
-                    )
+                    ) from None
 
             mappings = MarketplaceMapping.objects.filter(**filters)[offset : offset + limit]
 
@@ -4409,11 +4453,11 @@ class MarketplaceIntegrationService(
         span = None
         span_context = None
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create span for distributed tracing
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
+        def _build() -> MarketplaceMapping:
             # Get mapping
             try:
                 mapping = self.get_resource_or_raise(
@@ -4556,6 +4600,8 @@ class MarketplaceIntegrationService(
 
             return mapping
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError) as e:
             if span:
                 record_span_exception(e)
@@ -4575,6 +4621,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to update mapping: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -5019,14 +5067,14 @@ class MarketplaceIntegrationService(
         span_context = None
         span = None
 
-        try:
-            # Create distributed tracing span
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
+        # Create distributed tracing span
+        span_context = create_span(span_name, kind=1)
+        span = span_context.__enter__() if span_context else None
 
-            effective_tenant_id = tenant_id or self.tenant_id
-            effective_user_id = user_id or self.user_id
+        effective_tenant_id = tenant_id or self.tenant_id
+        effective_user_id = user_id or self.user_id
 
+        def _build() -> ScheduledMarketplaceSync:
             if span:
                 add_span_attributes(
                     {
@@ -5080,7 +5128,7 @@ class MarketplaceIntegrationService(
                     )
                 # Validate cron expression
                 try:
-                    from croniter import croniter
+                    from croniter import croniter  # type: ignore[import-untyped]
 
                     croniter(schedule_config["cron"])
                 except Exception as e:
@@ -5181,6 +5229,8 @@ class MarketplaceIntegrationService(
 
             return scheduled_sync
 
+        try:
+            result = _build()
         except (ValidationError, NotFoundError, ConflictError) as e:
             if span:
                 record_span_exception(e)
@@ -5200,6 +5250,8 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ServiceError(f"Failed to create scheduled sync: {e}") from e
+        else:
+            return result
         finally:
             if span_context:
                 try:
@@ -5293,10 +5345,8 @@ class MarketplaceIntegrationService(
                 tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
                 user_obj = None
                 if self.user_id:
-                    try:
+                    with contextlib.suppress(NotFoundError):  # User might not exist
                         user_obj = self.get_resource_or_raise(User, self.user_id)
-                    except NotFoundError:
-                        pass  # User might not exist
 
                 create_audit_event(
                     resource_type="SCHEDULED_MARKETPLACE_SYNC",

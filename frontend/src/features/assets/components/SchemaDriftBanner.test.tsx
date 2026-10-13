@@ -7,7 +7,7 @@
  * a11y attributes (`role="alert"`, `aria-live`, `aria-label`,
  * `<th scope="col">`, `<caption>`).
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { SchemaDriftBanner } from './SchemaDriftBanner';
@@ -110,7 +110,9 @@ describe('SchemaDriftBanner', () => {
     headers.forEach((h) => {
       expect(h.getAttribute('scope')).toBe('col');
     });
-    // The compatible-yes copy renders for safe widening.
-    expect(screen.getByText(/safe widening/i)).toBeInTheDocument();
+    // The compatible-yes copy renders for safe widening (the caption
+    // paragraph repeats the phrase — scope to the table cell).
+    const table = screen.getByRole('table');
+    expect(within(table).getByText(/safe widening/i)).toBeInTheDocument();
   });
 });

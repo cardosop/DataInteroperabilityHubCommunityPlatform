@@ -38,9 +38,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (ValueError, redis.RedisError):
         return None
+    else:
+        return client
 
 
 def redis_available():
@@ -182,6 +183,32 @@ class TestCircuitBreakerBase(TestCase):
         self.assertEqual(result, "success")
         self.assertEqual(self.circuit_breaker.get_state(), CircuitBreakerState.HALF_OPEN)
 
+    def test_open_state_without_opened_at_still_recovers(self):
+        """Phase U.6 regression (staging smoke): the opened_at key carries
+        a TTL (timeout_seconds*2) while the OPEN state key never expires —
+        once opened_at was evicted, _should_attempt_half_open() returned
+        False FOREVER and the breaker stayed permanently OPEN with no
+        recovery path. An OPEN state with no opened_at must attempt the
+        half-open probe."""
+
+        def failing_func():
+            raise RuntimeError("Service error")
+
+        # Open the circuit, then simulate the expired opened_at key
+        # (Redis eviction after timeout_seconds*2).
+        for _i in range(5):
+            with contextlib.suppress(RuntimeError):
+                self.circuit_breaker.call(failing_func)
+        assert self.circuit_breaker.get_state() == CircuitBreakerState.OPEN
+        self.circuit_breaker._clear_opened_at()
+
+        def successful_func():
+            return "recovered"
+
+        result = self.circuit_breaker.call(successful_func)
+        assert result == "recovered"
+        assert self.circuit_breaker.get_state() == CircuitBreakerState.HALF_OPEN
+
     def test_state_transition_half_open_to_closed_on_success(self):
         """Test state transition from HALF_OPEN to CLOSED after success threshold."""
 
@@ -266,7 +293,7 @@ class TestRedisBackedState(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_state_persistence_across_instances(self):
@@ -445,7 +472,7 @@ class TestCircuitBreakerDecorator(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_decorator_successful_call(self):
@@ -617,7 +644,7 @@ class TestCircuitBreakerIntegration(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def test_complete_cycle_closed_open_half_open_closed(self):

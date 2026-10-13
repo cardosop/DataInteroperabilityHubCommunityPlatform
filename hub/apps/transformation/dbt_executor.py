@@ -19,9 +19,8 @@ import re
 import shutil
 import stat
 import subprocess
-from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 import yaml
@@ -29,10 +28,34 @@ import yaml
 from .credential_resolver import resolve_warehouse_credentials
 from .exceptions import TransformationExecutionError
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+from .execution_targets import ExecutionTarget, resolve_execution_target
+
 logger = structlog.get_logger(__name__)
 
 # Default location for tmpfs-backed work directories.
 _DEFAULT_WORK_DIR_ROOT = "/tmp"
+
+
+def _default_databricks_profile_resolver(**kwargs):
+    """The default warehouse-direct profile resolver — refuses until the
+    estate credential resolution wires a real one (the 11.3 functions
+    bind at the orchestration layer; this symbol is the 0.8 factory
+    seam tests redirect)."""
+    raise TransformationExecutionError(
+        f"No Databricks profile resolver is wired for the warehouse-direct "
+        f"target (profile_name={kwargs.get('profile_name')!r}) — the estate "
+        "credential resolution must bind "
+        "_resolve_databricks_warehouse_profile",
+        error_code="DATABRICKS_DBT_PROFILE_RESOLVER_UNAVAILABLE",
+    )
+
+
+# The sanctioned seam (the 0.8 ``_build_probe_client`` convention): the
+# production wiring binds this to the 11.3 estate resolution (workspace
+# or connection path); tests redirect it to a local resolver.
+_resolve_databricks_warehouse_profile = _default_databricks_profile_resolver
 
 
 class DbtExecutor:
@@ -52,12 +75,26 @@ class DbtExecutor:
         warehouse_credential_ref: str,
         git_credential_ref: str,
         work_dir_root: str = _DEFAULT_WORK_DIR_ROOT,
+        execution_target: str | None = None,
+        tenant_id: str | None = None,
+        workspace_id: str | None = None,
+        runner_job_id: str | None = None,
     ):
         self.run_id = self._sanitize_path_component(run_id)
         self.tenant_slug = self._sanitize_path_component(tenant_slug)
         self.pipeline_id = self._sanitize_path_component(pipeline_id)
         self.warehouse_credential_ref = warehouse_credential_ref
         self.git_credential_ref = git_credential_ref
+
+        # The D1 config branch: `local` stays the unchanged default; the
+        # Databricks targets switch ONLY the execution target (D3/D6).
+        self.execution_target = resolve_execution_target(execution_target)
+        # The dbt-as-job dispatch context (only required when the target
+        # is DATABRICKS_JOB — refused otherwise, never a silent local
+        # fallback).
+        self.tenant_id = tenant_id
+        self.workspace_id = workspace_id
+        self.runner_job_id = runner_job_id
 
         # Profile name per Step 1.2 convention.
         self.profile_name = f"meshant_{self.tenant_slug}_{self.pipeline_id}"
@@ -83,11 +120,21 @@ class DbtExecutor:
         Returns:
             Dict with ``results`` (per-model dicts), ``elapsed_total``,
             ``error_logs``, and ``span_attributes`` (Prefect-span-compatible).
+            The Databricks-job target returns the dispatch result under
+            ``job_dispatch`` instead of locally-parsed results.
         """
+        if self.execution_target is ExecutionTarget.DATABRICKS_JOB:
+            return self._dispatch_as_job(
+                action="run", project_path=project_path, models=models, target=target
+            )
         return self._execute("run", project_path, models=models, target=target)
 
     def dbt_test(self, project_path: str, target: str = "prod") -> dict[str, Any]:
         """Run dbt tests on the project."""
+        if self.execution_target is ExecutionTarget.DATABRICKS_JOB:
+            return self._dispatch_as_job(
+                action="test", project_path=project_path, models=None, target=target
+            )
         return self._execute("test", project_path, target=target)
 
     def dbt_docs_generate(self, project_path: str, target: str = "prod") -> dict[str, Any]:
@@ -104,6 +151,58 @@ class DbtExecutor:
         return self._execute("deps", project_path, target=target)
 
     # ── Internal: execution pipeline ──────────────────────────────────
+
+    def _dispatch_as_job(
+        self,
+        *,
+        action: str,
+        project_path: str,
+        models: list[str] | None,
+        target: str,
+    ) -> dict[str, Any]:
+        """The DATABRICKS_JOB branch (D1): NO local dbt subprocess, NO
+        profiles.yml — the run rides the registered dispatcher facade
+        with the exact run context. A missing dispatch context refuses
+        with the classified code (never a silent local fallback)."""
+        if not (self.tenant_id and self.workspace_id and self.runner_job_id):
+            raise TransformationExecutionError(
+                "The Databricks job execution target requires tenant_id, "
+                "workspace_id, and runner_job_id on the executor",
+                error_code="DATABRICKS_DBT_RUNNER_JOB_MISSING",
+            )
+        from hub.apps.transformation.execution_targets import (
+            dispatch_dbt_as_databricks_job,
+        )
+
+        logger.info(
+            "dbt_job_dispatch_starting",
+            action=action,
+            run_id=self.run_id,
+            project_path=project_path,
+            workspace_id=self.workspace_id,
+            runner_job_id=self.runner_job_id,
+        )
+        dispatch = dispatch_dbt_as_databricks_job(
+            tenant_id=self.tenant_id,
+            workspace_id=self.workspace_id,
+            runner_job_id=self.runner_job_id,
+            select=models,
+            target=target,
+        )
+        logger.info(
+            "dbt_job_dispatch_completed",
+            action=action,
+            run_id=self.run_id,
+            job_id=dispatch.get("job_id"),
+            status=dispatch.get("status"),
+        )
+        return {
+            "results": [],
+            "elapsed_total": None,
+            "error_logs": [],
+            "span_attributes": self._build_span_attributes([], None),
+            "job_dispatch": dispatch,
+        }
 
     def _execute(
         self,
@@ -172,10 +271,15 @@ class DbtExecutor:
         """Resolve warehouse credentials and write profiles.yml to the
         tmpfs work directory.  Sets ``DBT_PROFILES_DIR`` so the dbt CLI
         discovers it."""
-        profile = resolve_warehouse_credentials(
-            self.warehouse_credential_ref,
-            profile_name=self.profile_name,
-        )
+        if self.execution_target is ExecutionTarget.DATABRICKS_WAREHOUSE:
+            # D3 — the profile OUTPUT swaps to the dbt-databricks adapter
+            # shape; the tmpfs discipline below is unchanged.
+            profile = _resolve_databricks_warehouse_profile(profile_name=self.profile_name)
+        else:
+            profile = resolve_warehouse_credentials(
+                self.warehouse_credential_ref,
+                profile_name=self.profile_name,
+            )
 
         os.makedirs(self.work_dir, exist_ok=True)
         profile_path = os.path.join(self.work_dir, "profiles.yml")
@@ -234,7 +338,7 @@ class DbtExecutor:
             raise TransformationExecutionError(
                 "GitPython is required for dbt project cloning. "
                 "Install it with: pip install GitPython"
-            )
+            ) from None
 
         # Resolve git credentials (SSH key or HTTPS token).
         git_creds = None
@@ -355,7 +459,7 @@ class DbtExecutor:
                 timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
-            logger.error(
+            logger.exception(
                 "dbt_command_timeout",
                 action=cmd[1] if len(cmd) > 1 else cmd[0],
                 run_id=self.run_id,
@@ -367,7 +471,7 @@ class DbtExecutor:
         except FileNotFoundError:
             raise TransformationExecutionError(
                 "dbt executable not found. Ensure dbt Core is installed and available on PATH."
-            )
+            ) from None
 
         if result.returncode != 0:
             stderr_tail = result.stderr[-2000:] if result.stderr else ""

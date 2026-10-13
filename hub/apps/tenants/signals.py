@@ -10,7 +10,7 @@ import os
 import sys
 import threading
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
@@ -26,7 +26,7 @@ _thread_local = threading.local()
 
 
 @receiver(post_save, sender=TenantPlan)
-def invalidate_public_pricing_cache_on_plan_save(sender, instance, **kwargs):
+def invalidate_public_pricing_cache_on_plan_save(sender, instance, **_kwargs):
     """Invalidate ``public_pricing:v1`` when a TenantPlan is saved."""
     from django.core.cache import cache
 
@@ -34,7 +34,7 @@ def invalidate_public_pricing_cache_on_plan_save(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender=TierProfile)
-def invalidate_public_pricing_cache_on_tier_profile_save(sender, instance, **kwargs):
+def invalidate_public_pricing_cache_on_tier_profile_save(sender, instance, **_kwargs):
     """Invalidate ``public_pricing:v1`` when a TierProfile is saved."""
     from django.core.cache import cache
 
@@ -42,7 +42,7 @@ def invalidate_public_pricing_cache_on_tier_profile_save(sender, instance, **kwa
 
 
 @receiver(post_save, sender=Tenant)
-def create_default_roles(sender, instance, created, **kwargs):
+def create_default_roles(sender, instance, created, **_kwargs):
     """
     Create default roles when a new tenant is created.
 
@@ -87,24 +87,37 @@ def create_default_roles(sender, instance, created, **kwargs):
 
     def _create_roles():
         try:
+            # Phase P.9 — Role is tenant-scoped; on_commit runs outside
+            # the request cycle, so scope the write per the RLS contract.
+            from hub.apps.tenants.request_tenant import tenant_context
             from hub.apps.users.models import Role
 
-            default_roles = [
-                {"name": "TENANT_ADMIN", "description": "Full administrative access within tenant"},
-                {"name": "DATA_PROVIDER", "description": "Can create and manage data assets"},
-                {"name": "DATA_CONSUMER", "description": "Can request and access data assets"},
-                {
-                    "name": "AUDITOR",
-                    "description": "Read-only access to compliance/DQ reports and audit logs",
-                },
-            ]
+            with tenant_context(instance.id):
+                default_roles = [
+                    {
+                        "name": "TENANT_ADMIN",
+                        "description": "Full administrative access within tenant",
+                    },
+                    {
+                        "name": "DATA_PROVIDER",
+                        "description": "Can create and manage data assets",
+                    },
+                    {
+                        "name": "DATA_CONSUMER",
+                        "description": "Can request and access data assets",
+                    },
+                    {
+                        "name": "AUDITOR",
+                        "description": "Read-only access to compliance/DQ reports and audit logs",
+                    },
+                ]
 
-            for role_data in default_roles:
-                Role.objects.get_or_create(
-                    tenant=instance,
-                    name=role_data["name"],
-                    defaults={"description": role_data["description"]},
-                )
+                for role_data in default_roles:
+                    Role.objects.get_or_create(
+                        tenant=instance,
+                        name=role_data["name"],
+                        defaults={"description": role_data["description"]},
+                    )
         except Exception:
             logger.exception("default_role_creation_failed")
 
@@ -112,7 +125,7 @@ def create_default_roles(sender, instance, created, **kwargs):
 
 
 @receiver(pre_save, sender=Tenant)
-def _store_kyc_status_before_save(sender, instance, **kwargs):
+def _store_kyc_status_before_save(sender, instance, **_kwargs):
     """Store previous kyc_status for post_save audit (feat1 2.3.2)."""
     if not instance.pk:
         return
@@ -156,12 +169,12 @@ def _store_kyc_status_before_save(sender, instance, **kwargs):
         if not hasattr(_thread_local, "kyc_before_save"):
             _thread_local.kyc_before_save = {}
         _thread_local.kyc_before_save[instance.pk] = old
-    except Exception:
+    except DatabaseError:
         pass
 
 
 @receiver(post_save, sender=Tenant)
-def audit_kyc_status_change(sender, instance, created, **kwargs):
+def audit_kyc_status_change(sender, instance, created, **_kwargs):
     """
     Emit KYC_STATUS_CHANGED audit event when Tenant.kyc_status changes (feat1 2.3.2).
     Catches all code paths (API, admin, service).
@@ -190,11 +203,10 @@ def audit_kyc_status_change(sender, instance, created, **kwargs):
                 "tenant_id": str(instance.id),
             },
         )
-    except Exception as e:
+    except Exception:
         logger.exception(
-            "Failed to create KYC_STATUS_CHANGED audit event for tenant %s: %s",
+            "Failed to create KYC_STATUS_CHANGED audit event for tenant %s",
             instance.pk,
-            e,
             extra={
                 "tenant_id": str(instance.id),
                 "old_kyc": old_kyc,
@@ -214,7 +226,7 @@ _FEDERATED_STATUS_KEY = "federated_status_before_save"
 
 
 @receiver(pre_save, sender=Tenant)
-def _store_status_before_save_for_federated_cascade(sender, instance, **kwargs):
+def _store_status_before_save_for_federated_cascade(sender, instance, **_kwargs):
     """Snapshot ``status`` before save so the post_save handler can
     distinguish a transition INTO ``DELETED`` from a save where
     status was already DELETED. Without this, every save on a
@@ -254,12 +266,14 @@ def _store_status_before_save_for_federated_cascade(sender, instance, **kwargs):
         if not hasattr(_thread_local, _FEDERATED_STATUS_KEY):
             setattr(_thread_local, _FEDERATED_STATUS_KEY, {})
         getattr(_thread_local, _FEDERATED_STATUS_KEY)[instance.pk] = old
-    except Exception:
+    except DatabaseError:
         pass
 
 
 @receiver(post_save, sender=Tenant)
-def tombstone_federated_resources_on_tenant_delete(sender, instance, created, **kwargs):
+def tombstone_federated_resources_on_tenant_delete(
+    sender, instance, created, **_kwargs
+):
     """Phase 250.5.A.5 (D250.16) — federated tombstone cascade.
 
     When a Tenant transitions into ``status="DELETED"``, set
@@ -306,65 +320,75 @@ def tombstone_federated_resources_on_tenant_delete(sender, instance, created, **
         from hub.apps.audit import event_types as _audit_event_types
         from hub.apps.audit.utils import create_audit_event
 
-        now = timezone.now()
-        # Update every consumer-side row in one query. The DB-level
-        # update bypasses the model save() but that's appropriate —
-        # we don't want to fire ExternalResourceReference's own
-        # post_save signals for a cascade event.
-        affected_qs = ExternalResourceReference.objects.filter(
-            source_tenant_id=instance.id,
-            source_tenant_deleted_at__isnull=True,
-        )
-        # Materialise IDs first so audit emission can iterate per row.
-        affected = list(
-            affected_qs.values_list(
-                "id",
-                "asset_id",
-                "asset__tenant_id",
+        # Phase P.9 — consumer-side rows + audit are tenant-scoped; this
+        # signal runs outside the request cycle, so scope per the RLS
+        # contract (the source tenant IS the scope here: the cascade
+        # reads/writes rows the source tenant owns the deletion of).
+        from hub.apps.tenants.request_tenant import tenant_context
+
+        with tenant_context(instance.id):
+            now = timezone.now()
+            # Update every consumer-side row in one query. The DB-level
+            # update bypasses the model save() but that's appropriate —
+            # we don't want to fire ExternalResourceReference's own
+            # post_save signals for a cascade event. W4.3: the queryset
+            # runs on ``all_objects`` — the default manager excludes
+            # consumer-soft-deleted rows and the tombstone must stamp
+            # those too (the two timestamps track independent events).
+            affected_qs = ExternalResourceReference.all_objects.filter(
+                source_tenant_id=instance.id,
+                source_tenant_deleted_at__isnull=True,
             )
-        )
-        if affected:
-            affected_qs.update(source_tenant_deleted_at=now)
+            # Materialise IDs first so audit emission can iterate per row.
+            affected = list(
+                affected_qs.values_list(
+                    "id",
+                    "asset_id",
+                    "asset__tenant_id",
+                )
+            )
+            if affected:
+                affected_qs.update(source_tenant_deleted_at=now)
 
-        from datetime import timedelta as _timedelta
+            from datetime import timedelta as _timedelta
 
-        grace_end = now + _timedelta(
-            days=ExternalResourceReference.TOMBSTONE_GRACE_DAYS,
-        )
-        for ref_id, asset_id, consumer_tenant_id in affected:
-            try:
-                # Resolve consumer tenant for the audit FK; fallback
-                # to None when the consumer tenant lookup misses.
-                consumer_tenant = None
-                with contextlib.suppress(Tenant.DoesNotExist):
-                    consumer_tenant = Tenant.all_objects.get(
-                        id=consumer_tenant_id,
+            grace_end = now + _timedelta(
+                days=ExternalResourceReference.TOMBSTONE_GRACE_DAYS,
+            )
+            for ref_id, asset_id, consumer_tenant_id in affected:
+                try:
+                    # Resolve consumer tenant for the audit FK; fallback
+                    # to None when the consumer tenant lookup misses.
+                    consumer_tenant = None
+                    with contextlib.suppress(Tenant.DoesNotExist):
+                        consumer_tenant = Tenant.all_objects.get(
+                            id=consumer_tenant_id,
+                        )
+                    create_audit_event(
+                        resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
+                        action=_audit_event_types.FEDERATED_SOURCE_TENANT_DELETED,
+                        actor_user=None,  # cascade is system-initiated
+                        tenant=consumer_tenant,
+                        resource_id=str(asset_id),
+                        result="WARNING",
+                        details={
+                            "source_tenant_id": str(instance.id),
+                            "consumer_tenant_id": str(consumer_tenant_id),
+                            "external_resource_reference_id": str(ref_id),
+                            "asset_id": str(asset_id),
+                            "source_tenant_deleted_at": now.isoformat(),
+                            "grace_window_expires_at": grace_end.isoformat(),
+                        },
                     )
-                create_audit_event(
-                    resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
-                    action=_audit_event_types.FEDERATED_SOURCE_TENANT_DELETED,
-                    actor_user=None,  # cascade is system-initiated
-                    tenant=consumer_tenant,
-                    resource_id=str(asset_id),
-                    result="WARNING",
-                    details={
-                        "source_tenant_id": str(instance.id),
-                        "consumer_tenant_id": str(consumer_tenant_id),
-                        "external_resource_reference_id": str(ref_id),
-                        "asset_id": str(asset_id),
-                        "source_tenant_deleted_at": now.isoformat(),
-                        "grace_window_expires_at": grace_end.isoformat(),
-                    },
-                )
-            except Exception as audit_exc:
-                logger.warning(
-                    "federated_source_tenant_deleted_audit_emit_failed",
-                    extra={
-                        "source_tenant_id": str(instance.id),
-                        "external_resource_reference_id": str(ref_id),
-                        "error": str(audit_exc),
-                    },
-                )
+                except Exception as audit_exc:
+                    logger.warning(
+                        "federated_source_tenant_deleted_audit_emit_failed",
+                        extra={
+                            "source_tenant_id": str(instance.id),
+                            "external_resource_reference_id": str(ref_id),
+                            "error": str(audit_exc),
+                        },
+                    )
     except Exception:
         # Best-effort cascade. The tenant save already committed;
         # losing the tombstone update here is recoverable via a
@@ -458,7 +482,7 @@ def _check_and_mark_onboarding_complete(tenant, *, triggered_by: str) -> None:
         )
 
 
-def _onboarding_check_user_role(sender, instance, created, **kwargs):
+def _onboarding_check_user_role(sender, instance, created, **_kwargs):
     """Fire after a UserRole is created/updated; check only on TENANT_ADMIN.
 
     Connected dynamically below (not via @receiver decorator) so
@@ -475,12 +499,14 @@ def _onboarding_check_user_role(sender, instance, created, **kwargs):
     if tenant is None:
         return
     transaction.on_commit(
-        lambda: _check_and_mark_onboarding_complete(tenant, triggered_by="tenant_admin_assigned")
+        lambda: _check_and_mark_onboarding_complete(
+            tenant, triggered_by="tenant_admin_assigned"
+        )
     )
 
 
 @receiver(post_save, sender=Tenant)
-def _onboarding_check_kyc_change(sender, instance, created, **kwargs):
+def _onboarding_check_kyc_change(sender, instance, created, **_kwargs):
     """Fire after a Tenant save; route to the helper if kyc is submitted.
 
     250.6.D audit-pass — the original implementation of this handler
@@ -512,7 +538,9 @@ def _onboarding_check_kyc_change(sender, instance, created, **kwargs):
         # short-circuit to avoid a guaranteed-False helper call.)
         return
     transaction.on_commit(
-        lambda: _check_and_mark_onboarding_complete(instance, triggered_by="kyc_submitted")
+        lambda: _check_and_mark_onboarding_complete(
+            instance, triggered_by="kyc_submitted"
+        )
     )
 
 
@@ -557,11 +585,14 @@ def _register_onboarding_signal_handlers():
         if _in_test:
             raise
 
+
 # ── Phase 285.13 — per-file offboarding audit on hard delete ──────
 
 
-@receiver(pre_delete, sender=Tenant, dispatch_uid="emit_file_purge_audit_on_tenant_delete")
-def _emit_file_purge_audit_on_tenant_delete(sender, instance, **kwargs):
+@receiver(
+    pre_delete, sender=Tenant, dispatch_uid="emit_file_purge_audit_on_tenant_delete"
+)
+def _emit_file_purge_audit_on_tenant_delete(sender, instance, **_kwargs):
     """Emit ``FILE_TENANT_OFFBOARD_PURGE_SCHEDULED`` per file before cascade delete."""
     from hub.apps.audit.event_types import FILE_TENANT_OFFBOARD_PURGE_SCHEDULED
     from hub.apps.audit.utils import create_audit_event
@@ -571,26 +602,31 @@ def _emit_file_purge_audit_on_tenant_delete(sender, instance, **kwargs):
     if tid is None:
         return
     tid_str = str(tid)
-    for f in File.objects.filter(tenant_id=tid):
-        try:
-            create_audit_event(
-                resource_type="FILE",
-                action=FILE_TENANT_OFFBOARD_PURGE_SCHEDULED,
-                actor_user=None,
-                tenant=instance,
-                resource_id=str(f.id),
-                details={
-                    "tenant_id": tid_str,
-                    "file_id": str(f.id),
-                    "name": f.name,
-                    "size": f.size if f.size else 0,
-                    "content_sha256": getattr(f, "content_sha256", "") or "",
-                    "storage_path": getattr(f, "storage_path", "") or "",
-                    "reason": "tenant_hard_delete",
-                },
-            )
-        except Exception:
-            logger.exception("file_purge_audit_event_create_failed")
+    # Phase P.9 — the File read is tenant-scoped; pre_delete fires outside
+    # the request cycle, so scope per the RLS contract.
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(instance.id):
+        for f in File.objects.filter(tenant_id=tid):
+            try:
+                create_audit_event(
+                    resource_type="FILE",
+                    action=FILE_TENANT_OFFBOARD_PURGE_SCHEDULED,
+                    actor_user=None,
+                    tenant=instance,
+                    resource_id=str(f.id),
+                    details={
+                        "tenant_id": tid_str,
+                        "file_id": str(f.id),
+                        "name": f.name,
+                        "size": f.size if f.size else 0,
+                        "content_sha256": getattr(f, "content_sha256", "") or "",
+                        "storage_path": getattr(f, "storage_path", "") or "",
+                        "reason": "tenant_hard_delete",
+                    },
+                )
+            except Exception:
+                logger.exception("file_purge_audit_event_create_failed")
 
 
 # Connect on module import — the tenants AppConfig already imports

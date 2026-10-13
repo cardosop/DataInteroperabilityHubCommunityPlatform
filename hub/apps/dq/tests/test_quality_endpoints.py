@@ -35,6 +35,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.conf import settings as _settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
@@ -200,9 +201,7 @@ class DQQualityEndpointsBase(DQAPITestBase):
 
     def _make_auditor(self):
         """Promote ``self.user`` to AUDITOR role."""
-        role = Role.objects.create(
-            tenant=self.tenant, name="AUDITOR", description="Auditor role"
-        )
+        role = Role.objects.create(tenant=self.tenant, name="AUDITOR", description="Auditor role")
         UserRole.objects.create(user=self.user, role=role)
 
 
@@ -233,7 +232,8 @@ class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Precondition: must have results for isolation test to be meaningful
         self.assertGreater(
-            len(response.data["results"]), 0,
+            len(response.data["results"]),
+            0,
             "Expected at least one anomaly in current tenant to test isolation against",
         )
         tenant_ids = {item["tenant_id"] for item in response.data["results"]}
@@ -249,6 +249,13 @@ class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Plan limits are a paid (billing) concept; core-only tenants "
+            "have no plan, so the limit-exhaustion scenario does not exist."
+        ),
+    )
     def test_anomalies_plan_limit_exhaustion_returns_403(self):
         """When tenant has used its daily quota, return 403 with
         ``plan_limit_exceeded`` code."""
@@ -339,6 +346,13 @@ class DQQualityTrendsEndpointTest(DQQualityEndpointsBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Plan limits are a paid (billing) concept; core-only tenants "
+            "have no plan, so the limit-exhaustion scenario does not exist."
+        ),
+    )
     def test_trends_plan_limit_exhaustion_returns_403(self):
         plan = self.tenant.plan
         plan.limits_json = dict(plan.limits_json or {})
@@ -383,8 +397,11 @@ class DQQualityScorecardsEndpointTest(DQQualityEndpointsBase):
         # Tenant-scope dashboard shape from
         # ``DQScorecardService.get_executive_dashboard``.
         for key in (
-            "period", "summary", "score_distribution",
-            "top_issues", "trend_summary",
+            "period",
+            "summary",
+            "score_distribution",
+            "top_issues",
+            "trend_summary",
         ):
             self.assertIn(key, response.data)
         self.assertGreaterEqual(response.data["summary"]["total_runs"], 1)
@@ -415,6 +432,13 @@ class DQQualityScorecardsEndpointTest(DQQualityEndpointsBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Plan limits are a paid (billing) concept; core-only tenants "
+            "have no plan, so the limit-exhaustion scenario does not exist."
+        ),
+    )
     def test_scorecards_plan_limit_exhaustion_returns_403(self):
         plan = self.tenant.plan
         plan.limits_json = dict(plan.limits_json or {})
@@ -507,6 +531,13 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Plan limits are a paid (billing) concept; core-only tenants "
+            "have no plan, so the limit-exhaustion scenario does not exist."
+        ),
+    )
     def test_root_cause_plan_limit_exhaustion_returns_403(self):
         plan = self.tenant.plan
         plan.limits_json = dict(plan.limits_json or {})
@@ -520,6 +551,13 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.json().get("code"), "plan_limit_exceeded")
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Plan limits are a paid (billing) concept; core-only tenants "
+            "have no plan, so the limit-exhaustion scenario does not exist."
+        ),
+    )
     def test_root_cause_consecutive_calls_count_against_daily_cap(self):
         """End-to-end audit-driven counter check: each successful
         request emits a ``DQ_QUALITY_QUERY`` audit event (inside the

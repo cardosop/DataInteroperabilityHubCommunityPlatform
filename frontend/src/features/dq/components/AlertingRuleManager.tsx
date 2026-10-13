@@ -3,9 +3,11 @@
  *
  * CRUD UI for ``DQAlertingRule`` (TENANT_ADMIN-only).  Channel-config
  * editor for email / Slack / webhook / PagerDuty with field-level
- * validation: each channel's required keys (e.g. ``recipients`` for
- * EMAIL, ``webhook_url`` for SLACK / WEBHOOK, ``service_key`` for
- * PAGERDUTY) are surfaced as required form inputs.
+ * validation: each channel's required keys (``emails`` for EMAIL,
+ * ``webhook_url`` for SLACK, ``url`` for WEBHOOK, ``integration_key``
+ * for PAGERDUTY — mirroring ``DQAlertingRule.clean()`` and the
+ * ``hub/apps/dq/clients/`` payload contracts) are surfaced as required
+ * form inputs.
  */
 
 import { useMemo, useState } from 'react';
@@ -16,6 +18,8 @@ import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useAuthStore } from '../../auth/store/authStore';
+import { getErrorMessage } from '../../../shared/utils/errorUtils';
+import { isApiError } from '../../../shared/types/api';
 import {
   useCreateDQAlertingRule,
   useDeleteDQAlertingRule,
@@ -74,17 +78,84 @@ const blankForm: FormState = {
 };
 
 /**
- * Per-channel required-key inventory.  Used to drive the field-level
+ * Per-channel required-field inventory.  Used to drive the field-level
  * validation in the form: the channel-config editor surfaces a text
- * input per required key for each enabled channel.  Mirror the
- * backend ``hub/apps/dq/clients/`` payload contracts.
+ * input per required field for each enabled channel.  ``key`` MUST
+ * mirror the backend ``hub/apps/dq/clients/`` + ``DQAlertingRule.clean()``
+ * payload contracts:
+ *
+ * - EMAIL      → ``emails`` (list of addresses)
+ * - SLACK      → ``webhook_url``
+ * - WEBHOOK    → ``url``
+ * - PAGERDUTY  → ``integration_key``
+ *
+ * ``list`` marks values the backend consumes as a list — the form
+ * accepts a comma-separated string and expands it on submit.
  */
-const CHANNEL_REQUIRED_KEYS: Record<DQAlertChannel, string[]> = {
-  [DQAlertChannel.EMAIL]: ['recipients'],
-  [DQAlertChannel.SLACK]: ['webhook_url'],
-  [DQAlertChannel.WEBHOOK]: ['webhook_url'],
-  [DQAlertChannel.PAGERDUTY]: ['service_key'],
+interface ChannelConfigField {
+  key: string;
+  label: string;
+  list?: boolean;
+  placeholder?: string;
+}
+
+const CHANNEL_REQUIRED_FIELDS: Record<DQAlertChannel, ChannelConfigField[]> = {
+  [DQAlertChannel.EMAIL]: [
+    {
+      key: 'emails',
+      label: 'Recipients',
+      list: true,
+      placeholder: 'Comma-separated email addresses',
+    },
+  ],
+  [DQAlertChannel.SLACK]: [{ key: 'webhook_url', label: 'Webhook URL' }],
+  [DQAlertChannel.WEBHOOK]: [{ key: 'url', label: 'Webhook URL' }],
+  [DQAlertChannel.PAGERDUTY]: [
+    { key: 'integration_key', label: 'Integration key' },
+  ],
 };
+
+const LIST_CHANNEL_CONFIG_KEYS = new Set(
+  Object.values(CHANNEL_REQUIRED_FIELDS)
+    .flat()
+    .filter((field) => field.list)
+    .map((field) => field.key),
+);
+
+/**
+ * Build the backend-facing ``channel_config`` payload from the form's
+ * raw string values: list-typed keys (``emails``) are comma-split into
+ * arrays, empty values are omitted.
+ */
+function buildChannelConfigPayload(
+  config: Record<string, string>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(config)) {
+    const value = raw.trim();
+    if (!value) continue;
+    payload[key] = LIST_CHANNEL_CONFIG_KEYS.has(key)
+      ? value.split(',').map((item) => item.trim()).filter(Boolean)
+      : value;
+  }
+  return payload;
+}
+
+/**
+ * Resolve a human-readable message for a rejected create/update.
+ * The backend 400 envelope carries the specific model-clean() message
+ * (e.g. "EMAIL channel requires 'emails' in channel_config") — prefer
+ * that over the generic remediation copy ``getErrorMessage`` returns
+ * for VALIDATION_ERROR codes.
+ */
+function extractApiError(err: unknown): string {
+  if (isApiError(err)) {
+    const details = err.error.details;
+    if (typeof details?.error === 'string') return details.error;
+    return err.error.message || getErrorMessage(err);
+  }
+  return getErrorMessage(err);
+}
 
 export function AlertingRuleManager() {
   const { user } = useAuthStore();
@@ -104,12 +175,19 @@ export function AlertingRuleManager() {
 
   const rules = data?.results ?? [];
 
-  const requiredChannelKeys = useMemo(() => {
-    const keys: string[] = [];
+  const requiredChannelFields = useMemo(() => {
+    const fields: ChannelConfigField[] = [];
     for (const channel of form.alert_channels) {
-      keys.push(...(CHANNEL_REQUIRED_KEYS[channel] ?? []));
+      fields.push(...(CHANNEL_REQUIRED_FIELDS[channel] ?? []));
     }
-    return Array.from(new Set(keys));
+    // Dedup by canonical key (two channels never share a key today,
+    // but the contract could grow a shared one).
+    const seen = new Set<string>();
+    return fields.filter((field) => {
+      if (seen.has(field.key)) return false;
+      seen.add(field.key);
+      return true;
+    });
   }, [form.alert_channels]);
 
   const startCreate = () => {
@@ -129,8 +207,11 @@ export function AlertingRuleManager() {
       comparison_operator: rule.comparison_operator,
       severity: rule.severity,
       alert_channels: rule.alert_channels,
+      // The read serializer omits ``channel_config`` (it is stored
+      // encrypted) — guard the undefined so the Edit form opens
+      // instead of throwing on Object.entries(undefined).
       channel_config: Object.fromEntries(
-        Object.entries(rule.channel_config).map(([k, v]) => [k, String(v)]),
+        Object.entries(rule.channel_config ?? {}).map(([k, v]) => [k, String(v)]),
       ),
       enabled: rule.enabled,
     });
@@ -152,9 +233,9 @@ export function AlertingRuleManager() {
     if (form.threshold.trim() === '') return 'Threshold is required';
     const thresholdNum = Number(form.threshold);
     if (!Number.isFinite(thresholdNum)) return 'Threshold must be a number';
-    for (const key of requiredChannelKeys) {
-      if (!form.channel_config[key] || !form.channel_config[key].trim()) {
-        return `Channel config: ${key} is required`;
+    for (const field of requiredChannelFields) {
+      if (!form.channel_config[field.key] || !form.channel_config[field.key].trim()) {
+        return `Channel config: ${field.label} is required`;
       }
     }
     return null;
@@ -178,17 +259,27 @@ export function AlertingRuleManager() {
       comparison_operator: form.comparison_operator,
       severity: form.severity,
       alert_channels: form.alert_channels,
-      channel_config: form.channel_config,
+      channel_config: buildChannelConfigPayload(form.channel_config),
       enabled: form.enabled,
+    };
+
+    // Surface a rejected create/update inside the form: the mutation
+    // toast auto-dismisses, and a dead open form with no feedback is
+    // exactly the state that made the CRUD E2E time out.
+    const onMutationError = (mutationError: unknown) => {
+      setValidationError(extractApiError(mutationError));
     };
 
     if (form.id) {
       updateMutation.mutate(
         { id: form.id, data: payload },
-        { onSuccess: () => setShowForm(false) },
+        { onSuccess: () => setShowForm(false), onError: onMutationError },
       );
     } else {
-      createMutation.mutate(payload, { onSuccess: () => setShowForm(false) });
+      createMutation.mutate(payload, {
+        onSuccess: () => setShowForm(false),
+        onError: onMutationError,
+      });
     }
   };
 
@@ -356,17 +447,18 @@ export function AlertingRuleManager() {
             ))}
           </fieldset>
 
-          {requiredChannelKeys.length > 0 && (
+          {requiredChannelFields.length > 0 && (
             <fieldset className="filter-group">
               <legend>Channel configuration *</legend>
-              {requiredChannelKeys.map((key) => (
-                <div key={key} className="filter-group">
-                  <label htmlFor={`channel-cfg-${key}`}>{key}</label>
+              {requiredChannelFields.map((field) => (
+                <div key={field.key} className="filter-group">
+                  <label htmlFor={`channel-cfg-${field.key}`}>{field.label}</label>
                   <input
-                    id={`channel-cfg-${key}`}
+                    id={`channel-cfg-${field.key}`}
                     type="text"
-                    value={form.channel_config[key] ?? ''}
-                    onChange={(e) => updateChannelConfig(key, e.target.value)}
+                    value={form.channel_config[field.key] ?? ''}
+                    placeholder={field.placeholder}
+                    onChange={(e) => updateChannelConfig(field.key, e.target.value)}
                     required
                   />
                 </div>

@@ -4,6 +4,7 @@ Tests for contracts URL patterns.
 Task: 9.6.3.1.1 - Fix contracts URL pattern duplication
 """
 
+import contextlib
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -115,7 +116,7 @@ class ContractsURLPatternTest(ContractsAPITestBase):
 
         # Should resolve correctly even with query parameter
         try:
-            resolved = resolve(url.split("?")[0])  # Resolve without query params
+            resolved = resolve(url.split("?", maxsplit=1)[0])  # Resolve without query params
             self.assertEqual(resolved.url_name, "contract-lineage-visualization-custom")
             self.assertEqual(resolved.kwargs["id"], contract_id)
         except Resolver404 as e:
@@ -212,7 +213,7 @@ class ContractsURLPatternTest(ContractsAPITestBase):
 
         # Should resolve base URL without query params
         try:
-            resolved = resolve(url.split("?")[0])
+            resolved = resolve(url.split("?", maxsplit=1)[0])
             self.assertIsNotNone(resolved)
         except Resolver404 as e:
             self.fail(f"Contracts list URL with query params did not resolve: {e}")
@@ -315,7 +316,7 @@ class ContractsURLPatternTest(ContractsAPITestBase):
 
         # Should resolve base URL
         try:
-            resolved = resolve(url.split("?")[0])
+            resolved = resolve(url.split("?", maxsplit=1)[0])
             self.assertEqual(resolved.url_name, "contract-lineage-visualization-custom")
         except Resolver404 as e:
             self.fail(f"URL pattern did not resolve with multiple query params: {e}")
@@ -334,12 +335,10 @@ class ContractsURLPatternTest(ContractsAPITestBase):
             self.fail("Lowercase URL should resolve")
 
         # Uppercase may or may not resolve depending on configuration
-        try:
+        # If it doesn't resolve, that's also fine (case-sensitive)
+        with contextlib.suppress(Resolver404):
             resolve(url_upper)
             # If it resolves, that's fine
-        except Resolver404:
-            # If it doesn't resolve, that's also fine (case-sensitive)
-            pass
 
     def test_contracts_url_pattern_with_trailing_slash_variations(self):
         """Test URL pattern with and without trailing slash."""
@@ -354,12 +353,10 @@ class ContractsURLPatternTest(ContractsAPITestBase):
         except Resolver404:
             self.fail("URL with trailing slash should resolve")
 
-        try:
+        # If it doesn't resolve, that's acceptable
+        with contextlib.suppress(Resolver404):
             resolve(url_without_slash)
             # May or may not resolve depending on APPEND_SLASH setting
-        except Resolver404:
-            # If it doesn't resolve, that's acceptable
-            pass
 
     def test_contracts_url_pattern_reverse_with_invalid_id(self):
         """Test reverse lookup with invalid contract ID format."""

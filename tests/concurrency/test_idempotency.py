@@ -14,6 +14,18 @@ from django.utils import timezone
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantPlan
 
 
+def _seed_plans():
+    """Seed the default TenantPlans.
+
+    TransactionTestCase truncation wipes the migrate-seeded plan rows, and
+    these tests query TenantPlan directly — seed first so the lookups below
+    (e.g. ``slug="enterprise"``) resolve.
+    """
+    from hub.conftest import _seed_tenant_plans_if_missing
+
+    _seed_tenant_plans_if_missing()
+
+
 @pytest.mark.integration
 @pytest.mark.idempotency
 class TestEnsureE2eTenantReadyIdempotent:
@@ -21,8 +33,10 @@ class TestEnsureE2eTenantReadyIdempotent:
 
     @pytest.mark.django_db(transaction=True)
     def test_ensure_e2e_tenant_ready_twice_is_noop(self):
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.billing.test_support import E2E_PLAN_SLUG, ensure_e2e_tenant_ready
 
+        _seed_plans()
         plan = TenantPlan.objects.get(slug="enterprise")
         tenant = Tenant.objects.create(
             name=f"e2e-ready-{uuid.uuid4().hex[:8]}",
@@ -31,31 +45,39 @@ class TestEnsureE2eTenantReadyIdempotent:
             kyc_status=KYCStatus.VERIFIED,
         )
 
-        # First call — provisions the tenant
+        # First call — provisions the tenant (active subscription +
+        # e2e-unlimited plan; the helper does not set onboarding fields).
         ensure_e2e_tenant_ready(tenant)
         tenant.refresh_from_db()
-        assert tenant.onboarding_completed_at is not None, (
-            "First call should set onboarding_completed_at"
+        first_ids = set(
+            Subscription.objects.filter(
+                tenant=tenant, status=SubscriptionStatus.ACTIVE
+            ).values_list("id", flat=True)
         )
-        assert tenant.asset_creation_enabled is True, "First call should enable asset creation"
-        original_onboarding = tenant.onboarding_completed_at
+        assert first_ids, "First call should create an active subscription"
+        assert tenant.plan.slug == E2E_PLAN_SLUG, (
+            "First call should switch the tenant to the e2e-unlimited plan"
+        )
 
         # Second call — must be a no-op (idempotent)
         ensure_e2e_tenant_ready(tenant)
         tenant.refresh_from_db()
-        assert tenant.onboarding_completed_at == original_onboarding, (
-            "Second call should not change onboarding_completed_at"
+        second_ids = set(
+            Subscription.objects.filter(
+                tenant=tenant, status=SubscriptionStatus.ACTIVE
+            ).values_list("id", flat=True)
         )
-        assert tenant.asset_creation_enabled is True, (
-            "Second call should not disable asset creation"
-        )
+        assert second_ids == first_ids, "Second call should not create or remove subscriptions"
+        assert tenant.plan.slug == E2E_PLAN_SLUG, "Second call should not change the plan"
+        assert tenant.kyc_status == KYCStatus.VERIFIED
 
     @pytest.mark.django_db(transaction=True)
     def test_ensure_e2e_tenant_ready_repeatedly_no_duplicate_side_effects(self):
         """Repeated calls don't create duplicate subscriptions or KYC records."""
         from hub.apps.billing.models import Subscription, SubscriptionStatus
-        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        from hub.apps.billing.test_support import ensure_e2e_tenant_ready
 
+        _seed_plans()
         plan = TenantPlan.objects.get(slug="enterprise")
         tenant = Tenant.objects.create(
             name=f"e2e-repeat-{uuid.uuid4().hex[:8]}",
@@ -64,18 +86,29 @@ class TestEnsureE2eTenantReadyIdempotent:
             kyc_status=KYCStatus.VERIFIED,
         )
 
-        # Call three times
-        for _ in range(3):
+        # First call, then two more — the steady state is one BASE
+        # subscription + one ML_AI subscription; repeated calls must
+        # not create duplicates of either.
+        ensure_e2e_tenant_ready(tenant)
+        tenant.refresh_from_db()
+        first_ids = set(
+            Subscription.objects.filter(
+                tenant=tenant, status=SubscriptionStatus.ACTIVE
+            ).values_list("id", flat=True)
+        )
+        for _ in range(2):
             ensure_e2e_tenant_ready(tenant)
             tenant.refresh_from_db()
 
-        # Should only have one active subscription
         active_subs = Subscription.objects.filter(
             tenant=tenant,
             status=SubscriptionStatus.ACTIVE,
         )
-        assert active_subs.count() == 1, (
-            f"Expected 1 active subscription, got {active_subs.count()}"
+        assert active_subs.count() == 2, (
+            f"Expected 2 active subscriptions (BASE + ML_AI), got {active_subs.count()}"
+        )
+        assert set(active_subs.values_list("id", flat=True)) == first_ids, (
+            "Repeated calls must not create duplicate subscriptions"
         )
         # KYC should still be VERIFIED (not duplicated)
         tenant.refresh_from_db()
@@ -95,14 +128,14 @@ class TestSeedDefaultPlansIdempotent:
         _seed_tenant_plans_if_missing()
         original_counts = {
             slug: TenantPlan.objects.filter(slug=slug).count()
-            for slug in ("free", "pro", "enterprise", "sandbox")
+            for slug in ("free", "pro", "enterprise")
         }
         for slug, count in original_counts.items():
             assert count == 1, f"Expected 1 {slug} plan after seed, got {count}"
 
         # Second call — must be a no-op (idempotent via get_or_create)
         _seed_tenant_plans_if_missing()
-        for slug in ("free", "pro", "enterprise", "sandbox"):
+        for slug in ("free", "pro", "enterprise"):
             count = TenantPlan.objects.filter(slug=slug).count()
             assert count == 1, f"Second seed should not duplicate {slug} plan, got {count}"
 
@@ -137,6 +170,7 @@ class TestSubscriptionIdempotency:
 
         from hub.apps.billing.models import Subscription, SubscriptionStatus
 
+        _seed_plans()
         plan = TenantPlan.objects.get(slug="free")
         tenant = Tenant.objects.create(
             name=f"sub-idem-{uuid.uuid4().hex[:8]}",
@@ -172,6 +206,7 @@ class TestSubscriptionIdempotency:
         """get_or_create with the same stripe_subscription_id returns the existing row."""
         from hub.apps.billing.models import Subscription, SubscriptionStatus
 
+        _seed_plans()
         plan = TenantPlan.objects.get(slug="free")
         tenant = Tenant.objects.create(
             name=f"sub-goc-{uuid.uuid4().hex[:8]}",

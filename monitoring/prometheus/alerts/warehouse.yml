@@ -1,0 +1,40 @@
+groups:
+  - name: warehouse_alerts
+    interval: 30s
+    rules:
+      - alert: WarehouseConnectionFailureRate
+        expr: rate(warehouse_query_total{status="error"}[5m]) / rate(warehouse_query_total[5m]) > 0.1
+        for: 5m
+        labels: { severity: warning, component: warehouse }
+        annotations:
+          summary: "Warehouse connection failure rate >10%"
+          description: "Tenant {{ $labels.tenant }} warehouse {{ $labels.warehouse }} failure rate {{ $value | humanizePercentage }}."
+
+      - alert: WarehouseCircuitOpen
+        expr: warehouse_circuit_open == 1
+        for: 1m
+        labels: { severity: critical, component: warehouse }
+        annotations:
+          summary: "Warehouse circuit breaker open"
+          description: "Tenant {{ $labels.tenant }} warehouse {{ $labels.warehouse }} circuit is OPEN."
+
+      - alert: WarehouseCostOverrun
+        expr: warehouse_cost_units_total > 500
+        for: 5m
+        labels: { severity: warning, component: warehouse }
+        annotations:
+          summary: "Warehouse monthly cost budget exceeded"
+
+      - alert: WarehouseHighConcurrency
+        expr: warehouse_active_queries > 40
+        for: 1m
+        labels: { severity: warning, component: warehouse }
+        annotations:
+          summary: "Warehouse query concurrency >40 (limit 50)"
+
+      - alert: WarehouseMetricsAbsent
+        expr: absent(warehouse_query_total) == 1
+        for: 10m
+        labels: { severity: critical, component: warehouse }
+        annotations:
+          summary: "No warehouse query metrics received"

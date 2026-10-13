@@ -26,10 +26,9 @@ test.describe('Edge Cases (real tests)', () => {
     // Assert the search input exists before filling — if absent, skip with a clear reason
     // rather than silently passing without exercising the scenario
     const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
-    if ((await searchInput.count()) === 0) {
-      test.skip(true, 'Search input not rendered on /marketplace; skipping empty-search edge case');
-      return;
-    }
+    const missingSearchInput = (await searchInput.count()) === 0;
+    test.skip(missingSearchInput, 'Search input not rendered on /marketplace; skipping empty-search edge case');
+    if (missingSearchInput) return;
     await searchInput.fill('');
     await page.waitForTimeout(500);
     expect(page.url()).toContain('/marketplace');
@@ -48,10 +47,9 @@ test.describe('Edge Cases (real tests)', () => {
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     // Assert the search input exists before filling
     const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
-    if ((await searchInput.count()) === 0) {
-      test.skip(true, 'Search input not rendered on /marketplace; skipping special-chars edge case');
-      return;
-    }
+    const missingSearchInput = (await searchInput.count()) === 0;
+    test.skip(missingSearchInput, 'Search input not rendered on /marketplace; skipping special-chars edge case');
+    if (missingSearchInput) return;
     await searchInput.fill('!@#$%^&*()');
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
@@ -76,10 +74,9 @@ test.describe('Edge Cases (real tests)', () => {
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     // Assert the search input exists before filling
     const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
-    if ((await searchInput.count()) === 0) {
-      test.skip(true, 'Search input not rendered on /marketplace; skipping unicode edge case');
-      return;
-    }
+    const missingSearchInput = (await searchInput.count()) === 0;
+    test.skip(missingSearchInput, 'Search input not rendered on /marketplace; skipping unicode edge case');
+    if (missingSearchInput) return;
     await searchInput.fill('日本語テスト café naïve');
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
@@ -127,10 +124,12 @@ test.describe('Edge Cases (real tests)', () => {
       // D86: 403 under parallel E2E load is a transient permission/token issue (token refresh
       // race, subscription not scoped to this project's storageState, etc.).  This is an infra
       // issue, not a pagination bug — skip to keep the report accurate.
-      if (/403|forbidden/i.test(errText)) {
-        test.skip(true, `Asset list returned 403 — transient permission issue: ${errText.slice(0, 120)}`);
-        return;
-      }
+      const isTransient403 = /403|forbidden/i.test(errText);
+      test.skip(
+        isTransient403,
+        `Asset list returned 403 — transient permission issue: ${errText.slice(0, 120)}`
+      );
+      if (isTransient403) return;
       throw new Error(`Asset list shows backend error: ${errText.slice(0, 200)}`);
     }
     expect(hasPagination || hasListOrEmpty).toBe(true) /* one of the acceptable page states must be true */;
@@ -146,10 +145,9 @@ test.describe('Edge Cases (real tests)', () => {
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     // Assert the search input exists before filling
     const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
-    if ((await searchInput.count()) === 0) {
-      test.skip(true, 'Search input not rendered on /marketplace; skipping max-length edge case');
-      return;
-    }
+    const missingSearchInput = (await searchInput.count()) === 0;
+    test.skip(missingSearchInput, 'Search input not rendered on /marketplace; skipping max-length edge case');
+    if (missingSearchInput) return;
     await searchInput.fill('a'.repeat(500));
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
@@ -166,22 +164,64 @@ test.describe('Edge Cases (real tests)', () => {
 
   // ─── Form input edge cases (asset create form) ────────────────────────────
 
+  // Phase 250.6.B — the type-picker step renders BEFORE the form unless the
+  // URL carries the ``?skip=picker`` deep-link bypass (AssetCreatePage.tsx).
+  // Without the bypass these tests wait 60s for inputs that never hydrate
+  // and skip as "backend may be slow" — the picker's own coverage lives in
+  // journeys/dpo/asset-type-picker.spec.ts.
+  const CREATE_FORM_ROUTE = '/assets/create?skip=picker';
+  const CREATE_FORM_SELECTOR = '[data-testid="asset-create-form"], .asset-create-page';
+
+  /**
+   * Navigate to the create form (type-picker bypassed via ?skip=picker) and
+   * skip with a diagnostic when the route is unreachable.
+   *
+   * /assets/create is gated by CapabilityRoute capability="asset_creation"
+   * (src/app/routes/routes.tsx) which redirects to /unavailable when the
+   * per-tenant capability reads False. A transient/stale capability read —
+   * e.g. right after the API restart that e2e-batches.sh performs — can
+   * redirect one test away while sibling tests pass minutes apart (the
+   * batch-1c run skipped exactly one of these three). One re-navigation
+   * retry re-runs the capability check before giving up.
+   */
+  async function openAssetCreateForm(
+    page: import('@playwright/test').Page,
+    user: Awaited<ReturnType<typeof getTestUser>>
+  ): Promise<void> {
+    let onLogin = false;
+    let onRoute = false;
+    let redirectedTo = '';
+    for (let attempt = 0; attempt < 2 && !onRoute; attempt++) {
+      await loginAndNavigateToRoute(page, user, CREATE_FORM_ROUTE, {
+        timeout: 60000,
+        contentSelector: CREATE_FORM_SELECTOR,
+      });
+      onLogin = page.url().includes('/login');
+      test.skip(onLogin, 'Auth redirect — backend/rate-limit issue');
+      if (onLogin) return;
+      onRoute = page.url().includes('/assets/create');
+      redirectedTo = page.url();
+    }
+    test.skip(
+      !onRoute,
+      `Redirected away from /assets/create to ${redirectedTo} — transient asset_creation capability gate or role state (retried once)`
+    );
+  }
+
   test('asset create: max-length name input does not crash the form', async ({ page }) => {
     const user = await getTestUser();
-    await loginAndNavigateToRoute(page, user, '/assets/create', {
-      timeout: 60000,
-      contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
-    });
-    test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
-    test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create — role may not have create permission');
+    await openAssetCreateForm(page, user);
+    if (test.info().status === 'skipped') return;
 
     // The form input id was 'asset-name' (htmlFor="asset-name" on the label)
     // — not 'name'. The previous selector never matched and the test silently
     // skipped after 60s. Use the canonical id used in AssetCreatePage.tsx.
     const nameInput = page.locator('input#asset-name, input[name="name"]').first();
     // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-    await nameInput.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
-    test.skip((await nameInput.count()) === 0, 'Asset create form did not load — backend may be slow');
+    await nameInput.waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
+    const missingNameInput = (await nameInput.count()) === 0;
+    test.skip(missingNameInput, 'Asset create form did not load — backend may be slow');
+    if (missingNameInput) return;
     await nameInput.fill('A'.repeat(500));
     await page.waitForTimeout(500);
     // Form should still be visible (no JS crash from long input)
@@ -191,19 +231,17 @@ test.describe('Edge Cases (real tests)', () => {
 
   test('asset create: special characters in key field does not crash the form', async ({ page }) => {
     const user = await getTestUser();
-    await loginAndNavigateToRoute(page, user, '/assets/create', {
-      timeout: 60000,
-      contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
-    });
-    test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
-    test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create');
+    await openAssetCreateForm(page, user);
+    if (test.info().status === 'skipped') return;
 
     // Same id correction as the max-length test above: input id is 'asset-key',
     // not 'key' (see frontend/src/features/assets/components/AssetCreatePage.tsx:221).
     const keyInput = page.locator('input#asset-key, input[name="key"]').first();
     // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-    await keyInput.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
-    test.skip((await keyInput.count()) === 0, 'Asset create form did not load — backend may be slow');
+    await keyInput.waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
+    const missingKeyInput = (await keyInput.count()) === 0;
+    test.skip(missingKeyInput, 'Asset create form did not load — backend may be slow');
+    if (missingKeyInput) return;
     await keyInput.fill('!@#$%^&*() invalid key');
     await page.waitForTimeout(500);
     // Form must still be visible (no JS crash)
@@ -213,17 +251,15 @@ test.describe('Edge Cases (real tests)', () => {
 
   test('asset create: empty required fields shows validation before submit', async ({ page }) => {
     const user = await getTestUser();
-    await loginAndNavigateToRoute(page, user, '/assets/create', {
-      timeout: 60000,
-      contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
-    });
-    test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
-    test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create');
+    await openAssetCreateForm(page, user);
+    if (test.info().status === 'skipped') return;
 
-    const submitBtn = page.locator('button:has-text("Create Asset"), button[type="submit"]').first();
+    const submitBtn = page.locator('[data-testid="asset-create-submit"]').first();
     // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-    await submitBtn.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
-    test.skip((await submitBtn.count()) === 0, 'Asset create form did not load — backend may be slow');
+    await submitBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
+    const missingSubmitBtn = (await submitBtn.count()) === 0;
+    test.skip(missingSubmitBtn, 'Asset create form did not load — backend may be slow');
+    if (missingSubmitBtn) return;
     // The Create Asset form contract: submit MUST be disabled until the
     // required fields are valid. That preventive-validation pattern is the
     // entire UX of the page; asserting it directly is the correct check.

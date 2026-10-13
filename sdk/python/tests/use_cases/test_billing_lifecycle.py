@@ -198,7 +198,7 @@ def test_quota_exceeded_returns_error():
     assert free_plan_resp.status_code == 200, (
         f"Free-plan tenant setup failed: {free_plan_resp.status_code}: {free_plan_resp.text[:300]}"
     )
-    free_tenant_id = free_plan_resp.json()["tenant_id"]
+    free_tenant_id = free_plan_resp.json()["tenant_id"]  # noqa: PHASE216-STATIC-ID
 
     MAX_ATTEMPTS = 50
     hit_limit = False

@@ -9,6 +9,7 @@ file FK.
 
 import logging
 
+from django.db import DatabaseError
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
@@ -19,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 @receiver(pre_delete, sender="files.File")
-def retire_datasets_on_file_hard_delete(sender, instance, **kwargs):
+def retire_datasets_on_file_hard_delete(
+    sender, instance, **_kwargs
+):  # Django keyword-dispatches signal receivers
     """Phase 260.1.C.3 — mark linked Datasets RETIRED before the FK is SET_NULL.
 
     When a File row is hard-deleted, the FK on Dataset is SET_NULL by the
@@ -46,7 +49,7 @@ def retire_datasets_on_file_hard_delete(sender, instance, **kwargs):
                     "datasets_retired": updated,
                 },
             )
-    except Exception:
+    except DatabaseError:
         logger.warning(
             "file_hard_delete_retire_datasets_failed file_id=%s",
             instance.pk,

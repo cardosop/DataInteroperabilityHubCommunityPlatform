@@ -55,43 +55,43 @@ class CallComplianceServiceTest(TestCase):
         )
 
     def _create_job(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            user=self.user,
-            job_type=JobType.COMPLIANCE_RUN,
-            resource_type="COMPLIANCE_RUN",
-            resource_id=str(uuid.uuid4()),
-            details_json={"scan_mode": "internal"},
-            timeout_seconds=300,
-            executed_by_prefect=True,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "user": self.user,
+            "job_type": JobType.COMPLIANCE_RUN,
+            "resource_type": "COMPLIANCE_RUN",
+            "resource_id": str(uuid.uuid4()),
+            "details_json": {"scan_mode": "internal"},
+            "timeout_seconds": 300,
+            "executed_by_prefect": True,
+        }
         defaults.update(overrides)
         return create_job(**defaults)
 
     def _create_run(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            asset=self.asset,
-            job=self._create_job(),
-            status=ComplianceRunStatus.RUNNING,
-            started_at=timezone.now(),
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "asset": self.asset,
+            "job": self._create_job(),
+            "status": ComplianceRunStatus.RUNNING,
+            "started_at": timezone.now(),
+        }
         defaults.update(overrides)
         return ComplianceRun.objects.create(**defaults)
 
     def _call_kwargs(self, run, **overrides):
         """Default kwargs for _call_compliance_service."""
-        defaults = dict(
-            compliance_run=run,
-            file_content=b"col1,col2\nval1,val2\n",
-            file_format="csv",
-            scan_mode="internal",
-            applicable_regulations=["GDPR"],
-            legal_basis="CONSENT",
-            destination_jurisdiction="EU",
-            tenant_id=str(self.tenant.id),
-            correlation_id=str(run.id),
-        )
+        defaults = {
+            "compliance_run": run,
+            "file_content": b"col1,col2\nval1,val2\n",
+            "file_format": "csv",
+            "scan_mode": "internal",
+            "applicable_regulations": ["GDPR"],
+            "legal_basis": "CONSENT",
+            "destination_jurisdiction": "EU",
+            "tenant_id": str(self.tenant.id),
+            "correlation_id": str(run.id),
+        }
         defaults.update(overrides)
         return defaults
 

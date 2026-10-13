@@ -459,21 +459,30 @@ class ServiceIntegrationRealServiceTest(TestCase):
         is_healthy, service_name = self.dq_client.health_check()
         self.assertIsInstance(is_healthy, bool)
         self.assertIsInstance(service_name, str)
-        self.assertTrue(is_healthy, f"DQ service should be healthy, got: is_healthy={is_healthy}, name={service_name}")
+        self.assertTrue(
+            is_healthy,
+            f"DQ service should be healthy, got: is_healthy={is_healthy}, name={service_name}",
+        )
         logger.info(f"DQ service health: {is_healthy}, name: {service_name}")
 
         # Test Compliance service health check
         is_healthy, service_name = self.compliance_client.health_check()
         self.assertIsInstance(is_healthy, bool)
         self.assertIsInstance(service_name, str)
-        self.assertTrue(is_healthy, f"Compliance service should be healthy, got: is_healthy={is_healthy}, name={service_name}")
+        self.assertTrue(
+            is_healthy,
+            f"Compliance service should be healthy, got: is_healthy={is_healthy}, name={service_name}",
+        )
         logger.info(f"Compliance service health: {is_healthy}, name: {service_name}")
 
         # Test Semantic service health check
         is_healthy, service_name = self.semantic_client.health_check()
         self.assertIsInstance(is_healthy, bool)
         self.assertIsInstance(service_name, str)
-        self.assertTrue(is_healthy, f"Semantic service should be healthy, got: is_healthy={is_healthy}, name={service_name}")
+        self.assertTrue(
+            is_healthy,
+            f"Semantic service should be healthy, got: is_healthy={is_healthy}, name={service_name}",
+        )
         logger.info(f"Semantic service health: {is_healthy}, name: {service_name}")
 
     def test_circuit_breaker_protection_works(self):

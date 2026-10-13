@@ -84,10 +84,16 @@ def _has_kyc_submitted(tenant: Tenant) -> bool:
 
 
 def _has_billing_setup(tenant: Tenant) -> bool:
-    """True iff a Subscription exists in an active billing state."""
-    from hub.apps.billing.models import Subscription
+    """True iff a Subscription exists in an active billing state.
 
-    return Subscription.objects.filter(tenant=tenant, status__in=_BILLING_ACTIVE_STATES).exists()
+    Resolves through the commercial hook (billing registers the
+    checker); core-only deployments have no billing layer and the
+    signal is vacuously satisfied — onboarding must not deadlock on
+    a capability that cannot exist.
+    """
+    from hub.apps.core.commercial_hooks import has_active_billing_setup
+
+    return has_active_billing_setup(tenant)
 
 
 def evaluate_onboarding_completion(tenant: Tenant) -> bool:
@@ -103,9 +109,7 @@ def evaluate_onboarding_completion(tenant: Tenant) -> bool:
         return False
     if not _has_kyc_submitted(tenant):
         return False
-    if not _has_billing_setup(tenant):
-        return False
-    return True
+    return _has_billing_setup(tenant)
 
 
 def compute_onboarding_state(tenant: Tenant) -> dict:

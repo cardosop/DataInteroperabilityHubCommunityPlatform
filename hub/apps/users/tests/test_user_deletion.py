@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

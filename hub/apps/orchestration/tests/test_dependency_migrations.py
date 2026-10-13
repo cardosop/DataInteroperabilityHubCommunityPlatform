@@ -76,13 +76,17 @@ class TestDependencyMigrations(TestCase):
         self.assertEqual(fetched.upstream_status, "SUCCEEDED")
 
     @pytest.mark.integration
-    def test_duplicate_pipeline_dependency_allowed_after_constraint_removal(self):
-        """Verify that duplicate (pipeline, downstream) pairs are now permitted.
+    def test_duplicate_pipeline_dependency_rejected_under_current_constraint(self):
+        """Pin the CURRENT contract (Phase T.2 triage): migration 0010
+        removed ``uq_pipeline_dependency_scope``, but migration 0014
+        RE-ADDED it — the old assertion ("duplicates permitted") was stale
+        prose and its failure was a live-database IntegrityError, not a
+        silent skip. Duplicate (pipeline, downstream) pairs raise
+        IntegrityError; if the constraint is removed again deliberately,
+        this test must be updated in the same change."""
+        import pytest
+        from django.db import IntegrityError, transaction
 
-        The ``uq_pipeline_dependency_scope`` unique constraint was removed in
-        migration 0010 to allow flexible dependency graphs.  Both creates
-        should succeed and produce distinct rows.
-        """
         tenant = _make_tenant()
         pid = str(uuid.uuid4())
         did = str(uuid.uuid4())
@@ -94,18 +98,21 @@ class TestDependencyMigrations(TestCase):
             downstream_pipeline_type=PipelineType.TRANSFORMATION,
             downstream_pipeline_id=did,
         )
-        second = PipelineDependency.objects.create(
-            tenant=tenant,
-            pipeline_type=PipelineType.DQ,
-            pipeline_id=pid,
-            dependency_type=DependencyType.DATA,
-            downstream_pipeline_type=PipelineType.TRANSFORMATION,
-            downstream_pipeline_id=did,
-        )
-        # Both rows should exist with distinct IDs.
+        # The inner atomic() creates a savepoint so the failed INSERT
+        # aborts only the savepoint, not the wrapping test transaction
+        # (Phase T.2: the unguarded form broke the transaction and every
+        # subsequent query failed).
+        with pytest.raises(IntegrityError), transaction.atomic():
+            PipelineDependency.objects.create(
+                tenant=tenant,
+                pipeline_type=PipelineType.DQ,
+                pipeline_id=pid,
+                dependency_type=DependencyType.DATA,
+                downstream_pipeline_type=PipelineType.TRANSFORMATION,
+                downstream_pipeline_id=did,
+            )
+        # The duplicate must be rejected: exactly ONE row exists.
         self.assertIsNotNone(first.id)
-        self.assertIsNotNone(second.id)
-        self.assertNotEqual(first.id, second.id)
         count = PipelineDependency.objects.filter(
             tenant=tenant,
             pipeline_type=PipelineType.DQ,
@@ -113,4 +120,4 @@ class TestDependencyMigrations(TestCase):
             downstream_pipeline_type=PipelineType.TRANSFORMATION,
             downstream_pipeline_id=did,
         ).count()
-        self.assertEqual(count, 2)
+        self.assertEqual(count, 1)

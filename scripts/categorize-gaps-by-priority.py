@@ -24,6 +24,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -52,7 +53,7 @@ class GapCategorizer:
     """Categorizes gaps by priority and implementation phase."""
 
     # Priority category mappings
-    P0_CATEGORIES = {
+    P0_CATEGORIES: ClassVar[dict[str, list[str]]] = {
         "Authentication": [
             "auth",
             "login",
@@ -68,14 +69,14 @@ class GapCategorizer:
         "Search": ["search", "query", "suggestions"],
     }
 
-    P1_CATEGORIES = {
+    P1_CATEGORIES: ClassVar[dict[str, list[str]]] = {
         "Credential Management": ["credentials", "credential", "api-key", "rotate", "test"],
         "Marketplace": ["marketplace", "listings", "purchase", "download"],
         "Compliance": ["compliance", "runs", "scans", "violations"],
         "Data Quality": ["dq", "quality", "checks", "runs"],
     }
 
-    P2_CATEGORIES = {
+    P2_CATEGORIES: ClassVar[dict[str, list[str]]] = {
         "AI/ML": [
             "ai",
             "ml",
@@ -88,7 +89,7 @@ class GapCategorizer:
         "Social Features": ["social", "ratings", "reviews", "comments", "communities"],
     }
 
-    P3_CATEGORIES = {
+    P3_CATEGORIES: ClassVar[dict[str, list[str]]] = {
         "Data Mesh": ["mesh", "domain", "federated", "topology"],
         "Virtualization": ["virtual", "virtualization", "federated-query"],
         "Advanced Marketplace": ["advanced-marketplace", "preview", "pricing", "usage-based"],
@@ -112,8 +113,8 @@ class GapCategorizer:
         current_section = None
         current_gap = None
 
-        for line in content.split("\n"):
-            line = line.strip()
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
 
             # Section headers
             if line.startswith("## "):
@@ -352,7 +353,7 @@ class GapCategorizer:
                     f"#### {priority} - {'Critical' if priority == 'P0' else 'High' if priority == 'P1' else 'Medium' if priority == 'P2' else 'Low'} Priority"
                 )
                 lines.append("")
-                for cat_name in sorted(set(g.priority_category for g in priority_gaps)):
+                for cat_name in sorted({g.priority_category for g in priority_gaps}):
                     cat_gaps = [g for g in priority_gaps if g.priority_category == cat_name]
                     lines.append(f"- **{cat_name}**: {len(cat_gaps)} gaps")
                 lines.append("")
@@ -646,7 +647,7 @@ class GapCategorizer:
         lines.append(f"**Total Gaps**: {len(p1_list)}")
         lines.append("")
         lines.append("**Categories**:")
-        for cat_name in sorted(set(g.priority_category for g in p1_list)):
+        for cat_name in sorted({g.priority_category for g in p1_list}):
             cat_count = len([g for g in p1_list if g.priority_category == cat_name])
             lines.append(f"- {cat_name}: {cat_count} gaps")
         lines.append("")
@@ -657,7 +658,7 @@ class GapCategorizer:
         lines.append(f"**Total Gaps**: {len(p2_list)}")
         lines.append("")
         lines.append("**Categories**:")
-        for cat_name in sorted(set(g.priority_category for g in p2_list)):
+        for cat_name in sorted({g.priority_category for g in p2_list}):
             cat_count = len([g for g in p2_list if g.priority_category == cat_name])
             lines.append(f"- {cat_name}: {cat_count} gaps")
         lines.append("")
@@ -668,7 +669,7 @@ class GapCategorizer:
         lines.append(f"**Total Gaps**: {len(p3_list)}")
         lines.append("")
         lines.append("**Categories**:")
-        for cat_name in sorted(set(g.priority_category for g in p3_list)):
+        for cat_name in sorted({g.priority_category for g in p3_list}):
             cat_count = len([g for g in p3_list if g.priority_category == cat_name])
             lines.append(f"- {cat_name}: {cat_count} gaps")
         lines.append("")
@@ -682,7 +683,7 @@ class GapCategorizer:
         for priority in ["P0", "P1", "P2", "P3"]:
             priority_gaps = [g for g in self.gaps if g.priority == priority]
             if priority_gaps:
-                for cat_name in sorted(set(g.priority_category for g in priority_gaps)):
+                for cat_name in sorted({g.priority_category for g in priority_gaps}):
                     cat_gaps = [g for g in priority_gaps if g.priority_category == cat_name]
                     phase = cat_gaps[0].phase
                     weeks = cat_gaps[0].weeks
@@ -747,7 +748,7 @@ def main():
     for priority in ["P0", "P1", "P2", "P3"]:
         priority_gaps = [g for g in categorizer.gaps if g.priority == priority]
         print(f"{priority}: {len(priority_gaps)} gaps")
-        for cat_name in sorted(set(g.priority_category for g in priority_gaps)):
+        for cat_name in sorted({g.priority_category for g in priority_gaps}):
             cat_count = len([g for g in priority_gaps if g.priority_category == cat_name])
             print(f"  - {cat_name}: {cat_count}")
     print("=" * 60)

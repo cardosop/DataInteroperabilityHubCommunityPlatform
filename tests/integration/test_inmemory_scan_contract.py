@@ -216,7 +216,8 @@ class TestComplianceScanInmemoryContract:
         # in-memory scans.
         asset_fk = getattr(result, "asset", None)
         asset_fk_id = getattr(result, "asset_id", None)
-        assert asset_fk is None and asset_fk_id is None, (
+        assert asset_fk is None, "scan_inmemory persisted ComplianceRun with asset FK "
+        assert asset_fk_id is None, (
             f"scan_inmemory persisted ComplianceRun with asset FK "
             f"{asset_fk!r} / asset_id {asset_fk_id!r}. Phase 250.1.A "
             f"contract: scan_inmemory MUST persist Asset-FK-free rows "
@@ -332,7 +333,10 @@ class TestDQScanInmemoryContract:
             )
         asset_fk = getattr(result, "asset", None)
         asset_fk_id = getattr(result, "asset_id", None)
-        assert asset_fk is None and asset_fk_id is None, (
+        assert asset_fk is None, (
+            "scan_inmemory persisted DQRun with asset FK; Phase 250.1.A contract violated."
+        )
+        assert asset_fk_id is None, (
             "scan_inmemory persisted DQRun with asset FK; Phase 250.1.A contract violated."
         )
 

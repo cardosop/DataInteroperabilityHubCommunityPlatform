@@ -188,13 +188,19 @@ class DQServiceClientTest(TestCase):
         self.client._circuit_breaker.call = call_without_fallback
 
         try:
-            with self.assertRaises(httpx.NetworkError):
-                self.client.run_dq(
-                    file_content=b"id,name\n1,Test",
-                    file_format="csv",
-                    profile_key="intake_basic_gx",
-                    use_cache=False,  # Disable caching
-                )
+            # P.4 degradation contract — a transport failure soft-fails to
+            # ``overall_status: UNKNOWN`` (the OSS no-service scenario),
+            # instead of propagating the network error.  HTTP *status*
+            # errors still propagate (see the invalid-file-format test).
+            result = self.client.run_dq(
+                file_content=b"id,name\n1,Test",
+                file_format="csv",
+                profile_key="intake_basic_gx",
+                use_cache=False,  # Disable caching
+            )
+            assert result["overall_status"] == "UNKNOWN"
+            assert result["engine_type"] == "UNKNOWN"
+            assert "DQ service unavailable" in result["metadata"]["error"]
         finally:
             self.client._circuit_breaker.call = original_call
 

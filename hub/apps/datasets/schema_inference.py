@@ -12,8 +12,7 @@ from typing import Any
 
 try:
     import numpy as np
-    import pandas as pd
-    import pyarrow.parquet as pq
+    import pandas as pd  # type: ignore[import-untyped]
 
     PANDAS_AVAILABLE = True
 except ImportError:
@@ -68,14 +67,15 @@ def detect_encoding(content: bytes) -> str:
     for encoding in encodings:
         try:
             content.decode(encoding)
-            return encoding
         except (UnicodeDecodeError, LookupError):
             continue
+        else:
+            return encoding
 
     return "utf-8"  # Default
 
 
-def infer_format_from_values(values: list[Any], field_name: str = "") -> str | None:
+def infer_format_from_values(values: list[Any], _field_name: str = "") -> str | None:
     """
     Infer format from data patterns (GAP-8.2.4).
 
@@ -173,9 +173,10 @@ def infer_enum_from_values(values: list[Any], max_enum_size: int = 20) -> list[A
         """Check if value is hashable (can be used in set)"""
         try:
             hash(v)
-            return True
         except TypeError:
             return False
+        else:
+            return True
 
     hashable_values = [v for v in non_null_values if is_hashable(v)]
     if not hashable_values:
@@ -356,9 +357,10 @@ def infer_field_properties(values: list[Any], field_name: str = "") -> dict[str,
             """Check if value is hashable (can be used in Counter/dict)"""
             try:
                 hash(v)
-                return True
             except TypeError:
                 return False
+            else:
+                return True
 
         hashable_values = [v for v in non_null_values if is_hashable(v)]
         if hashable_values:
@@ -525,9 +527,10 @@ def infer_schema_from_csv(
             """Check if value is hashable (can be used in set)"""
             try:
                 hash(v)
-                return True
             except TypeError:
                 return False
+            else:
+                return True
 
         non_null_values = [v for v in values if v is not None and v != ""]
         hashable_values = [v for v in non_null_values if is_hashable(v)]
@@ -598,8 +601,8 @@ def infer_schema_from_json(
     objects = []
     lines = text_content.strip().split("\n")
 
-    for line in lines[:sample_size]:
-        line = line.strip()
+    for raw_line in lines[:sample_size]:
+        line = raw_line.strip()
         if not line:
             continue
 
@@ -624,7 +627,7 @@ def infer_schema_from_json(
             elif isinstance(data, dict):
                 objects = [data]
         except json.JSONDecodeError:
-            raise ValueError("Invalid JSON format")
+            raise ValueError("Invalid JSON format") from None
 
     if not objects:
         raise ValueError("JSON file is empty or invalid")
@@ -685,9 +688,10 @@ def infer_schema_from_json(
             """Check if value is hashable (can be used in set)"""
             try:
                 hash(v)
-                return True
             except TypeError:
                 return False
+            else:
+                return True
 
         non_null_values = [v for v in values if v is not None and v != ""]
         hashable_values = [v for v in non_null_values if is_hashable(v)]
@@ -852,7 +856,7 @@ def infer_schema_from_parquet(file_content: bytes) -> dict[str, Any]:
         }
 
     except Exception as e:
-        raise ValueError(f"Failed to read Parquet file: {e!s}")
+        raise ValueError(f"Failed to read Parquet file: {e!s}") from e
 
 
 def infer_schema_from_excel(
@@ -871,14 +875,16 @@ def infer_schema_from_excel(
     if not PANDAS_AVAILABLE:
         raise ImportError("pandas is required for Excel schema inference")
     try:
-        import openpyxl  # noqa: F401
+        import openpyxl  # type: ignore[import-untyped]
     except ImportError:
-        raise ImportError("openpyxl is required for Excel schema inference (pip install openpyxl)")
+        raise ImportError(
+            "openpyxl is required for Excel schema inference (pip install openpyxl)"
+        ) from None
     buf = io.BytesIO(file_content)
     try:
         df = pd.read_excel(buf, engine="openpyxl")
     except Exception as e:
-        raise ValueError(f"Failed to read Excel file: {e!s}")
+        raise ValueError(f"Failed to read Excel file: {e!s}") from e
     if df.empty or len(df.columns) == 0:
         raise ValueError("Excel file is empty or has no columns")
     sample_df = df.head(sample_size)
@@ -888,7 +894,7 @@ def infer_schema_from_excel(
     index_recommendations = []
     for column in df.columns:
         values = sample_df[column].tolist()
-        values = [None if (pd.isna(v) or (isinstance(v, float) and v != v)) else v for v in values]
+        values = [None if pd.isna(v) else v for v in values]
         type_info = infer_type_from_values(values)
         enhanced_properties = infer_field_properties(values, str(column))
         sample_values = values[:10]
@@ -973,8 +979,8 @@ def extract_sample_data(
         lines = text_content.strip().split("\n")
 
         objects = []
-        for line in lines[:sample_size]:
-            line = line.strip()
+        for raw_line in lines[:sample_size]:
+            line = raw_line.strip()
             if not line:
                 continue
             try:

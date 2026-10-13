@@ -21,8 +21,8 @@ def _ensure_event_metrics_registered():
     from real traffic in case the process is ever scraped.
     """
     from hub.apps.core.events.metrics import (
-        event_consumed_total,
         event_consume_failed_total,
+        event_consumed_total,
         event_dlq_size,
         event_handler_retry_count,
         event_latency_seconds,
@@ -122,7 +122,7 @@ class TestEventBusMetricsExposure:
         content = response.content.decode("utf-8")
 
         lines = content.split("\n")
-        help_lines = [l for l in lines if l.startswith("# HELP")]
-        type_lines = [l for l in lines if l.startswith("# TYPE")]
+        help_lines = [line for line in lines if line.startswith("# HELP")]
+        type_lines = [line for line in lines if line.startswith("# TYPE")]
 
         assert len(help_lines) > 0 or len(type_lines) > 0

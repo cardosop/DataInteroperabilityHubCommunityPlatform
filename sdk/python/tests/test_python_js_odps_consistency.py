@@ -26,14 +26,14 @@ import os
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import ClassVar
 
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -61,7 +61,7 @@ def real_api_config():
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=60.0,  # 60 seconds for comprehensive tests
+        timeout=120.0,  # workflow-backed product creation takes 60-120s
     )
 
 
@@ -69,9 +69,10 @@ def check_nodejs_available():
     """Check if Node.js is available"""
     try:
         result = subprocess.run(["node", "--version"], capture_output=True, text=True)
-        return result.returncode == 0
     except FileNotFoundError:
         return False
+    else:
+        return result.returncode == 0
 
 
 @pytest.fixture
@@ -90,10 +91,10 @@ def js_sdk_available():
 
 
 def create_valid_odps_json(
-    product_id: str = None,
+    product_id: str | None = None,
     include_contract: bool = True,
-    odcs_contract_id: str = None,
-    odcs_contract_name: str = None,
+    odcs_contract_id: str | None = None,
+    odcs_contract_name: str | None = None,
 ) -> str:
     """Create a valid ODPS JSON document"""
     if product_id is None:
@@ -199,7 +200,7 @@ class TestParameterConsistency:
 
     # Canonical snake_case parameter names for each method.
     # Keys are method names, values are the expected parameter names.
-    EXPECTED_PARAMS: dict[str, tuple[str, ...]] = {
+    EXPECTED_PARAMS: ClassVar[dict[str, tuple[str, ...]]] = {
         "create_odps": (
             "original_raw",
             "extract_odcs",
@@ -288,9 +289,12 @@ class TestResponseFormatConsistency:
                 original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             # Verify response structure
             assert isinstance(result, dict), "Response should be a dictionary"
@@ -325,9 +329,12 @@ class TestResponseFormatConsistency:
 
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -384,9 +391,12 @@ class TestResponseFormatConsistency:
                 odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
-            if isinstance(link_result, dict) and "error" in link_result:
-                if "workflow" in str(link_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
+            if (
+                isinstance(link_result, dict)
+                and "error" in link_result
+                and "workflow" in str(link_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {link_result.get('error')}")
 
             linked = await client.contracts.get_linked_contracts(odcs_id)
 
@@ -474,9 +484,12 @@ class TestHelperMethodsConsistency:
                 original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:
@@ -527,9 +540,12 @@ class TestHelperMethodsConsistency:
                 odps_version="4.1",
             )
 
-            if isinstance(create_result, dict) and "error" in create_result:
-                if "workflow" in str(create_result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
+            if (
+                isinstance(create_result, dict)
+                and "error" in create_result
+                and "workflow" in str(create_result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {create_result.get('error')}")
 
             odps_id = create_result.get("odps_contract", {}).get("id") or create_result.get("id")
             if not odps_id:

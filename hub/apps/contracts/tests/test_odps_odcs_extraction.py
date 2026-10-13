@@ -64,28 +64,28 @@ class ODPSODCSExtractionTest(TestCase):
         return {"extensions": extensions}
 
     def _create_contract(self, spec_type, asset=None, hub_json=None, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            asset=asset,
-            status=ContractStatus.ACTIVE,
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            original_spec_type=spec_type,
-            original_format=OriginalFormat.JSON,
-            original_raw='{"id":"test"}',
-            hub_contract_json=hub_json or self._make_hub_json(),
-            created_by=self.user,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "asset": asset,
+            "status": ContractStatus.ACTIVE,
+            "validation_status": ValidationStatus.VALID,
+            "normalization_status": NormalizationStatus.NORMALIZED_OK,
+            "original_spec_type": spec_type,
+            "original_format": OriginalFormat.JSON,
+            "original_raw": '{"id":"test"}',
+            "hub_contract_json": hub_json or self._make_hub_json(),
+            "created_by": self.user,
+        }
         defaults.update(overrides)
         return Contract.objects.create(**defaults)
 
     def _create_asset(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            key=f"asset-{uuid.uuid4().hex[:6]}",
-            name="Link Asset",
-            created_by=self.user,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "key": f"asset-{uuid.uuid4().hex[:6]}",
+            "name": "Link Asset",
+            "created_by": self.user,
+        }
         defaults.update(overrides)
         return Asset.objects.create(**defaults)
 

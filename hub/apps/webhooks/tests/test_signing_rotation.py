@@ -500,11 +500,12 @@ class TestExpireCron(_SigningRotationTestBase):
 
             client = get_redis_client()
             client.ping()
-            return client
         except Exception as exc:  # pragma: no cover — env-dependent
             import unittest
 
             raise unittest.SkipTest(f"Redis required: {exc}") from exc
+        else:
+            return client
 
     @pytest.mark.integration
     def test_retiring_key_transitions_to_retired_after_overlap(self) -> None:

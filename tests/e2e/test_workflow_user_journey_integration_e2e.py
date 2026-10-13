@@ -27,6 +27,7 @@ pytestmark = [
 import json
 import uuid
 from datetime import timedelta
+from typing import ClassVar
 
 from django.utils import timezone
 
@@ -40,6 +41,10 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.marketplace.models import PricingModel
+from hub.apps.marketplace.workflows.marketplace_publication import (
+    MarketplacePublicationWorkflow,
+)
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.models import StepStatus, WorkflowStatus
 from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
 from hub.apps.orchestration.workflows.compliance_reporting import (
@@ -48,10 +53,6 @@ from hub.apps.orchestration.workflows.compliance_reporting import (
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from hub.apps.orchestration.workflows.data_mesh import DataMeshWorkflow
 from hub.apps.orchestration.workflows.data_quality import DataQualityCheckWorkflow
-from hub.apps.orchestration.workflows.marketplace_publication import (
-    MarketplacePublicationWorkflow,
-)
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 
@@ -117,11 +118,11 @@ class TestJOURNEY_DPO_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     """
     6.8.1 — JOURNEY-DPO-001: Onboard New Asset via Data-First Flow.
 
-    Journey steps 9–10: Create contract, Activate asset.
+    Journey steps 9-10: Create contract, Activate asset.
     Workflow: contract_creation (with business rules validation).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_dpo_001_workflow_execution_with_business_rules(self):
         """Verify workflow execution with business rules validation (DPO-001)."""
@@ -186,7 +187,7 @@ class TestJOURNEY_DPO_002_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     Workflow: marketplace_publication (validate eligibility, create listing, publish).
     """
 
-    workflow_classes = [MarketplacePublicationWorkflow]
+    workflow_classes: ClassVar[list] = [MarketplacePublicationWorkflow]
 
     def setUp(self):
         super().setUp()
@@ -276,7 +277,7 @@ class TestJOURNEY_DPO_015_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     Workflow: product_creation (parse ODPS, extract ODCS, create contracts, link).
     """
 
-    workflow_classes = [ProductCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ProductCreationWorkflow]
 
     def test_dpo_015_workflow_execution_with_business_rules(self):
         """Verify workflow execution with business rules (DPO-015)."""
@@ -325,7 +326,7 @@ class TestJOURNEY_DE_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     Workflow: contract_creation (API/SDK/CLI contract-first flow).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_de_001_workflow_execution_with_business_rules(self):
         """Verify workflow execution with business rules (DE-001)."""
@@ -384,7 +385,7 @@ class TestJOURNEY_DE_014_WorkflowIntegrationE2E(WorkflowE2ETestBase):
     Workflow: product_creation (REST/GraphQL/SDK create ODPS product).
     """
 
-    workflow_classes = [ProductCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ProductCreationWorkflow]
 
     def test_de_014_workflow_execution_with_business_rules(self):
         """Verify workflow execution with business rules (DE-014)."""
@@ -432,7 +433,7 @@ class TestComplianceOfficerWorkflowJourneysE2E(WorkflowE2ETestBase):
     E.g. JOURNEY-CPO-001 (Review Compliance), generate report via ComplianceReportingWorkflow.
     """
 
-    workflow_classes = [ComplianceReportingWorkflow]
+    workflow_classes: ClassVar[list] = [ComplianceReportingWorkflow]
 
     def test_compliance_reporting_workflow_execution_with_business_rules(self):
         """Verify ComplianceReportingWorkflow runs with business rules (Compliance Officer)."""
@@ -465,7 +466,7 @@ class TestDataConsumerWorkflowJourneysE2E(WorkflowE2ETestBase):
     Workflow may complete or remain RUNNING if approval is required; we assert validation ran.
     """
 
-    workflow_classes = [AccessRequestWorkflow]
+    workflow_classes: ClassVar[list] = [AccessRequestWorkflow]
 
     def test_access_request_workflow_execution_with_business_rules(self):
         """Verify AccessRequestWorkflow runs with business rules (Data Consumer)."""
@@ -504,7 +505,7 @@ class TestDataMeshDomainOwnerWorkflowJourneysE2E(WorkflowE2ETestBase):
     DataMeshWorkflow: create domain, allocate resources, apply policies.
     """
 
-    workflow_classes = [DataMeshWorkflow]
+    workflow_classes: ClassVar[list] = [DataMeshWorkflow]
 
     def test_data_mesh_workflow_execution_with_business_rules(self):
         """Verify DataMeshWorkflow runs with business rules (Data Mesh Domain Owner)."""
@@ -544,7 +545,7 @@ class TestDataQualityWorkflowInJourneysE2E(WorkflowE2ETestBase):
     DataQualityCheckWorkflow: validate input, run DQ checks.
     """
 
-    workflow_classes = [DataQualityCheckWorkflow]
+    workflow_classes: ClassVar[list] = [DataQualityCheckWorkflow]
 
     def test_data_quality_workflow_execution_with_business_rules(self):
         """Verify DataQualityCheckWorkflow runs with business rules (journey DQ step)."""
@@ -590,7 +591,7 @@ class TestAllDataProductOwnerJourneysThatUseWorkflowsE2E(WorkflowE2ETestBase):
     DPO-015 (product_creation). Other DPO journeys may use these workflows indirectly.
     """
 
-    workflow_classes = [
+    workflow_classes: ClassVar[list] = [
         ContractCreationWorkflow,
         MarketplacePublicationWorkflow,
         ProductCreationWorkflow,
@@ -622,7 +623,7 @@ class TestAllDataEngineerJourneysThatUseWorkflowsE2E(WorkflowE2ETestBase):
     Coverage: DE-001 (contract_creation), DE-014 (product_creation).
     """
 
-    workflow_classes = [ContractCreationWorkflow, ProductCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow, ProductCreationWorkflow]
 
     def test_all_de_workflow_journeys_covered(self):
         """Verify DE workflow classes are importable and have WORKFLOW_NAME."""

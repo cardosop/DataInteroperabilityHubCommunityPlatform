@@ -13,6 +13,7 @@ Skip helper conventions (Phase 279 post-cleanup):
   tests that use ``DATAHUB_BASE_URL`` + ``DATAHUB_API_TOKEN`` env vars.
 """
 
+import contextlib
 import os
 import subprocess
 import time
@@ -26,11 +27,9 @@ import requests
 # Pytest only auto-discovers fixtures declared in conftest.py modules,
 # so we re-export the fixture here. (F401 is intentional: the import
 # IS the wiring.)
-from tests.fixtures.cleanup_registry import (  # noqa: F401
-    cleanup_registry,
+from tests.fixtures.cleanup_registry import (
     drain_persona_teardown_callbacks,
 )
-import contextlib
 
 # ── Canonical skip-helpers (DRY — prefer these in new / updated tests) ──────
 
@@ -65,13 +64,14 @@ def is_api_available(base_url: str = "", timeout: int = 5) -> bool:
         base_url = default_api_base_url()
     try:
         r = requests.get(f"{base_url.rstrip('/')}/health/", timeout=timeout)
-        return r.status_code < 500
     except requests.exceptions.RequestException as exc:
         warnings.warn(
             f"API health check failed at {base_url.rstrip('/')}/health/: {exc!r}  "
             f"(Set API_TEST_PORT or MESHANT_API_URL if the API is on a different port.)"
         )
         return False
+    else:
+        return r.status_code < 500
 
 
 def get_api_key() -> str | None:
@@ -130,9 +130,10 @@ def _token_valid(token: str) -> bool:
             headers={"Authorization": f"Bearer {token}"},
             timeout=5,
         )
-        return resp.status_code == 200
     except requests.RequestException:
         return True  # assume valid if network is down
+    else:
+        return resp.status_code == 200
 
 
 def _try_refresh(refresh_token: str) -> str | None:
@@ -161,7 +162,32 @@ def _try_refresh(refresh_token: str) -> str | None:
 
 
 def _do_login() -> str | None:
-    """Perform a fresh login and cache both tokens."""
+    """Perform a fresh login and cache both tokens.
+
+    When the seeded account is missing or its password drifted (e.g.
+    the shared test DB was flushed by another run), self-heal via the
+    idempotent ``/test/ensure-e2e-users/`` endpoint and retry once —
+    the same self-heal the persona provisioning path already uses.
+    """
+    access, refresh = _login_request()
+    if not access:
+        from tests._persona_provisioning import _ensure_e2e_user
+
+        if _ensure_e2e_user("e2e_platform@example.com"):
+            access, refresh = _login_request()
+    if access:
+        os.environ["_AUTO_PROVISIONED_API_KEY"] = access
+        os.environ["TEST_API_KEY"] = access
+        os.environ["DATAHUB_API_KEY"] = access
+        os.environ["DATAHUB_API_TOKEN"] = access
+        if refresh:
+            os.environ["_AUTO_PROVISIONED_REFRESH_TOKEN"] = refresh
+        return access
+    return None
+
+
+def _login_request() -> tuple[str | None, str | None]:
+    """POST /auth/login/ as the E2E platform admin; return the token pair."""
     try:
         resp = requests.post(
             f"{default_api_base_url()}/api/v1/auth/login/",
@@ -170,19 +196,40 @@ def _do_login() -> str | None:
         )
         if resp.status_code == 200:
             data = resp.json()
-            access = data.get("access_token", "")
-            refresh = data.get("refresh_token", "")
-            if access:
-                os.environ["_AUTO_PROVISIONED_API_KEY"] = access
-                os.environ["TEST_API_KEY"] = access
-                os.environ["DATAHUB_API_KEY"] = access
-                os.environ["DATAHUB_API_TOKEN"] = access
-                if refresh:
-                    os.environ["_AUTO_PROVISIONED_REFRESH_TOKEN"] = refresh
-                return access
+            return data.get("access_token", ""), data.get("refresh_token", "")
     except requests.RequestException:
         pass
-    return None
+    return None, None
+
+
+def _ensure_e2e_subscription() -> None:
+    """Prime the E2E tenant subscription via /test/ensure-e2e-subscription/.
+
+    Idempotent (hub.apps.billing.test_support.ensure_e2e_tenant_ready):
+    moves the tenant off the free plan (whose max_contracts=10 quota
+    exhausts after several real test runs) and creates the ML_AI
+    subscription record so ML plan reads don't 404.  Best-effort by
+    contract — the sessionstart caller suppresses exceptions.
+    """
+    from tests._persona_provisioning import _e2e_token
+
+    token = os.environ.get("_AUTO_PROVISIONED_API_KEY")
+    if not token:
+        return
+    resp = requests.post(
+        f"{default_api_base_url()}/test/ensure-e2e-subscription/",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-E2E-Token": _e2e_token(),
+        },
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        warnings.warn(
+            f"ensure-e2e-subscription returned {resp.status_code}: "
+            f"{resp.text[:200]} — quota-gated tests may skip",
+            stacklevel=2,
+        )
 
 
 def require_api_key_or_skip() -> str:
@@ -202,7 +249,7 @@ def require_api_or_skip() -> None:
         pytest.skip("API service is not available. Ensure Docker Compose services are running.")
 
 
-def pytest_sessionstart(session):  # noqa: ARG001
+def pytest_sessionstart(session):
     """Prepare the test environment on session start.
 
     1. Purge stale persona cache entries (JSON + lock files).  After a
@@ -261,12 +308,18 @@ def pytest_sessionstart(session):  # noqa: ARG001
     with contextlib.suppress(Exception):
         _enable_admin_tenant_feature_flags()
 
+    # ── 5. Prime the E2E tenant subscription (idempotent) ────────────
+    # Free-plan quotas exhaust after several real test runs; the
+    # endpoint moves the tenant to the e2e-unlimited plan and creates
+    # the ML_AI subscription record.  Best-effort — a failure leaves
+    # the graceful skips in place.
+    with contextlib.suppress(Exception):
+        _ensure_e2e_subscription()
+
     # Reset ODH circuit breaker at session start so integration tests
     # don't get blocked by a stale OPEN breaker from a previous run.
-    try:
-        _reset_odh_circuit_breaker()
-    except Exception:
-        pass  # docker / redis not available — tests will handle gracefully
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        _reset_odh_circuit_breaker()  # docker / redis not available — tests will handle gracefully
 
 
 def _enable_admin_tenant_feature_flags() -> None:
@@ -313,7 +366,7 @@ def _enable_admin_tenant_feature_flags() -> None:
             # Invalidate the cached token so the next get_api_key() call
             # returns a fresh one that includes any authz changes.
             os.environ.pop("_AUTO_PROVISIONED_API_KEY", None)
-    except Exception:
+    except (requests.RequestException, ValueError, AttributeError):
         pass  # best-effort; tests that need the flags create their own tenants
 
 
@@ -339,7 +392,7 @@ def _reset_odh_circuit_breaker() -> None:
     )
 
 
-def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+def pytest_sessionfinish(session, exitstatus):
     """Phase 216.X.3 layer 2 — drain pending persona teardown callbacks.
 
     See ``cli/tests/conftest.py`` for the rationale; this is the SDK
@@ -356,7 +409,7 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
 
 
 def check_service_health(
-    service_name: str, port: int, health_path: str = "/health", max_wait: int = 30
+    _service_name: str, port: int, health_path: str = "/health", max_wait: int = 30
 ) -> bool:
     """
     Check if a service is healthy.

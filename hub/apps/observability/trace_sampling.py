@@ -26,18 +26,14 @@ if TYPE_CHECKING:
     from opentelemetry import trace
     from opentelemetry.sdk.trace import SamplingResult
     from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
-    from opentelemetry.trace import SpanKind, TraceState
 else:
     SamplingResult = None
     TraceIdRatioBased = None
-    SpanKind = None
-    TraceState = None
 
 try:
     from opentelemetry import trace
     from opentelemetry.sdk.trace import SamplingResult
     from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
-    from opentelemetry.trace import SpanKind, TraceState
 
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
@@ -94,10 +90,7 @@ def is_critical_endpoint(path: str) -> bool:
         return True
 
     # Check for auth endpoints
-    if path.startswith("/api/v1/auth/"):
-        return True
-
-    return False
+    return bool(path.startswith("/api/v1/auth/"))
 
 
 class AdaptiveTraceSampler:

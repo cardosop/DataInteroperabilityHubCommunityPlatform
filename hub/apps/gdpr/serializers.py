@@ -14,7 +14,7 @@ class DataExportJobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DataExportJob
-        fields = [
+        fields = (
             "id",
             "user",
             "tenant",
@@ -26,8 +26,8 @@ class DataExportJobSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "completed_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "user",
             "tenant",
@@ -38,7 +38,7 @@ class DataExportJobSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "completed_at",
-        ]
+        )
 
 
 class ErasureRequestSerializer(serializers.ModelSerializer):
@@ -46,7 +46,7 @@ class ErasureRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ErasureRequest
-        fields = [
+        fields = (
             "id",
             "user",
             "tenant",
@@ -59,8 +59,8 @@ class ErasureRequestSerializer(serializers.ModelSerializer):
             "retention_exceptions",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "user",
             "tenant",
@@ -73,4 +73,4 @@ class ErasureRequestSerializer(serializers.ModelSerializer):
             "retention_exceptions",
             "created_at",
             "updated_at",
-        ]
+        )

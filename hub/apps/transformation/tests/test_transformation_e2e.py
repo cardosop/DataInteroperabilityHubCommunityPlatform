@@ -19,6 +19,7 @@ All tests use real services (no mocks/stubs) to ensure comprehensive E2E coverag
 import uuid
 
 import pytest
+from django.conf import settings as _settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -42,7 +43,7 @@ from hub.apps.transformation.models import (
     TransformationPipeline,
 )
 from hub.apps.transformation.services import TransformationService
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -409,6 +410,13 @@ class TransformationE2ETest(TestCase):
             else:
                 raise
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason=(
+            "Cross-tenant execution with entitlements requires the paid "
+            "marketplace layer; core-only has no entitlements."
+        ),
+    )
     def test_e2e_cross_tenant_execution_with_entitlements(self):
         """E2E: Cross-tenant pipeline execution with entitlements."""
         if not self.storage_available:

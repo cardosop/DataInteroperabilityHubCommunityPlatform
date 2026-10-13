@@ -42,7 +42,9 @@ def _check_health_stdlib(health_url: str, timeout_seconds: int = 20, interval: f
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
                     return True
-        except Exception:
+        except (OSError, ValueError):
+            # URLError/HTTPError (both OSError) plus a malformed URL —
+            # the urllib probe's only failure modes: keep polling.
             pass
         time.sleep(interval)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
     return False
@@ -105,7 +107,7 @@ class DQComplianceExecutionTest(DQAPITestBase):
                     import sys
 
                     sys.stderr.write(
-                        "[DQ integration] Storage check failed after 4 attempts: %s\n" % (e,)
+                        f"[DQ integration] Storage check failed after 4 attempts: {e}\n"
                     )
                     sys.stderr.flush()
 
@@ -120,26 +122,22 @@ class DQComplianceExecutionTest(DQAPITestBase):
 
     def _integration_skip_reason(self, need_dq=False, need_compliance=False, need_storage=False):
         """Return skip reason including dependency state for diagnostics (no mocks)."""
-        state = "dq=%s compliance=%s storage=%s" % (
-            self.dq_service_available,
-            self.compliance_service_available,
-            self.storage_available,
-        )
+        state = f"dq={self.dq_service_available} compliance={self.compliance_service_available} storage={self.storage_available}"
         if need_dq and not self.dq_service_available:
-            return "DQ service not available (%s)" % state
+            return f"DQ service not available ({state})"
         if need_compliance and not self.compliance_service_available:
-            return "Compliance service not available (%s)" % state
+            return f"Compliance service not available ({state})"
         if need_storage and not self.storage_available:
             err = getattr(self, "_storage_check_error", None)
-            detail = " (%s)" % err if err else ""
-            return "Storage not available (%s)%s" % (state, detail)
-        return "Integration deps unavailable (%s)" % state
+            detail = f" ({err})" if err else ""
+            return f"Storage not available ({state}){detail}"
+        return f"Integration deps unavailable ({state})"
 
     def _skip_if_unavailable(self, reason: str) -> None:
         """Skip test and ensure reason is visible in batch logs (no -rs required)."""
         import sys
 
-        sys.stderr.write("[DQ integration] SKIP: %s\n" % reason)
+        sys.stderr.write(f"[DQ integration] SKIP: {reason}\n")
         sys.stderr.flush()
         self.skipTest(reason)
 

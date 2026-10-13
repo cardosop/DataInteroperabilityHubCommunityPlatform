@@ -5,6 +5,7 @@ End-to-end tests for complete scheduled ingestion workflows.
 Uses real implementations - no mocks/stubs per development best practices.
 """
 
+import contextlib
 import os
 import time
 import uuid
@@ -38,9 +39,10 @@ def _prefect_integration_reachable() -> bool:
         return False
     try:
         r = requests.get(f"{base}/health", timeout=5)
-        return r.ok
     except Exception:
         return False
+    else:
+        return r.ok
 
 
 def _retry_sync_deployment(
@@ -75,14 +77,15 @@ def _retry_sync_deployment(
                     err = f"{err}: {body.get('detail', body)}"
                 elif r.text:
                     err = f"{err}: {r.text[:300]}"
-            except Exception:
+            except ValueError:
                 pass
             return None, err
         data = r.json() if r.text else {}
         dep_id = data.get("deployment_id") if isinstance(data, dict) else None
-        return dep_id, ""
     except Exception as e:
         return None, str(e)
+    else:
+        return dep_id, ""
 
 
 class ScheduledIngestionE2ETest(TransactionTestCase):
@@ -209,17 +212,16 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
         # Step 3: Manually trigger ingestion (retry up to 3 times on 503 - deployment may be propagating)
         response = None
         for attempt in range(3):
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # trigger retry loop; connection/network errors retry
                 response = self.client.post(
                     f"/api/v1/scheduled-ingestions/{ingestion_id}/trigger/", timeout=30
                 )
-            except Exception as e:
-                # Connection/network error — will retry
-                pass
             if response is not None and response.status_code != status.HTTP_503_SERVICE_UNAVAILABLE:
                 break
             if attempt < 2:
-                time.sleep(5)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         assert response is not None  # always set in loop
         if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
@@ -232,7 +234,7 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
                 else:
                     err = str(details)
                 details = f" (details: {err})" if err else ""
-            except Exception:
+            except ValueError:
                 pass
             pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Prefect deployment trigger returned 503 after retries{details} - "

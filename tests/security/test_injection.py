@@ -19,6 +19,17 @@ class SQLInjectionAPITest(InjectionTestBase):
 
     def test_audit_list_with_sql_like_param(self):
         """Audit list with parameter that looks like SQL is safely handled."""
+        # Raw audit-event list is role-gated (TENANT_ADMIN/AUDITOR, Phase
+        # 224.3.1); grant the role so injection-safety (not authorization)
+        # is what's under test.
+        from hub.apps.users.models import Role, UserRole
+
+        role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
         payloads = [
             "'; DROP TABLE audit_auditevent; --",
             "1 OR 1=1",

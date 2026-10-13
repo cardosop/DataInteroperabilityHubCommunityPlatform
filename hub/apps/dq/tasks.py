@@ -104,7 +104,7 @@ def deliver_or_schedule_retry(
     try:
         client = get_client_for_channel(channel)
     except ValueError as exc:
-        logger.error(
+        logger.exception(
             "dq_alert_unknown_channel",
             extra=_redact(
                 {

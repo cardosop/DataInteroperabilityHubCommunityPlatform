@@ -84,7 +84,11 @@ class AssetPopularityService:
         AssetPopularityService.track_view(asset_id, tenant_id)
 
     @staticmethod
-    def track_user_engagement(asset_id: str, tenant_id: str, user_id: str | None = None) -> None:
+    def track_user_engagement(
+        asset_id: str,
+        tenant_id: str,
+        user_id: str | None = None,
+    ) -> None:
         """
         Track user engagement with an asset.
 

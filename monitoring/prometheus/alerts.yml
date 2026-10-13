@@ -1,0 +1,1205 @@
+groups:
+  - name: hub_service_alerts
+    interval: 30s
+    rules:
+      # Service Down (Health Check Failure)
+      - alert: ServiceDown
+        expr: up{job=~"api-service|worker-service|semantic-service|dq-service|compliance-service|datacontract-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} has been down for more than 1 minute. Health check is failing."
+
+      # High Error Rate (>5% for 5 minutes)
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_errors_total[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected for {{ $labels.service }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for service {{ $labels.service }} (threshold: 5%)"
+
+      # High Latency (P95 > 500ms for 5 minutes)
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected for {{ $labels.service }}"
+          description: "95th percentile latency is {{ $value | humanize }}s for service {{ $labels.service }} (threshold: 500ms)"
+
+      # Job Queue Depth (>100 pending jobs for 10 minutes)
+      # Phase 52.2: Fixed metric name — rq_jobs_total{status="queued"} is the
+      # actual metric from the rq-exporter sidecar (was: job_queue_length which
+      # never existed).
+      - alert: HighJobQueueDepth
+        expr: sum(rq_jobs_total{status="queued"}) by (queue) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High job queue depth"
+          description: "Job queue {{ $labels.queue_name }} has {{ $value }} pending jobs (threshold: 100)"
+
+      # Job Failure Rate (>10% for 10 minutes)
+      - alert: HighJobFailureRate
+        expr: |
+          (
+            sum(rate(jobs_failed_total[10m])) by (job_type)
+            /
+            sum(rate(jobs_started_total[10m])) by (job_type)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High job failure rate for {{ $labels.job_type }}"
+          description: "Job failure rate is {{ $value | humanizePercentage }} for {{ $labels.job_type }} (threshold: 10%)"
+
+      # Database Connection Pool Exhaustion
+      - alert: DatabaseConnectionPoolExhausted
+        expr: db_connections_active > 80
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "{{ $value }} active database connections (threshold: 80)"
+
+      # DQ Run Failures
+      - alert: HighDQRunFailureRate
+        expr: rate(dq_runs_total{status=~"error|failed"}[5m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High DQ run failure rate"
+          description: "DQ run failure rate is {{ $value }} failures/sec for service {{ $labels.service }}"
+
+      # Compliance Run Failures
+      - alert: HighComplianceRunFailureRate
+        expr: rate(compliance_runs_total{status=~"error|failed"}[5m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High compliance run failure rate"
+          description: "Compliance run failure rate is {{ $value }} failures/sec for service {{ $labels.service }}"
+
+      # Scheduled Ingestion Failures
+      - alert: ScheduledIngestionRunFailed
+        expr: rate(scheduled_ingestion_runs_total{status="FAILED"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scheduled ingestion run failures detected"
+          description: "Scheduled ingestion {{ $labels.scheduled_ingestion_id }} has {{ $value }} failed runs/sec (threshold: 0.1)"
+
+      - alert: ScheduledIngestionHighFailureRate
+        expr: |
+          (
+            sum(rate(scheduled_ingestion_runs_total{status="FAILED"}[10m]))
+            /
+            sum(rate(scheduled_ingestion_runs_total[10m]))
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High scheduled ingestion failure rate"
+          description: "Scheduled ingestion failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      - alert: ScheduledIngestionPerformanceDegradation
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(scheduled_ingestion_duration_seconds_bucket[5m])) by (scheduled_ingestion_id, le)
+          ) > 1800
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scheduled ingestion performance degradation"
+          description: "Scheduled ingestion {{ $labels.scheduled_ingestion_id }} P95 duration is {{ $value | humanize }}s (threshold: 1800s)"
+
+      - alert: ScheduledIngestionNoRuns
+        expr: |
+          (
+            sum(scheduled_ingestion_active_count) > 0
+            and
+            sum(rate(scheduled_ingestion_runs_total[1h])) == 0
+          )
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Active scheduled ingestions with no runs"
+          description: "{{ $value }} active scheduled ingestions have had no runs in the last hour"
+
+      # Contract Validation Failures
+      - alert: HighContractValidationFailureRate
+        expr: rate(contract_validations_total{status=~"error|invalid"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High contract validation failure rate"
+          description: "Contract validation failure rate is {{ $value }} failures/sec for service {{ $labels.service }}"
+
+      # Phase 15: Normalization Coverage Alerts
+      - alert: LargeContractJSONSize
+        expr: histogram_quantile(0.95, sum(rate(contract_json_size_bytes_bucket[5m])) by (tenant_id, le)) > 1048576
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large contract JSON size detected"
+          description: "Contract JSON size P95 is {{ $value | humanize }} bytes (threshold: 1MB) for tenant {{ $labels.tenant_id }}"
+
+      - alert: HighMissingObjectsRate
+        expr: rate(contract_missing_objects_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of contracts with missing objects"
+          description: "Missing objects rate is {{ $value }} contracts/sec for object type {{ $labels.object_type }} (tenant: {{ $labels.tenant_id }})"
+
+      - alert: BrokenLineageLinksDetected
+        expr: rate(contract_broken_lineage_links_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Broken lineage links detected"
+          description: "Broken lineage links rate is {{ $value }} links/sec for link type {{ $labels.link_type }} (tenant: {{ $labels.tenant_id }})"
+
+      - alert: LowNormalizationCoverage
+        expr: histogram_quantile(0.5, sum(rate(normalization_coverage_by_object_bucket[5m])) by (object_type, tenant_id, le)) < 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low normalization coverage detected"
+          description: "Normalization coverage P50 is {{ $value | humanizePercentage }} for object type {{ $labels.object_type }} (tenant: {{ $labels.tenant_id }}, threshold: 80%)"
+
+      # Virtualization Query Execution Alerts
+      - alert: VirtualizationQueryExecutionFailure
+        expr: |
+          (
+            sum(rate(virtualization_query_execution_failed_total[5m])) by (tenant_id)
+            /
+            sum(rate(virtualization_query_execution_started_total[5m])) by (tenant_id)
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High virtualization query execution failure rate"
+          description: "Query execution failure rate is {{ $value | humanizePercentage }} for tenant {{ $labels.tenant_id }} (threshold: 10%)"
+
+      - alert: VirtualizationQueryTimeout
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(virtualization_query_execution_duration_seconds_bucket[5m])) by (tenant_id, query_type, le)
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Virtualization query execution timeout detected"
+          description: "Query execution P95 duration is {{ $value | humanize }}s for tenant {{ $labels.tenant_id }}, query type {{ $labels.query_type }} (threshold: 300s)"
+
+      - alert: VirtualizationCacheHitRateLow
+        expr: |
+          (
+            sum(rate(virtualization_query_result_cache_hits_total[5m])) by (tenant_id)
+            /
+            (sum(rate(virtualization_query_result_cache_hits_total[5m])) by (tenant_id) + sum(rate(virtualization_query_result_cache_misses_total[5m])) by (tenant_id))
+          ) < 0.50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low virtualization query cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} for tenant {{ $labels.tenant_id }} (threshold: 50%)"
+
+  # ===========================================================================
+  # Phase 4 — Observability Stack: Production SLO / Infrastructure Alerts
+  #
+  # Metric naming convention:
+  #   django_http_responses_total    — OpenTelemetry Django HTTP response counter
+  #                                    (labels: status, method, handler)
+  #   http_server_request_duration_seconds — OTEL semantic convention histogram
+  #                                    (labels: http_status_code, http_method,
+  #                                             http_route, job)
+  #   rq_jobs_total                  — RQ job counter (labels: status, queue)
+  #   hub_worker_slots_available     — gauge: available RQ worker concurrency slots
+  #   pgbouncer_client_wait_seconds  — histogram: client wait time in PgBouncer pool
+  #   pg_stat_activity_count         — gauge: active PostgreSQL connections
+  #                                    (from postgres_exporter)
+  # ===========================================================================
+  - name: hub_production_alerts
+    interval: 30s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # P2 — API 5xx Error Rate > 1 % over 5 min
+      # Threshold: 1 % of all requests returning 5xx.
+      # Low threshold intentional: even 1 % errors in a data platform
+      # indicate broken ingestion pipelines or uncaught exceptions.
+      # -----------------------------------------------------------------------
+      - alert: HubApiErrorRateHigh
+        expr: |
+          (
+            sum(rate(django_http_responses_total{status=~"5.."}[5m]))
+            /
+            sum(rate(django_http_responses_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "API 5xx error rate exceeds 1 %"
+          description: >
+            The API service is returning 5xx responses at
+            {{ $value | humanizePercentage }} (threshold: 1 %).
+            Check api-service logs and recent deployments.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-api-error-rate"
+          dashboard_url: "http://grafana:3000/d/hub-api/api-overview"
+
+      # -----------------------------------------------------------------------
+      # P2 — API P95 Latency > 2 s over 5 min
+      # Threshold: 95th-percentile response time exceeds 2 seconds.
+      # Measured via OTEL semantic-convention histogram from Django instrumentation.
+      # -----------------------------------------------------------------------
+      - alert: HubApiLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(
+              rate(http_server_request_duration_seconds_bucket{job="api-service"}[5m])
+            ) by (le, http_route)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "API P95 latency exceeds 2 s on route {{ $labels.http_route }}"
+          description: >
+            Route {{ $labels.http_route }} P95 latency is {{ $value | humanize }}s
+            (threshold: 2 s). Investigate slow queries, downstream service calls,
+            or memory pressure.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-api-latency"
+          dashboard_url: "http://grafana:3000/d/hub-api/api-overview"
+
+      # -----------------------------------------------------------------------
+      # P1 — Heavy queue backlog (job_critical)
+      #
+      # job_critical carries DQ scans, compliance runs, scheduled ingestion,
+      # and ODPS export jobs — all long-running and memory-intensive.
+      # These are processed exclusively by worker-heavy pods.
+      #
+      # Threshold: > 10 waiting jobs.  Each heavy worker processes one job at a
+      # time (single-threaded, pandas DataFrames), so even a small backlog means
+      # noticeable latency for users awaiting DQ results.  Fire early and page
+      # the platform team rather than wait for a 1000-job pile-up.
+      #
+      # Remediation:
+      #   1. Scale up worker-heavy: kubectl scale deploy hub-worker-heavy --replicas=4
+      #   2. Check for stuck jobs: rq info --interval 1 (job_critical queue)
+      #   3. Inspect heavy worker logs for OOM kills or timeout loops
+      #   4. If prometheus-adapter is restarting, the HPA falls back to CPU; fix
+      #      the adapter first so queue-depth scaling resumes.
+      # -----------------------------------------------------------------------
+      - alert: HubHeavyQueueBacklog
+        expr: |
+          rq_jobs_total{status="queued", queue="job_critical"} > 10
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+          worker_pool: heavy
+        annotations:
+          summary: "Heavy worker queue (job_critical) has {{ $value }} queued jobs"
+          description: >
+            {{ $value }} jobs are waiting in job_critical for more than 5 minutes.
+            Heavy workers (DQ scans, compliance, ingestion, ODPS export) are
+            saturated or stalled. Scale up worker-heavy deployment or investigate
+            job timeouts. Current worker capacity: see hub_worker_slots_available.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-heavy-queue-backlog"
+          dashboard_url: "http://grafana:3000/d/hub-worker/worker-overview"
+
+      # -----------------------------------------------------------------------
+      # P2 — Light queue backlog (job_default | job_low)
+      #
+      # job_default carries webhook delivery, cache invalidation, search index
+      # updates, ODPS linking, and contract migrations.
+      # job_low carries contract validation (fast, but must not starve).
+      # Both are processed exclusively by worker-light pods.
+      #
+      # Threshold: > 100 combined waiting jobs.  Light jobs are short-lived
+      # (< 5 min each) and processed by 3 replicas, so a 100-job backlog
+      # implies > 5 min latency for webhook delivery, which degrades integrations.
+      #
+      # Remediation:
+      #   1. Scale up worker-light: kubectl scale deploy hub-worker-light --replicas=6
+      #   2. Check for Redis connection errors in worker-light pods
+      #   3. Verify no single tenant is flooding the queue (check tenant counters)
+      # -----------------------------------------------------------------------
+      - alert: HubLightQueueBacklog
+        expr: |
+          sum(rq_jobs_total{status="queued", queue=~"job_default|job_low"}) > 100
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+          worker_pool: light
+        annotations:
+          summary: "Light worker queues (job_default+job_low) have {{ $value }} queued jobs"
+          description: >
+            {{ $value }} jobs are waiting across job_default and job_low for more
+            than 5 minutes. Light workers (webhooks, cache invalidation, contract
+            validation) are saturated. Scale up worker-light deployment or
+            investigate queue consumers. Check tenant-level rate limiting.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-light-queue-backlog"
+          dashboard_url: "http://grafana:3000/d/hub-worker/worker-overview"
+
+      # -----------------------------------------------------------------------
+      # P1 — All Worker Slots Exhausted for > 5 min
+      # hub_worker_slots_available == 0 means no worker can accept new jobs.
+      # This typically indicates a job timeout / deadlock or under-provisioning.
+      # -----------------------------------------------------------------------
+      - alert: HubWorkerSlotsExhausted
+        expr: hub_worker_slots_available == 0
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "All worker slots are exhausted"
+          description: >
+            hub_worker_slots_available has been 0 for more than 5 minutes.
+            No new jobs can be processed. Check for stuck/long-running jobs
+            (JOB_TIMEOUT_DQ_RUN=1800, JOB_TIMEOUT_COMPLIANCE_RUN=1800),
+            memory exhaustion, or insufficient worker replicas.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-worker-slots-exhausted"
+          dashboard_url: "http://grafana:3000/d/hub-worker/worker-overview"
+
+      # -----------------------------------------------------------------------
+      # P1 — Redis Instance Down
+      # Any Redis instance disappearing immediately impacts caching, queuing,
+      # WebSocket channels, or event publishing — degrading multiple features.
+      # -----------------------------------------------------------------------
+      - alert: HubRedisDown
+        expr: up{job=~"redis-cache|redis-queue|redis-events|redis-channels"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "Redis instance {{ $labels.job }} is unreachable"
+          description: >
+            Prometheus cannot scrape {{ $labels.job }} (up == 0) for > 1 minute.
+            This will affect {{ $labels.job | reReplaceAll "redis-" "" }} functionality.
+            Check container health and network connectivity.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-redis-down"
+          dashboard_url: "http://grafana:3000/d/hub-redis/redis-overview"
+
+      # -----------------------------------------------------------------------
+      # P2 — PgBouncer Client Wait Time > 30 s
+      # Clients waiting > 30 s in the PgBouncer pool indicates pool exhaustion
+      # (default_pool_size exceeded) or PostgreSQL query contention.
+      # -----------------------------------------------------------------------
+      - alert: HubPgBouncerClientWait
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(pgbouncer_client_wait_seconds_bucket[5m])) by (le, database)
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: infrastructure
+        annotations:
+          summary: "PgBouncer client wait P95 > 30 s on database {{ $labels.database }}"
+          description: >
+            PgBouncer clients are waiting {{ $value | humanize }}s (P95) for a
+            server connection on database {{ $labels.database }}.
+            Pool may be exhausted. Review default_pool_size and slow query backlog.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-pgbouncer-wait"
+          dashboard_url: "http://grafana:3000/d/hub-postgres/postgres-overview"
+
+      # -----------------------------------------------------------------------
+      # P2 — PostgreSQL Active Connections > 80
+      # With max_connections=100 (typical), > 80 leaves little headroom.
+      # PgBouncer should absorb spikes, so this alert fires when the backend
+      # itself is under pressure despite connection pooling.
+      # -----------------------------------------------------------------------
+      - alert: HubPostgresConnectionsHigh
+        expr: pg_stat_activity_count{state!="idle"} > 80
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: infrastructure
+        annotations:
+          summary: "PostgreSQL active connections {{ $value }} exceed threshold (80)"
+          description: >
+            {{ $value }} non-idle PostgreSQL connections detected (threshold: 80).
+            Check for long-running transactions, lock contention, or a PgBouncer
+            misconfiguration allowing direct backend connections to bypass the pool.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-postgres-connections"
+          dashboard_url: "http://grafana:3000/d/hub-postgres/postgres-overview"
+
+      # -----------------------------------------------------------------------
+      # P3 — CSP Violation Spike > 10 reports / 5 min
+      #
+      # hub_csp_violations_total is incremented by the /api/csp-report/ Django
+      # endpoint whenever a browser POSTs a Content-Security-Policy violation.
+      # A sudden spike in CSP violations can indicate:
+      #   - An active XSS injection attempt against the frontend
+      #   - A newly introduced inline script or external resource that needs to
+      #     be added to the CSP allow-list before enforcing
+      #   - A browser extension or proxy injecting content into pages
+      #
+      # Threshold: > 10 violations per 5-minute window.
+      # Severity: P3 (investigate) — policy is in report-only mode so no user
+      # impact, but a spike warrants review before flipping to enforce.
+      # -----------------------------------------------------------------------
+      - alert: HubCspViolationSpike
+        expr: increase(hub_csp_violations_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          priority: P3
+          team: security
+        annotations:
+          summary: "CSP violation spike: > 10 reports/min on directive {{ $labels.violated_directive }}"
+          description: >
+            The CSP report endpoint is receiving {{ $value | humanize }} violations/sec
+            (threshold: 10/5 min) for directive {{ $labels.violated_directive }}
+            on path {{ $labels.document_uri_path }}.
+            Review recent frontend deployments and browser security logs.
+            If violations look like injection attempts, escalate to security team.
+            Once root cause is resolved, consider flipping from Content-Security-Policy-Report-Only
+            to Content-Security-Policy: enforce (task 7.7).
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-csp-violations"
+          dashboard_url: "http://grafana:3000/d/hub-security/csp-violations"
+
+      # -----------------------------------------------------------------------
+      # P2 — RQ dead-letter queue non-empty for > 10 minutes (13.3)
+      #
+      # RQ moves a job to the failed queue (dead-letter) when all retries are
+      # exhausted.  A non-zero failed count that persists for 10+ minutes
+      # indicates tasks that require operator intervention:
+      #   - Inspect the failed queue with `rq info` or the RQ dashboard
+      #   - Check application logs for the root cause
+      #   - Re-queue manually with `rq requeue --all` after fixing the cause
+      #
+      # Metric: rq_jobs_total{status="failed", queue=~"job_.*"}
+      # This label is emitted by the rq-exporter sidecar configured in the
+      # worker Deployment (see helm/templates/deployment/worker.yaml).
+      # -----------------------------------------------------------------------
+      - alert: HubRqDeadLetterQueueNotEmpty
+        expr: |
+          sum(rq_jobs_total{status="failed", queue=~"job_.*"}) by (queue) > 0
+        for: 10m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "RQ dead-letter queue {{ $labels.queue }} has {{ $value }} failed job(s)"
+          description: >
+            {{ $value }} job(s) have been sitting in the RQ failed queue
+            "{{ $labels.queue }}" for more than 10 minutes.
+            This means all retry attempts were exhausted.
+            Inspect with `rq info --url $REDIS_URL` or the RQ dashboard,
+            check application logs for the root cause, fix it, then
+            re-queue with `rq requeue --all --queue {{ $labels.queue }}`.
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-rq-dead-letter"
+          dashboard_url: "http://grafana:3000/d/hub-job-worker-health/job-worker-health"
+
+      # -----------------------------------------------------------------------
+      # P1 — Compliance audit log write failure (19.13.2)
+      #
+      # The compliance service emits one `compliance_audit_records_total`
+      # increment per completed scan (sync or async enqueue).  If scans are
+      # occurring (compliance_runs_total rate > 0) but the audit counter is
+      # flat, the AuditLogger has silently stopped writing — a compliance
+      # violation that must be investigated immediately.
+      #
+      # Design notes:
+      # - Two separate `rate()` windows are used to avoid false positives
+      #   during the first 5 minutes after service startup.
+      # - The `and` operator returns the LHS value only when the RHS is
+      #   truthy; the alert fires only when BOTH conditions hold simultaneously.
+      # - severity: critical — missing audit records may violate GDPR Art. 30
+      #   (records of processing activities) and similar obligations.
+      # -----------------------------------------------------------------------
+      - alert: ComplianceAuditLogWriteFailure
+        expr: |
+          (
+            rate(compliance_audit_records_total[5m]) == 0
+          )
+          and
+          (
+            rate(compliance_runs_total[5m]) > 0
+          )
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "Compliance audit log is silent while scans are occurring"
+          description: >
+            compliance_audit_records_total has not incremented in the last 5 minutes
+            while compliance_runs_total is still increasing.
+            This means compliance scans are being processed but no audit records are
+            being emitted — a potential regulatory compliance violation.
+            Check the AuditLogger in the compliance-service for exceptions, and verify
+            that the 'audit' Python logger is correctly configured to write to stdout.
+          runbook_url: "https://meshant-internal.example.com/runbooks/compliance-audit-log-failure"
+          dashboard_url: "http://grafana:3000/d/compliance/compliance-overview"
+
+      # -----------------------------------------------------------------------
+      # P2 — Compliance async queue backlog (19.13.2)
+      #
+      # compliance_async_queue_depth is a Gauge that is incremented when a job
+      # is accepted by POST /scan-file-async and decremented when GET
+      # /scan-result/{job_id} returns a terminal state (COMPLETED or FAILED).
+      #
+      # A sustained depth > 50 for > 5 minutes indicates that consumers (RQ
+      # workers processing async scan jobs) are not keeping up with the
+      # submission rate — likely due to under-provisioned worker replicas,
+      # a slow downstream compliance engine, or worker OOM kills.
+      #
+      # Remediation:
+      #   1. Scale up worker-heavy replicas (they process compliance async jobs)
+      #   2. Inspect worker logs for OOM kills or long scan durations
+      #   3. Check compliance-service memory and CPU metrics
+      #   4. Verify REDIS_QUEUE_URL is reachable from both compliance-service
+      #      and worker-heavy pods
+      # -----------------------------------------------------------------------
+      - alert: ComplianceAsyncQueueBacklog
+        expr: compliance_async_queue_depth{service="compliance-service"} > 50
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "Compliance async queue depth is {{ $value }} (threshold: 50)"
+          description: >
+            compliance_async_queue_depth for the compliance-service has been above 50
+            for more than 5 minutes.  Async scan jobs are accumulating faster than
+            workers can process them.
+            Scale up worker-heavy replicas or investigate slow/stuck scan jobs.
+            Current depth: {{ $value }}.
+          runbook_url: "https://meshant-internal.example.com/runbooks/compliance-async-queue-backlog"
+          dashboard_url: "http://grafana:3000/d/compliance/compliance-overview"
+
+      # PostgreSQL Replication Lag (Phase 17.4)
+      # Metric exposed by the pg-exporter sidecar on the PostgreSQL primary pod.
+      # A lag above 10 s for 2 min means the replica is falling behind and
+      # read-replica traffic may serve stale data.
+      - alert: HubReplicationLagHigh
+        expr: pg_replication_lag_seconds > 10
+        for: 2m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "PostgreSQL replication lag is {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+          description: >
+            The read replica is {{ $value | humanizeDuration }} behind the
+            primary. If lag exceeds your read-after-write SLO, consider
+            temporarily routing reads back to the primary or investigating
+            I/O saturation on the replica instance.
+            Diagnose on primary:
+              SELECT client_addr, state, (sent_lsn - replay_lsn) AS byte_lag
+              FROM pg_stat_replication;
+          runbook_url: "https://meshant-internal.example.com/runbooks/hub-pg-replication-lag"
+          dashboard_url: "http://grafana:3000/d/hub-database/database"
+
+      # -----------------------------------------------------------------------
+      # Phase 52.3 — Vault, Backup, and TLS Certificate Alerts
+      # -----------------------------------------------------------------------
+
+      # P1 — Vault Unavailable
+      - alert: VaultUnavailable
+        expr: up{job="vault"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "Vault is down — services will fail to fetch secrets on restart"
+          description: >
+            Vault has been unreachable for more than 2 minutes.
+            New pod starts will fail to inject secrets.
+            Check Vault pod health and Raft storage.
+          runbook_url: "https://meshant-internal.example.com/runbooks/vault-unavailable"
+
+      # P1 — Backup Job Failed
+      - alert: BackupJobFailed
+        expr: increase(kube_job_failed{job_name=~"backup-.*"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "Database backup job failed — no current recovery point exists"
+          description: >
+            A Kubernetes Job matching backup-* has failed in the last hour.
+            Verify CronJob schedule, S3 bucket access, and pg_dump connectivity.
+          runbook_url: "https://meshant-internal.example.com/runbooks/backup-job-failed"
+
+      # P2 — TLS Certificate Expiring Soon (< 7 days)
+      - alert: TLSCertificateExpiringSoon
+        expr: certmanager_certificate_expiration_timestamp_seconds - time() < 604800
+        for: 1h
+        labels:
+          severity: warning
+          priority: P2
+          team: infrastructure
+        annotations:
+          summary: "TLS certificate expires in less than 7 days: {{ $labels.name }}"
+          description: >
+            Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
+            expires in {{ $value | humanizeDuration }}.
+            Check cert-manager logs and ACME issuer status.
+          runbook_url: "https://meshant-internal.example.com/runbooks/tls-certificate-expiring"
+
+      # P1 — TLS Certificate Expired (< 24 hours)
+      - alert: TLSCertificateExpired
+        expr: certmanager_certificate_expiration_timestamp_seconds - time() < 86400
+        for: 0m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "TLS certificate expires in less than 24 hours: {{ $labels.name }}"
+          description: >
+            Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
+            expires in {{ $value | humanizeDuration }}.
+            Immediate action required — HTTPS will break when it expires.
+          runbook_url: "https://meshant-internal.example.com/runbooks/tls-certificate-expired"
+
+  # ===========================================================================
+  # Phase 25.21.2 — Prefect Integration & Worker Alerts
+  # ===========================================================================
+  - name: hub_prefect_alerts
+    interval: 30s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # P1 — Prefect Integration Service Down
+      # The integration service is the sole bridge between Django and Prefect;
+      # if it is unreachable, deployment sync stops and new schedules will
+      # accumulate in PENDING/FAILED state.
+      # -----------------------------------------------------------------------
+      - alert: PrefectIntegrationServiceDown
+        expr: up{job="prefect-integration-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "Prefect integration service is down"
+          description: >
+            up{job="prefect-integration-service"} has been 0 for
+            more than 2 minutes. Deployment sync, trigger, and
+            delete operations are unavailable. Check pod status
+            and container logs.
+          runbook_url: "https://meshant-internal.example.com/runbooks/prefect-integration-down"
+
+      # -----------------------------------------------------------------------
+      # P2 — High Deployment Sync Failure Rate
+      # A failure rate > 20 % over 5 minutes indicates a systemic issue
+      # (Prefect API down, auth misconfiguration, circuit breaker open).
+      # -----------------------------------------------------------------------
+      - alert: PrefectDeploymentSyncHighFailureRate
+        expr: |
+          (
+            sum(rate(prefect_deployment_operations_total{status="failure"}[5m]))
+            /
+            sum(rate(prefect_deployment_operations_total[5m]))
+          ) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "Prefect deployment sync failure rate exceeds 20 %"
+          description: >
+            {{ $value | humanizePercentage }} of deployment operations
+            are failing (threshold: 20 %). Check integration service
+            logs, Prefect server health, and circuit breaker state.
+          runbook_url: "https://meshant-internal.example.com/runbooks/prefect-sync-failures"
+
+      # -----------------------------------------------------------------------
+      # P1 — Prefect Worker Down
+      # The Prefect worker polls the work pool and submits flow runs as K8s
+      # Jobs. If zero replicas are ready, no scheduled ingestions or exports
+      # can execute.
+      # -----------------------------------------------------------------------
+      - alert: PrefectWorkerDown
+        expr: |
+          kube_deployment_status_replicas_ready{
+            deployment=~".*prefect-worker.*"
+          } == 0
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "Prefect worker has zero ready replicas"
+          description: >
+            kube_deployment_status_replicas_ready for the Prefect
+            worker deployment has been 0 for more than 5 minutes.
+            No flow runs can be submitted. Check pod events, OOM
+            kills, and work pool connectivity.
+          runbook_url: "https://meshant-internal.example.com/runbooks/prefect-worker-down"
+
+      # -----------------------------------------------------------------------
+      # P2 — Prefect Job Orphan (Phase 73.2)
+      # A SCHEDULED_INGESTION job has been PENDING for > 30 minutes.
+      # Likely cause: Prefect flow submission failed silently.
+      # -----------------------------------------------------------------------
+      - alert: PrefectJobOrphan
+        expr: |
+          count(
+            hub_job_status{type="SCHEDULED_INGESTION", status="PENDING"}
+            offset 30m
+          ) > 0
+        for: 30m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "Scheduled ingestion job PENDING > 30 min — possible Prefect submission failure"
+          description: >
+            One or more SCHEDULED_INGESTION jobs have been in PENDING status
+            for over 30 minutes. The Prefect flow may have failed to submit.
+            Run: python manage.py recover_stuck_jobs --dry-run
+          runbook_url: "https://meshant-internal.example.com/runbooks/prefect-job-orphan"
+
+  # ===========================================================================
+  # Phase 26.17.1 — Contract Normalization & Export Alerts
+  # ===========================================================================
+  - name: hub_contract_alerts
+    interval: 30s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # P1 — v3.1.0 contracts falling back to v3.0.2 normalizer
+      #
+      # odcs_v310_fallback_total is incremented by record_v310_fallback()
+      # in normalization_metrics.py whenever a v3.1.0 contract is handled
+      # by a non-v3.1.0 normalizer.  Labels: fallback_normalizer, tenant_id.
+      # Any increment means data loss (relationships, element_id, etc.).
+      # -----------------------------------------------------------------------
+      - alert: ODCSv310NormalizationFallback
+        expr: |
+          increase(odcs_v310_fallback_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "ODCS v3.1.0 contracts falling back to {{ $labels.fallback_normalizer }} normalizer"
+          description: >
+            {{ $value }} v3.1.0 contract(s) fell back to the
+            {{ $labels.fallback_normalizer }} normalizer in the last 5 minutes.
+            The v3.1.0 normalizer is not registered or failed to load.
+            Tenant: {{ $labels.tenant_id }}.
+            Check normalizer registry initialization in contracts app.
+          runbook_url: "https://meshant-internal.example.com/runbooks/odcs-normalizer-fallback"
+
+      # -----------------------------------------------------------------------
+      # P2 — Post-upgrade backfill stalled
+      #
+      # normalization_backfill_remaining is an UpDownCounter (gauge) set by
+      # renormalize_contracts_v310() in hub/apps/contracts/tasks.py.
+      # It is set to the remaining count at each batch boundary and reset
+      # to 0 on completion.  A non-zero value persisting > 2h means the
+      # backfill job is stuck or crashed.
+      # -----------------------------------------------------------------------
+      - alert: HubContractBackfillStalled
+        expr: normalization_backfill_remaining > 0
+        for: 2h
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "Contract backfill has {{ $value }} remaining after 2 hours"
+          description: >
+            The post-upgrade re-normalization backfill has not
+            completed within 2 hours. Check the renormalize-contracts
+            Job logs and RQ worker health.
+          runbook_url: "https://meshant-internal.example.com/runbooks/contract-backfill-stalled"
+
+      # -----------------------------------------------------------------------
+      # P3 — Heavy export downgrade usage
+      #
+      # contract_export_total is incremented by ContractExportMixin in
+      # hub/apps/contracts/views_export.py on every export response.
+      # Labels: status (success/failure), downgrade (true/false), tenant_id.
+      # -----------------------------------------------------------------------
+      - alert: ContractExportDowngradeRate
+        expr: |
+          rate(
+            contract_export_total{downgrade="true"}[1h]
+          ) > 10
+        for: 30m
+        labels:
+          severity: warning
+          priority: P3
+          team: platform
+        annotations:
+          summary: "High contract export downgrade rate: {{ $value }}/s"
+          description: >
+            More than 10 downgrade exports per hour sustained for
+            30 minutes. This may indicate users or integrations
+            stuck on older spec versions. Review adoption metrics.
+          runbook_url: "https://meshant-internal.example.com/runbooks/contract-export-downgrade"
+
+  # ===========================================================================
+  # Phase 29 — Semantic Service Alerts
+  # ===========================================================================
+  - name: semantic_service_alerts
+    interval: 30s
+    rules:
+
+      - alert: SemanticSPARQLHighLatency
+        expr: histogram_quantile(0.95, sum(rate(sparql_query_duration_seconds_bucket[5m])) by (le)) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "SPARQL P95 latency exceeds 10s"
+          description: "SPARQL query P95 latency is {{ $value | humanizeDuration }}. Check Fuseki heap usage and query complexity."
+          runbook_url: "https://meshant-internal.example.com/runbooks/sparql-high-latency"
+
+      - alert: SemanticFusekiDown
+        expr: up{job="fuseki"} == 0 or up{job="semantic-service"} == 0
+        for: 15m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Fuseki or semantic-service is down for 15+ minutes"
+          description: "Job {{ $labels.job }} has been down for more than 15 minutes."
+          runbook_url: "https://meshant-internal.example.com/runbooks/fuseki-down"
+
+      - alert: SemanticSHACLViolationSpike
+        expr: rate(shacl_violations_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "SHACL violation rate spike: {{ $value }}/s"
+          description: "More than 10 SHACL violations per second sustained for 5 minutes. Check recent contract uploads for malformed data."
+          runbook_url: "https://meshant-internal.example.com/runbooks/shacl-violations"
+
+      - alert: SemanticTenantIsolationViolation
+        expr: tenant_isolation_violations_total > 0
+        for: 0m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "CRITICAL: Tenant isolation violation detected"
+          description: "tenant_isolation_violations_total is {{ $value }}. This metric must ALWAYS be 0. Investigate immediately — data may have leaked across tenant boundaries."
+          runbook_url: "https://meshant-internal.example.com/runbooks/tenant-isolation-violation"
+
+      - alert: FusekiBackupFailed
+        expr: kube_job_status_failed{job_name=~".*backup-fuseki.*"} > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Fuseki backup CronJob failed"
+          description: "The Fuseki TDB2 backup job has failed. Check job logs and S3 bucket access."
+          runbook_url: "https://meshant-internal.example.com/runbooks/fuseki-backup-failed"
+
+  # ===========================================================================
+  # Phase 61 — Kubernetes Operational Alerts
+  # ===========================================================================
+  - name: hub_kubernetes_alerts
+    interval: 30s
+    rules:
+
+      # P1 — Pod OOM Killed (immediate)
+      - alert: PodOOMKilled
+        expr: increase(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} OOM killed in {{ $labels.namespace }}"
+          description: >
+            Container {{ $labels.container }} in pod {{ $labels.pod }}
+            (namespace {{ $labels.namespace }}) was OOM killed.
+            Increase memory limits in Helm values for the affected service.
+          runbook_url: "https://meshant-internal.example.com/runbooks/pod-oom-killed"
+
+      # P2 — Pod Restart Loop
+      - alert: PodRestartLoop
+        expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} restarting frequently ({{ $value }} restarts/hr)"
+          description: >
+            Container {{ $labels.container }} in pod {{ $labels.pod }}
+            has restarted {{ $value }} times in the last hour.
+            Run: kubectl describe pod {{ $labels.pod }} -n {{ $labels.namespace }}
+          runbook_url: "https://meshant-internal.example.com/runbooks/pod-restart-loop"
+
+      # P2 — Persistent Volume Filling Up (warning at 85%)
+      - alert: PersistentVolumeFillingUp
+        expr: >
+          kubelet_volume_stats_used_bytes
+          / kubelet_volume_stats_capacity_bytes > 0.85
+        for: 15m
+        labels:
+          severity: warning
+          priority: P2
+          team: infrastructure
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+          description: >
+            PVC {{ $labels.persistentvolumeclaim }} in namespace
+            {{ $labels.namespace }} is above 85% capacity.
+            Primary consumers: Fuseki TDB2, Tempo WAL, PostgreSQL data.
+          runbook_url: "https://meshant-internal.example.com/runbooks/pv-filling-up"
+
+      # P1 — Persistent Volume Critical (95%)
+      - alert: PersistentVolumeCritical
+        expr: >
+          kubelet_volume_stats_used_bytes
+          / kubelet_volume_stats_capacity_bytes > 0.95
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full — imminent write failure"
+          description: >
+            PVC {{ $labels.persistentvolumeclaim }} in namespace
+            {{ $labels.namespace }} is above 95% capacity.
+            Writes will fail when full. Expand the PVC or delete old data immediately.
+          runbook_url: "https://meshant-internal.example.com/runbooks/pv-critical"
+
+      # P2 — PgBouncer Pool Saturation
+      - alert: PgBouncerPoolSaturation
+        expr: >
+          pgbouncer_pools_server_active
+          / pgbouncer_pools_server_total > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform
+        annotations:
+          summary: "PgBouncer pool {{ $labels.database }} is {{ $value | humanizePercentage }} saturated"
+          description: >
+            PgBouncer pool for database {{ $labels.database }} has
+            {{ $value | humanizePercentage }} of server connections active.
+            Scale API/worker replicas or increase default_pool_size in
+            PgBouncer configuration.
+          runbook_url: "https://meshant-internal.example.com/runbooks/pgbouncer-pool-saturation"
+
+      # ================================================================
+      # Phase 78 — Business Rule Gap Observability Alerts
+      # ================================================================
+
+      # High Business Rule Failure Rate
+      - alert: HighBusinessRuleFailureRate
+        expr: >
+          sum(rate(business_rule_validation_failures_total[5m])) by (module)
+          > 10
+        for: 5m
+        labels:
+          severity: warning
+          priority: P3
+          team: platform
+        annotations:
+          summary: "High business rule failure rate in module {{ $labels.module }}"
+          description: >
+            Business rule validation failures in module {{ $labels.module }}
+            are occurring at {{ $value | humanize }}/s (threshold: 10/s for 5m).
+            Check application logs for validation error details.
+
+      # Workflow Compensation Failure
+      - alert: WorkflowCompensationFailure
+        expr: >
+          increase(workflow_compensation_failures_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform
+        annotations:
+          summary: "Workflow compensation failed for {{ $labels.workflow_name }} step {{ $labels.step_name }}"
+          description: >
+            Workflow {{ $labels.workflow_name }} had a compensation failure
+            on step {{ $labels.step_name }}. This means a rollback did not
+            complete cleanly. Check workflow instance status and run the
+            recover_failed_workflows management command.
+
+      # ================================================================
+      # Phase 89.12 — Infrastructure & SLO Alerts
+      # ================================================================
+
+      # Disk Space Warning (root filesystem < 20%)
+      - alert: DiskSpaceWarning
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Disk space below 20% on {{ $labels.instance }}"
+          description: "Root filesystem has {{ printf \"%.1f\" $value }}% free space remaining."
+
+      # Pod Restart Loop Critical (> 5 restarts in 10 min)
+      - alert: PodRestartLoopCritical
+        expr: increase(kube_pod_container_status_restarts_total[10m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} restarting frequently"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ printf \"%.0f\" $value }} times in the last 10 minutes."
+
+      # HTTP 5xx Rate Spike (> 10%)
+      - alert: HTTP5xxRateSpike
+        expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "HTTP 5xx error rate exceeds 10%"
+          description: "5xx error rate is {{ printf \"%.1f\" $value }}% over the last 5 minutes."
+
+      # TLS Certificate Expiry (< 14 days via blackbox prober)
+      - alert: CertificateExpirySoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 1h
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "TLS certificate expiring within 14 days"
+          description: "Certificate for {{ $labels.instance }} expires in {{ printf \"%.0f\" $value }} days."
+
+      # Redis Memory Warning (> 80%)
+      - alert: RedisMemoryWarning
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis memory usage above 80%"
+          description: "Redis instance {{ $labels.instance }} is using {{ printf \"%.1f\" $value }}% of max memory."
+
+      # Redis Eviction Rate High (> 100 keys/s)
+      - alert: RedisEvictionRateHigh
+        expr: rate(redis_evicted_keys_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis eviction rate is high"
+          description: "Redis instance {{ $labels.instance }} is evicting {{ printf \"%.0f\" $value }} keys/second."
+
+      # PgBouncer Pool Exhausted (> 90%)
+      - alert: PgBouncerPoolExhausted
+        expr: pgbouncer_pools_server_active_connections / pgbouncer_pools_server_maxconn * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "PgBouncer connection pool >90% utilized"
+          description: "PgBouncer pool {{ $labels.database }} is {{ printf \"%.1f\" $value }}% utilized."
+
+      # Job SLO Violation (P95 exceeds 2x baseline)
+      - alert: JobSLOViolation
+        expr: histogram_quantile(0.95, rate(hub_job_execution_duration_seconds_bucket[30m])) > 2 * histogram_quantile(0.95, rate(hub_job_execution_duration_seconds_bucket[24h]))
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Job processing time exceeds 2x P95 SLO"
+          description: "Job execution P95 is {{ printf \"%.1f\" $value }}s, exceeding 2x the 24h P95 baseline."
+
+      # Side-Effect Reliability Degraded
+      - alert: SideEffectReliabilityDegraded
+        expr: >
+          sum(rate(side_effect_failures_total[1h])) > 5
+        for: 15m
+        labels:
+          severity: warning
+          priority: P3
+          team: platform
+        annotations:
+          summary: "Side-effect failure rate elevated ({{ $value | humanize }}/s)"
+          description: >
+            Side-effect outbox failures are accumulating at
+            {{ $value | humanize }}/s over the last hour (threshold: 5/s for 15m).
+            The retry_failed_side_effects CronJob should recover transient
+            failures. If this alert persists, check downstream services
+            (DLQ, notifications, audit).
+

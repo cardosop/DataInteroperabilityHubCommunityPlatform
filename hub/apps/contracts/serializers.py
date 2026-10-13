@@ -435,7 +435,7 @@ class ContractSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contract
-        fields = [
+        fields = (
             "id",
             "tenant",
             "asset",
@@ -484,8 +484,8 @@ class ContractSerializer(serializers.ModelSerializer):
             "quality_specification",
             # Phase 226 G7a — canonical Linked Data IRI
             "canonical_iri",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "asset_id",
@@ -528,7 +528,7 @@ class ContractSerializer(serializers.ModelSerializer):
             "quality_specification",
             # Phase 226 G7a — canonical Linked Data IRI is computed, not writable
             "canonical_iri",
-        ]
+        )
 
     @staticmethod
     def _safe_dict(value):
@@ -567,7 +567,7 @@ class ContractSerializer(serializers.ModelSerializer):
                 else:
                     # If owner is not a dict, skip it
                     continue
-            except Exception as e:
+            except (AttributeError, KeyError, TypeError) as e:
                 # Log but don't fail serialization if individual owner fails
                 import logging
 
@@ -604,7 +604,7 @@ class ContractSerializer(serializers.ModelSerializer):
             compliance = {**compliance, "contains_personal_data": False}
         try:
             return CompliancePolicySerializer(compliance).data
-        except Exception as e:
+        except (AttributeError, KeyError, TypeError) as e:
             # If serialization fails, return None to prevent breaking the contract view
             import logging
 
@@ -959,7 +959,7 @@ class SecurityAuditLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SecurityAuditLog
-        fields = [
+        fields = (
             "id",
             "event_type",
             "timestamp",
@@ -984,7 +984,7 @@ class SecurityAuditLogSerializer(serializers.ModelSerializer):
             "user_id",
             "user_email",
             "contract_id",
-        ]
+        )
         read_only_fields = fields
 
 
@@ -1057,7 +1057,7 @@ class SecurityIncidentSerializer(serializers.ModelSerializer):
         from .models import SecurityIncident
 
         model = SecurityIncident
-        fields = [
+        fields = (
             "id",
             "title",
             "description",
@@ -1077,12 +1077,12 @@ class SecurityIncidentSerializer(serializers.ModelSerializer):
             "resolved_by",
             "resolved_by_email",
             "metadata_json",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "first_detected_at",
             "last_updated_at",
-        ]
+        )
 
 
 class SecurityIncidentResolveSerializer(serializers.Serializer):

@@ -6,7 +6,7 @@ Backend endpoints verified against ``hub/apps/audit/urls.py`` (mounted at
 ``/api/v1/audit/`` via ``hub/apps/api/urls.py:40``).
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from .client import DataHubClient
 
@@ -25,7 +25,7 @@ class RetentionAPI:
         self,
         page: int = 1,
         page_size: int = 25,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List per-event-type retention policy overrides.
 
         Maps to ``GET audit/event-retention-policies/``.
@@ -35,7 +35,7 @@ class RetentionAPI:
             params={"page": page, "page_size": page_size},
         )
 
-    async def get_policy(self, policy_id: str) -> Dict[str, Any]:
+    async def get_policy(self, policy_id: str) -> dict[str, Any]:
         """Get a single retention policy override."""
         return await self.client.get(f"{AUDIT_PREFIX}/event-retention-policies/{policy_id}/")
 
@@ -44,7 +44,7 @@ class RetentionAPI:
         event_type: str,
         retention_days: int,
         description: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a per-event-type retention policy override.
 
         Args:
@@ -66,9 +66,9 @@ class RetentionAPI:
         policy_id: str,
         retention_days: int,
         description: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update an existing retention policy override."""
-        payload: Dict[str, Any] = {"retention_days": retention_days}
+        payload: dict[str, Any] = {"retention_days": retention_days}
         if description:
             payload["description"] = description
         return await self.client.patch(
@@ -82,7 +82,7 @@ class RetentionAPI:
 
     # ── Sweep status ─────────────────────────────────────────────────
 
-    async def get_sweep_status(self) -> Dict[str, Any]:
+    async def get_sweep_status(self) -> dict[str, Any]:
         """Get the most recent audit events for sweep activity inspection.
 
         Returns the raw audit event list. Sweep metrics (records deleted,
@@ -92,7 +92,7 @@ class RetentionAPI:
         """
         return await self.client.get(f"{AUDIT_PREFIX}/audit-events/", params={"page_size": 10})
 
-    async def trigger_sweep(self, dry_run: bool = True, category: str = "") -> Dict[str, Any]:
+    async def trigger_sweep(self, dry_run: bool = True, category: str = "") -> dict[str, Any]:
         """Document the retention enforcement sweep interface.
 
         Retention enforcement runs as a Django management command

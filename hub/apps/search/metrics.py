@@ -75,7 +75,7 @@ try:
         [],
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     search_request_duration_seconds = _MetricStub()
     search_results_count_total = _MetricStub()
     search_no_result_total = _MetricStub()

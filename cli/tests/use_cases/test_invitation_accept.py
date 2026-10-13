@@ -24,6 +24,50 @@ def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _register_invited_user_cleanup(cleanup_registry, admin_creds, user_id: str) -> None:
+    """Delete the invited user via the live API at test teardown.
+
+    Every invitation run adds a UserTenantMembership row to the persona
+    tenant, and ``RESOURCE_COUNTERS["max_users"]`` counts memberships —
+    the pro plan's max_users=50 saturates after a few suite runs and the
+    invitation tests then 403 with plan_limit_exceeded.  Delete the
+    invited user (which cascades its membership) so the suite is
+    re-runnable against the persistent backend.
+    """
+    if not user_id:
+        return
+
+    def _delete() -> None:
+        """Delete the invited user, tolerating the load and auth drift
+        seen in batch runs: retry once on network errors, treat 404 as
+        already-clean, and re-provision the admin token once on 401/403
+        (a concurrent batch's logout tests bump token_version mid-run)."""
+        import time as _time
+
+        token = admin_creds.api_key
+        for attempt in range(2):
+            try:
+                resp = requests.delete(
+                    f"{api_base_url().rstrip('/')}/users/{user_id}/",
+                    headers=_auth_headers(token),
+                    timeout=15,
+                )
+                if resp.status_code in (200, 204, 404):
+                    return
+                if resp.status_code in (401, 403) and attempt == 0:
+                    fresh = provision_persona(admin_creds.role)
+                    token = fresh.api_key
+                    continue
+                resp.raise_for_status()
+            except requests.RequestException:
+                if attempt == 0:
+                    _time.sleep(2)
+                    continue
+                raise
+
+    cleanup_registry.add(_delete, label=f"user:{user_id}")
+
+
 def _unique_email() -> str:
     uid = fresh_id("invite")
     return f"{uid}@meshant-internal.example.com"
@@ -34,7 +78,7 @@ def _unique_email() -> str:
 # ===========================================================================
 
 
-def test_tenant_admin_invites_user():
+def test_tenant_admin_invites_user(cleanup_registry):
     """Provision a tenant_admin, then POST /users/invite/ to invite a new
     email address. Expect 201 with user data.
     """
@@ -54,9 +98,11 @@ def test_tenant_admin_invites_user():
     )
     body = resp.json()
     assert "id" in body or "email" in body, f"Invitation response missing user id/email: {body}"
+    if body.get("id"):
+        _register_invited_user_cleanup(cleanup_registry, admin_creds, body["id"])
 
 
-def test_invited_user_accepts():
+def test_invited_user_accepts(cleanup_registry):
     """Full invitation lifecycle:
     1. tenant_admin creates an invitation via /users/invite/
     2. The invited user accepts via /auth/accept-invitation/ using the token
@@ -87,6 +133,7 @@ def test_invited_user_accepts():
     # We cannot test the accept flow end-to-end without email access.
     user_id = invite_body.get("id")
     assert user_id, f"Invited user response missing id: {invite_body}"
+    _register_invited_user_cleanup(cleanup_registry, admin_creds, user_id)
 
     # Verify the invited user has INVITED status
     user_status = invite_body.get("status", "").upper()
@@ -111,7 +158,7 @@ def test_invited_user_accepts():
     )
 
 
-def test_invitation_already_accepted_returns_conflict():
+def test_invitation_already_accepted_returns_conflict(cleanup_registry):
     """Inviting the same email twice should either succeed idempotently
     (returning the existing user) or return a conflict error.
     """
@@ -127,6 +174,9 @@ def test_invitation_already_accepted_returns_conflict():
     assert first_resp.status_code in (200, 201), (
         f"First invitation failed: {first_resp.status_code}: {first_resp.text[:300]}"
     )
+    first_body = first_resp.json()
+    if first_body.get("id"):
+        _register_invited_user_cleanup(cleanup_registry, admin_creds, first_body["id"])
 
     # Second invitation for the same email
     second_resp = api_post(

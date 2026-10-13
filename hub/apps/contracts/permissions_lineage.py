@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db import DatabaseError
 from rest_framework.exceptions import PermissionDenied
 
 
@@ -91,7 +92,7 @@ def _has_tenant_admin_role(user: Any, tenant_id: str) -> bool:
         # Phase 227 L9.3 used the ``has_role`` helper on User; reuse it
         # so the role-detection logic stays in one place.
         return bool(user.has_role("TENANT_ADMIN"))
-    except Exception:
+    except (AttributeError, DatabaseError):
         # User model variant without ``has_role`` — fall back to the
         # explicit UserRole join.
         try:
@@ -102,24 +103,23 @@ def _has_tenant_admin_role(user: Any, tenant_id: str) -> bool:
                 tenant_id=tenant_id,
                 role__name="TENANT_ADMIN",
             ).exists()
-        except Exception:  # pragma: no cover — defensive
+        except DatabaseError:  # pragma: no cover — defensive
             return False
 
 
-def _has_edit_lineage_permission(user: Any, tenant_id: str) -> bool:
-    """Lookup the explicit ``EDIT_LINEAGE`` permission grant."""
-    try:
-        from hub.apps.users.models import UserRole
+def _has_edit_lineage_permission(_user: Any, _tenant_id: str) -> bool:
+    """Lookup the explicit ``EDIT_LINEAGE`` permission grant.
 
-        # Roles → role.permissions__codename — the standard Django
-        # auth-style permission lookup, scoped to the tenant.
-        return UserRole.objects.filter(
-            user=user,
-            tenant_id=tenant_id,
-            role__permissions__codename="EDIT_LINEAGE",
-        ).exists()
-    except Exception:  # pragma: no cover — defensive
-        return False
+    F2 v1 has no role-permission surface in the data layer (``Role``
+    carries no permissions relation), so there is no tenant-scoped
+    query to run yet.  Return False instead of building the invalid
+    ``role__permissions__codename`` lookup, which raises FieldError at
+    query construction (previously masked by a broad except — see the
+    RBAC 500 regression in test_lineage_edit_endpoint).  Wire the real
+    query here when the surface lands; this function is the seam, so
+    the unused params are kept for the future query.
+    """
+    return False
 
 
 __all__ = ["require_edit_lineage"]

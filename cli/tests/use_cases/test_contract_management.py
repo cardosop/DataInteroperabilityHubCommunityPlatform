@@ -6,17 +6,39 @@ and contract normalization scenarios.
 """
 
 import json
+import re
 
 import pytest
 from datahub_cli.main import cli
+from tests.use_cases.conftest import (
+    extract_id,
+    register_asset_cleanup,
+    register_contract_cleanup,
+)
 
 pytestmark = pytest.mark.mvp
+
+
+def _extract_contract_ids(output: str) -> list[str]:
+    """Pull every contract UUID out of ``contracts create-odps`` output.
+
+    The table form prints ``  ID: <uuid>`` (indented) under both the
+    ``ODPS Contract`` and ``ODCS Contract (extracted)`` headers, which
+    ``extract_id``'s line-anchored ``^ID:`` regex does not match.
+    """
+    return re.findall(
+        r"ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+        output,
+        flags=re.IGNORECASE,
+    )
 
 
 class TestContractCreation:
     """E2E tests for contract creation"""
 
-    def test_create_contract_from_odcs_yaml_file(self, runner, authenticated_config, tmp_path):
+    def test_create_contract_from_odcs_yaml_file(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test contract creation from ODCS YAML file"""
 
         # Create ODCS contract file
@@ -46,12 +68,15 @@ schema:
         if result.exit_code == 0:
             assert "created successfully" in result.output.lower()
             assert "ID:" in result.output
+            register_contract_cleanup(cleanup_registry, extract_id(result.output))
             # Should show normalization status
             assert (
                 "Normalization Status:" in result.output or "normalization" in result.output.lower()
             )
 
-    def test_create_contract_from_odcs_json_file(self, runner, authenticated_config, tmp_path):
+    def test_create_contract_from_odcs_json_file(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test contract creation from ODCS JSON file"""
 
         # Create ODCS contract file
@@ -79,9 +104,10 @@ schema:
         if result.exit_code == 0:
             assert "created successfully" in result.output.lower()
             assert "ID:" in result.output
+            register_contract_cleanup(cleanup_registry, extract_id(result.output))
 
     def test_create_contract_from_odcs_with_all_objects(
-        self, runner, authenticated_config, tmp_path
+        self, runner, authenticated_config, tmp_path, cleanup_registry
     ):
         """Test contract creation from ODCS file with all objects (complete contract)"""
 
@@ -147,9 +173,10 @@ privacy_compliance:
         if result.exit_code == 0:
             assert "created successfully" in result.output.lower()
             assert "ID:" in result.output
+            register_contract_cleanup(cleanup_registry, extract_id(result.output))
 
     def test_create_contract_from_odcs_minimal_objects(
-        self, runner, authenticated_config, tmp_path
+        self, runner, authenticated_config, tmp_path, cleanup_registry
     ):
         """Test contract creation from ODCS file with minimal objects"""
 
@@ -175,8 +202,11 @@ schema:
         if result.exit_code == 0:
             assert "created successfully" in result.output.lower()
             assert "ID:" in result.output
+            register_contract_cleanup(cleanup_registry, extract_id(result.output))
 
-    def test_create_contract_with_asset_id(self, runner, authenticated_config, temp_file):
+    def test_create_contract_with_asset_id(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test contract creation with asset ID attachment"""
 
         # First create an asset
@@ -199,6 +229,8 @@ schema:
                 if "ID:" in line:
                     asset_id = line.split("ID:")[1].strip()
                     break
+
+        register_asset_cleanup(cleanup_registry, asset_id)
 
         # Create contract file
         contract_file, _contract_content = temp_file(
@@ -224,8 +256,11 @@ schema:
             assert result.exit_code == 0, result.output
             if result.exit_code == 0:
                 assert "created successfully" in result.output.lower()
+                register_contract_cleanup(cleanup_registry, extract_id(result.output))
 
-    def test_create_contract_json_output(self, runner, authenticated_config, temp_file):
+    def test_create_contract_json_output(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test contract creation with JSON output format"""
 
         contract_file, _contract_content = temp_file(
@@ -254,6 +289,7 @@ schema:
                 output_data = json.loads(result.output)
                 assert isinstance(output_data, dict)
                 assert "id" in output_data or "version" in output_data
+                register_contract_cleanup(cleanup_registry, extract_id(result.output))
             except json.JSONDecodeError:
                 # If not JSON, that's OK for this test
                 pass
@@ -272,7 +308,9 @@ schema:
 class TestContractValidation:
     """E2E tests for contract validation"""
 
-    def test_validate_valid_contract(self, runner, authenticated_config, temp_file):
+    def test_validate_valid_contract(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test validation of a valid contract"""
 
         # Create valid contract
@@ -315,6 +353,7 @@ schema:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Validate contract
                 validate_result = runner.invoke(cli, ["contracts", "validate", contract_id])
 
@@ -329,7 +368,9 @@ schema:
                         or "Warnings" in validate_result.output
                     )
 
-    def test_validate_invalid_contract(self, runner, authenticated_config, temp_file):
+    def test_validate_invalid_contract(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test validation of an invalid contract"""
 
         # Create contract with minimal valid structure (name + schema.fields)
@@ -362,6 +403,7 @@ schema:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Validate contract (should show errors)
                 validate_result = runner.invoke(cli, ["contracts", "validate", contract_id])
 
@@ -377,7 +419,20 @@ schema:
                     )
 
     def test_validate_contract_with_errors(self, runner, authenticated_config, temp_file):
-        """Test validation of contract with validation errors"""
+        """Unparseable YAML is rejected with a clean parse error.
+
+        This used to create a *semantically* questionable contract
+        (unknown field ``format``, negative ``minimum``) and expected the
+        validate endpoint to flag it.  That premise conflicts with the
+        backend's documented design: field-level semantic constraints are
+        deliberately permissive at every layer — the ODCS JSON schema does
+        not define the ``format`` field, the datacontract-cli lint is
+        syntactic only, and ``validate_and_enrich_advanced_schema_attributes``
+        normalizes but never rejects values ("Allow any value but normalize
+        common ones").  The genuine validation-failure path the endpoint
+        DOES implement is structural: broken YAML fails normalization with
+        ``Contract YAML failed to parse`` before any contract is created.
+        """
 
         # Create contract with schema errors
         contract_file, _contract_content = temp_file(
@@ -385,51 +440,21 @@ schema:
             """
 apiVersion: odcs.io/v3.0.0
 kind: DataContract
-id: error-contract
-name: Error Contract
-version: 1.0.0
-schema:
-  fields:
-    - name: email
-      type: string
-      format: invalid_format  # Invalid format
-    - name: age
-      type: integer
-      minimum: -10  # Negative minimum for age
-      maximum: 200  # Unrealistic maximum
+id: broken-contract
+name: Broken Contract
+  bad: [indent
 """,
         )
 
-        # Create contract first
+        # Create contract first — must fail cleanly on the parse error.
         create_result = runner.invoke(cli, ["contracts", "create", "--file", contract_file])
 
-        assert create_result.exit_code == 0, create_result.output
-        if create_result.exit_code == 0:
-            # Extract contract ID
-            contract_id = None
-            if "ID:" in create_result.output:
-                lines = create_result.output.split("\n")
-                for line in lines:
-                    if "ID:" in line:
-                        contract_id = line.split("ID:")[1].strip()
-                        break
+        assert create_result.exit_code != 0
+        assert "parse" in create_result.output.lower() or "invalid" in create_result.output.lower()
 
-            if contract_id:
-                # Validate contract
-                validate_result = runner.invoke(cli, ["contracts", "validate", contract_id])
-
-                assert validate_result.exit_code == 0, validate_result.output
-                if validate_result.exit_code == 0:
-                    assert "Validation Status:" in validate_result.output
-                    # Should show validation issues
-                    assert (
-                        "Errors" in validate_result.output
-                        or "Warnings" in validate_result.output
-                        or "INVALID" in validate_result.output
-                        or "ERROR" in validate_result.output
-                    )
-
-    def test_validate_contract_json_output(self, runner, authenticated_config, temp_file):
+    def test_validate_contract_json_output(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test contract validation with JSON output format"""
 
         contract_file, _contract_content = temp_file(
@@ -462,6 +487,7 @@ schema:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Validate with JSON output
                 validate_result = runner.invoke(
                     cli, ["contracts", "validate", contract_id, "--format", "json"]
@@ -486,7 +512,9 @@ schema:
 class TestContractNormalization:
     """E2E tests for contract normalization"""
 
-    def test_normalize_odcs_with_all_objects(self, runner, authenticated_config, tmp_path):
+    def test_normalize_odcs_with_all_objects(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test normalization of ODCS contract with all objects"""
 
         # Create comprehensive ODCS contract
@@ -593,6 +621,7 @@ privacy_compliance:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Get contract details to check normalization
                 get_result = runner.invoke(cli, ["contracts", "get", contract_id])
 
@@ -604,7 +633,9 @@ privacy_compliance:
                         or "normalization" in get_result.output.lower()
                     )
 
-    def test_normalize_odcs_minimal_objects(self, runner, authenticated_config, tmp_path):
+    def test_normalize_odcs_minimal_objects(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test normalization of ODCS contract with minimal objects"""
 
         # Create minimal ODCS contract
@@ -629,8 +660,11 @@ schema:
         assert result.exit_code == 0, result.output
         if result.exit_code == 0:
             assert "created successfully" in result.output.lower()
+            register_contract_cleanup(cleanup_registry, extract_id(result.output))
 
-    def test_normalize_odcs_with_normalization_errors(self, runner, authenticated_config, tmp_path):
+    def test_normalize_odcs_with_normalization_errors(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test normalization of ODCS contract that produces normalization errors"""
 
         # Create ODCS contract with potential normalization issues
@@ -672,6 +706,7 @@ schema:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Get contract to see normalization errors
                 get_result = runner.invoke(cli, ["contracts", "get", contract_id])
 
@@ -683,7 +718,9 @@ schema:
                         or "normalization" in get_result.output.lower()
                     )
 
-    def test_normalize_odcs_with_warnings(self, runner, authenticated_config, tmp_path):
+    def test_normalize_odcs_with_warnings(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test normalization of ODCS contract that produces normalization warnings"""
 
         # Create ODCS contract that may produce warnings (e.g., deprecated fields)
@@ -724,6 +761,7 @@ schema:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Get contract to see normalization warnings
                 get_result = runner.invoke(cli, ["contracts", "get", contract_id])
 
@@ -740,7 +778,9 @@ schema:
 class TestODPSProductFirstFlow:
     """E2E tests for ODPS Product-First flow via CLI"""
 
-    def test_create_odps_product_first_flow_complete(self, runner, authenticated_config, temp_file):
+    def test_create_odps_product_first_flow_complete(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test complete Product-First flow: create ODPS with --extract-odcs, verify both contracts created and linked"""
 
         # Create a valid ODPS document with embedded ODCS contract.
@@ -826,6 +866,11 @@ class TestODPSProductFirstFlow:
                             odcs_contract_id = lines[j].split("ID:")[1].strip()
                             break
 
+            # Register cleanup for both contracts created by the
+            # Product-First flow — neither is deleted within the test.
+            register_contract_cleanup(cleanup_registry, odps_contract_id)
+            register_contract_cleanup(cleanup_registry, odcs_contract_id)
+
             # If we got contract IDs, verify they exist
             if odps_contract_id:
                 # Step 2: Get ODPS contract to verify it was created
@@ -849,7 +894,9 @@ class TestODPSProductFirstFlow:
                         or odcs_contract_id in get_odcs_result.output
                     )
 
-    def test_create_odps_product_first_flow_yaml(self, runner, authenticated_config, temp_file):
+    def test_create_odps_product_first_flow_yaml(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test Product-First flow with YAML format ODPS document"""
 
         # Create ODPS document in YAML format
@@ -888,9 +935,11 @@ product:
                 "ODPS product created successfully" in result.output
                 or "odps_contract" in result.output
             )
+            for cid in _extract_contract_ids(result.output):
+                register_contract_cleanup(cleanup_registry, cid)
 
     def test_create_odps_product_first_flow_with_options(
-        self, runner, authenticated_config, temp_file
+        self, runner, authenticated_config, temp_file, cleanup_registry
     ):
         """Test Product-First flow with all options (version, asset-id, resolve-external-refs)"""
 
@@ -949,8 +998,12 @@ product:
                 "ODPS product created successfully" in result.output
                 or "odps_contract" in result.output
             )
+            for cid in _extract_contract_ids(result.output):
+                register_contract_cleanup(cleanup_registry, cid)
 
-    def test_create_odps_link_odcs_flow(self, runner, authenticated_config, temp_file):
+    def test_create_odps_link_odcs_flow(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test linking ODPS to existing ODCS contract flow"""
 
         # First, create an ODCS contract
@@ -988,6 +1041,7 @@ product:
                         break
 
             if odcs_contract_id:
+                register_contract_cleanup(cleanup_registry, odcs_contract_id)
                 # Create ODPS document for linking to existing ODCS.
                 # --link-odcs requires product.contract with an inline
                 # ODCS contract (same pattern as the passing
@@ -1042,12 +1096,15 @@ product:
                         or "id" in link_result.output
                     )
                     assert odcs_contract_id in link_result.output
+                    register_contract_cleanup(cleanup_registry, extract_id(link_result.output))
 
 
 class TestContractManagementWorkflows:
     """E2E tests for complete contract management workflows"""
 
-    def test_complete_contract_lifecycle(self, runner, authenticated_config, temp_file):
+    def test_complete_contract_lifecycle(
+        self, runner, authenticated_config, temp_file, cleanup_registry
+    ):
         """Test complete contract lifecycle: create -> get -> validate -> lint"""
 
         # Step 1: Create contract
@@ -1084,6 +1141,7 @@ schema:
                         break
 
             if contract_id:
+                register_contract_cleanup(cleanup_registry, contract_id)
                 # Step 2: Get contract
                 get_result = runner.invoke(cli, ["contracts", "get", contract_id])
 
@@ -1116,7 +1174,9 @@ schema:
 class TestODPSLinkingWorkflow:
     """E2E tests for ODPS linking workflow via CLI"""
 
-    def test_link_odps_to_odcs_workflow(self, runner, authenticated_config, tmp_path):
+    def test_link_odps_to_odcs_workflow(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test complete workflow: create ODCS, create ODPS, link them, list links, unlink"""
 
         # Step 1: Create ODCS contract
@@ -1156,6 +1216,8 @@ class TestODPSLinkingWorkflow:
 
         if not odcs_id:
             pytest.skip("Could not extract ODCS contract ID from output")
+
+        register_contract_cleanup(cleanup_registry, odcs_id)
 
         # Step 2: Create ODPS contract with matching contract ID
         odps_contract = {
@@ -1201,6 +1263,8 @@ class TestODPSLinkingWorkflow:
                         odps_id = uuid_match.group(0)
                         break
 
+        register_contract_cleanup(cleanup_registry, odps_id)
+
         # Step 3: List links on ODCS contract
         list_links_result = runner.invoke(cli, ["contracts", "list-links", odcs_id])
 
@@ -1237,7 +1301,9 @@ class TestODPSLinkingWorkflow:
                 or "No links found" in list_links_after_result.output
             )
 
-    def test_list_links_for_odps_contract(self, runner, authenticated_config, tmp_path):
+    def test_list_links_for_odps_contract(
+        self, runner, authenticated_config, tmp_path, cleanup_registry
+    ):
         """Test listing links for an ODPS contract (should show ODCS link)"""
 
         # Create ODCS contract
@@ -1274,7 +1340,14 @@ class TestODPSLinkingWorkflow:
         if not odcs_id:
             pytest.skip("Could not extract ODCS contract ID")
 
-        # Create and link ODPS
+        register_contract_cleanup(cleanup_registry, odcs_id)
+
+        # Create and link ODPS.
+        # The embedded ODCS must live under product.contract.spec (not
+        # directly under product.contract) — the link service extracts
+        # contract_section["spec"] and cross-validates it against the
+        # linked ODCS (code ODPS_INVALID_CONTRACT_SPEC otherwise,
+        # measured 2026-09-20: the unwrapped payload made this test skip).
         odps_contract = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -1286,12 +1359,14 @@ class TestODPSLinkingWorkflow:
                     }
                 },
                 "contract": {
-                    "apiVersion": "odcs.io/v3.0.0",
-                    "kind": "DataContract",
-                    "id": "e2e-test-odcs-list",
-                    "name": "E2E Test ODCS for List Links",
-                    "version": "1.0.0",
-                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+                    "spec": {
+                        "apiVersion": "odcs.io/v3.0.0",
+                        "kind": "DataContract",
+                        "id": "e2e-test-odcs-list",
+                        "name": "E2E Test ODCS for List Links",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+                    },
                 },
             },
         }
@@ -1321,6 +1396,8 @@ class TestODPSLinkingWorkflow:
 
         if not odps_id:
             pytest.skip("Could not extract ODPS contract ID")
+
+        register_contract_cleanup(cleanup_registry, odps_id)
 
         # List links on ODPS contract (should show ODCS link)
         list_links_result = runner.invoke(cli, ["contracts", "list-links", odps_id])

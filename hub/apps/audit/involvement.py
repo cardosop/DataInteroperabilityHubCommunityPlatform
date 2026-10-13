@@ -22,16 +22,18 @@ Returns a boolean — callers decide whether to 403 or return an empty list.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
-from typing import Union
+from typing import TYPE_CHECKING
 
 from django.db.models import Q
 
 from hub.apps.audit.models import AuditEvent
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 # ``get_request_tenant_id`` returns a string (header value) while some
 # callers pass a parsed UUID — accept both. Django's ORM normalises either.
-TenantId = Union[str, uuid.UUID]
+TenantId = str | uuid.UUID
 
 # Admins who should always bypass the involvement filter. Must stay in
 # lockstep with ``AUDIT_READ_ROLES`` in ``hub.apps.audit.views`` — separated
@@ -72,9 +74,12 @@ def _contract_owner(resource_id: uuid.UUID, user) -> bool:
 
 
 def _order_owner(resource_id: uuid.UUID, user) -> bool:
-    from hub.apps.marketplace.models import Order
+    # ORDER ownership resolves through the commercial hook (marketplace
+    # registers the provider); core-only mode has no orders, so nobody
+    # owns one.
+    from hub.apps.core.commercial_hooks import is_order_owner
 
-    return Order.objects.filter(id=resource_id, created_by_id=user.id).exists()
+    return is_order_owner(resource_id=resource_id, user=user)
 
 
 def _access_request_owner(resource_id: uuid.UUID, user) -> bool:

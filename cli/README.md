@@ -744,7 +744,7 @@ datahub transformation pipelines delete <pipeline_id> [--confirm]
 datahub transformation pipelines validate <pipeline_id>
 datahub transformation runs list [--pipeline-id <id>] [--status RUNNING]
 datahub transformation runs get <run_id>
-datahub transformation runs submit <pipeline_id> [--params '{}']
+datahub transformation runs submit --pipeline-id <id> --asset-id <id> [--execution-mode SYNC|ASYNC]
 datahub transformation runs cancel <run_id>
 datahub transformation plan-limits
 ```

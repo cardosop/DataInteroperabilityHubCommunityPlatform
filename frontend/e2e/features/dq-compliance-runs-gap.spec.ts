@@ -54,10 +54,15 @@ test.describe("Phase 7.5 gap — DQ + compliance runs @deprecated", () => {
     }
     if (!hasCreateDQ) {
       const on403 = page.url().includes('/403');
+      // /dq is CapabilityRoute-gated on the runtime `data_quality` flag
+      // (false in this env) — the gate bounces to /unavailable, which is
+      // a valid terminal state alongside 403/content.
+      const onGateOff =
+        page.url().includes('/unavailable') || page.url().includes('/coming-soon');
       const hasDQContent =
         (await page.locator('.dq-run-list-page, .empty-state, [data-testid="empty-state"]').count()) >
         0;
-      expect(on403 || hasDQContent).toBe(true) /* acceptable states */;
+      expect(on403 || onGateOff || hasDQContent).toBe(true) /* acceptable states */;
     }
 
     await navigateToRouteFromApp(page, '/compliance', {

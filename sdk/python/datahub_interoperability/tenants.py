@@ -5,7 +5,7 @@ Provides methods for tenant usage and configuration.
 Uses real hub API - no mocks/stubs.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from .client import DataHubClient
 
@@ -26,7 +26,7 @@ class TenantsAPI:
         """
         self.client = client
 
-    async def get_usage(self) -> Dict[str, Any]:
+    async def get_usage(self) -> dict[str, Any]:
         """
         Get current usage for tenant.
 
@@ -39,7 +39,7 @@ class TenantsAPI:
         self,
         page: int = 1,
         page_size: int = 25,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List tenants accessible to the current user.
 

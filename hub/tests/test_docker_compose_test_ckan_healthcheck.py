@@ -25,12 +25,15 @@ def _duration_seconds(value) -> int:
     s = str(value).strip().lower()
     if s.endswith("ms"):
         return max(1, int(s[:-2]) // 1000)
-    if s.endswith("s"):
-        return int(s[:-1])
-    if s.endswith("m"):
-        return int(s[:-1]) * 60
-    if s.endswith("h"):
-        return int(s[:-1]) * 3600
+    # suffix → (strip length, seconds multiplier) for the numeric prefix
+    unit_multipliers = {
+        "s": (1, 1),
+        "m": (1, 60),
+        "h": (1, 3600),
+    }
+    for unit, (strip_len, multiplier) in unit_multipliers.items():
+        if s.endswith(unit):
+            return int(s[:-strip_len]) * multiplier
     return int(s)
 
 

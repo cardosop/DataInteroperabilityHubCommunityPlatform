@@ -60,7 +60,7 @@ class ExportTenantIsolationTests(TestCase):
         )
         self.client.force_authenticate(user=self.user_a)
         resp = self.client.get(f"/api/v1/scheduled-exports/{export.id}/")
-        self.assertEqual(resp.status_code, 404)
+        assert resp.status_code == 404
 
     @pytest.mark.integration
     def test_tenant_b_can_see_own_export(self):
@@ -75,5 +75,5 @@ class ExportTenantIsolationTests(TestCase):
         )
         self.client.force_authenticate(user=self.user_b)
         resp = self.client.get(f"/api/v1/scheduled-exports/{export.id}/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data["id"], str(export.id))
+        assert resp.status_code == 200
+        assert resp.data["id"] == str(export.id)

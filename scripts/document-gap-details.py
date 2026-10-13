@@ -28,6 +28,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -62,7 +63,7 @@ class GapDetailsDocumenter:
     """Documents detailed information for each gap."""
 
     # Journey to API mapping (based on gap analysis sources)
-    JOURNEY_API_MAPPING = {
+    JOURNEY_API_MAPPING: ClassVar[dict[str, list[str]]] = {
         "JOURNEY-AUTH-002": ["POST /api/v1/auth/register/"],
         "JOURNEY-AUTH-006": ["GET /api/v1/auth/me/"],
         "JOURNEY-AUTH-007": ["GET /api/v1/auth/api-keys/"],
@@ -75,7 +76,7 @@ class GapDetailsDocumenter:
     }
 
     # Use case to API mapping
-    USE_CASE_API_MAPPING = {
+    USE_CASE_API_MAPPING: ClassVar[dict[str, list[str]]] = {
         "UC-AUTH-002": ["POST /api/v1/auth/register/"],
         "UC-AUTH-006": ["GET /api/v1/auth/me/"],
         "UC-AUTH-007": ["GET /api/v1/auth/api-keys/"],
@@ -86,7 +87,7 @@ class GapDetailsDocumenter:
     }
 
     # Dependency mapping
-    DEPENDENCY_MAPPING = {
+    DEPENDENCY_MAPPING: ClassVar[dict[str, list[str]]] = {
         "POST /api/v1/assets/{id}/activate/": [
             "Contract validation service",
             "DQ service",
@@ -135,8 +136,8 @@ class GapDetailsDocumenter:
         current_section = None
         current_gap = None
 
-        for line in content.split("\n"):
-            line = line.strip()
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
 
             # Section headers
             if line.startswith("## "):
@@ -178,10 +179,13 @@ class GapDetailsDocumenter:
                         current_gap["description"] = line.split("**Description**:")[1].strip()
                     elif "**Sources**:" in line:
                         current_gap["sources"] = []
-                    elif line.startswith("- ") and "Sources" in str(current_gap.get("sources", [])):
-                        if "Journeys" in line:
-                            journeys = re.findall(r"JOURNEY-[A-Z]+-\d+", line)
-                            current_gap.setdefault("journeys", []).extend(journeys)
+                    elif (
+                        line.startswith("- ")
+                        and "Sources" in str(current_gap.get("sources", []))
+                        and "Journeys" in line
+                    ):
+                        journeys = re.findall(r"JOURNEY-[A-Z]+-\d+", line)
+                        current_gap.setdefault("journeys", []).extend(journeys)
                         if "Use Cases" in line:
                             use_cases = re.findall(r"UC-[A-Z]+-\d+", line)
                             current_gap.setdefault("use_cases", []).extend(use_cases)
@@ -225,10 +229,13 @@ class GapDetailsDocumenter:
                         ].strip()
                     elif "**Sources**:" in line:
                         current_gap["sources"] = []
-                    elif line.startswith("- ") and "Sources" in str(current_gap.get("sources", [])):
-                        if "Journeys" in line:
-                            journeys = re.findall(r"JOURNEY-[A-Z]+-\d+", line)
-                            current_gap.setdefault("journeys", []).extend(journeys)
+                    elif (
+                        line.startswith("- ")
+                        and "Sources" in str(current_gap.get("sources", []))
+                        and "Journeys" in line
+                    ):
+                        journeys = re.findall(r"JOURNEY-[A-Z]+-\d+", line)
+                        current_gap.setdefault("journeys", []).extend(journeys)
 
             # Enhancements
             elif current_section == "Endpoints Needing Enhancements":
@@ -287,16 +294,14 @@ class GapDetailsDocumenter:
         endpoint_key = f"{gap['method']} {gap['endpoint']}"
         return self.DEPENDENCY_MAPPING.get(endpoint_key, [])
 
-    def get_phase_and_weeks(self, priority: str, category: str) -> tuple[str, str]:
+    def get_phase_and_weeks(self, priority: str, _category: str) -> tuple[str, str]:
         """Get implementation phase and weeks based on priority."""
-        if priority == "P0":
-            return "Phase 0", "Weeks 0-4 (Before Frontend MVP)"
-        elif priority == "P1":
-            return "Phase 1", "Weeks 5-24 (Core Features)"
-        elif priority == "P2":
-            return "Phase 2", "Weeks 25-40 (Advanced Features)"
-        else:
-            return "Phase 3", "Weeks 41-64 (Strategic Differentiators)"
+        phase_map = {
+            "P0": ("Phase 0", "Weeks 0-4 (Before Frontend MVP)"),
+            "P1": ("Phase 1", "Weeks 5-24 (Core Features)"),
+            "P2": ("Phase 2", "Weeks 25-40 (Advanced Features)"),
+        }
+        return phase_map.get(priority, ("Phase 3", "Weeks 41-64 (Strategic Differentiators)"))
 
     def create_gap_detail(self, gap: dict) -> GapDetail:
         """Create detailed gap information."""

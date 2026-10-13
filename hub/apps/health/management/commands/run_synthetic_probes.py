@@ -18,10 +18,13 @@ when failure rate exceeds 1% for 5 minutes.
 
 from __future__ import annotations
 
-import argparse
 import os
 import sys
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import argparse
 
 from django.core.management.base import BaseCommand
 
@@ -73,7 +76,7 @@ class Command(BaseCommand):
         interval = options["interval"]
         iterations = options["iterations"]
         probe_filter = (
-            set(p.strip() for p in options["probes"].split(",") if p.strip())
+            {p.strip() for p in options["probes"].split(",") if p.strip()}
             if options["probes"]
             else None
         )

@@ -13,7 +13,7 @@ os.environ["USE_PRODUCTION_DB_FOR_SDK_TESTS"] = "1"
 import contextlib
 
 import pytest
-from django.test import TestCase
+from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
 from hub.apps.users.models import User, UserStatus
@@ -27,6 +27,20 @@ def pytest_configure(config):
     Sets environment variable to use production database so API service can see test data.
     Also patches pytest-django to skip test database creation when using production DB.
     """
+    # Hard guard: this suite's design is "pytest DB == API DB" — the live
+    # API (gunicorn) reads hub_test_test_shared, so a per-batch DB here
+    # puts every test-created user in a DB the API cannot see and the
+    # whole suite fails at login. Fail loudly instead of cascading.
+    _db = os.environ.get("POSTGRES_DB", "")
+    _suffix = os.environ.get("TEST_DB_SUFFIX", "")
+    if _db != "hub_test_test_shared" or _suffix != "shared":
+        raise RuntimeError(
+            "tests/sdk_python requires the SHARED test DB (the live API reads "
+            "hub_test_test_shared). Run with "
+            "TEST_DB=hub_test_test_shared TEST_DB_SUFFIX=shared "
+            f"(got POSTGRES_DB={_db!r}, TEST_DB_SUFFIX={_suffix!r})."
+        )
+
     # Set environment variable before Django loads settings
     os.environ["USE_PRODUCTION_DB_FOR_SDK_TESTS"] = "1"
 
@@ -111,7 +125,7 @@ def api_base_url():
     return get_api_base_url()
 
 
-class SDKTestBase(TestCase):
+class SDKTestBase(TransactionTestCase):
     """
     Base test class for SDK tests using existing API service.
 
@@ -126,7 +140,7 @@ class SDKTestBase(TestCase):
 
     # Use the same database as the API service (no test database)
     # This ensures the API service can see test data
-    databases = {"default"}  # Use default database, not a test database
+    databases = {"default"}
 
     # CRITICAL: Skip database reset/flush for SDK tests
     # We're using the production database, so we should not flush it
@@ -191,7 +205,7 @@ class SDKTestBase(TestCase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -210,12 +224,26 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
         # Create test tenant
         self.tenant = TenantFactory.create_tenant()
+
+        # The API's TenantSuspensionMiddleware 403s POST/PUT/PATCH/DELETE
+        # without an active subscription — live-API SDK tests hit this on
+        # every request after login (the pytest-side rows are invisible to
+        # the API process, but the subscription check runs on the API side
+        # against the shared DB where the tenant IS visible).
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        # Feature flags the SDK suites exercise (transformation pipelines,
+        # etc.) — enabled per-test-tenant so API-side gates pass.
+        self.tenant.transformation_enabled = True
+        self.tenant.save(update_fields=["transformation_enabled", "updated_at"])
 
         # #region agent log
         log_data = {
@@ -230,7 +258,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -261,7 +289,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -282,7 +310,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -303,7 +331,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -339,7 +367,7 @@ class SDKTestBase(TestCase):
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -359,7 +387,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -370,11 +398,10 @@ class SDKTestBase(TestCase):
             timeout_config = httpx.Timeout(30.0, connect=10.0)
             async with httpx.AsyncClient(timeout=timeout_config) as client:
                 # Verify API is accessible first
-                try:
+                with contextlib.suppress(
+                    httpx.RequestError
+                ):  # Health check failed, but continue with login attempt
                     await client.get(f"{self.api_base_url}/health/", timeout=5.0)
-                except Exception:
-                    # Health check failed, but continue with login attempt
-                    pass
 
                 response = await client.post(
                     login_url,
@@ -399,7 +426,7 @@ class SDKTestBase(TestCase):
             try:
                 with open(log_path, "a") as f:
                     f.write(json.dumps(log_data) + "\n")
-            except Exception:
+            except OSError:
                 pass
             # #endregion
         except Exception as e:
@@ -422,7 +449,7 @@ class SDKTestBase(TestCase):
             try:
                 with open(log_path, "a") as f:
                     f.write(json.dumps(log_data) + "\n")
-            except Exception:
+            except OSError:
                 pass
             # #endregion
             raise
@@ -444,7 +471,7 @@ class SDKTestBase(TestCase):
             try:
                 with open(log_path, "a") as f:
                     f.write(json.dumps(log_data) + "\n")
-            except Exception:
+            except OSError:
                 pass
             # #endregion
             raise Exception(f"Login failed: {response.status_code} - {response.text}")
@@ -469,7 +496,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 
@@ -493,7 +520,7 @@ class SDKTestBase(TestCase):
         try:
             with open(log_path, "a") as f:
                 f.write(json.dumps(log_data) + "\n")
-        except Exception:
+        except OSError:
             pass
         # #endregion
 

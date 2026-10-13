@@ -6,23 +6,25 @@ Automated rollback functionality for dataset versions based on quality and compl
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from django.db import transaction
 
 from hub.apps.dq.models import DQRun, DQRunStatus
 
-from .models import Dataset
 from .versioning import VersionHistoryManager
 
-logger = structlog.get_logger(__name__)
+if TYPE_CHECKING:
+    from .models import Dataset
 
 logger = structlog.get_logger(__name__)
 
+logger = structlog.get_logger(__name__)
 
-class RollbackTrigger(str, Enum):
+
+class RollbackTrigger(StrEnum):
     """Rollback trigger types"""
 
     QUALITY_FAILURE = "QUALITY_FAILURE"
@@ -30,7 +32,7 @@ class RollbackTrigger(str, Enum):
     MANUAL = "MANUAL"
 
 
-class RollbackStatus(str, Enum):
+class RollbackStatus(StrEnum):
     """Rollback status"""
 
     PENDING = "PENDING"
@@ -291,7 +293,9 @@ class VersionRollbackManager:
 
     @staticmethod
     def get_rollback_history(
-        asset_id: str, tenant_id: str, limit: int = 10
+        asset_id: str,
+        tenant_id: str,
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
         """
         Get rollback history for an asset.

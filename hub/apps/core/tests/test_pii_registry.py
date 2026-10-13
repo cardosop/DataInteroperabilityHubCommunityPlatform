@@ -7,6 +7,7 @@ from django.test import SimpleTestCase
 
 from hub.apps.core.pii_registry import (
     PII_HOLDING_REGISTRY,
+    installed_entries,
     registered_model_labels,
 )
 
@@ -23,7 +24,9 @@ class PIIRegistryTests(SimpleTestCase):
 
     @pytest.mark.unit
     def test_each_entry_maps_to_model_and_fields(self):
-        for entry in PII_HOLDING_REGISTRY:
+        # Core mode does not install paid apps — validate the
+        # installed subset (the accessor consumers must use).
+        for entry in installed_entries():
             model_cls = apps.get_model(entry.app_label, entry.model_name)
             for field_name in entry.fields:
                 try:

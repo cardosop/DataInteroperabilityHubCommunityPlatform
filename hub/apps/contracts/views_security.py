@@ -129,8 +129,9 @@ class SecurityAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SecurityAuditLogSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = ContractPageNumberPagination
-    filterset_fields = ["event_type", "ref_type", "cache_operation"]
-    ordering_fields = ["timestamp", "event_type", "severity"]
+    filterset_fields = ("event_type", "ref_type", "cache_operation")
+    ordering_fields = ("timestamp", "event_type", "severity")
+    # MUST stay a list — get_queryset() splats it: order_by(*self.ordering)
     ordering = ["-timestamp"]
 
     def get_permissions(self):
@@ -235,15 +236,15 @@ class SecurityIncidentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SecurityIncidentSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["title", "description", "event_type"]
-    ordering_fields = [
+    filter_backends = (filters.SearchFilter, filters.OrderingFilter)
+    search_fields = ("title", "description", "event_type")
+    ordering_fields = (
         "first_detected_at",
         "severity",
         "status",
         "violation_count",
-    ]
-    ordering = ["-first_detected_at"]
+    )
+    ordering = "-first_detected_at"
 
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters."""
@@ -259,10 +260,7 @@ class SecurityIncidentViewSet(viewsets.ReadOnlyModelViewSet):
             tenant = getattr(self.request, "tenant", None)
             if tenant is None and hasattr(self.request.user, "tenant"):
                 tenant = self.request.user.tenant
-            if tenant:
-                queryset = queryset.filter(tenant=tenant)
-            else:
-                queryset = queryset.none()
+            queryset = queryset.filter(tenant=tenant) if tenant else queryset.none()
 
         # Filter by severity
         severity = self.request.query_params.get("severity")

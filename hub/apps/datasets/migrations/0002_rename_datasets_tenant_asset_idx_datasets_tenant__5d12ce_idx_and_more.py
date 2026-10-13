@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
             model_name="dataset",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("asset__isnull", False)),
-                fields=("tenant", "asset", "version"),
+                fields=["tenant", "asset", "version"],
                 name="unique_dataset_version_per_asset",
             ),
         ),

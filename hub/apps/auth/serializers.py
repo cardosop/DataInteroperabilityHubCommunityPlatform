@@ -161,14 +161,35 @@ class APIKeyCreateSerializer(serializers.ModelSerializer):
         default=None,
         help_text="Number of days until expiration (null for non-expiring)",
     )
+    # Single identity (D2): the auth endpoint is the API key surface, so it
+    # accepts the BaaS tier name and an explicit expiration. The tier
+    # resolves through the commercial hook (Phase 313 paid-ward FK) — the
+    # paid layer registers the lookup; unknown tiers are rejected.
+    tier = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="BaaS API tier name (FREE, PRO, ENTERPRISE); null for non-BaaS keys",
+    )
+    expires_at = serializers.DateTimeField(
+        required=False,
+        allow_null=True,
+        help_text="Explicit expiration timestamp (takes precedence over expires_in_days)",
+    )
+
+    def validate_expires_at(self, value):
+        if value is not None and value < timezone.now():
+            raise serializers.ValidationError("expires_at must be in the future")
+        return value
 
     class Meta:
         model = APIKey
-        fields = ["name", "scopes", "expires_in_days"]
+        fields = ("name", "scopes", "expires_in_days", "tier", "expires_at")
 
     def create(self, validated_data):
         """Create API key and return the plaintext key"""
         expires_in_days = validated_data.pop("expires_in_days", None)
+        tier_name = validated_data.pop("tier", None)
+        expires_at = validated_data.pop("expires_at", None)
         tenant = self.context["tenant"]
         user = self.context.get("user")
 
@@ -176,10 +197,25 @@ class APIKeyCreateSerializer(serializers.ModelSerializer):
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
 
-        # Calculate expiration
-        expires_at = None
-        if expires_in_days:
+        # Calculate expiration (explicit expires_at wins over expires_in_days)
+        if expires_at is None and expires_in_days:
             expires_at = timezone.now() + timedelta(days=expires_in_days)
+
+        # Resolve the tier through the commercial hook (Phase 313 paid-ward
+        # FK); LookupError (unknown tier) and missing-resolver (core-only)
+        # surface as validation errors with the tier named.
+        tier = None
+        if tier_name:
+            from hub.apps.core.commercial_hooks import resolve_api_key_tier
+
+            try:
+                tier = resolve_api_key_tier(tier_name)
+            except LookupError as exc:
+                raise serializers.ValidationError({"tier": str(exc)}) from exc
+            if tier is None:
+                raise serializers.ValidationError(
+                    {"tier": f"API tier '{tier_name}' is not available in this deployment"}
+                )
 
         # Create API key object
         api_key = APIKey.objects.create(
@@ -189,6 +225,7 @@ class APIKeyCreateSerializer(serializers.ModelSerializer):
             name=validated_data["name"],
             scopes=validated_data.get("scopes", []),
             expires_at=expires_at,
+            tier=tier,
         )
 
         # Store plaintext key for response (only shown once)
@@ -200,10 +237,31 @@ class APIKeyCreateSerializer(serializers.ModelSerializer):
 class APIKeySerializer(serializers.ModelSerializer):
     """Serializer for API key (without sensitive data)"""
 
+    # Phase 313 paid-ward FK — the tier name resolves through the property
+    # (paid layer registers the lookup; core-only returns None).
+    tier = serializers.SerializerMethodField()
+    # Stringified so the API surface returns the canonical UUID text form
+    # (ModelSerializer would otherwise leak the raw UUID object into
+    # response.data for FK id attributes).
+    tenant_id = serializers.UUIDField(read_only=True)
+
     class Meta:
         model = APIKey
-        fields = ["id", "name", "scopes", "expires_at", "last_used_at", "created_at"]
-        read_only_fields = ["id", "last_used_at", "created_at"]
+        fields = (
+            "id",
+            "tenant_id",
+            "name",
+            "scopes",
+            "expires_at",
+            "last_used_at",
+            "created_at",
+            "tier",
+        )
+        read_only_fields = ("id", "last_used_at", "created_at")
+
+    def get_tier(self, obj):
+        tier = obj.tier
+        return tier.name if tier is not None else None
 
 
 class APIKeyResponseSerializer(serializers.Serializer):
@@ -213,12 +271,21 @@ class APIKeyResponseSerializer(serializers.Serializer):
     name = serializers.CharField()
     api_key = serializers.CharField(help_text="Plaintext API key (shown only once)")
     scopes = serializers.ListField()
+    tier = serializers.CharField(allow_null=True)
     expires_at = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
 
 
 class RegisterSerializer(serializers.Serializer):
-    """Serializer for user registration request"""
+    """Serializer for user registration request.
+
+    R2-B1 (W1.1): public registration is PERSONAL-tenant-only — the
+    client-supplied ``tenant_id`` (the anonymous cross-tenant enrollment
+    vector) and the join-only ``signup_consent`` are no longer part of
+    the contract. A payload still carrying ``tenant_id`` is rejected by
+    the view BEFORE validation with 403 ``REGISTRATION_JOIN_DENIED``
+    (audited) — see ``hub.apps.auth.views.register``.
+    """
 
     email = serializers.EmailField(required=True)
     password = serializers.CharField(
@@ -230,19 +297,6 @@ class RegisterSerializer(serializers.Serializer):
     )
     name = serializers.CharField(
         required=True, max_length=255, min_length=1, help_text="User full name"
-    )
-    tenant_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Tenant ID for multi-tenant registration (optional)",
-    )
-    signup_consent = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text=(
-            "Must be true when registering into a tenant with "
-            "compliance_consent_enabled and configured signup.privacy purpose."
-        ),
     )
 
     def validate_password(self, value):
@@ -264,19 +318,6 @@ class RegisterSerializer(serializers.Serializer):
         except DjangoValidationError as e:
             raise serializers.ValidationError(e.messages) from e
 
-        return value
-
-    def validate_tenant_id(self, value):
-        """Validate tenant exists if provided"""
-        if value is not None:
-            from hub.apps.tenants.models import Tenant
-
-            try:
-                tenant = Tenant.objects.get(id=value)
-                if not tenant.is_active():
-                    raise serializers.ValidationError("Tenant is not active")
-            except Tenant.DoesNotExist:
-                raise serializers.ValidationError("Tenant not found")
         return value
 
 
@@ -335,6 +376,13 @@ class MePatchSerializer(serializers.Serializer):
         required=False,
         help_text="Saved list views [{resource_type, name, filters, sort}]",
     )
+    # Phase 278.R.6 (close-test-coverage-gaps 3.2) — product-tour
+    # cross-device persistence; the SPA's ProductTourGate PATCHes it on
+    # tour completion.
+    has_seen_tour = serializers.BooleanField(
+        required=False,
+        help_text="Whether the user has completed the first-login product tour.",
+    )
 
     def validate_display_name(self, value):
         if value is not None and len(value.strip()) == 0:
@@ -349,7 +397,7 @@ class MePatchSerializer(serializers.Serializer):
         try:
             serialized = json.dumps(value)
         except (TypeError, ValueError):
-            raise serializers.ValidationError("Preferences must be JSON-serializable")
+            raise serializers.ValidationError("Preferences must be JSON-serializable") from None
         if len(serialized) > 10240:
             raise serializers.ValidationError("Preferences must be at most 10KB when serialized")
         return value

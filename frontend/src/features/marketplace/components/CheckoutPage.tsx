@@ -10,6 +10,7 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { Button } from '../../../shared/components/Button';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { isApiError } from '../../../shared/types/api';
 import { useListing } from '../hooks/useListings';
 import { orderService } from '../services/orderService';
 import { PaymentForm } from './PaymentForm';
@@ -28,28 +29,41 @@ function CheckoutInner({
 
   const runPurchase = async (paymentMethodId: string) => {
     setFatal(null);
-    const result = await orderService.purchaseWithPayment({
-      listing_id: listingId,
-      payment_method: 'card',
-      payment_method_details: { payment_method_id: paymentMethodId },
-      gateway: 'stripe',
-    });
+    try {
+      const result = await orderService.purchaseWithPayment({
+        listing_id: listingId,
+        payment_method: 'card',
+        payment_method_details: { payment_method_id: paymentMethodId },
+        gateway: 'stripe',
+      });
 
-    if (result.kind === 'success') {
-      const oid = (result.data as { order?: { id: string } }).order?.id;
-      if (oid) navigate(`/marketplace/orders/${oid}`);
-      return;
-    }
+      if (result.kind === 'success') {
+        const oid = (result.data as { order?: { id: string } }).order?.id;
+        if (oid) navigate(`/marketplace/orders/${oid}`);
+        return;
+      }
 
-    const { error, paymentIntent } = await stripe.confirmCardPayment(result.client_secret);
-    if (error) {
-      setFatal(error.message || '3D Secure failed');
-      return;
-    }
-    if (paymentIntent?.status === 'succeeded') {
-      const confirmed = await orderService.confirmPayment(result.order_id);
-      const oid = (confirmed as { order?: { id: string } }).order?.id || result.order_id;
-      navigate(`/marketplace/orders/${oid}`);
+      const { error, paymentIntent } = await stripe.confirmCardPayment(result.client_secret);
+      if (error) {
+        setFatal(error.message || '3D Secure failed');
+        return;
+      }
+      if (paymentIntent?.status === 'succeeded') {
+        const confirmed = await orderService.confirmPayment(result.order_id);
+        const oid = (confirmed as { order?: { id: string } }).order?.id || result.order_id;
+        navigate(`/marketplace/orders/${oid}`);
+      }
+    } catch (e) {
+      // purchaseWithPayment only converts 402 (3DS) into a result — any
+      // other backend error (400 validation, 500, network) rejects the
+      // promise, and without this catch the checkout page froze silently
+      // with zero user feedback (2026-10-03 E2E: a Stripe-side 400 left
+      // the form stuck on checkout until waitForURL timed out).
+      setFatal(
+        isApiError(e)
+          ? e.error.message || 'Payment failed. Please try again.'
+          : 'Payment failed. Please try again.'
+      );
     }
   };
 

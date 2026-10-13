@@ -6,7 +6,7 @@ with ODH (Open Data Hub) integration.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 from .errors import (
@@ -68,9 +68,9 @@ class ODHIntegrationAPI:
                     "expected": "valid UUID format (e.g., '123e4567-e89b-12d3-a456-426614174000')",
                     "actual": value[:50] if len(value) > 50 else value,
                 },
-            )
+            ) from None
 
-    def _validate_model_type(self, model_type: Optional[str]) -> None:
+    def _validate_model_type(self, model_type: str | None) -> None:
         """
         Validate model type.
 
@@ -115,7 +115,7 @@ class ODHIntegrationAPI:
                 },
             )
 
-    def _validate_model_status(self, status: Optional[str]) -> None:
+    def _validate_model_status(self, status: str | None) -> None:
         """
         Validate model status.
 
@@ -148,11 +148,11 @@ class ODHIntegrationAPI:
 
     async def list_models(
         self,
-        asset_id: Optional[str] = None,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        asset_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List ML models with optional filters.
 
@@ -181,7 +181,7 @@ class ODHIntegrationAPI:
             raise ValidationError("offset must be a non-negative integer")
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if asset_id:
             params["asset_id"] = asset_id
         if status:
@@ -205,9 +205,9 @@ class ODHIntegrationAPI:
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to list models: {str(e)}")
+            raise ServerError(f"Failed to list models: {str(e)}") from e
 
-    async def get_model(self, model_id: str) -> Dict[str, Any]:
+    async def get_model(self, model_id: str) -> dict[str, Any]:
         """
         Get ML model by ID.
 
@@ -226,16 +226,15 @@ class ODHIntegrationAPI:
 
         try:
             response = await self.client.get(f"ml/models/{model_id}/")
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} not found")
+            raise NotFoundError(f"Model with id {model_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to get model: {str(e)}")
+            raise ServerError(f"Failed to get model: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     async def create_model(
         self,
@@ -243,8 +242,8 @@ class ODHIntegrationAPI:
         odh_model_version: str,
         asset_id: str,
         model_type: str,
-        contract_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        contract_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create a new ML model link.
 
@@ -274,7 +273,7 @@ class ODHIntegrationAPI:
             self._validate_uuid(contract_id, "contract_id")
 
         # Build request data
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "odh_model_id": odh_model_id,
             "odh_model_version": odh_model_version,
             "asset_id": asset_id,
@@ -285,24 +284,23 @@ class ODHIntegrationAPI:
 
         try:
             response = await self.client.post("ml/models/", data=data)
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except ConflictError:
             raise
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to create model: {str(e)}")
+            raise ServerError(f"Failed to create model: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     async def update_model(
         self,
         model_id: str,
-        asset_id: Optional[str] = None,
-        contract_id: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        asset_id: str | None = None,
+        contract_id: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """
         Update ML model.
 
@@ -329,7 +327,7 @@ class ODHIntegrationAPI:
             self._validate_model_status(status)
 
         # Build request data
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         if asset_id:
             data["asset_id"] = asset_id
         if contract_id:
@@ -344,16 +342,15 @@ class ODHIntegrationAPI:
 
         try:
             response = await self.client.patch(f"ml/models/{model_id}/", data=data)
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} not found")
+            raise NotFoundError(f"Model with id {model_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to update model: {str(e)}")
+            raise ServerError(f"Failed to update model: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     async def delete_model(self, model_id: str) -> None:
         """
@@ -372,13 +369,13 @@ class ODHIntegrationAPI:
         try:
             await self.client.delete(f"ml/models/{model_id}/")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} not found")
+            raise NotFoundError(f"Model with id {model_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to delete model: {str(e)}")
+            raise ServerError(f"Failed to delete model: {str(e)}") from e
 
-    async def get_model_versions(self, model_id: str) -> List[Dict[str, Any]]:
+    async def get_model_versions(self, model_id: str) -> list[dict[str, Any]]:
         """
         Get model versions.
 
@@ -404,13 +401,13 @@ class ODHIntegrationAPI:
             else:
                 return []
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} not found")
+            raise NotFoundError(f"Model with id {model_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to get model versions: {str(e)}")
+            raise ServerError(f"Failed to get model versions: {str(e)}") from e
 
-    async def link_model_to_asset(self, model_id: str, asset_id: str) -> Dict[str, Any]:
+    async def link_model_to_asset(self, model_id: str, asset_id: str) -> dict[str, Any]:
         """
         Link model to asset.
 
@@ -433,20 +430,21 @@ class ODHIntegrationAPI:
             response = await self.client.post(
                 f"ml/models/{model_id}/link-asset/", data={"asset_id": asset_id}
             )
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} or asset with id {asset_id} not found")
+            raise NotFoundError(
+                f"Model with id {model_id} or asset with id {asset_id} not found"
+            ) from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to link model to asset: {str(e)}")
+            raise ServerError(f"Failed to link model to asset: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     async def link_model_to_dataset(
         self, model_id: str, dataset_id: str, role: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Link model to dataset.
 
@@ -482,28 +480,27 @@ class ODHIntegrationAPI:
                 f"ml/models/{model_id}/link-dataset/",
                 data={"dataset_id": dataset_id, "role": role.upper()},
             )
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
             raise NotFoundError(
                 f"Model with id {model_id} or dataset with id {dataset_id} not found"
-            )
+            ) from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to link model to dataset: {str(e)}")
+            raise ServerError(f"Failed to link model to dataset: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     # ── 118F.18: Expanded ML methods ─────────────────────
 
-    async def deploy_model(self, model_id: str, config: dict = None) -> dict:
+    async def deploy_model(self, model_id: str, config: dict | None = None) -> dict:
         return await self.client.post(f"ml/models/{model_id}/deploy/", data=config or {})
 
     async def undeploy_model(self, model_id: str) -> dict:
         return await self.client.post(f"ml/models/{model_id}/undeploy/")
 
-    async def deploy_version(self, model_id: str, version: str, config: dict = None) -> dict:
+    async def deploy_version(self, model_id: str, version: str, config: dict | None = None) -> dict:
         payload = {"version": version}
         if config:
             payload["config"] = config
@@ -553,11 +550,11 @@ class TrainingAPI:
         try:
             uuid.UUID(value)
         except (ValueError, TypeError):
-            raise ValidationError(f"{param_name} must be a valid UUID")
+            raise ValidationError(f"{param_name} must be a valid UUID") from None
 
     async def submit_training_job(
-        self, model_id: str, dataset_id: str, config: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, model_id: str, dataset_id: str, config: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Submit a training job.
 
@@ -584,20 +581,19 @@ class TrainingAPI:
 
         try:
             response = await self.client.post("ml/training/jobs/", data=data)
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
             raise NotFoundError(
                 f"Model with id {model_id} or dataset with id {dataset_id} not found"
-            )
+            ) from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to submit training job: {str(e)}")
+            raise ServerError(f"Failed to submit training job: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
-    async def get_training_job(self, training_job_id: str) -> Dict[str, Any]:
+    async def get_training_job(self, training_job_id: str) -> dict[str, Any]:
         """
         Get training job details.
 
@@ -617,24 +613,23 @@ class TrainingAPI:
 
         try:
             response = await self.client.get(f"ml/training/jobs/{training_job_id}/")
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Training job with id {training_job_id} not found")
+            raise NotFoundError(f"Training job with id {training_job_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to get training job: {str(e)}")
+            raise ServerError(f"Failed to get training job: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     async def list_training_jobs(
         self,
-        model_id: Optional[str] = None,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        model_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List training jobs with optional filters.
 
@@ -658,7 +653,7 @@ class TrainingAPI:
         if offset is not None and (not isinstance(offset, int) or offset < 0):
             raise ValidationError("offset must be a non-negative integer")
 
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if model_id:
             params["model_id"] = model_id
         if status:
@@ -679,7 +674,7 @@ class TrainingAPI:
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to list training jobs: {str(e)}")
+            raise ServerError(f"Failed to list training jobs: {str(e)}") from e
 
     async def cancel_training_job(self, training_job_id: str) -> None:
         """
@@ -699,11 +694,11 @@ class TrainingAPI:
         try:
             await self.client.post(f"ml/training/jobs/{training_job_id}/cancel/")
         except NotFoundError:
-            raise NotFoundError(f"Training job with id {training_job_id} not found")
+            raise NotFoundError(f"Training job with id {training_job_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to cancel training job: {str(e)}")
+            raise ServerError(f"Failed to cancel training job: {str(e)}") from e
 
     async def get_training_logs(self, training_job_id: str) -> str:
         """
@@ -733,11 +728,11 @@ class TrainingAPI:
             else:
                 return str(response)
         except NotFoundError:
-            raise NotFoundError(f"Training job with id {training_job_id} not found")
+            raise NotFoundError(f"Training job with id {training_job_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to get training logs: {str(e)}")
+            raise ServerError(f"Failed to get training logs: {str(e)}") from e
 
 
 class InferenceAPI:
@@ -764,11 +759,11 @@ class InferenceAPI:
         try:
             uuid.UUID(value)
         except (ValueError, TypeError):
-            raise ValidationError(f"{param_name} must be a valid UUID")
+            raise ValidationError(f"{param_name} must be a valid UUID") from None
 
     async def deploy_model(
-        self, model_id: str, config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, model_id: str, config: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Deploy a model for inference.
 
@@ -789,24 +784,23 @@ class InferenceAPI:
         if config is not None and not isinstance(config, dict):
             raise ValidationError("config must be a dictionary")
 
-        data: Dict[str, Any] = {"model_id": model_id}
+        data: dict[str, Any] = {"model_id": model_id}
         if config:
             data["config"] = config
 
         try:
             response = await self.client.post("ml/inference/deployments/", data=data)
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} not found")
+            raise NotFoundError(f"Model with id {model_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to deploy model: {str(e)}")
+            raise ServerError(f"Failed to deploy model: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
-    async def predict(self, deployment_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def predict(self, deployment_id: str, input_data: dict[str, Any]) -> dict[str, Any]:
         """
         Run inference prediction on a deployed model.
 
@@ -832,18 +826,17 @@ class InferenceAPI:
 
         try:
             response = await self.client.post("ml/inference/deployments/predict/", data=data)
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to run prediction: {str(e)}")
+            raise ServerError(f"Failed to run prediction: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
-    async def get_deployment(self, deployment_id: str) -> Dict[str, Any]:
+    async def get_deployment(self, deployment_id: str) -> dict[str, Any]:
         """
         Get deployment details.
 
@@ -863,35 +856,37 @@ class InferenceAPI:
 
         try:
             response = await self.client.get(f"ml/inference/deployments/{deployment_id}/")
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
         except DataHubError as e:
             # Convert 404 errors to NotFoundError
             if e.http_status == 404:
-                raise NotFoundError(f"Deployment with id {deployment_id} not found", e.request_id)
+                raise NotFoundError(
+                    f"Deployment with id {deployment_id} not found", e.request_id
+                ) from None
             raise
         except Exception as e:
             # Check if error message contains 404 (for ODH service errors)
             error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str:
-                # Check if it's a real 404 or a circuit breaker error
-                if "circuit breaker" not in error_str:
-                    raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            # Check if it's a real 404 or a circuit breaker error
+            if (
+                "404" in error_str or "not found" in error_str
+            ) and "circuit breaker" not in error_str:
+                raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to get deployment: {str(e)}")
+            raise ServerError(f"Failed to get deployment: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")
 
     async def list_deployments(
         self,
-        model_id: Optional[str] = None,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        model_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List inference deployments with optional filters.
 
@@ -915,7 +910,7 @@ class InferenceAPI:
         if offset is not None and (not isinstance(offset, int) or offset < 0):
             raise ValidationError("offset must be a non-negative integer")
 
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if model_id:
             params["model_id"] = model_id
         if status:
@@ -936,7 +931,7 @@ class InferenceAPI:
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to list deployments: {str(e)}")
+            raise ServerError(f"Failed to list deployments: {str(e)}") from e
 
     async def undeploy_model(self, deployment_id: str) -> None:
         """
@@ -956,24 +951,27 @@ class InferenceAPI:
         try:
             await self.client.delete(f"ml/inference/deployments/{deployment_id}/")
         except NotFoundError:
-            raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
         except DataHubError as e:
             # Convert 404 errors to NotFoundError
             if e.http_status == 404:
-                raise NotFoundError(f"Deployment with id {deployment_id} not found", e.request_id)
+                raise NotFoundError(
+                    f"Deployment with id {deployment_id} not found", e.request_id
+                ) from None
             raise
         except Exception as e:
             # Check if error message contains 404 (for ODH service errors)
             error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str:
-                # Check if it's a real 404 or a circuit breaker error
-                if "circuit breaker" not in error_str:
-                    raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            # Check if it's a real 404 or a circuit breaker error
+            if (
+                "404" in error_str or "not found" in error_str
+            ) and "circuit breaker" not in error_str:
+                raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to undeploy deployment: {str(e)}")
+            raise ServerError(f"Failed to undeploy deployment: {str(e)}") from e
 
-    async def get_inference_metrics(self, deployment_id: str) -> Dict[str, Any]:
+    async def get_inference_metrics(self, deployment_id: str) -> dict[str, Any]:
         """
         Get inference metrics for a deployment.
 
@@ -993,24 +991,26 @@ class InferenceAPI:
 
         try:
             response = await self.client.get(f"ml/inference/deployments/{deployment_id}/metrics/")
-            if isinstance(response, dict):
-                return response
-            else:
-                raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
         except DataHubError as e:
             # Convert 404 errors to NotFoundError
             if e.http_status == 404:
-                raise NotFoundError(f"Deployment with id {deployment_id} not found", e.request_id)
+                raise NotFoundError(
+                    f"Deployment with id {deployment_id} not found", e.request_id
+                ) from None
             raise
         except Exception as e:
             # Check if error message contains 404 (for ODH service errors)
             error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str:
-                # Check if it's a real 404 or a circuit breaker error
-                if "circuit breaker" not in error_str:
-                    raise NotFoundError(f"Deployment with id {deployment_id} not found")
+            # Check if it's a real 404 or a circuit breaker error
+            if (
+                "404" in error_str or "not found" in error_str
+            ) and "circuit breaker" not in error_str:
+                raise NotFoundError(f"Deployment with id {deployment_id} not found") from None
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
-            raise ServerError(f"Failed to get inference metrics: {str(e)}")
+            raise ServerError(f"Failed to get inference metrics: {str(e)}") from e
+        if isinstance(response, dict):
+            return response
+        raise ServerError("Invalid response format from API")

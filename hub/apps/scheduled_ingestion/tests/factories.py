@@ -7,10 +7,10 @@ NOTE: These factories are placeholders for future scheduled ingestion models.
 They will be updated when the scheduled ingestion models are created in Phase 5.
 """
 
+from datetime import datetime
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset
 from hub.apps.tenants.models import Tenant
@@ -107,8 +107,8 @@ class ScheduledIngestionRunFactory:
     def create_scheduled_ingestion_run(
         scheduled_ingestion=None,
         status: str = "COMPLETED",
-        started_at: timezone.datetime | None = None,
-        finished_at: timezone.datetime | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
         files_found: int = 10,
         files_processed: int = 10,
         files_failed: int = 0,

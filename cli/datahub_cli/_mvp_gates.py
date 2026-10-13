@@ -40,6 +40,16 @@ MVP_GATED_RELATIVE_PREFIXES: Final[frozenset[str]] = frozenset(
         "developer/",
         "dpia/",
         "ropa/",
+        # Phase 278 apps — mounted in hub/apps/api/urls.py and present in the
+        # canonical list; this copy had not been updated to match.
+        "breach/",
+        "consent/",
+        "data-movement/",
+        "databricks/",
+        "dsar/",
+        "gdpr/",
+        "processor-agreements/",
+        "warehouses/",
     }
 )
 
@@ -65,6 +75,16 @@ MVP_GATED_FEATURE_NAMES: Final[dict[str, str]] = {
     "developer/": "Developer APIs",
     "dpia/": "DPIA Workflows",
     "ropa/": "ROPA Records",
+    # Phase 278 apps — must stay in step with MVP_GATED_RELATIVE_PREFIXES;
+    # test_mvp_gated_404_handling asserts every gated prefix has a name.
+    "breach/": "Breach Notification",
+    "consent/": "Consent Management",
+    "data-movement/": "Data Movement Records",
+    "databricks/": "Databricks Control Plane",
+    "dsar/": "Data Subject Access Requests",
+    "gdpr/": "GDPR Compliance",
+    "processor-agreements/": "Processor Agreements",
+    "warehouses/": "Warehouse Connections",
 }
 
 

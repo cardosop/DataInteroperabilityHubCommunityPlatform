@@ -34,6 +34,15 @@ class SearchIndex(models.Model):
             ("ASSET", "Asset"),
             ("DATASET", "Dataset"),
             ("VIRTUAL_DATASET", "Virtual Dataset"),
+            # Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — the
+            # databricks_admin feed writes these rows; the search app never
+            # imports the provider models (boundary contract).
+            ("DATABRICKS_UC_CATALOG", "Databricks UC Catalog"),
+            ("DATABRICKS_UC_SCHEMA", "Databricks UC Schema"),
+            ("DATABRICKS_UC_TABLE", "Databricks UC Table"),
+            ("DATABRICKS_UC_VIEW", "Databricks UC View"),
+            ("DATABRICKS_UC_VOLUME", "Databricks UC Volume"),
+            ("DATABRICKS_UC_MODEL", "Databricks UC Model"),
         ],
         help_text="Type of resource being indexed",
     )
@@ -41,6 +50,13 @@ class SearchIndex(models.Model):
     # Searchable content
     title = models.CharField(
         max_length=255, null=True, blank=True, help_text="Title or name of the resource"
+    )
+    # Stable resource key/slug (asset.key, contract hub key, dataset key).
+    # Phase 226 G12: ``?q={key}`` must find the row — keys are the
+    # canonical cross-surface identifier and belong in the searchable
+    # text, not only in the source table.
+    key = models.CharField(
+        max_length=255, null=True, blank=True, help_text="Stable key/slug of the resource"
     )
     description = models.TextField(null=True, blank=True, help_text="Description of the resource")
     schema_fields = models.JSONField(

@@ -6,7 +6,7 @@
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContractCreatePage } from '../ContractCreatePage';
@@ -142,5 +142,51 @@ describe('ContractCreatePage — asset_id query param', () => {
   it('shows linked asset indicator when asset_id is in URL', () => {
     renderPage('/contracts/create?asset_id=abc-123');
     expect(screen.getByText(/linked.*asset|asset.*abc-123/i)).toBeInTheDocument();
+  });
+});
+describe('ContractCreatePage — validation service failure (b7 UX gap)', () => {
+  it('renders the failed-request terminal instead of a blank panel', async () => {
+    // jsdom has no fetch: the real validateDraft mutation rejects, which
+    // must surface as the "Validation unavailable" error state — the
+    // pre-fix behaviour rendered NOTHING (result null, not loading).
+    renderPage();
+    const textarea = screen.getByLabelText(/contract|content/i, { selector: 'textarea' }).closest('textarea');
+    // ContractFileReader's textarea: fall back to any textarea if the
+    // aria-label differs.
+    const input = textarea ?? screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: odcsYaml } });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText(/validation unavailable/i)).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+    expect(screen.getByTestId('validation-result-retry')).toBeInTheDocument();
+    // Submit must stay blocked while validation is unreachable.
+    const createButton = screen.getByRole('button', { name: /create contract/i });
+    expect(createButton).toBeDisabled();
+  });
+
+  it('retry re-fires the request and keeps the terminal visible on repeat failure', async () => {
+    renderPage();
+    const textarea = screen
+      .getByLabelText(/contract|content/i, { selector: 'textarea' })
+      .closest('textarea');
+    fireEvent.change(textarea as HTMLTextAreaElement, { target: { value: odcsYaml } });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/validation unavailable/i)).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+    fireEvent.click(screen.getByTestId('validation-result-retry'));
+    // Still failing (no network) — the error terminal persists.
+    await waitFor(
+      () => {
+        expect(screen.getByText(/validation unavailable/i)).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
   });
 });

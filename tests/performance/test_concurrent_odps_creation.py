@@ -32,13 +32,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 import contextlib
 
 from hub.apps.contracts.models import Contract
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
 
-def create_valid_odps_document(product_id: str = None) -> dict:
+def create_valid_odps_document(product_id: str | None = None) -> dict:
     """Create a valid ODPS 4.1 document for testing"""
     if not product_id:
         product_id = f"concurrent-test-{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
@@ -83,6 +83,11 @@ def create_valid_odps_document(product_id: str = None) -> dict:
             "dataSchema": {"fields": [{"name": "id", "type": "string", "required": True}]},
         },
     }
+
+
+def _raise_execute_start_error(message: str) -> None:
+    """Raise ValueError outside the worker's try body (TRY301)."""
+    raise ValueError(message)
 
 
 class ConcurrentODPSCreationTestBase(TransactionTestCase):
@@ -200,11 +205,6 @@ class TestConcurrentODPSCreation(ConcurrentODPSCreationTestBase):
 
         def create_odps(user: User, index: int):
             """Create ODPS product for a user"""
-            import logging
-
-            thread_logger = logging.getLogger(__name__)
-            thread_logger.debug(f"[TEST] create_odps called for user {user.id}, index {index}")
-            """Create ODPS product for a user"""
             try:
                 product_id = (
                     f"concurrent-{index}-{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
@@ -213,9 +213,6 @@ class TestConcurrentODPSCreation(ConcurrentODPSCreationTestBase):
 
                 # Use shared engine and registry to avoid race conditions
                 # execute_start should return quickly (async execution)
-                thread_logger.debug(
-                    f"[TEST] Calling execute_start for user {user.id}, index {index}"
-                )
                 start_time = time.time()
                 result = ProductCreationWorkflow.execute_start(
                     original_raw=json.dumps(odps_doc),
@@ -231,11 +228,13 @@ class TestConcurrentODPSCreation(ConcurrentODPSCreationTestBase):
                 # Verify execute_start returns within reasonable time (6s allows CI/load variance)
                 # Note: This only tests that execute_start returns, not workflow completion
                 if duration > 6.0:
-                    raise ValueError(f"execute_start took {duration:.2f}s, exceeds 6s target")
+                    _raise_execute_start_error(
+                        f"execute_start took {duration:.2f}s, exceeds 6s target"
+                    )
 
                 # Verify workflow_instance_id is returned
                 if not result.get("workflow_instance_id"):
-                    raise ValueError("execute_start did not return workflow_instance_id")
+                    _raise_execute_start_error("execute_start did not return workflow_instance_id")
 
                 with lock:
                     results.append(

@@ -124,4 +124,5 @@ def test_search_pagination():
         if has_pagination:
             total = body.get("count", body.get("total", body.get("total_count")))
             if total is not None:
-                assert isinstance(total, int) and total >= 0
+                assert isinstance(total, int)
+                assert total >= 0

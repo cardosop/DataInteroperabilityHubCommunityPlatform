@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
                 'db_table': 'marketplace_connections',
                 'ordering': ['-created_at'],
                 'indexes': [models.Index(fields=['tenant', 'marketplace_type'], name='marketplace_tenant__2b1851_idx'), models.Index(fields=['tenant', 'is_active'], name='marketplace_tenant__2590c0_idx'), models.Index(fields=['marketplace_type', 'is_active'], name='marketplace_marketp_f8af2a_idx')],
-                'constraints': [models.UniqueConstraint(fields=('tenant', 'name'), name='unique_tenant_connection_name')],
+                'constraints': [models.UniqueConstraint(fields=['tenant', 'name'], name='unique_tenant_connection_name')],
             },
         ),
     ]

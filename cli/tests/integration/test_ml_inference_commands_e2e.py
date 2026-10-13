@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -12,7 +14,6 @@ These tests require a real API service running and will skip if not available.
 No mocks or stubs are used - all tests use real API endpoints.
 """
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
@@ -20,26 +21,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        # Health endpoint is at /health/ not /api/v1/health/
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
-            + "/health/",
-            timeout=2,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Check if API is available before running tests"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip(
             "API service not available at http://localhost:8000. Start with: docker compose up -d api db redis"
         )
@@ -53,7 +38,7 @@ def runner():
 
 
 @pytest.fixture
-def test_model_id(api_available):
+def test_model_id(api_service_available):
     """
     Get or create a test model for use in tests.
     This fixture returns a model ID that can be used for inference operations.
@@ -100,7 +85,7 @@ def test_model_id(api_available):
 class TestMLInferenceE2E:
     """End-to-end tests for ML inference commands"""
 
-    def test_complete_inference_workflow(self, runner, api_available, test_model_id):
+    def test_complete_inference_workflow(self, runner, api_service_available, test_model_id):
         """
         Test complete workflow: deploy → list → get → predict → metrics → undeploy
 
@@ -194,7 +179,7 @@ class TestMLInferenceE2E:
             # The important thing is that commands are structured correctly
             pytest.skip(f"E2E test workflow incomplete (may need API/ODH setup): {e}")
 
-    def test_list_deployments_command(self, runner, api_available):
+    def test_list_deployments_command(self, runner, api_service_available):
         """Test ML inference list command execution"""
         result = runner.invoke(cli, ["ml", "inference", "list", "--format", "json"])
         # Should succeed even if no deployments exist (empty list)
@@ -211,7 +196,7 @@ class TestMLInferenceE2E:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_list_deployments_with_filters(self, runner, api_available, test_model_id):
+    def test_list_deployments_with_filters(self, runner, api_service_available, test_model_id):
         """Test ML inference list command with filters"""
         result = runner.invoke(
             cli,
@@ -234,7 +219,7 @@ class TestMLInferenceE2E:
         # Should succeed or fail with expected errors (auth, not found, etc.)
         assert result.exit_code == 0, f"List with filters failed: {result.output}"
 
-    def test_get_deployment_command_structure(self, runner, api_available):
+    def test_get_deployment_command_structure(self, runner, api_service_available):
         """Test ML inference get command structure"""
         # Use a test deployment ID (even if deployment doesn't exist)
         test_deployment_id = "test-deployment-123"
@@ -252,7 +237,7 @@ class TestMLInferenceE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_deploy_command_structure(self, runner, api_available, test_model_id):
+    def test_deploy_command_structure(self, runner, api_service_available, test_model_id):
         """Test ML inference deploy command structure"""
         result = runner.invoke(
             cli, ["ml", "inference", "deploy", "--model-id", test_model_id, "--format", "json"]
@@ -261,7 +246,7 @@ class TestMLInferenceE2E:
         # Not a command parsing error
         assert result.exit_code == 0, f"Deploy command failed: {result.output}"
 
-    def test_predict_command_structure(self, runner, api_available):
+    def test_predict_command_structure(self, runner, api_service_available):
         """Test ML inference predict command structure"""
         result = runner.invoke(
             cli,
@@ -288,7 +273,7 @@ class TestMLInferenceE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_undeploy_command_structure(self, runner, api_available):
+    def test_undeploy_command_structure(self, runner, api_service_available):
         """Test ML inference undeploy command structure"""
         test_deployment_id = "test-deployment-123"
         result = runner.invoke(
@@ -305,7 +290,7 @@ class TestMLInferenceE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_metrics_command_structure(self, runner, api_available):
+    def test_metrics_command_structure(self, runner, api_service_available):
         """Test ML inference metrics command structure"""
         test_deployment_id = "test-deployment-123"
         result = runner.invoke(
@@ -322,7 +307,7 @@ class TestMLInferenceE2E:
             or "not found" in result.output.lower()
         ), f"Unexpected error: {result.output}"
 
-    def test_table_format_output(self, runner, api_available):
+    def test_table_format_output(self, runner, api_service_available):
         """Test that table format works correctly"""
         result = runner.invoke(cli, ["ml", "inference", "list", "--format", "table"])
         # Should succeed or fail with expected errors
@@ -332,7 +317,7 @@ class TestMLInferenceE2E:
             # Verify table format indicators
             assert "Deployment ID" in result.output or "No deployments found" in result.output
 
-    def test_json_format_output(self, runner, api_available):
+    def test_json_format_output(self, runner, api_service_available):
         """Test that JSON format works correctly"""
         result = runner.invoke(cli, ["ml", "inference", "list", "--format", "json"])
         # Should succeed or fail with expected errors
@@ -348,7 +333,7 @@ class TestMLInferenceE2E:
             except json.JSONDecodeError:
                 pytest.fail(f"Output is not valid JSON: {result.output}")
 
-    def test_deploy_with_config_file(self, runner, api_available, test_model_id):
+    def test_deploy_with_config_file(self, runner, api_service_available, test_model_id):
         """Test deploy command with config file"""
         import os
         import tempfile
@@ -381,7 +366,7 @@ class TestMLInferenceE2E:
             if os.path.exists(config_file):
                 os.unlink(config_file)
 
-    def test_predict_with_input_file(self, runner, api_available):
+    def test_predict_with_input_file(self, runner, api_service_available):
         """Test predict command with input file"""
         import os
         import tempfile

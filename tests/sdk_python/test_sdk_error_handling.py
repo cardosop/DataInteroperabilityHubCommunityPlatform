@@ -45,9 +45,10 @@ class TestSDKErrorHandling(SDKTestBase):
         """Test handling ValidationError (400)"""
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
-            # Try to create asset without required fields
+            # Try to create a contract without required fields (contract
+            # creation has no DATA_PROVIDER role gate).
             with pytest.raises(ValidationError) as exc_info:
-                await client.post("/assets/assets/", {"description": "Missing required fields"})
+                await client.post("contracts/", {"description": "Missing required fields"})
 
             error = exc_info.value
             assert error.http_status == 400
@@ -60,7 +61,7 @@ class TestSDKErrorHandling(SDKTestBase):
         async with DataHubClient(config) as client:
             fake_id = "00000000-0000-0000-0000-000000000000"
             with pytest.raises(NotFoundError) as exc_info:
-                await client.get(f"/assets/assets/{fake_id}/")
+                await client.get(f"assets/{fake_id}/")
 
             error = exc_info.value
             assert error.http_status == 404
@@ -72,7 +73,7 @@ class TestSDKErrorHandling(SDKTestBase):
         config = DataHubClientConfig(base_url=self.base_url, api_token="invalid-token-12345")
         async with DataHubClient(config) as client:
             with pytest.raises(UnauthorizedError) as exc_info:
-                await client.get("/assets/assets/")
+                await client.get("assets/")
 
             error = exc_info.value
             assert error.http_status == 401
@@ -138,7 +139,7 @@ class TestSDKErrorHandling(SDKTestBase):
 
         async with DataHubClient(config) as client:
             with pytest.raises(NetworkError):
-                await client.get("/assets/assets/")
+                await client.get("assets/")
 
     @pytest.mark.asyncio
     async def test_error_timeout(self):
@@ -152,7 +153,7 @@ class TestSDKErrorHandling(SDKTestBase):
         async with DataHubClient(config) as client:
             # Request should timeout
             with pytest.raises((NetworkError, TimeoutError)):
-                await client.get("/assets/assets/")
+                await client.get("assets/")
 
     @pytest.mark.asyncio
     async def test_retry_logic_on_5xx_error(self):
@@ -166,7 +167,7 @@ class TestSDKErrorHandling(SDKTestBase):
         async with DataHubClient(config) as client:
             # Normal request should succeed (no 5xx error)
             # This test verifies retry configuration is set
-            result = await client.get("/assets/assets/")
+            result = await client.get("assets/")
             assert result is not None
 
     @pytest.mark.asyncio
@@ -180,7 +181,7 @@ class TestSDKErrorHandling(SDKTestBase):
         async with DataHubClient(config) as client:
             # Normal request should succeed
             # Rate limit testing would require actual rate limiting
-            result = await client.get("/assets/assets/")
+            result = await client.get("assets/")
             assert result is not None
 
     @pytest.mark.asyncio
@@ -190,27 +191,34 @@ class TestSDKErrorHandling(SDKTestBase):
         async with DataHubClient(config) as client:
             fake_id = "00000000-0000-0000-0000-000000000000"
             try:
-                await client.get(f"/assets/assets/{fake_id}/")
+                await client.get(f"assets/{fake_id}/")
             except NotFoundError as error:
                 # Verify error has all expected attributes
-                assert hasattr(error, "message")
-                assert hasattr(error, "code")
-                assert hasattr(error, "http_status")
-                assert error.http_status == 404
-                assert error.code == "NOT_FOUND"
+                if not hasattr(error, "message"):
+                    pytest.fail(f"NotFoundError missing 'message' attribute: {error!r}")
+                if not hasattr(error, "code"):
+                    pytest.fail(f"NotFoundError missing 'code' attribute: {error!r}")
+                if not hasattr(error, "http_status"):
+                    pytest.fail(f"NotFoundError missing 'http_status' attribute: {error!r}")
+                if error.http_status != 404:
+                    pytest.fail(f"Expected http_status 404, got {error.http_status!r}")
+                if error.code != "NOT_FOUND":
+                    pytest.fail(f"Expected code NOT_FOUND, got {error.code!r}")
 
     @pytest.mark.asyncio
     async def test_error_details_in_response(self):
         """Test error details are included in response"""
         config = await self.get_sdk_config()
         async with DataHubClient(config) as client:
-            # Try invalid request
+            # Try invalid request against a role-free endpoint
             try:
-                await client.post("/assets/assets/", {"invalid": "data"})
+                await client.post("contracts/", {"invalid": "data"})
             except ValidationError as error:
                 # Verify error has details
-                assert hasattr(error, "details")
-                assert error.http_status == 400
+                if not hasattr(error, "details"):
+                    pytest.fail(f"ValidationError missing 'details' attribute: {error!r}")
+                if error.http_status != 400:
+                    pytest.fail(f"Expected http_status 400, got {error.http_status!r}")
 
 
 @pytest.mark.skipif(

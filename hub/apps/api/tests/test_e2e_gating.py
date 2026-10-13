@@ -18,6 +18,8 @@ with `override_settings` + tiny ad-hoc request shapes.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from django.test import SimpleTestCase, override_settings
 
 from hub.apps.api.e2e_gating import (
@@ -82,21 +84,23 @@ class VerifyE2eTokenTest(SimpleTestCase):
     @override_settings(E2E_TEST_SECRET="")
     def test_unset_secret_returns_false(self):
         class FakeRequest:
-            headers = {"X-E2E-Token": "anything"}
+            headers: ClassVar[dict[str, str]] = {"X-E2E-Token": "anything"}
 
         assert verify_e2e_token(FakeRequest()) is False
 
     @override_settings(E2E_TEST_SECRET="correct-horse")
     def test_matching_token_passes(self):
         class FakeRequest:
-            headers = {"X-E2E-Token": "correct-horse"}
+            headers: ClassVar[dict[str, str]] = {
+                "X-E2E-Token": "correct-horse",
+            }
 
         assert verify_e2e_token(FakeRequest()) is True
 
     @override_settings(E2E_TEST_SECRET="correct-horse")
     def test_mismatched_token_rejected(self):
         class FakeRequest:
-            headers = {"X-E2E-Token": "wrong-horse"}
+            headers: ClassVar[dict[str, str]] = {"X-E2E-Token": "wrong-horse"}
 
         assert verify_e2e_token(FakeRequest()) is False
 
@@ -104,14 +108,16 @@ class VerifyE2eTokenTest(SimpleTestCase):
     def test_lowercase_header_accepted(self):
         # Some Playwright fixtures send the lowercase form; both must work.
         class FakeRequest:
-            headers = {"x-e2e-token": "correct-horse"}
+            headers: ClassVar[dict[str, str]] = {
+                "x-e2e-token": "correct-horse",
+            }
 
         assert verify_e2e_token(FakeRequest()) is True
 
     @override_settings(E2E_TEST_SECRET="correct-horse")
     def test_missing_header_rejected(self):
         class FakeRequest:
-            headers = {}
+            headers: ClassVar[dict[str, str]] = {}
 
         assert verify_e2e_token(FakeRequest()) is False
 
@@ -127,6 +133,6 @@ class VerifyE2eTokenTest(SimpleTestCase):
     @override_settings(E2E_TEST_SECRET="correct-horse")
     def test_empty_string_token_rejected(self):
         class FakeRequest:
-            headers = {"X-E2E-Token": ""}
+            headers: ClassVar[dict[str, str]] = {"X-E2E-Token": ""}
 
         assert verify_e2e_token(FakeRequest()) is False

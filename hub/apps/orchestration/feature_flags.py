@@ -147,10 +147,7 @@ class WorkflowBusinessRulesFeatureFlags:
         if self.rollout_percentage < 100:
             # Use workflow_instance_id for consistent rollout (if provided)
             # Otherwise use workflow_name hash
-            if workflow_instance_id:
-                rollout_key = workflow_instance_id
-            else:
-                rollout_key = workflow_name
+            rollout_key = workflow_instance_id or workflow_name
 
             # Simple hash-based rollout (consistent for same key)
             hash_value = hash(rollout_key) % 100

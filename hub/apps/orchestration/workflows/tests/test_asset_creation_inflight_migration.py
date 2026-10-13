@@ -41,6 +41,7 @@ versioning, ORM, audit) runs against the real implementations.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from unittest.mock import patch
 
@@ -326,14 +327,12 @@ class InFlightMigrationTest(TestCase):
                 "success": True,
                 "workflow_instance_id": str(uuid.uuid4()),
             }
-            try:
-                engine.execute_instance(str(instance.id))
-            except Exception:
+            with contextlib.suppress(Exception):
                 # Some downstream side-effects may fail in unit-test env
                 # (e.g. notifications, search index without ES); what
                 # matters is the v1 instance executed v1 STEPS — checked
                 # via state_data + WorkflowStep rows below.
-                pass
+                engine.execute_instance(str(instance.id))
 
         instance.refresh_from_db()
         assert instance.workflow_version == "1.0.0", (
@@ -389,12 +388,10 @@ class InFlightMigrationTest(TestCase):
         # The v1 instance MUST NOT raise FailClosedRejection from
         # _create_asset_record_task even though tenant.fail_closed=True.
         instance = engine.start_instance(str(instance.id))
-        try:
-            engine.execute_instance(str(instance.id))
-        except Exception:
+        with contextlib.suppress(Exception):
             # Downstream side-effects may fail in unit-test env; what
             # we're guarding against is FailClosedRejection.
-            pass
+            engine.execute_instance(str(instance.id))
 
         # No fail-closed audit event must have fired.
         assert (

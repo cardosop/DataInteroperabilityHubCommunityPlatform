@@ -487,6 +487,47 @@ class WorkflowState(models.Model):
         return f"State snapshot for {self.workflow_instance.id} ({self.snapshot_type})"
 
 
+class WorkflowCancellationRequest(models.Model):
+    """W3.6 (R2-P4/F13) — the out-of-band cancellation signal.
+
+    ``WorkflowEngine.execute_instance`` holds a ``select_for_update``
+    lock on the WorkflowInstance row for the WHOLE step loop — a
+    same-row cancel write can never commit while a run is in flight,
+    so the cancelling side records the intent HERE (its own row, no
+    lock conflict) and the engine's between-step checkpoints consume
+    it and stop the run.  One request per instance.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workflow_instance = models.OneToOneField(
+        WorkflowInstance,
+        on_delete=models.CASCADE,
+        related_name="cancellation_request",
+        help_text="The workflow instance whose run must stop",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="workflow_cancellation_requests",
+        null=True,
+        blank=True,
+        help_text="Tenant scope (RLS pairing — policy shipped in the same migration)",
+    )
+    reason = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Operator-supplied cancellation reason",
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workflow_cancellation_requests"
+
+    def __str__(self):
+        return f"Cancellation request for {self.workflow_instance_id}"
+
+
 class PipelineDependency(models.Model):
     """Directed dependency between two pipeline instances.
 

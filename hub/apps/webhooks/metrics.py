@@ -124,7 +124,7 @@ try:
         buckets=_SIGNATURE_DURATION_BUCKETS,
     )
 
-except Exception:  # pragma: no cover — defensive fallback
+except Exception:
 
     class _CounterStub:
         def labels(self, **_: object) -> _CounterStub:
@@ -173,7 +173,7 @@ def emit_outbound_attempt(
             event_type=event_type,
             outcome=outcome,
         ).inc()
-    except Exception as exc:  # pragma: no cover — metric backend issues
+    except Exception as exc:
         logger.warning(
             "webhook_outbound_metric_emit_failed",
             tenant_id=tenant_id,
@@ -195,7 +195,7 @@ def observe_signature_duration(
             tenant_id=tenant_id,
             webhook_id=webhook_id,
         ).observe(duration_seconds)
-    except Exception as exc:  # pragma: no cover — metric backend issues
+    except Exception as exc:
         logger.warning(
             "webhook_signature_metric_emit_failed",
             tenant_id=tenant_id,

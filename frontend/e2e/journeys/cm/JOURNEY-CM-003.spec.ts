@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -23,13 +24,39 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
       await loginUser(page, testUser);
       await page.goto('/communities');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // The CapabilityRoute gate resolves asynchronously (capabilities
+      // query) — wait for a terminal state instead of racing a fixed 3s
+      // sleep with the redirect.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      await page
+        .locator('.communities-page, [data-testid="communities-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .unavailable-page, [data-testid="unavailable-page"]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 60000 })
+        .catch(() => null);
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const onCommunities = url.includes('/communities');
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      // Two distinct gate-off terminal states:
+      //  - /coming-soon (MVP mode): the surface is genuinely out of scope —
+      //    a legitimate per-environment state, plain conditional skip.
+      //  - /unavailable: the OpenAPI-derived gate failed CLOSED under batch
+      //    churn — the social paths are ALWAYS registered in the OpenAPI
+      //    spec, so this is a transient snapshot-fetch failure, not a
+      //    disabled capability. W16-guarded skip: raises in CI, skips
+      //    locally.
+      test.skip(url.includes('/coming-soon'), 'social.communities out of MVP scope — success contract not exercisable');
+      if (url.includes('/unavailable')) {
+        environmentSkipGuard(
+          'social.communities gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(url.includes('/unavailable'), 'social.communities gate bounced to /unavailable — transient snapshot failure');
+      if (url.includes('/unavailable') || url.includes('/coming-soon')) {
         return;
       }
       expect(onCommunities).toBe(true);

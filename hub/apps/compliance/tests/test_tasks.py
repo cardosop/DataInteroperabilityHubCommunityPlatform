@@ -198,9 +198,7 @@ class PollComplianceJobTest(TestCase):
     @patch(f"{_MODELS}.ComplianceRun.objects")
     def test_does_not_exist_exits_gracefully(self, mock_qs, mock_client_cls):
         """poll_compliance_job handles ComplianceRun.DoesNotExist cleanly."""
-        mock_qs.select_related.return_value.get.side_effect = (
-            ComplianceRun.DoesNotExist
-        )
+        mock_qs.select_related.return_value.get.side_effect = ComplianceRun.DoesNotExist
         from hub.apps.compliance.tasks import poll_compliance_job
 
         # Must not raise — the function logs and returns None.

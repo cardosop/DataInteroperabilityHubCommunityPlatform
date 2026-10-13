@@ -159,7 +159,7 @@ test.describe('Failure Scenarios (real tests)', () => {
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
     await page.waitForSelector('.app-main, [data-testid="app-main"]', { timeout: 65000 }).catch(() => null);
     if (page.url().includes('/login')) {
-      test.skip(true, 'Auth session expired — redirected to /login before test could run');
+      test.skip(page.url().includes('/login'), 'Auth session expired — redirected to /login before test could run');
       return;
     }
 
@@ -168,7 +168,7 @@ test.describe('Failure Scenarios (real tests)', () => {
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
     const appMainVisible = await page.locator('.app-main, [data-testid="app-main"]').first().isVisible().catch(() => false);
     if (!appMainVisible) {
-      test.skip(true, 'Auth init: .app-main, [data-testid="app-main"] not visible (auth-store timeout or capabilities failure)');
+      test.skip(!appMainVisible, 'Auth init: .app-main, [data-testid="app-main"] not visible (auth-store timeout or capabilities failure)');
       return;
     }
 
@@ -266,7 +266,7 @@ test.describe('Failure Scenarios (real tests)', () => {
       page.off('response', responseHandler);
       // Navigation timed out — Vite dev server overloaded under parallel E2E load.
       // The 503 intercept scenario is untestable when the server can't serve pages.
-      test.skip(true, 'page.goto(/assets) timed out — Vite dev server overloaded');
+      test.skip(gotoFailed, 'page.goto(/assets) timed out — Vite dev server overloaded');
       return;
     }
 
@@ -355,7 +355,7 @@ test.describe('Failure Scenarios (real tests)', () => {
     // If the backend didn't rate-limit and all attempts returned 400, at minimum the last
     // error should be visible. If not, skip (the UI may clear errors on field change).
     if (!hasError && !hitRateLimit) {
-      test.skip(true,
+      test.skip(!hasError && !hitRateLimit,
         `No error visible after 6 failed logins (last status: ${lastStatus}). ` +
         'UI may clear error on subsequent input — acceptable race condition.'
       );

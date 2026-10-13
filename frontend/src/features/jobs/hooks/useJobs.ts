@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { jobService } from '../services/jobService';
 import type { Job, JobCreateRequest, JobListFilters } from '../../../shared/types/jobs';
@@ -13,10 +14,7 @@ export function useJobs(filters: JobListFilters = {}) {
     queryKey: ['jobs', 'list', filters],
     queryFn: async () => {
       const data = await jobService.list(filters);
-      if (data === undefined) {
-        return emptyPaginatedResponse<Job>();
-      }
-      return data;
+      return normalizePaginated(data ?? emptyPaginatedResponse<Job>());
     },
     refetchInterval: (query) => {
       // Auto-refetch if there are running jobs

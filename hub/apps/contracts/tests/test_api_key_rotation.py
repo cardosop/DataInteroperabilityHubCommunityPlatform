@@ -10,10 +10,12 @@ Tests verify:
 6. Key rotation error handling
 """
 
+import contextlib
 import uuid
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.db import DatabaseError, IntegrityError
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -179,10 +181,13 @@ class APIKeyRotationTest(ContractsAPITestBase):
             tenant=self.tenant, user=self.user, key_hash=key_hash, name="First Key"
         )
 
-        # Try to create duplicate (should raise IntegrityError)
-        from django.db import IntegrityError
+        # Try to create duplicate (should raise IntegrityError). Confine the
+        # expected failure to a nested atomic savepoint so the ambient
+        # TestCase transaction stays usable for the assertions below —
+        # otherwise every later query raises TransactionManagementError.
+        from django.db import IntegrityError, connection, transaction
 
-        with self.assertRaises(IntegrityError):
+        with self.assertRaises(IntegrityError), transaction.atomic():
             APIKey.objects.create(
                 tenant=self.tenant,
                 user=self.user,
@@ -190,19 +195,23 @@ class APIKeyRotationTest(ContractsAPITestBase):
                 name="Duplicate Key",
             )
 
-        # Test creating key with invalid tenant (should fail gracefully)
-        from hub.apps.tenants.models import Tenant
-
+        # Test creating key with invalid tenant (should fail gracefully).
+        # TestCase defers FK constraint checks (SET CONSTRAINTS ALL
+        # DEFERRED), so a nonexistent tenant_id does not fail at INSERT —
+        # it surfaces as a deferred IntegrityError when constraints are
+        # checked. Force that check inside a savepoint so the failure is
+        # observable here and doesn't poison the ambient transaction
+        # (teardown would otherwise blow up on a closed connection).
         invalid_tenant_id = "00000000-0000-0000-0000-000000000000"
 
-        # Should raise DoesNotExist for invalid tenant FK
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError), transaction.atomic():
             APIKey.objects.create(
                 tenant_id=invalid_tenant_id,
                 user=self.user,
                 key_hash=hashlib.sha256(b"test").hexdigest(),
                 name="Invalid Tenant Key",
             )
+            connection.check_constraints()
 
     def test_api_key_rotation_with_expiration_date(self):
         """Test API key rotation with expiration date"""
@@ -322,7 +331,7 @@ class APIKeyRotationTest(ContractsAPITestBase):
         key2 = secrets.token_urlsafe(32)
         key_hash2 = hashlib.sha256(key2.encode()).hexdigest()
 
-        try:
+        with contextlib.suppress(IntegrityError, DatabaseError):
             APIKey.objects.create(
                 tenant=self.tenant,
                 user=self.user,
@@ -330,9 +339,6 @@ class APIKeyRotationTest(ContractsAPITestBase):
                 name="Unique Key Name",  # Same name
             )
             # If creation succeeds, names don't need to be unique
-        except Exception:
-            # If creation fails, names must be unique
-            pass
 
     def test_api_key_rotation_with_future_expiration(self):
         """Test API key rotation with future expiration date"""

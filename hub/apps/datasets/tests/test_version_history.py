@@ -792,9 +792,13 @@ class VersionHistoryManagerTest(DatasetsTestBase):
     def test_get_version_tree_only_returns_same_tenant_versions(self):
         """get_version_tree returns only versions in the same tenant."""
         ds = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
-            format="CSV", schema_json={"fields": [{"name": "x", "type": "string"}]},
-            version=1, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            format="CSV",
+            schema_json={"fields": [{"name": "x", "type": "string"}]},
+            version=1,
+            created_by=self.user,
         )
         tree = VersionHistoryManager.get_version_tree(ds)
         self.assertIsInstance(tree, list)
@@ -804,9 +808,13 @@ class VersionHistoryManagerTest(DatasetsTestBase):
     def test_get_ancestors_only_returns_same_tenant_versions(self):
         """get_ancestors returns only ancestor versions in the same tenant."""
         ds = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
-            format="CSV", schema_json={"fields": [{"name": "x", "type": "string"}]},
-            version=1, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            format="CSV",
+            schema_json={"fields": [{"name": "x", "type": "string"}]},
+            version=1,
+            created_by=self.user,
         )
         ancestors = VersionHistoryManager.get_ancestors(ds)
         for ancestor in ancestors:
@@ -815,9 +823,13 @@ class VersionHistoryManagerTest(DatasetsTestBase):
     def test_get_descendants_only_returns_same_tenant_versions(self):
         """get_descendants returns only descendant versions in the same tenant."""
         ds = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
-            format="CSV", schema_json={"fields": [{"name": "x", "type": "string"}]},
-            version=1, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            format="CSV",
+            schema_json={"fields": [{"name": "x", "type": "string"}]},
+            version=1,
+            created_by=self.user,
         )
         descendants = VersionHistoryManager.get_descendants(ds)
         for descendant in descendants:
@@ -837,20 +849,30 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         config.save(update_fields=["versioning_enabled", "updated_at"])
 
         parent = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV", version=1, created_by=self.user,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         VersionHistoryManager.create_version(parent, is_current=True)
 
         child = Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV", version=2, created_by=self.user,
+            format="CSV",
+            version=2,
+            created_by=self.user,
         )
 
         with self.assertRaises(ValidationError) as cm:
             VersionHistoryManager.create_version(
-                child, parent_version=parent, is_current=True,
+                child,
+                parent_version=parent,
+                is_current=True,
             )
         self.assertEqual(cm.exception.code, "VERSIONING_DISABLED")

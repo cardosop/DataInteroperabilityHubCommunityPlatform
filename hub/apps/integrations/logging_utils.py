@@ -137,6 +137,12 @@ def log_connector_operation(
     # Add any additional fields
     log_fields.update(kwargs)
 
+    # Resolve the logger at CALL time (not module import time) so tests
+    # that reconfigure structlog with a capture processor actually
+    # observe the entry — a module-level bound logger keeps the
+    # import-time processor chain forever.
+    logger = structlog.get_logger(__name__)
+
     # Get logger method
     log_method = getattr(logger, level, logger.info)
 
@@ -229,6 +235,12 @@ def log_sync_job(
     # Add any additional fields
     log_fields.update(kwargs)
 
+    # Resolve the logger at CALL time (not module import time) so tests
+    # that reconfigure structlog with a capture processor actually
+    # observe the entry — a module-level bound logger keeps the
+    # import-time processor chain forever.
+    logger = structlog.get_logger(__name__)
+
     # Get logger method
     log_method = getattr(logger, level, logger.info)
 
@@ -304,6 +316,12 @@ def log_api_call(
 
     # Add any additional fields
     log_fields.update(kwargs)
+
+    # Resolve the logger at CALL time (not module import time) so tests
+    # that reconfigure structlog with a capture processor actually
+    # observe the entry — a module-level bound logger keeps the
+    # import-time processor chain forever.
+    logger = structlog.get_logger(__name__)
 
     # Get logger method
     log_method = getattr(logger, level, logger.info)

@@ -18,6 +18,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError, InterfaceError
+
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskLevel
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -93,7 +96,7 @@ class ComplianceBusinessRules(BusinessRules):
         return "ComplianceBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -198,7 +201,10 @@ class ComplianceBusinessRules(BusinessRules):
         return result
 
     def _validate_compliance_run(
-        self, compliance_run: ComplianceRun, tenant: Any | None = None, user: User | None = None
+        self,
+        compliance_run: ComplianceRun,
+        tenant: Any | None = None,
+        user: User | None = None,  # keyword-arg API; callers pass by keyword
     ) -> ValidationResult:
         """
         Validate compliance run.
@@ -365,8 +371,8 @@ class ComplianceBusinessRules(BusinessRules):
         self,
         assessment: dict[str, Any],
         compliance_run: ComplianceRun | None = None,
-        tenant: Any | None = None,
-        user: User | None = None,
+        tenant: Any | None = None,  # keyword-arg API; callers pass by keyword
+        user: User | None = None,  # keyword-arg API; callers pass by keyword
     ) -> ValidationResult:
         """
         Validate risk assessment data comprehensively.
@@ -1621,7 +1627,7 @@ class ComplianceBusinessRules(BusinessRules):
                         details["disallowed_types"] = disallowed_types
                     else:
                         details["tenant_regime_restriction"] = False
-                except Exception as e:
+                except (DatabaseError, InterfaceError) as e:
                     warnings.append(
                         f"Could not validate tenant compliance regime restrictions: {e}"
                     )
@@ -1638,7 +1644,9 @@ class ComplianceBusinessRules(BusinessRules):
         )
 
     def _validate_scan_config(
-        self, scan_config: dict[str, Any], tenant: Any | None = None
+        self,
+        scan_config: dict[str, Any],
+        tenant: Any | None = None,  # keyword-arg API; callers pass by keyword
     ) -> ValidationResult:
         """
         Implement scan configuration validation (valid parameters, rules).
@@ -1758,7 +1766,10 @@ class ComplianceBusinessRules(BusinessRules):
         )
 
     def _validate_scan_resource(
-        self, scan_config: dict[str, Any], tenant: Any | None = None, user: User | None = None
+        self,
+        scan_config: dict[str, Any],
+        tenant: Any | None = None,
+        user: User | None = None,  # keyword-arg API; callers pass by keyword
     ) -> ValidationResult:
         """
         Implement scan resource validation (resource exists and accessible).
@@ -1834,7 +1845,7 @@ class ComplianceBusinessRules(BusinessRules):
             except Asset.DoesNotExist:
                 errors.append(f"Asset {asset_id} does not exist")
                 details["asset_exists"] = False
-            except Exception as e:
+            except (ValidationError, DatabaseError, InterfaceError) as e:
                 errors.append(f"Error validating asset {asset_id}: {e}")
                 details["asset_validation_error"] = str(e)
 
@@ -1863,7 +1874,7 @@ class ComplianceBusinessRules(BusinessRules):
             except Dataset.DoesNotExist:
                 errors.append(f"Dataset {dataset_id} does not exist")
                 details["dataset_exists"] = False
-            except Exception as e:
+            except (ValidationError, DatabaseError, InterfaceError) as e:
                 errors.append(f"Error validating dataset {dataset_id}: {e}")
                 details["dataset_validation_error"] = str(e)
 
@@ -1903,7 +1914,7 @@ class ComplianceBusinessRules(BusinessRules):
             except File.DoesNotExist:
                 errors.append(f"File {file_id} does not exist")
                 details["file_exists"] = False
-            except Exception as e:
+            except (ValidationError, DatabaseError, InterfaceError) as e:
                 errors.append(f"Error validating file {file_id}: {e}")
                 details["file_validation_error"] = str(e)
 
@@ -2038,7 +2049,7 @@ class ComplianceBusinessRules(BusinessRules):
                     )
                     details["has_conflicting_reports"] = None
                     details["schedule_check_skipped"] = "model_not_available"
-                except Exception as e:
+                except (ValidationError, DatabaseError, InterfaceError) as e:
                     warnings.append(f"Error checking for conflicting scheduled reports: {e}")
                     details["has_conflicting_reports"] = None
                     details["schedule_check_error"] = str(e)

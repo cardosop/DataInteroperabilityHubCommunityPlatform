@@ -9,6 +9,7 @@ Usage:
 """
 
 import os
+import time
 
 import pytest
 import requests
@@ -19,32 +20,44 @@ TIMEOUT = int(os.environ.get("SMOKE_TEST_TIMEOUT", "30"))
 
 def _api(path, method="get", session=None, **kwargs):
     url = f"{BASE_URL}{path}"
-    try:
-        r = (session or requests).request(method, url, timeout=TIMEOUT, **kwargs)
-        return r
-    except (requests.ConnectionError, requests.Timeout):
-        pytest.skip(f"Service unavailable at {url}")
+    # The test stack shares a busy HDD host — a single connect/timeout is
+    # not evidence the service is down. Retry twice with a short backoff
+    # before giving up, so a transient stall can't erase the whole suite.
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            return (session or requests).request(method, url, timeout=TIMEOUT, **kwargs)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+            time.sleep(0.5 * (attempt + 1))
+    pytest.skip(f"Service unavailable at {url} ({last_exc})")
 
 
 class TestMarketplaceSmoke:
     """Create listing → publish → purchase → verify entitlement."""
 
     @pytest.fixture(scope="class")
-    def session(self):
+    @classmethod
+    def session(cls):
         s = requests.Session()
         yield s
         s.close()
 
     def test_01_marketplace_health(self):
-        """Marketplace endpoints are reachable."""
-        r = _api("/api/v1/marketplace/health/")
-        if r.status_code == 404:
-            pytest.skip("Marketplace health endpoint not available")  # noqa: skip-in-body — runtime service dependency
-        assert r.status_code in (200, 503)
+        """Marketplace endpoints are reachable.
 
-    def test_02_list_listings(self, session):
-        """List marketplace listings."""
-        r = _api("/api/v1/marketplace/listings/", session=session)
+        The marketplace app exposes no dedicated /health/ route — probe the
+        listings endpoint instead: any HTTP status proves the router is
+        mounted (401 = reachable but auth-gated, the current contract).
+        """
+        r = _api("/api/v1/marketplace/listings/")
+        if r.status_code == 404:
+            pytest.skip("Marketplace endpoints not mounted")  # noqa: skip-in-body — runtime service dependency
+        assert r.status_code in (200, 401, 403, 503), f"Unexpected: {r.status_code}"
+
+    def test_02_list_listings(self, authenticated_session):
+        """List marketplace listings with the authenticated admin session."""
+        r = _api("/api/v1/marketplace/listings/", session=authenticated_session)
         if r.status_code == 404:
             pytest.skip("Marketplace listings endpoint not available (gated?)")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code == 200, f"Listings failed: {r.status_code}"
@@ -68,9 +81,9 @@ class TestMarketplaceSmoke:
             f"Unauthenticated listing creation should be rejected, got {r.status_code}"
         )
 
-    def test_04_list_listings_returns_valid_structure(self, session):
-        """Each listing in the response has required fields."""
-        r = _api("/api/v1/marketplace/listings/", session=session)
+    def test_04_list_listings_returns_valid_structure(self, authenticated_session):
+        """Each listing in the response has required fields (authenticated)."""
+        r = _api("/api/v1/marketplace/listings/", session=authenticated_session)
         if r.status_code == 404:
             pytest.skip("Marketplace endpoint not available")  # noqa: skip-in-body — runtime service dependency
         if r.status_code != 200:

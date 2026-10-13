@@ -37,7 +37,6 @@ from hub.apps.webhooks.models import (
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
 from tests.utils.polling import wait_until
 
-
 User = get_user_model()
 
 
@@ -153,8 +152,9 @@ class ODPSWebhookE2ETest(TransactionTestCase):
                 has_success_delivery, timeout=5.0, message="ODPS created delivery not SUCCESS"
             )
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
-            self.assertEqual(deliveries.count(), 1,
-                             f"Expected exactly 1 delivery, got {deliveries.count()}")
+            self.assertEqual(
+                deliveries.count(), 1, f"Expected exactly 1 delivery, got {deliveries.count()}"
+            )
 
             delivery = deliveries.first()
             self.assertEqual(delivery.event_type, "odps.created")
@@ -168,8 +168,11 @@ class ODPSWebhookE2ETest(TransactionTestCase):
             self.assertEqual(payload["data"]["contract_id"], str(odps_contract.id))
 
             requests_received = server.get_received_requests(timeout=2.0)
-            self.assertEqual(len(requests_received), 1,
-                            f"Expected exactly 1 received request, got {len(requests_received)}")
+            self.assertEqual(
+                len(requests_received),
+                1,
+                f"Expected exactly 1 received request, got {len(requests_received)}",
+            )
 
     def test_odps_contract_linking_triggers_webhook_e2e(self):
         """E2E test: Linking ODPS to ODCS triggers webhook delivery (real server)."""
@@ -248,8 +251,9 @@ class ODPSWebhookE2ETest(TransactionTestCase):
 
             wait_until(has_linked_delivery, timeout=5.0, message="ODPS linked delivery not SUCCESS")
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
-            self.assertEqual(deliveries.count(), 1,
-                             f"Expected exactly 1 delivery, got {deliveries.count()}")
+            self.assertEqual(
+                deliveries.count(), 1, f"Expected exactly 1 delivery, got {deliveries.count()}"
+            )
 
             delivery = deliveries.first()
             self.assertEqual(delivery.event_type, "odps.linked")
@@ -260,8 +264,11 @@ class ODPSWebhookE2ETest(TransactionTestCase):
             self.assertEqual(payload["data"]["odcs_contract_id"], str(odcs_contract.id))
 
             requests_received = server.get_received_requests(timeout=2.0)
-            self.assertEqual(len(requests_received), 1,
-                            f"Expected exactly 1 received request, got {len(requests_received)}")
+            self.assertEqual(
+                len(requests_received),
+                1,
+                f"Expected exactly 1 received request, got {len(requests_received)}",
+            )
 
     def test_multiple_odps_events_trigger_multiple_webhooks_e2e(self):
         """E2E test: Multiple ODPS events trigger multiple webhook deliveries (real server)."""
@@ -337,8 +344,11 @@ class ODPSWebhookE2ETest(TransactionTestCase):
                 has_created_delivery, timeout=5.0, message="Created webhook delivery not recorded"
             )
             created_deliveries = WebhookDelivery.objects.filter(webhook=created_webhook)
-            self.assertEqual(created_deliveries.count(), 1,
-                             f"Expected exactly 1 created delivery, got {created_deliveries.count()}")
+            self.assertEqual(
+                created_deliveries.count(),
+                1,
+                f"Expected exactly 1 created delivery, got {created_deliveries.count()}",
+            )
 
             linked_deliveries = WebhookDelivery.objects.filter(webhook=linked_webhook)
             self.assertEqual(linked_deliveries.count(), 0)
@@ -369,9 +379,15 @@ class ODPSWebhookE2ETest(TransactionTestCase):
                 message="Linked webhook delivery not recorded",
             )
             linked_deliveries = WebhookDelivery.objects.filter(webhook=linked_webhook)
-            self.assertEqual(linked_deliveries.count(), 1,
-                             f"Expected exactly 1 linked delivery, got {linked_deliveries.count()}")
+            self.assertEqual(
+                linked_deliveries.count(),
+                1,
+                f"Expected exactly 1 linked delivery, got {linked_deliveries.count()}",
+            )
 
             requests_received = server.get_received_requests(timeout=2.0)
-            self.assertEqual(len(requests_received), 2,
-                            f"Expected exactly 2 received requests, got {len(requests_received)}")
+            self.assertEqual(
+                len(requests_received),
+                2,
+                f"Expected exactly 2 received requests, got {len(requests_received)}",
+            )

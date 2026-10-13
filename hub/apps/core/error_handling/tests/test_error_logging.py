@@ -12,6 +12,11 @@ from hub.apps.core.error_handling.error_logging import (
 )
 
 
+def _raise_test_error(exc: Exception) -> None:
+    """Raise *exc* so tests can exercise caught-exception logging paths."""
+    raise exc
+
+
 class ErrorLoggerTest(TestCase):
     """Test ErrorLogger class."""
 
@@ -21,7 +26,7 @@ class ErrorLoggerTest(TestCase):
 
         with structlog.testing.capture_logs() as captured:
             try:
-                raise ValueError("Test error")
+                _raise_test_error(ValueError("Test error"))
             except ValueError as e:
                 logger.log_error(
                     error=e,
@@ -50,7 +55,7 @@ class ErrorLoggerTest(TestCase):
 
         with structlog.testing.capture_logs() as captured:
             try:
-                raise RuntimeError("Test exception")
+                _raise_test_error(RuntimeError("Test exception"))
             except RuntimeError as e:
                 logger.log_exception(e, context={"additional": "context"})
 
@@ -136,7 +141,7 @@ class ErrorLoggerTest(TestCase):
 
         with structlog.testing.capture_logs() as captured:
             try:
-                raise ValueError("Test")
+                _raise_test_error(ValueError("Test"))
             except ValueError as e:
                 logger.log_error(e, error_code="TEST_ERROR")
 
@@ -152,7 +157,7 @@ class ErrorLoggerTest(TestCase):
 
         with structlog.testing.capture_logs() as captured:
             try:
-                raise ValueError("Test warning")
+                _raise_test_error(ValueError("Test warning"))
             except ValueError as e:
                 logger.log_error(
                     error=e,
@@ -162,7 +167,11 @@ class ErrorLoggerTest(TestCase):
 
         self.assertEqual(len(captured), 1)
         log_entry = captured[0]
-        self.assertEqual(log_entry["event"], "error_occurred")
+        # Warning-level errors are expected client faults (4xx routine
+        # noise); the logger deliberately emits "http_client_error" for
+        # them and reserves "error_occurred" for server faults — see
+        # ErrorLogger.log_error.
+        self.assertEqual(log_entry["event"], "http_client_error")
         self.assertEqual(log_entry["log_level"], "warning")
         self.assertEqual(log_entry["error_code"], "TEST_WARNING")
 
@@ -172,7 +181,7 @@ class ErrorLoggerTest(TestCase):
 
         with structlog.testing.capture_logs() as captured:
             try:
-                raise ValueError("Test critical")
+                _raise_test_error(ValueError("Test critical"))
             except ValueError as e:
                 logger.log_error(
                     error=e,
@@ -232,7 +241,7 @@ class LogErrorFunctionTest(TestCase):
         """Test log_error convenience function."""
         with structlog.testing.capture_logs() as captured:
             try:
-                raise ValueError("Test error")
+                _raise_test_error(ValueError("Test error"))
             except ValueError as e:
                 log_error(
                     error=e,
@@ -256,7 +265,7 @@ class LogExceptionFunctionTest(TestCase):
         """Test log_exception convenience function."""
         with structlog.testing.capture_logs() as captured:
             try:
-                raise RuntimeError("Test exception")
+                _raise_test_error(RuntimeError("Test exception"))
             except RuntimeError as e:
                 log_exception(e, context={"test": "context"})
 

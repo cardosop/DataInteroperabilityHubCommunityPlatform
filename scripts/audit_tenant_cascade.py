@@ -20,14 +20,17 @@ def audit() -> int:
             continue
         try:
             tree = ast.parse(pyf.read_text())
-        except Exception:
+        except (OSError, SyntaxError, ValueError):
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                if hasattr(node.func, "attr") and node.func.attr == "ForeignKey":
-                    for kw in node.keywords:
-                        if kw.arg == "on_delete" and hasattr(kw.value, "attr"):
-                            fks.append((str(pyf.parent.name), kw.value.attr, str(node.lineno)))
+            if (
+                isinstance(node, ast.Call)
+                and hasattr(node.func, "attr")
+                and node.func.attr == "ForeignKey"
+            ):
+                for kw in node.keywords:
+                    if kw.arg == "on_delete" and hasattr(kw.value, "attr"):
+                        fks.append((str(pyf.parent.name), kw.value.attr, str(node.lineno)))
 
     cascade = sum(1 for _, v, _ in fks if v == "CASCADE")
     protect = sum(1 for _, v, _ in fks if v == "PROTECT")

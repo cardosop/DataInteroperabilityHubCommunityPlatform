@@ -62,6 +62,11 @@ critical_use_cases:
   - UC-EXPORT-001  # Schedule Recurring Export
   - UC-EXPORT-002  # Configure Export Destination
   - UC-EXPORT-003  # Monitor Export Runs
+  # Databricks Control Plane (openspec add-databricks-control-plane)
+  - UC-DB-001      # Register Databricks Workspace
+  - UC-DB-003      # Databricks SSO Login
+  # Databricks Control Plane (P6)
+  - UC-DB-013    # Export Dataset to Databricks
 
 # Critical user journey IDs (must have at least one test each in CI mode)
 critical_journeys:
@@ -102,6 +107,8 @@ critical_journeys:
   # Scheduled Export
   - JOURNEY-EXPORT-001  # Create and Run Scheduled Export
   - JOURNEY-EXPORT-002  # Monitor and Troubleshoot Export Runs
+  # Databricks Control Plane (P6)
+  - JOURNEY-DB-013  # Export a Dataset to Databricks
 
 # MVP-scope decisions (Phase 226.G6)
 #
@@ -153,3 +160,10 @@ paid_ids:
   - JOURNEY-CPO-010
   - JOURNEY-DC-001
   - JOURNEY-MPA-005
+  # Databricks Control Plane (openspec add-databricks-control-plane)
+  - JOURNEY-DB-001
+  - JOURNEY-DB-003
+  - JOURNEY-DB-007
+  - JOURNEY-DB-008
+  - UC-DB-007
+  - UC-DB-008

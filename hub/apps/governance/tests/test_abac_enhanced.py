@@ -48,7 +48,7 @@ class ABACCacheTest(TestCase):
 
         # Create a policy that will match the lookup (empty conditions
         # match any resource) so the test has real content to verify.
-        policy = AccessPolicy.objects.create(
+        _policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Cache Test Policy",
             conditions={},
@@ -84,7 +84,9 @@ class ABACCacheTest(TestCase):
 
         # Verify cache was populated (policies are cached after first fetch)
         cache_key = ABACEngine._get_cache_key(
-            str(self.tenant.id), "ASSET", resource_uuid,
+            str(self.tenant.id),
+            "ASSET",
+            resource_uuid,
         )
         self.assertIsNotNone(
             cache.get(cache_key),

@@ -91,12 +91,12 @@ def check_django_deprecations() -> tuple[dict[str, list[str]], str]:
             elif "deprecat" in line_lower or "removed" in line_lower:
                 deprecations["other"].append(line.strip())
 
-        return deprecations, output
-
     except subprocess.TimeoutExpired:
         return {"middleware": [], "settings": [], "models": [], "other": []}, "Check timed out"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return {"middleware": [], "settings": [], "models": [], "other": []}, f"Error: {e!s}"
+    else:
+        return deprecations, output
 
 
 def check_middleware_mixin_usage() -> list[str]:
@@ -114,7 +114,7 @@ def check_middleware_mixin_usage() -> list[str]:
             content = py_file.read_text()
             if "MiddlewareMixin" in content:
                 middleware_files.append(str(py_file.relative_to(project_root)))
-        except Exception:
+        except (OSError, ValueError):
             continue
 
     return middleware_files

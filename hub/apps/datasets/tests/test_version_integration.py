@@ -328,8 +328,7 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
         # dataset itself even when no explicit version history exists.
         history = VersionHistoryManager.get_version_tree(dataset)
         self.assertIsInstance(history, list)
-        self.assertGreaterEqual(len(history), 1,
-                                "get_version_tree must include the dataset itself")
+        self.assertGreaterEqual(len(history), 1, "get_version_tree must include the dataset itself")
 
     def test_version_integration_edge_case_single_version(self):
         """Test version integration with single version (edge case)"""

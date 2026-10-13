@@ -326,7 +326,7 @@ class RefResolverCoverageGapsTest(TestCase):
 
         # Test with non-dict root document
         with self.assertRaises(ODPSRefResolutionError):
-            resolver.resolve_internal("#/", "not a dict")  # type: ignore[misc]  # test: edge-case type exercise
+            resolver.resolve_internal("#/", "not a dict")  # test: edge-case type exercise
 
     def test_resolve_internal_array_index_out_of_bounds(self):
         """Test internal ref resolution with array index out of bounds (line 1132)."""
@@ -367,7 +367,7 @@ class RefResolverCoverageGapsTest(TestCase):
                 response.raise_for_status()
                 return response.json()
 
-        resolver.resolve_external = mock_resolve_external  # type: ignore[misc]  # test: edge-case type exercise
+        resolver.resolve_external = mock_resolve_external  # test: edge-case type exercise
 
         import json
 
@@ -412,8 +412,8 @@ class RefResolverCoverageGapsTest(TestCase):
         resolver = RefResolver()
 
         # Test with non-dict
-        with self.assertRaises(ValueError):
-            resolver.remove_external_refs("not a dict")  # type: ignore[misc]  # test: edge-case type exercise
+        with self.assertRaises(TypeError):
+            resolver.remove_external_refs("not a dict")  # test: edge-case type exercise
 
     def test_resolve_odps_refs_function(self):
         """resolve_odps_refs resolves nested internal $refs; top-level $ref key persists.

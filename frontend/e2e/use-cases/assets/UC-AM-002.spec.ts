@@ -91,7 +91,7 @@ test.describe('UC-AM-002: Publish Asset to Marketplace @critical', () => {
       // Must be on listing detail to verify PUBLISHED status
       const onListingDetail = /\/marketplace\/listings\/[^/]+/.test(new URL(page.url()).pathname);
       if (!onListingDetail) {
-        test.skip(true, 'Did not navigate to listing detail');
+        test.skip(!onListingDetail, 'Did not navigate to listing detail');
       }
 
       // Check for PUBLISHED status badge
@@ -105,7 +105,7 @@ test.describe('UC-AM-002: Publish Asset to Marketplace @critical', () => {
           'button:has-text("Publish"), [data-testid="publish-listing-btn"]'
         );
         if ((await publishBtn.count()) === 0) {
-          test.skip(true, 'Listing is DRAFT but no Publish button found');
+          test.skip((await publishBtn.count()) === 0, 'Listing is DRAFT but no Publish button found');
         }
         const publishResponsePromise = page.waitForResponse(
           (r) =>

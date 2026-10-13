@@ -117,3 +117,38 @@ describe('SIDEBAR_NAV_ITEMS — DQ sub-menu (Phase 240.4.A.9 + Phase 240.4.B.4)'
     expect(dq?.children?.length).toBe(4);
   });
 });
+
+describe('SIDEBAR_NAV_ITEMS — My Approvals inbox (close-test-coverage-gaps 2.3)', () => {
+  function findMyApprovalsEntry() {
+    return SIDEBAR_NAV_ITEMS.find((i) => i.path === '/governance/my-approvals');
+  }
+
+  it('declares the my-approvals inbox as a top-level nav item', () => {
+    const entry = findMyApprovalsEntry();
+    expect(entry).toBeDefined();
+    expect(entry?.label).toBe('My Approvals');
+  });
+
+  it('gates the inbox on the SAME approver roles as the governance subtree route', () => {
+    // The route (governance children, routes.tsx subtree ProtectedRoute)
+    // admits TENANT_ADMIN | DPO | LEGAL_ADMIN | SECURITY_ADMIN |
+    // PLATFORM_ADMIN. The nav item must not be narrower (an approver
+    // would land on the route with no discoverable entry) nor advertise
+    // itself to roles the route rejects.
+    const entry = findMyApprovalsEntry();
+    expect(entry?.requiredRole).toEqual([
+      'TENANT_ADMIN',
+      'DPO',
+      'LEGAL_ADMIN',
+      'SECURITY_ADMIN',
+      'PLATFORM_ADMIN',
+    ]);
+  });
+
+  it('is not an advanced (hidden-in-More) item', () => {
+    // The inbox is the approvers' landing surface — it must render in the
+    // primary nav, not behind the "More" group.
+    const entry = findMyApprovalsEntry();
+    expect(entry?.advanced).toBeFalsy();
+  });
+});

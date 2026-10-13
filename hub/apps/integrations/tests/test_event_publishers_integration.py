@@ -5,6 +5,7 @@ Tests event publishing integration with real services and database operations.
 Verifies that events are properly published during actual service operations.
 """
 
+import unittest
 import uuid
 
 from django.test import TestCase, override_settings
@@ -332,7 +333,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         try:
             redis_client.ping()
         except (OSError, TimeoutError):
-            raise unittest.SkipTest("Redis not reachable for deduplication test")
+            raise unittest.SkipTest("Redis not reachable for deduplication test") from None
 
         # Use a unique connection_id to avoid collisions with stale Redis keys
         unique_conn_id = f"test-connection-{uuid.uuid4().hex[:8]}"
@@ -356,14 +357,16 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
 
         # Deduplication should return the same event ID
         self.assertEqual(
-            event_id_1, event_id_2,
+            event_id_1,
+            event_id_2,
             "Event deduplication should return same event ID when Redis is available",
         )
 
         # Only one event should exist in the database
         events = Event.objects.filter(event_id=event_id_1)
         self.assertEqual(
-            events.count(), 1,
+            events.count(),
+            1,
             "Only one event should exist when deduplication works",
         )
 
@@ -398,7 +401,8 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         # Both (or one, if Redis happens to be available) should exist in DB
         events = Event.objects.filter(event_id__in=[event_id_1, event_id_2])
         self.assertIn(
-            events.count(), [1, 2],
+            events.count(),
+            [1, 2],
             "Events should be persisted regardless of deduplication availability",
         )
 
@@ -508,7 +512,8 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         self.assertEqual(event.event_type, "marketplace.connection.created")
         # Verify fallback: None tenant_id should resolve to publisher default
         self.assertEqual(
-            str(event.tenant_id), str(self.tenant.id),
+            str(event.tenant_id),
+            str(self.tenant.id),
             msg="None tenant_id should fall back to publisher's default tenant_id",
         )
 
@@ -536,7 +541,8 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         self.assertEqual(event.event_type, "marketplace.connection.created")
         # Verify fallback: None user_id should resolve to publisher default
         self.assertEqual(
-            str(event.user_id), str(self.user.id),
+            str(event.user_id),
+            str(self.user.id),
             msg="None user_id should fall back to publisher's default user_id",
         )
 

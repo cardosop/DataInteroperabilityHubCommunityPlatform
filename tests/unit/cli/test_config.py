@@ -73,7 +73,9 @@ class TestConfig:
         assert config.get("nonexistent_key", "default_value") == "default_value"
         assert config.get("nonexistent_key") is None
 
-    @patch.dict(os.environ, {"DATAHUB_BASE_URL": "", "MESHANT_API_URL": "", "API_BASE_URL": ""}, clear=False)
+    @patch.dict(
+        os.environ, {"DATAHUB_BASE_URL": "", "MESHANT_API_URL": "", "API_BASE_URL": ""}, clear=False
+    )
     def test_config_api_base_url(self, temp_config_dir):
         """Test API base URL getter/setter"""
         config = Config()
@@ -223,7 +225,9 @@ class TestConfig:
         assert config_dir.exists()
         assert config_file.exists()
 
-    @patch.dict(os.environ, {"DATAHUB_BASE_URL": "", "MESHANT_API_URL": "", "API_BASE_URL": ""}, clear=False)
+    @patch.dict(
+        os.environ, {"DATAHUB_BASE_URL": "", "MESHANT_API_URL": "", "API_BASE_URL": ""}, clear=False
+    )
     def test_config_all_getters_setters(self, temp_config_dir):
         """Test all getter/setter methods"""
         config = Config()

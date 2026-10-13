@@ -4,7 +4,7 @@
 Covers the full breach workflow: create → notify → SLA tracking → resolution.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 
@@ -22,11 +22,11 @@ class BreachAPI:
         title: str,
         description: str,
         sla_level: str = "STANDARD",
-        affected_data_categories: Optional[List[str]] = None,
-        affected_subjects_count: Optional[int] = None,
-        discovered_at: Optional[str] = None,
-        notification_deadline: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        affected_data_categories: list[str] | None = None,
+        affected_subjects_count: int | None = None,
+        discovered_at: str | None = None,
+        notification_deadline: str | None = None,
+    ) -> dict[str, Any]:
         """Create a new breach incident.
 
         Args:
@@ -38,7 +38,7 @@ class BreachAPI:
             discovered_at: ISO-8601 timestamp of discovery.
             notification_deadline: ISO-8601 statutory deadline override.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "title": title,
             "description": description,
             "sla_level": sla_level,
@@ -57,20 +57,20 @@ class BreachAPI:
 
     async def list_incidents(
         self,
-        status: Optional[str] = None,
-        sla_level: Optional[str] = None,
+        status: str | None = None,
+        sla_level: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List breach incidents with optional filters."""
-        params: Dict[str, Any] = {"page": page, "page_size": page_size}
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
         if status:
             params["status"] = status
         if sla_level:
             params["sla_level"] = sla_level
         return await self.client.get("governance/breach-incidents/", params=params)
 
-    async def get_incident(self, incident_id: str) -> Dict[str, Any]:
+    async def get_incident(self, incident_id: str) -> dict[str, Any]:
         """Get full details of a breach incident."""
         return await self.client.get(f"governance/breach-incidents/{incident_id}/")
 
@@ -81,7 +81,7 @@ class BreachAPI:
         incident_id: str,
         status: str,
         resolution_note: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update the status of a breach incident.
 
         Args:
@@ -102,7 +102,7 @@ class BreachAPI:
         incident_id: str,
         page: int = 1,
         page_size: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List notifications sent for a breach incident."""
         return await self.client.get(
             "governance/breach-notifications/",
@@ -113,7 +113,7 @@ class BreachAPI:
         self,
         notification_id: str,
         outbound_reference: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Mark a breach notification as sent.
 
         Args:
@@ -127,7 +127,7 @@ class BreachAPI:
 
     # ── Dashboard / SLA ──────────────────────────────────────────────
 
-    async def get_dashboard(self) -> Dict[str, Any]:
+    async def get_dashboard(self) -> dict[str, Any]:
         """Get breach dashboard summary with SLA metrics.
 
         Returns ``{total, open, overdue, by_sla_level, approaching_deadline}``.
@@ -135,7 +135,7 @@ class BreachAPI:
         """
         return await self.client.get("governance/breach-dashboard/")
 
-    async def get_sla_status(self, incident_id: str) -> Dict[str, Any]:
+    async def get_sla_status(self, incident_id: str) -> dict[str, Any]:
         """Get SLA compliance status for a breach incident.
 
         SLA data is derived from the incident detail + dashboard clock scan.

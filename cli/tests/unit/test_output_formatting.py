@@ -302,11 +302,11 @@ class TestOutputFormatConsistency:
 
         for cmd in commands:
             # Test JSON format
-            result_json = runner.invoke(cli, cmd + ["--format", "json"])
+            result_json = runner.invoke(cli, [*cmd, "--format", "json"])
             assert result_json.exit_code == 0
 
             # Test table format
-            result_table = runner.invoke(cli, cmd + ["--format", "table"])
+            result_table = runner.invoke(cli, [*cmd, "--format", "table"])
             assert result_table.exit_code == 0
 
     def test_output_format_defaults_to_table(self, runner, mock_api_client):

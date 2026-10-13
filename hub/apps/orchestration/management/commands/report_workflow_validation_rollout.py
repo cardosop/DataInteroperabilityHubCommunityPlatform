@@ -26,7 +26,7 @@ class Command(BaseCommand):
             help="Do not reset feature flags cache (default: reset)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         if not options.get("no_reset"):
             reset_feature_flags()
 

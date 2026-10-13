@@ -6,7 +6,6 @@ Uses real metric counters (no mocks) — reads counter values before
 and after each operation to verify the metric was actually emitted.
 """
 
-import contextlib
 import uuid
 
 import pytest
@@ -123,15 +122,19 @@ class VirtualizationMetricsTest(TestCase):
         except Exception as e:
             err = str(e).lower()
             if "connection" in err or "refused" in err:
-                execution = QueryExecution.objects.filter(
-                    virtual_dataset_id=dataset.id
-                ).order_by("-created_at").first()
+                execution = (
+                    QueryExecution.objects.filter(virtual_dataset_id=dataset.id)
+                    .order_by("-created_at")
+                    .first()
+                )
             elif "source" in err:
                 # Source validation failed (e.g., unreachable test DB) — look
                 # for the execution record created before the workflow failure.
-                execution = QueryExecution.objects.filter(
-                    virtual_dataset_id=dataset.id
-                ).order_by("-created_at").first()
+                execution = (
+                    QueryExecution.objects.filter(virtual_dataset_id=dataset.id)
+                    .order_by("-created_at")
+                    .first()
+                )
             else:
                 raise  # Unexpected errors are real bugs
 

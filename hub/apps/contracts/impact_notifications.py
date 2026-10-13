@@ -9,6 +9,7 @@ from typing import Any
 import structlog
 from django.conf import settings
 from django.core.mail import send_mail
+from django.template.exceptions import TemplateDoesNotExist, TemplateSyntaxError
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -79,7 +80,7 @@ class ImpactNotifier:
             # Try to render HTML template
             try:
                 html_message = render_to_string("contracts/impact_notification_email.html", context)
-            except Exception:
+            except (TemplateDoesNotExist, TemplateSyntaxError):
                 html_message = None
 
             # Plain text message
@@ -124,12 +125,13 @@ Generated at: {timezone.now()}
                 max_severity=max_severity,
                 total_affected=impact_result.get("total_affected", 0),
             )
-
-            return True
-
         except Exception as e:
-            logger.error("Failed to send impact notification", error=str(e), recipients=recipients)
+            logger.exception(
+                "Failed to send impact notification", error=str(e), recipients=recipients
+            )
             return False
+        else:
+            return True
 
     @staticmethod
     def _should_notify(severity_distribution: dict[str, int]) -> bool:
@@ -138,9 +140,7 @@ Generated at: {timezone.now()}
             return True
         if ImpactNotifier.NOTIFY_HIGH and severity_distribution.get("HIGH", 0) > 0:
             return True
-        if ImpactNotifier.NOTIFY_MEDIUM and severity_distribution.get("MEDIUM", 0) > 0:
-            return True
-        return False
+        return bool(ImpactNotifier.NOTIFY_MEDIUM and severity_distribution.get("MEDIUM", 0) > 0)
 
     @staticmethod
     def _get_max_severity(severity_distribution: dict[str, int]) -> str:
@@ -246,5 +246,5 @@ Generated at: {timezone.now()}
                 return False
 
         except Exception as e:
-            logger.error("Failed to send Slack impact notification", error=str(e))
+            logger.exception("Failed to send Slack impact notification", error=str(e))
             return False

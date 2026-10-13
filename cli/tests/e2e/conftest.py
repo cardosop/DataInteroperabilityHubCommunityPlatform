@@ -5,42 +5,26 @@ Mirrors ``tests/integration/conftest.py``: auto-skips e2e tests when no live
 Meshant API is reachable. e2e tests run a real CLI against a real backend
 and have no business failing on dev boxes that don't run docker compose.
 Set ``MESHANT_FORCE_INTEGRATION=1`` to bypass.
+
+W16 (Phase T.4): the auto-skip is the shared ``tests._env_skip`` policy —
+in CI an unreachable API RAISES instead of skipping (the environment failure
+announces itself); local runs keep the graceful skip.
 """
 
-import os
+# Django-backed modules in this directory import ``hub``/Django models at
+# module scope, so settings must be configured before collection.  Kept
+# here (not in the suite-root conftest) so unit batches never import
+# ``hub.settings`` — that import opens a real PostgreSQL connection.
+from tests._django_bootstrap import ensure_django
 
-import pytest
-import requests
+ensure_django()
 
-_api_test_port = os.environ.get("API_TEST_PORT", "8000")
-_DEFAULT_API_BASE = f"http://localhost:{_api_test_port}"
-
-
-def _api_is_reachable(url: str) -> bool:
-    try:
-        response = requests.get(url, timeout=2)
-    except requests.RequestException:
-        return False
-    return response.status_code < 500
+from tests._env_skip import auto_skip_unreachable_api
 
 
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
-    if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
-        return
-    api_url = os.environ.get(
-        "MESHANT_API_URL",
-        f"{_DEFAULT_API_BASE}/api/v1",
+def pytest_collection_modifyitems(config, items):
+    auto_skip_unreachable_api(
+        items,
+        suite_label="CLI e2e tests",
+        path_scopes=("/tests/e2e/",),
     )
-    api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
-    if _api_is_reachable(api_root):
-        return
-    skip_marker = pytest.mark.skip(
-        reason=(
-            f"Meshant API not reachable at {api_root}. CLI e2e tests "
-            "require a live backend; start docker compose or set "
-            "MESHANT_FORCE_INTEGRATION=1 to override."
-        )
-    )
-    for item in items:
-        if "/tests/e2e/" in str(item.fspath):
-            item.add_marker(skip_marker)

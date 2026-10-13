@@ -91,12 +91,26 @@ async function provisionSecondaryTenant(
 /**
  * Switch the active tenant via the canonical API path. Returns the new
  * `me` summary so the caller can assert the tenant_id rolled over.
+ *
+ * Phase 11.1 token rotation: the response carries a NEW ``access_token``
+ * whose JWT bakes in the target tenant. The browser apiClient adopts it
+ * automatically (response interceptor); ``page.request`` bypasses that
+ * interceptor, so continuing with the pre-switch token keeps every later
+ * request scoped to the OLD tenant — the cross-tenant GET then returns
+ * 200 "visible" instead of 404 and the isolation assertion fails even
+ * though the backend scoping is correct. The verifyViaApi* fixtures read
+ * the token via ``__getAccessToken`` (apiClient module memory — no window
+ * write path by design), which page.request switches CANNOT update, so
+ * callers must pass ``{ authHeaderOverride }`` with the returned rotated
+ * token on every post-switch verification. The localStorage write below
+ * is kept for legacy fixtures that still read it; it is NOT what the
+ * verify helpers use.
  */
 async function switchTenant(
   page: Page,
   accessToken: string,
   tenantId: string,
-): Promise<{ tenant_id?: string; email?: string }> {
+): Promise<{ tenant_id?: string; email?: string; access_token?: string }> {
   const res = await page.request.post(`${API_BASE}/auth/switch-tenant/`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -105,7 +119,18 @@ async function switchTenant(
     data: { tenant_id: tenantId },
   });
   expect(res.status(), `switch-tenant to ${tenantId} expected 200`).toBe(200);
-  return (await res.json()) as { tenant_id?: string; email?: string };
+  const body = (await res.json()) as {
+    tenant_id?: string;
+    email?: string;
+    access_token?: string;
+  };
+  if (body.access_token) {
+    await page.evaluate(
+      (token) => localStorage.setItem('access_token', token),
+      body.access_token,
+    );
+  }
+  return body;
 }
 
 test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical', () => {
@@ -118,7 +143,11 @@ test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical
     await loginUser(page, user);
     await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
 
-    const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
     if (!accessToken) {
       throw new Error(
         'JOURNEY-AUTH-007: localStorage access_token is null after loginUser. ' +
@@ -182,6 +211,9 @@ test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical
     // ─────────────────────────────────────────────────────────────────
     const meAfterPrimary = await switchTenant(page, accessToken, primary_tenant_id);
     expect(meAfterPrimary.tenant_id).toBe(primary_tenant_id);
+    // switch-tenant rotates the token (tenant baked into the JWT) — thread
+    // the fresh token through every subsequent API call in this test.
+    let currentToken = meAfterPrimary.access_token ?? accessToken;
 
     // ─────────────────────────────────────────────────────────────────
     // Step 4 — Create a resource in PRIMARY.
@@ -233,10 +265,19 @@ test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical
     // returning a different code than for a genuinely-missing UUID).
     // verifyViaApiAbsent demands a 404 specifically.
     // ─────────────────────────────────────────────────────────────────
-    const meAfterSecondary = await switchTenant(page, accessToken, secondary_tenant_id);
+    const meAfterSecondary = await switchTenant(page, currentToken, secondary_tenant_id);
     expect(meAfterSecondary.tenant_id).toBe(secondary_tenant_id);
+    currentToken = meAfterSecondary.access_token ?? currentToken;
 
-    await verifyViaApiAbsent(page, `/api/v1/assets/${assetId}/`);
+    // The verifyViaApi* fixtures extract the page token via `__getAccessToken`
+    // (apiClient MODULE MEMORY — read-only by design, no window write path).
+    // switchTenant rotates the token via page.request, which bypasses the
+    // browser apiClient's response interceptor, so the in-memory token is
+    // still PRIMARY-scoped. Thread the rotated token explicitly or the
+    // isolation GET resolves against the primary tenant and returns 200.
+    await verifyViaApiAbsent(page, `/api/v1/assets/${assetId}/`, {
+      authHeaderOverride: { Authorization: `Bearer ${currentToken}` },
+    });
 
     // ─────────────────────────────────────────────────────────────────
     // Step 6 — Switch back to PRIMARY. The asset MUST be visible again.
@@ -247,13 +288,18 @@ test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical
     // tenant, this step would fail. Together steps 5 + 6 prove the
     // tenant-id is the real partition key.
     // ─────────────────────────────────────────────────────────────────
-    const meReturning = await switchTenant(page, accessToken, primary_tenant_id);
+    const meReturning = await switchTenant(page, currentToken, primary_tenant_id);
     expect(meReturning.tenant_id).toBe(primary_tenant_id);
+    currentToken = meReturning.access_token ?? currentToken;
 
     await verifyViaApi(
       page,
       `/api/v1/assets/${assetId}/`,
       (body: { id: string; key: string }) => body.id === assetId && body.key === assetKey,
+      // Same rotated-token threading as step 5: the switch-back token is the
+      // PRIMARY-scoped one, but the apiClient's in-memory token was never
+      // updated by the page.request switches. Explicit override only.
+      { authHeaderOverride: { Authorization: `Bearer ${currentToken}` } },
     );
 
     // ─────────────────────────────────────────────────────────────────
@@ -268,7 +314,7 @@ test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical
     try {
       await page.request.patch(`${API_BASE}/assets/${assetId}/`, {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${currentToken}`,
           'Content-Type': 'application/json',
         },
         data: { status: 'RETIRED' },

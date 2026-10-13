@@ -97,12 +97,10 @@ class VirtualizationAuditLoggingTest(TestCase):
         ).count()
 
         # Execute query (will fail at execution but audit logging should run)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # expected-failure guard: execution fails (no real DB) but audit logging is what is asserted
             self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution may fail for various reasons (no actual database, etc.)
-            # But audit logging should have run
-            pass
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
@@ -145,11 +143,10 @@ class VirtualizationAuditLoggingTest(TestCase):
         ).count()
 
         # Try to execute query (will likely fail but we're testing audit logging)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # expected-failure guard: execution may fail but audit logging is what is asserted
             self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution may fail, but if it completes, audit logging should run
-            pass
 
         # Check if completion audit event was created (only if execution succeeded)
         completion_events = AuditEvent.objects.filter(
@@ -191,11 +188,10 @@ class VirtualizationAuditLoggingTest(TestCase):
         ).count()
 
         # Execute query (will fail due to no actual database)
-        try:
+        with contextlib.suppress(
+            Exception
+        ):  # expected-failure guard: execution should fail, triggering the audit event under test
             self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution should fail, triggering failure audit logging
-            pass
 
         # Verify failure audit event was created
         failure_events = AuditEvent.objects.filter(
@@ -278,8 +274,7 @@ class VirtualizationAuditLoggingTest(TestCase):
             # Acceptable: warehouse backend unavailable in unit tests.
             # Assert the error is NOT about audit — it should be about
             # the warehouse connection.
-            self.assertNotIn("audit", str(e).lower(),
-                             f"Audit-related crash with null user: {e}")
+            self.assertNotIn("audit", str(e).lower(), f"Audit-related crash with null user: {e}")
 
     def test_audit_logging_handles_missing_tenant_gracefully(self):
         """Audit logging does not crash when tenant_id is None."""
@@ -295,5 +290,4 @@ class VirtualizationAuditLoggingTest(TestCase):
         try:
             service_no_tenant._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception as e:
-            self.assertNotIn("audit", str(e).lower(),
-                             f"Audit-related crash with null tenant: {e}")
+            self.assertNotIn("audit", str(e).lower(), f"Audit-related crash with null tenant: {e}")

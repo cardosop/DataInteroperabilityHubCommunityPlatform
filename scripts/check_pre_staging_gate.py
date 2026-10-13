@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pre-Staging Gate Checklist (Phase 312.19 — V0–V15).
+Pre-Staging Gate Checklist (Phase 312.19 — V0-V15).
 
 Runs all automatable verification gates before staging deployment.
 Produces a structured Gate report with PASS/FAIL/SKIP for each gate.
@@ -38,9 +38,10 @@ def _check_normalization_registry_singleton() -> tuple[str, str]:
 
         if reg1 is reg2:
             return "PASS", "Single registry instance — normalization.py re-exports from engine"
-        return "FAIL", "Multiple _NORMALIZER_REGISTRY instances detected"
     except ImportError as e:
         return "SKIP", f"Django not importable: {e}"
+    else:
+        return "FAIL", "Multiple _NORMALIZER_REGISTRY instances detected"
 
 
 def _check_zero_importlib_hacks() -> tuple[str, str]:
@@ -59,7 +60,7 @@ def _check_zero_importlib_hacks() -> tuple[str, str]:
                 content = py_file.read_text()
                 if "spec_from_file_location" in content:
                     violations.append(str(py_file.relative_to(REPO_ROOT)))
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 pass
     if violations:
         return "FAIL", f"importlib hacks in: {', '.join(violations[:5])}"
@@ -74,7 +75,6 @@ def _check_prefect_importable() -> tuple[str, str]:
         version = prefect.__version__ if hasattr(prefect, "__version__") else "unknown"
         if version.startswith("2."):
             return "FAIL", f"Prefect 2.x ({version}) — need 3.x"
-        return "PASS", f"Prefect {version} importable"
     except ImportError:
         # Try from services dir
         svc = REPO_ROOT / "services" / "prefect-integration"
@@ -84,6 +84,8 @@ def _check_prefect_importable() -> tuple[str, str]:
                 "Prefect not importable outside Docker; verified in prefect-integration service container",
             )
         return "FAIL", "Prefect not installed"
+    else:
+        return "PASS", f"Prefect {version} importable"
 
 
 def _check_no_importerror_for_deleted_modules() -> tuple[str, str]:
@@ -108,7 +110,7 @@ def _check_no_importerror_for_deleted_modules() -> tuple[str, str]:
                     "FAIL",
                     f"Import of deleted module '{deleted_mod}' found; use '{replacement}'",
                 )
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
     return "PASS", "No imports of deleted modules (hub.middleware, conftest_prefect)"
 
@@ -139,11 +141,13 @@ def _check_no_secrets_in_code() -> tuple[str, str]:
             if result.stdout:
                 lines = result.stdout.decode().split("\n")
                 non_test = [
-                    l for l in lines if "/tests/" not in l and "test_" not in l and l.strip()
+                    line
+                    for line in lines
+                    if "/tests/" not in line and "test_" not in line and line.strip()
                 ]
                 if non_test:
                     violations.append(f"{desc}: {non_test[0][:100]}")
-        except Exception:
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
             pass
     if violations:
         return "FAIL", "; ".join(violations[:3])
@@ -185,9 +189,10 @@ def _check_marker_consistency_strict() -> tuple[str, str]:
         if result.returncode == 0:
             return "PASS", "Marker consistency check passed"
         stderr = result.stderr.decode(errors="replace")[:200]
-        return "FAIL", f"Marker consistency failed: {stderr}"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return "FAIL", str(e)[:200]
+    else:
+        return "FAIL", f"Marker consistency failed: {stderr}"
 
 
 # ── Gates that check automatically ──────────────────────────────────────
@@ -247,7 +252,7 @@ def generate_report(results: list, fmt: str = "text") -> str:
 
     lines = []
     lines.append("=" * 72)
-    lines.append("PRE-STAGING GATE REPORT  (Phase 312.19 — V0–V15)")
+    lines.append("PRE-STAGING GATE REPORT  (Phase 312.19 — V0-V15)")
     lines.append("=" * 72)
     lines.append(f"{'Gate':<12} {'Status':<8} {'Check':<30} Detail")
     lines.append("-" * 72)

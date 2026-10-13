@@ -24,15 +24,25 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
         contentSelector:
           '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      if (page.url().includes('/login')) { test.skip(true, 'Redirected to login — auth may have expired'); return; }
-      // Phase 2: wait for loading spinner to resolve into a terminal state before checking links
-      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      const redirected = page.url().includes('/login');
+      test.skip(redirected, 'Redirected to login — auth may have expired');
+      if (redirected) return;
+      // Phase 2: wait for the list API to resolve into a TERMINAL state
+      // before branching. The previous selector included the always-
+      // rendered `.listing-list-page` container, which resolved instantly
+      // during the loading skeleton — the empty/error branch then ran a
+      // beat before the response landed and failed with BOTH markers
+      // absent on a healthy empty marketplace (same fix as DC-011).
+      // intentional: terminal-state probe — element absence is tolerated and the next count/gate check adjudicates
       await page
-        .locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
+        .locator('.listing-card, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
-        .waitFor({ state: 'visible', timeout: 20000 })
+        .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
-      const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // Rows are .listing-card divs (role="button", onClick navigate), NOT
+      // anchors — the anchor selector alone never matches and silently
+      // routes populated marketplaces into the empty branch.
+      const listingLink = page.locator('.listing-card, .listing-list-page a[href*="/marketplace/listings/"]').first();
       // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
@@ -78,7 +88,7 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
       if (onLogin) {
         // Auth session expired mid-test (token refresh failed under E2E load).
         // This is a transient infrastructure issue, not a functional failure.
-        test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
+        test.skip(onLogin, 'Auth session lost during navigation — token refresh likely failed under E2E load');
         return;
       }
       const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;

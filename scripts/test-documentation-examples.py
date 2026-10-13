@@ -47,20 +47,18 @@ def validate_python_syntax(code: str) -> tuple[bool, str]:
     """Validate Python syntax"""
     try:
         # Wrap async code in an async function for validation
-        if "async" in code or "await" in code:
-            # Check if it's already in an async function
-            if "async def" in code or "async with" in code:
-                # Try wrapping in async function if needed
-                wrapped_code = "async def _test():\n    " + code.replace("\n", "\n    ")
-                try:
-                    compile(wrapped_code, "<string>", "exec")
-                    return True, ""
-                except SyntaxError:
-                    # If wrapping fails, try original
-                    pass
+        if ("async" in code or "await" in code) and ("async def" in code or "async with" in code):
+            # Try wrapping in async function if needed
+            wrapped_code = "async def _test():\n    " + code.replace("\n", "\n    ")
+            try:
+                compile(wrapped_code, "<string>", "exec")
+            except SyntaxError:
+                # If wrapping fails, try original
+                pass
+            else:
+                return True, ""
 
         compile(code, "<string>", "exec")
-        return True, ""
     except SyntaxError as e:
         err_str = str(e)
         # For async/await outside function, this is acceptable in documentation
@@ -72,10 +70,13 @@ def validate_python_syntax(code: str) -> tuple[bool, str]:
             try:
                 wrapped = "def _doc_snippet():\n    " + code.replace("\n", "\n    ")
                 compile(wrapped, "<string>", "exec")
-                return True, "snippet pattern (acceptable in docs)"
             except SyntaxError:
                 pass
+            else:
+                return True, "snippet pattern (acceptable in docs)"
         return False, str(e)
+    else:
+        return True, ""
 
 
 def validate_bash_syntax(code: str) -> tuple[bool, str]:
@@ -111,9 +112,7 @@ def extract_curl_endpoints(code: str) -> list[str]:
     return endpoints
 
 
-def test_endpoint_exists(
-    endpoint: str, base_url: str = "http://localhost:8000"
-) -> tuple[bool, str]:
+def test_endpoint_exists(endpoint: str, _base_url: str) -> tuple[bool, str]:  # noqa: PT019 — plain helper, not a pytest test
     """Test if endpoint exists (basic check - doesn't require auth)"""
     # This is a basic check - we'll just verify the endpoint pattern is correct
     # Full testing would require authentication and actual API calls
@@ -153,7 +152,7 @@ def process_file(file_path: Path) -> dict:
                         }
                     )
 
-            elif language == "bash" or language == "sh":
+            elif language in {"bash", "sh"}:
                 is_valid, error = validate_bash_syntax(code)
                 if not is_valid:
                     issues.append(
@@ -169,7 +168,7 @@ def process_file(file_path: Path) -> dict:
             if "curl" in code.lower() or "/api/v1/" in code:
                 endpoints = extract_curl_endpoints(code)
                 for endpoint in endpoints:
-                    exists, message = test_endpoint_exists(endpoint)
+                    exists, message = test_endpoint_exists(endpoint, "http://localhost:8000")
                     if not exists:
                         issues.append(
                             {

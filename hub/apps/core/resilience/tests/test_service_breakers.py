@@ -128,7 +128,6 @@ class IsCircuitOpenTests(SimpleTestCase):
         br = service_breakers.get_shared_circuit_breaker(
             channel,
             failure_threshold=2,
-            testing=False,
         )
         # Drive the breaker to OPEN via failing calls.
         # The first N calls raise RuntimeError; the (N+1)th raises

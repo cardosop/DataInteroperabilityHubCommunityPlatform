@@ -38,9 +38,10 @@ def check_semantic_service_available():
     try:
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()
-        return is_healthy
     except (ConnectionError, TimeoutError, OSError):
         return False
+    else:
+        return is_healthy
 
 
 class AssetRelationshipsTest(TestCase):
@@ -192,7 +193,7 @@ class AssetRelationshipsTest(TestCase):
         dataset.refresh_from_db()
         self.assertEqual(dataset.version, 1)
 
-    def test_attach_dataset_to_asset_returns_200(self):
+    def test_attach_single_dataset_to_asset_returns_200(self):
         """Attaching a dataset to an asset returns HTTP 200."""
         self.client.force_authenticate(user=self.user)
 
@@ -828,7 +829,7 @@ class AssetRelationshipsTest(TestCase):
             ).first()
             if semantic_resource:
                 break
-            time.sleep(0.05)  # noqa: sleep-needed — polling loop
+            time.sleep(0.05)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         self.assertIsNotNone(
             semantic_resource,

@@ -6,7 +6,7 @@ DRF viewsets for scheduled export API endpoints.
 
 import logging
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 logger = logging.getLogger(__name__)
 from django.utils import timezone
@@ -85,7 +85,6 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
         )
         scheduled_export.deployment_sync_status = "FAILED"
         scheduled_export.save(update_fields=["deployment_sync_status"])
-        return False
     except Exception as e:
         logger.warning(
             "Prefect integration service sync error for scheduled export %s: %s",
@@ -95,6 +94,8 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
         )
         scheduled_export.deployment_sync_status = "FAILED"
         scheduled_export.save(update_fields=["deployment_sync_status"])
+        return False
+    else:
         return False
 
 
@@ -139,7 +140,6 @@ def _trigger_deployment_via_prefect_integration_service(
             resp.status_code,
             error_msg,
         )
-        return False, None, error_msg
     except Exception as e:
         logger.warning(
             "Prefect integration service trigger error for scheduled export %s: %s",
@@ -148,6 +148,8 @@ def _trigger_deployment_via_prefect_integration_service(
             exc_info=True,
         )
         return False, None, str(e)
+    else:
+        return False, None, error_msg
 
 
 _TRIGGER_IDEMPOTENCY_SCOPE: str = "scheduled-export.trigger.v1"
@@ -193,9 +195,9 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = ScheduledExportSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "id"
-    throttle_classes = [ScheduledExportTenantThrottle]
+    throttle_classes = (ScheduledExportTenantThrottle,)
 
     def get_queryset(self):
         """Filter queryset by tenant and optional status, excluding soft-deleted records."""
@@ -226,7 +228,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         return ScheduledExportSerializer
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """Create scheduled export via service (validates via ScheduledExportBusinessRules)."""
         # Phase 275.E.3l — Idempotency-Key support for retried writes.
         idempotency_key = request.META.get("HTTP_IDEMPOTENCY_KEY") or request.headers.get(
@@ -246,7 +248,12 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         if tenant:
             from django.db import transaction as db_transaction
 
-            from hub.apps.core.services.base import ValidationError as SvcValidationError
+            from hub.apps.core.services.base import (
+                NotFoundError as SvcNotFoundError,
+            )
+            from hub.apps.core.services.base import (
+                ValidationError as SvcValidationError,
+            )
             from hub.apps.tenants.services import PlanLimitService
 
             try:
@@ -267,7 +274,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                         },
                         status=status.HTTP_403_FORBIDDEN,
                     )
-            except Exception:
+            except (SvcNotFoundError, DatabaseError):
                 pass  # Non-limit errors: let serializer/service handle
 
         serializer = self.get_serializer(data=request.data)
@@ -328,7 +335,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         return Response(resource_data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **kwargs):
         """Update scheduled export via service (validates via ScheduledExportBusinessRules)."""
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -385,7 +392,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
             )
         return Response(resource_data)
 
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Phase 25.9.1 — Ordered delete: remove Prefect deployment *before* DB record.
 
@@ -453,7 +460,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         tags=["Scheduled Exports"],
     )
     @action(detail=True, methods=["get"])
-    def runs(self, request, id=None):
+    def runs(self, _request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         List runs for a scheduled export.
         """
@@ -481,7 +488,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         tags=["Scheduled Exports"],
     )
     @action(detail=True, methods=["post"], url_path="sync")
-    def sync(self, request, id=None):
+    def sync(self, request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Phase 25.5.3 — Idempotent retry endpoint for Prefect deployment sync.
 
@@ -541,7 +548,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         tags=["Scheduled Exports"],
     )
     @action(detail=True, methods=["post"])
-    def trigger(self, request, id=None):
+    def trigger(self, request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Manually trigger a scheduled export.
 
@@ -634,6 +641,21 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
 
         parameters = serializer.validated_data.get("parameters", {})
 
+        # 6.2 — the dlt dispatch spine: a dlt-flagged tenant executes the
+        # canonical entrypoint synchronously (the hub performs the write);
+        # the legacy Prefect deployment path stays for everyone else.
+        if getattr(scheduled_export.tenant, "data_movement_enabled", False):
+            service = ScheduledExportService(
+                tenant_id=str(scheduled_export.tenant_id),
+                user_id=str(request.user.id) if request.user else None,
+            )
+            result = service.execute_export(
+                str(scheduled_export.id),
+                tenant_id=str(scheduled_export.tenant_id),
+                user_id=str(request.user.id) if request.user else None,
+            )
+            return Response(result, status=status.HTTP_200_OK)
+
         try:
             # Trigger deployment via prefect-integration-service HTTP API
             # This avoids requiring prefect library in api-service
@@ -695,7 +717,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                             resource_type="scheduled_export",
                         )
                     )
-                except Exception:
+                except ImportError:
                     pass  # Don't fail trigger if enqueue fails
 
                 create_audit_event(
@@ -768,9 +790,9 @@ class ScheduledExportRunViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = ScheduledExportRunSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
     lookup_field = "id"
-    throttle_classes = [ScheduledExportTenantThrottle]
+    throttle_classes = (ScheduledExportTenantThrottle,)
 
     def get_queryset(self):
         """Filter queryset by tenant"""

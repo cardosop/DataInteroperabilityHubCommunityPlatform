@@ -127,10 +127,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Should see audit events for the tenant
         self.assertGreater(len(events), 0)
@@ -153,10 +150,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Filter should return at least 1 ASSET event (we created 2 in setUp)
         self.assertGreater(len(events), 0, "ASSET filter should return at least one event")
@@ -171,10 +165,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Filter should return at least 1 CONTRACT event (we created 1 in setUp)
         self.assertGreater(len(events), 0, "CONTRACT filter should return at least one event")
@@ -193,10 +184,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Filter should return at least 1 ASSET_CREATED event (we created 1 in setUp)
         self.assertGreater(len(events), 0, "ASSET_CREATED filter should return at least one event")
@@ -220,10 +208,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Verify all events are within time range
         for event in events:
@@ -246,10 +231,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # All events should be from the auditor user
         for event in events:
@@ -265,10 +247,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         self.assertGreater(
             len(events), 0, "Expected audit events to be available for detail retrieval"
@@ -296,10 +275,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         self.assertGreater(
             len(events), 0, "Expected audit events to be available for read-only test"
@@ -402,10 +378,7 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Generate summary report
         summary = {
@@ -471,10 +444,7 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            asset_events = data
-        else:
-            asset_events = data.get("results", [])
+        asset_events = data if isinstance(data, list) else data.get("results", [])
 
         # Filter by action for report
         response = self.client.get("/api/v1/audit/audit-events/?action=ASSET_CREATED")
@@ -482,10 +452,7 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            created_events = data
-        else:
-            created_events = data.get("results", [])
+        created_events = data if isinstance(data, list) else data.get("results", [])
 
         # Verify filters return results (we created 5 ASSET and 5 ASSET_CREATED events in setUp)
         self.assertGreater(len(asset_events), 0, "ASSET filter should return at least one event")
@@ -760,10 +727,7 @@ class AuditorUseCasesTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
         self.assertGreater(len(events), 0)
 
         # Step 2: Filter by resource type
@@ -772,10 +736,7 @@ class AuditorUseCasesTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            asset_events = data
-        else:
-            asset_events = data.get("results", [])
+        asset_events = data if isinstance(data, list) else data.get("results", [])
         self.assertGreater(
             len(asset_events), 0, "ASSET filter should return at least one event in workflow"
         )
@@ -807,10 +768,7 @@ class AuditorUseCasesTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Verify filter returns results and all events match filters
         self.assertGreater(len(events), 0, "Multi-filter search should return at least one event")
@@ -830,10 +788,7 @@ class AuditorUseCasesTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Generate aggregated report
         report = {
@@ -976,10 +931,7 @@ class AuditorErrorScenariosTests(E2ETestBase):
 
         # Handle both paginated and non-paginated responses
         data = get_response_data(response) or {}
-        if isinstance(data, list):
-            events = data
-        else:
-            events = data.get("results", [])
+        events = data if isinstance(data, list) else data.get("results", [])
 
         # Verify no events from other tenant
         for event in events:

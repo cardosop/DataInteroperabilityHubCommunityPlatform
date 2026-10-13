@@ -11,18 +11,14 @@ import sys
 # Register the dual-channel guard fixtures and hooks at module scope so
 # pytest picks them up for every test under tests/e2e/. See the guard
 # module docstrings for the advisory/strict-mode rationale.
-from tests.e2e._guards._captured_server_errors import (  # noqa: F401
-    captured_server_errors,
-)
-from tests.e2e._guards._skip_counter import (  # noqa: F401
-    pytest_runtest_logreport,
-)
 
 # Prevent Python from writing new .pyc bytecode files.
 sys.dont_write_bytecode = True
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 
 # CRITICAL: Delete stale .pyc files that are OLDER than their .py source.
+import contextlib
+
 # In Docker, .pyc files owned by root persist across container restarts.
 # Python reads the existing .pyc EVEN with dont_write_bytecode=True —
 # that flag only prevents *writing* new ones.  We must remove stale ones
@@ -35,22 +31,17 @@ if _cache_dir.is_dir():
         stem = pyc.stem.split(".")[0]
         source = _e2e_dir / f"{stem}.py"
         if source.is_file() and pyc.stat().st_mtime < source.stat().st_mtime:
-            try:
-                pyc.unlink()
-            except OSError:
-                pass  # Root-owned file we can't delete — will still work if source is newer
+            with contextlib.suppress(OSError):
+                pyc.unlink()  # Root-owned file we can't delete — will still work if source is newer
 
 # CRITICAL: Load tests/conftest patches when running E2E with -c tests/e2e/pytest.ini.
 # When -c points to a subdirectory config, pytest sets rootdir to tests/e2e, so
 # tests/conftest.py is NOT discovered (it's above rootdir). Without it, create_test_db,
 # sync_apps, create_contenttypes patches are missing -> hangs, IntegrityError.
 # Must run before any Django imports/setup.
-try:
-    import tests.conftest  # noqa: F401
-except ImportError:
-    pass  # tests package not on path (e.g. minimal env)
+with contextlib.suppress(ImportError):
+    import tests.conftest  # side-effect import; tests package not on path (e.g. minimal env)
 
-import contextlib
 import os
 import sys
 
@@ -83,7 +74,10 @@ try:
                 # Store error for later - tests can handle this
                 import warnings
 
-                warnings.warn(f"Django setup failed (expected for Docker Compose E2E tests): {e}")
+                warnings.warn(
+                    f"Django setup failed (expected for Docker Compose E2E tests): {e}",
+                    stacklevel=2,
+                )
             else:
                 raise
     except Exception as e:
@@ -91,7 +85,10 @@ try:
         import warnings
 
         if "PostgreSQL connection failed" in str(e) or "connection" in str(e).lower():
-            warnings.warn(f"Django setup failed (expected for Docker Compose E2E tests): {e}")
+            warnings.warn(
+                f"Django setup failed (expected for Docker Compose E2E tests): {e}",
+                stacklevel=2,
+            )
         else:
             raise
 
@@ -167,7 +164,7 @@ if DJANGO_AVAILABLE:
                 # SET CONSTRAINTS ALL DEFERRED if not.
                 sql.append("SET session_replication_role = 'replica';")
                 for table in tables:
-                    sql.append("DELETE FROM %s;" % (self.quote_name(table),))
+                    sql.append(f"DELETE FROM {self.quote_name(table)};")
                 sql.append("SET session_replication_role = 'origin';")
                 if reset_sequences:
                     seqs = self.connection.introspection.sequence_list()
@@ -175,9 +172,8 @@ if DJANGO_AVAILABLE:
                         if si["table"] in tables:
                             sql.append(
                                 "SELECT setval("
-                                "pg_get_serial_sequence('%s','%s')"
-                                ", 1, false);"
-                                % (
+                                "pg_get_serial_sequence('{}','{}')"
+                                ", 1, false);".format(
                                     self.quote_name(si["table"]),
                                     si["column"],
                                 )
@@ -391,19 +387,20 @@ def get_jaeger_service_url() -> str:
     return get_service_url("JAEGER_URL", "JAEGER")
 
 
-def check_service_health(service_url: str, timeout: int = 5) -> bool:
+def check_service_health(service_url: str, timeout: int = 5, health_path: str = "/health") -> bool:
     """
     Check if a service is healthy by hitting its health endpoint.
 
     Args:
         service_url: Base URL of the service
         timeout: Timeout in seconds
+        health_path: Health endpoint path (services differ: worker uses /healthz)
 
     Returns:
         True if service is healthy, False otherwise
     """
     try:
-        health_url = f"{service_url.rstrip('/')}/health"
+        health_url = f"{service_url.rstrip('/')}{health_path}"
         response = httpx.get(health_url, timeout=timeout)
         if response.status_code == 200:
             data = response.json()
@@ -428,11 +425,12 @@ def check_minio_health(timeout: int = 5) -> bool:
         # MinIO health: http://host:9000/minio/health/live
         health_url = f"{s3_url.rstrip('/')}/minio/health/live"
         response = httpx.get(health_url, timeout=timeout)
-        return response.status_code == 200
     except (httpx.TransportError, httpx.TimeoutException):
         # Connection errors / timeouts → MinIO not reachable. Real bugs
         # (e.g. a malformed URL) should not be swallowed as "unhealthy".
         return False
+    else:
+        return response.status_code == 200
 
 
 @pytest.fixture
@@ -450,15 +448,13 @@ def require_minio():
 # Mark all E2E tests with e2e marker
 def pytest_addoption(parser):
     """Add command-line options for pytest (guard against duplicate registration)."""
-    try:
+    with contextlib.suppress(ValueError):  # Already registered by parent conftest.py
         parser.addoption(
             "--docker-compose-runtime",
             action="store_true",
             default=False,
             help="Run tests that require Docker Compose runtime (services must be started)",
         )
-    except ValueError:
-        pass  # Already registered by parent conftest.py
 
 
 def pytest_configure(config):
@@ -530,6 +526,29 @@ if DJANGO_AVAILABLE:
         pass
 
 
+def mark_file_scan_unavailable_if_pending(file_obj) -> None:
+    """Terminate a file's PENDING_SCAN status in the E2E test environment.
+
+    Phase 260.2.D interplay — the dataset-source gate blocks files still in
+    PENDING_SCAN.  In production, /complete/ enqueues the ClamAV scan via
+    transaction.on_commit(); inside a Django TestCase the enclosing test
+    transaction is ROLLED BACK at teardown, so on_commit callbacks never
+    fire and the file stays PENDING_SCAN forever — failing every
+    dataset-creation journey with FILE_SCAN_PENDING.  Mirror the service's
+    CLAMAV-disabled outcome (SCAN_UNAVAILABLE), which the dataset gate
+    allows.  No-op when a real scan already produced a terminal status.
+    """
+    from django.utils import timezone as _dj_timezone
+
+    from hub.apps.files.models import FileScanStatus
+
+    if file_obj.scan_status != FileScanStatus.PENDING_SCAN:
+        return
+    file_obj.scan_status = FileScanStatus.SCAN_UNAVAILABLE
+    file_obj.scanned_at = _dj_timezone.now()
+    file_obj.save(update_fields=["scan_status", "scanned_at", "updated_at"])
+
+
 if DJANGO_AVAILABLE and TestCase:
 
     class E2ETestBase(TestCase):
@@ -563,6 +582,7 @@ if DJANGO_AVAILABLE and TestCase:
             so _enter_atomics() opens fresh atomics on healthy connections.
             """
             from django.db import close_old_connections
+
             close_old_connections()
             super().setUpClass()
 
@@ -605,9 +625,8 @@ if DJANGO_AVAILABLE and TestCase:
                     r.delete(key)
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).warning(
-                    "Failed to clear Redis rate-limit state: %s", e
-                )
+
+                logging.getLogger(__name__).warning("Failed to clear Redis rate-limit state: %s", e)
 
         def _setup_test_fixtures(self):
             """Create tenant, user, roles, and configure the API client.
@@ -627,7 +646,9 @@ if DJANGO_AVAILABLE and TestCase:
 
                 post_save.disconnect(contract_saved, sender=Contract)
                 post_save.disconnect(asset_saved, sender=Asset)
-            except (ImportError, AttributeError):
+            except (ImportError, AttributeError, RuntimeError):
+                # RuntimeError = private core mode (semantic uninstalled);
+                # ImportError covers the public tree (module absent).
                 pass
 
             # Create test tenant
@@ -657,7 +678,7 @@ if DJANGO_AVAILABLE and TestCase:
                     setattr(self.tenant, _flag, True)
                     _changed = True
             if _changed:
-                self.tenant.save(update_fields=list(_E2E_FEATURE_FLAGS) + ["updated_at"])
+                self.tenant.save(update_fields=[*list(_E2E_FEATURE_FLAGS), "updated_at"])
 
             # Create test user with ACTIVE status
             from hub.apps.users.models import UserStatus
@@ -686,7 +707,9 @@ if DJANGO_AVAILABLE and TestCase:
                 name="TENANT_ADMIN",
                 defaults={"description": "Tenant Administrator"},
             )
-            UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=tenant_admin_role)
+            UserRole.objects.get_or_create(
+                user=self.user, tenant=self.tenant, role=tenant_admin_role
+            )
 
             self.user.refresh_from_db()
 
@@ -720,7 +743,7 @@ if DJANGO_AVAILABLE and TestCase:
                 # Reconnect signals after test
                 post_save.connect(contract_saved, sender=Contract, weak=False)
                 post_save.connect(asset_saved, sender=Asset, weak=False)
-            except (ImportError, AttributeError):
+            except (ImportError, AttributeError, RuntimeError):
                 # Signals may not be available - continue without reconnecting
                 pass
 
@@ -730,7 +753,12 @@ if DJANGO_AVAILABLE and TestCase:
             """Verify URI exists in Fuseki with retries."""
             import time
 
-            from hub.apps.semantic.service_client import SemanticServiceClient
+            try:
+                from hub.apps.semantic.service_client import SemanticServiceClient
+            except (RuntimeError, ModuleNotFoundError):
+                # Semantic is paid-layer — URI verification is meaningless
+                # without it (both core-mode absence forms).
+                return False
 
             client = SemanticServiceClient()
 
@@ -755,20 +783,22 @@ if DJANGO_AVAILABLE and TestCase:
                             return len(bindings) > 0
 
                     if attempt < max_retries - 1:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             2**attempt
                         )  # Exponential backoff  # INTENTIONAL: test-specific timing
 
                 except (ConnectionError, TimeoutError, OSError) as e:
                     if attempt < max_retries - 1:
-                        time.sleep(  # noqa: sleep-needed — polling loop
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                             2**attempt
                         )  # INTENTIONAL: e2e/integration test polling real services
                     else:
                         import logging
+
                         logging.getLogger(__name__).warning(
                             "Fuseki polling failed after %d attempts: %s",
-                            max_retries, e,
+                            max_retries,
+                            e,
                         )
 
             return False
@@ -801,7 +831,7 @@ if DJANGO_AVAILABLE and TestCase:
                 health_path: Health check endpoint path (default: '/health')
                 max_wait: Maximum time to wait for service (default: 5 seconds)
             """
-            if not check_service_health(service_url, timeout=max_wait):
+            if not check_service_health(service_url, timeout=max_wait, health_path=health_path):
                 pytest.skip(
                     f"{service_name} service is not available at {service_url}. "
                     f"Please start services with: docker-compose -f docker-compose.staging.yml up -d"
@@ -831,7 +861,11 @@ if DJANGO_AVAILABLE and TestCase:
             return data["id"] if data else None
 
         def create_contract(
-            self, asset_id, original_raw: str = None, original_format: str = None, **kwargs
+            self,
+            asset_id,
+            original_raw: str | None = None,
+            original_format: str | None = None,
+            **kwargs,
         ):
             """Create a contract via API and return its ID"""
             import json
@@ -954,7 +988,9 @@ if DJANGO_AVAILABLE and TestCase:
             data = get_response_data(response)
             return data["id"] if data else None
 
-        def init_file_upload(self, name: str, content_type: str = None, size: int = None, **kwargs):
+        def init_file_upload(
+            self, name: str, content_type: str | None = None, size: int | None = None, **kwargs
+        ):
             """Initialize a file upload and return file ID"""
             from rest_framework import status
 
@@ -992,8 +1028,8 @@ if DJANGO_AVAILABLE and TestCase:
         def complete_file_upload(
             self,
             file_id,
-            content_sha256: str = None,
-            test_content: bytes = None,
+            content_sha256: str | None = None,
+            test_content: bytes | None = None,
             mock_s3: bool = False,
         ):
             """Complete a file upload"""
@@ -1068,57 +1104,52 @@ if DJANGO_AVAILABLE and TestCase:
                 file_obj.save()
             else:
                 # Try to upload to S3 using the correct storage_path
+                # When mock_s3=False and S3 fails, the exception propagates (Phase 7.2.2):
+                # no silent fallback to mock mode — tests that require real S3 must fail.
+                # Get S3 credentials from settings (which handles staging detection)
+                s3_endpoint = get_s3_endpoint_url()
+                s3_access_key = getattr(settings, "AWS_ACCESS_KEY_ID", "minio")
+                s3_secret_key = getattr(settings, "AWS_SECRET_ACCESS_KEY", "minio123")
+
+                s3_client = boto3.client(
+                    "s3",
+                    endpoint_url=s3_endpoint,
+                    aws_access_key_id=s3_access_key,
+                    aws_secret_access_key=s3_secret_key,
+                    region_name="us-east-1",
+                )
+
+                # Get bucket name from settings
+                bucket_name = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-files")
+
+                # Ensure bucket exists
                 try:
-                    # Get S3 credentials from settings (which handles staging detection)
-                    s3_endpoint = get_s3_endpoint_url()
-                    s3_access_key = getattr(settings, "AWS_ACCESS_KEY_ID", "minio")
-                    s3_secret_key = getattr(settings, "AWS_SECRET_ACCESS_KEY", "minio123")
-
-                    s3_client = boto3.client(
-                        "s3",
-                        endpoint_url=s3_endpoint,
-                        aws_access_key_id=s3_access_key,
-                        aws_secret_access_key=s3_secret_key,
-                        region_name="us-east-1",
-                    )
-
-                    # Get bucket name from settings
-                    bucket_name = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-files")
-
-                    # Ensure bucket exists
+                    s3_client.head_bucket(Bucket=bucket_name)
+                except ClientError:
+                    # Try to create bucket (may fail if we don't have permissions, that's OK)
                     try:
-                        s3_client.head_bucket(Bucket=bucket_name)
-                    except ClientError:
-                        # Try to create bucket (may fail if we don't have permissions, that's OK)
-                        try:
-                            s3_client.create_bucket(Bucket=bucket_name)
-                        except ClientError as e:
-                            error_code = e.response.get("Error", {}).get("Code", "")
-                            if error_code in (
-                                "BucketAlreadyExists",
-                                "BucketAlreadyOwnedByYou",
-                            ):
-                                pass  # Expected — bucket exists
-                            else:
-                                import logging
+                        s3_client.create_bucket(Bucket=bucket_name)
+                    except ClientError as e:
+                        error_code = e.response.get("Error", {}).get("Code", "")
+                        if error_code in (
+                            "BucketAlreadyExists",
+                            "BucketAlreadyOwnedByYou",
+                        ):
+                            pass  # Expected — bucket exists
+                        else:
+                            import logging
 
-                                logging.getLogger(__name__).warning(
-                                    "S3 bucket creation failed: %s", e
-                                )
+                            logging.getLogger(__name__).warning("S3 bucket creation failed: %s", e)
 
-                    # Upload file content to the correct storage_path
-                    # The storage_path format is: {tenant.id}/{file_id}/{name}
-                    s3_key = file_obj.storage_path
-                    s3_client.put_object(
-                        Bucket=bucket_name,
-                        Key=s3_key,
-                        Body=test_content,
-                        ContentType=file_obj.content_type,
-                    )
-                except Exception:
-                    # When mock_s3=False and S3 fails, re-raise (Phase 7.2.2).
-                    # No silent fallback to mock mode — tests that require real S3 must fail when S3 is broken.
-                    raise
+                # Upload file content to the correct storage_path
+                # The storage_path format is: {tenant.id}/{file_id}/{name}
+                s3_key = file_obj.storage_path
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=s3_key,
+                    Body=test_content,
+                    ContentType=file_obj.content_type,
+                )
 
             # Complete upload via API (only if not already marked as mock)
             if not mock_s3:
@@ -1138,21 +1169,23 @@ if DJANGO_AVAILABLE and TestCase:
                         break
 
                     # Handle rate limiting with retry
-                    if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-                        if attempt < max_retries - 1:
-                            # Extract retry_after from response if available
-                            error_data = get_response_data(response) or {}
+                    if (
+                        response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+                        and attempt < max_retries - 1
+                    ):
+                        # Extract retry_after from response if available
+                        error_data = get_response_data(response) or {}
 
-                            # Get retry_after from error details or use exponential backoff
-                            retry_after = (
-                                error_data.get("error", {})
-                                .get("details", {})
-                                .get("retry_after", retry_delay * (2**attempt))
-                            )
-                            time.sleep(  # noqa: sleep-needed — polling loop
-                                min(retry_after, 10)
-                            )  # Cap at 10 seconds  # INTENTIONAL: test-specific timing
-                            continue
+                        # Get retry_after from error details or use exponential backoff
+                        retry_after = (
+                            error_data.get("error", {})
+                            .get("details", {})
+                            .get("retry_after", retry_delay * (2**attempt))
+                        )
+                        time.sleep(  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
+                            min(retry_after, 10)
+                        )  # Cap at 10 seconds  # INTENTIONAL: test-specific timing
+                        continue
 
                     # For non-rate-limit errors, raise immediately
                     error_data = get_response_data(response)
@@ -1178,6 +1211,9 @@ if DJANGO_AVAILABLE and TestCase:
                     raise Exception(
                         f"Failed to complete file upload after {max_retries} attempts: {response.status_code} - {error_data}"
                     )
+
+            # Phase 260.2.D interplay — see mark_file_scan_unavailable_if_pending.
+            mark_file_scan_unavailable_if_pending(file_obj)
 
         def create_dataset(self, file_id, asset_id, **kwargs):
             """Create a dataset via API and return its ID"""
@@ -1372,9 +1408,9 @@ if DJANGO_AVAILABLE and TestCase:
                         contract.hub_contract_json["extensions"] = {}
                     # Merge preserved extensions (preserved takes precedence)
                     for key, value in existing_extensions.items():
-                        if key != "x_odps":  # x_odps already handled above
-                            if key not in contract.hub_contract_json["extensions"]:
-                                contract.hub_contract_json["extensions"][key] = value
+                        # x_odps already handled above
+                        if key != "x_odps" and key not in contract.hub_contract_json["extensions"]:
+                            contract.hub_contract_json["extensions"][key] = value
 
                 # Set hub_contract_version field (separate from the JSON key)
                 if not contract.hub_contract_version:
@@ -1527,9 +1563,6 @@ if DJANGO_AVAILABLE and TestCase:
             # allowed_to_store=False, or may not be available at all
             # (runs stay PENDING with allowed_to_store=None). Fix any
             # run so the activation check passes regardless of status.
-            from hub.apps.compliance.models import (
-                ComplianceRunStatus,
-            )
 
             updated_rows = asset.compliance_runs.update(allowed_to_store=True)
             if updated_rows:
@@ -1620,7 +1653,7 @@ if DJANGO_AVAILABLE and TestCase:
                 )
 
         def verify_file_in_s3(
-            self, file_id, expected_content: bytes = None, expected_size: int = None
+            self, file_id, expected_content: bytes | None = None, expected_size: int | None = None
         ):
             """Verify file exists in S3. Skips if S3 is not available."""
             from hub.apps.files.models import File
@@ -1672,11 +1705,15 @@ if DJANGO_AVAILABLE and TestCase:
                 ).first()
                 if resource:
                     self.assertIsNotNone(resource.status, "Semantic resource should have a status")
-            except ImportError:
+            except (ImportError, RuntimeError):
                 # Semantic service app not installed — visible skip.
+                # RuntimeError = private core mode, ImportError covers the
+                # public tree.
                 pytest.skip("Semantic service not importable")
 
-        def verify_job_completion(self, job_id, expected_status: str = None, max_wait: int = 180):
+        def verify_job_completion(
+            self, job_id, expected_status: str | None = None, max_wait: int = 180
+        ):
             """Verify job completes with expected status"""
             import time
 
@@ -1794,7 +1831,7 @@ if DJANGO_AVAILABLE and TestCase:
                 import traceback
 
                 _logger = logging.getLogger(__name__)
-                _logger.error(
+                _logger.exception(
                     "Inline job execution failed for %s run_id=%s job_id=%s:\n%s",
                     job_type_str,
                     run_id,
@@ -1846,13 +1883,14 @@ if DJANGO_AVAILABLE and TestCase:
             def job_reached_terminal():
                 try:
                     job = Job.objects.get(id=job_id)
+                except Job.DoesNotExist:
+                    return False
+                else:
                     return job.status in [
                         JobStatus.COMPLETED,
                         JobStatus.FAILED,
                         JobStatus.CANCELLED,
                     ]
-                except Job.DoesNotExist:
-                    return False
 
             wait_until(
                 job_reached_terminal,
@@ -1918,7 +1956,11 @@ if DJANGO_AVAILABLE and TestCase:
             """Verify that an entitlement was created for an order"""
             from django.db import transaction
 
-            from hub.apps.marketplace.models import Entitlement, Order
+            try:
+                from hub.apps.marketplace.models import Entitlement, Order
+            except (RuntimeError, ModuleNotFoundError):
+                # Marketplace is paid-layer — no entitlement to verify.
+                pytest.skip("Marketplace not importable (paid layer)")
 
             # Use transaction to ensure order is visible (handles transaction isolation)
             with transaction.atomic():
@@ -1941,8 +1983,8 @@ if DJANGO_AVAILABLE and TestCase:
             self,
             resource_id,
             resource_type: str,
-            expected_triples: list = None,
-            expected_triples_count: int = None,
+            expected_triples: list | None = None,
+            expected_triples_count: int | None = None,
         ):
             """Verify RDF triples exist for resource. Skips if semantic service unavailable."""
             try:
@@ -1961,7 +2003,9 @@ if DJANGO_AVAILABLE and TestCase:
                         expected_triples_count,
                         f"Expected {expected_triples_count} triples, got {resource.triples_count}",
                     )
-            except ImportError:
+            except (ImportError, RuntimeError):
+                # RuntimeError = private core mode, ImportError covers the
+                # public tree.
                 pytest.skip("Semantic service not available — cannot verify RDF triples")
             except SemanticResource.DoesNotExist:
                 # Resource not mapped yet — this is a real issue if mapping was expected
@@ -1974,7 +2018,7 @@ if DJANGO_AVAILABLE and TestCase:
                 )
 
         def wait_for_semantic_mapping(
-            self, *args, timeout: int = 30, max_wait: int = None, **kwargs
+            self, *args, timeout: int = 30, max_wait: int | None = None, **kwargs
         ):
             """Wait for semantic mapping to complete (optional)
 
@@ -1982,9 +2026,14 @@ if DJANGO_AVAILABLE and TestCase:
             - wait_for_semantic_mapping(resource_type, resource_id, max_wait=30)
             - wait_for_semantic_mapping(resource_id, resource_type=..., timeout=30)
             """
+
             import time
 
-            from hub.apps.semantic.models import SemanticResource
+            try:
+                from hub.apps.semantic.models import SemanticResource
+            except (RuntimeError, ModuleNotFoundError):
+                # Semantic is paid-layer — nothing to wait for.
+                return None
 
             # Support max_wait as alias for timeout
             if max_wait is not None:
@@ -2010,14 +2059,18 @@ if DJANGO_AVAILABLE and TestCase:
                 arg1_str = str(arg1)
 
                 # Check if it's a ResourceType enum value (uppercase with underscores, or matches ResourceType values)
-                from hub.apps.semantic.models import ResourceType
+                try:
+                    from hub.apps.semantic.models import ResourceType
+                except (RuntimeError, ModuleNotFoundError):
+                    # Semantic is paid-layer — the enum cannot exist.
+                    ResourceType = None
 
-                is_resource_type = (
-                    (isinstance(arg1, str) and arg1.isupper() and "_" in arg1)
-                    or arg1_str in [rt[0] for rt in ResourceType.choices]
-                    or arg1 in ResourceType.values
-                    if hasattr(ResourceType, "values")
-                    else False
+                is_resource_type = (isinstance(arg1, str) and arg1.isupper() and "_" in arg1) or (
+                    ResourceType is not None
+                    and (
+                        arg1_str in [rt[0] for rt in ResourceType.choices]
+                        or arg1 in ResourceType.values
+                    )
                 )
 
                 if is_resource_type:

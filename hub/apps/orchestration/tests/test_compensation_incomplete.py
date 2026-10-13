@@ -67,8 +67,7 @@ class TestCompensationIncomplete(TestCase):
         )
         result = rules.validate_workflow_state(wf, tenant=self.tenant, user=self.user)
         self.assertIsNotNone(result, "validate_workflow_state must return a result")
-        self.assertIsInstance(result.is_valid, bool,
-            "result.is_valid must be a boolean")
+        self.assertIsInstance(result.is_valid, bool, "result.is_valid must be a boolean")
         # A COMPENSATION_INCOMPLETE workflow should produce validation
         # output reflecting the incomplete compensation state.
         self.assertIsNotNone(result.errors, "result.errors must not be None")
@@ -92,17 +91,14 @@ class TestCompensationIncomplete(TestCase):
         )
         result = rules.validate_workflow_state(wf, tenant=self.tenant, user=self.user)
         self.assertIsNotNone(result, "validate_workflow_state must return a result")
-        self.assertIsInstance(result.is_valid, bool,
-            "result.is_valid must be a boolean")
+        self.assertIsInstance(result.is_valid, bool, "result.is_valid must be a boolean")
         # A COMPLETED workflow should have no compensation-related errors.
-        self.assertTrue(result.is_valid,
-            f"COMPLETED workflow should be valid, got errors: {result.errors}")
-        compensation_errors = [
-            e for e in (result.errors or [])
-            if "compensat" in str(e).lower()
-        ]
+        self.assertTrue(
+            result.is_valid, f"COMPLETED workflow should be valid, got errors: {result.errors}"
+        )
+        compensation_errors = [e for e in (result.errors or []) if "compensat" in str(e).lower()]
         self.assertEqual(
-            len(compensation_errors), 0,
-            f"COMPLETED workflow should not have compensation errors: "
-            f"{compensation_errors}",
+            len(compensation_errors),
+            0,
+            f"COMPLETED workflow should not have compensation errors: {compensation_errors}",
         )

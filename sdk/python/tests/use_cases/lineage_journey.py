@@ -99,7 +99,7 @@ def test_lineage_has_nodes_and_edges():
     body = resp.json()
 
     # Lineage responses typically have nodes/edges or vertices/links
-    keys_lower = {k.lower() for k in body.keys()} if isinstance(body, dict) else set()
+    keys_lower = {k.lower() for k in body} if isinstance(body, dict) else set()
     has_nodes = any(
         k in keys_lower
         for k in ("nodes", "vertices", "entities", "sources", "upstream", "downstream")

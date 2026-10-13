@@ -423,11 +423,10 @@ class ODPSSemanticMappingJobIntegrationTest(TestCase):
         self.assertIsNotNone(semantic_resource)
         self.assertIsNotNone(
             semantic_resource.metadata_json,
-            "Semantic mapping with linked ODCS contract must populate metadata_json"
+            "Semantic mapping with linked ODCS contract must populate metadata_json",
         )
         odcs_uuid = semantic_resource.metadata_json.get("odcs_contract_uuid")
         self.assertIsNotNone(
-            odcs_uuid,
-            "metadata_json must contain odcs_contract_uuid for linked ODCS contract"
+            odcs_uuid, "metadata_json must contain odcs_contract_uuid for linked ODCS contract"
         )
         self.assertEqual(odcs_uuid, str(odcs_contract.id))

@@ -55,9 +55,7 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
             return True
         if _BITOL_V1_PATTERN.match(spec_version):
             return True
-        if _BITOL_V09_PATTERN.match(spec_version):
-            return True
-        return False
+        return bool(_BITOL_V09_PATTERN.match(spec_version))
 
     # ------------------------------------------------------------------
     # Version-specific hook
@@ -71,7 +69,7 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
         spec_version: str,
     ) -> None:
         """
-        Map Bitol ODPS v1.0.0–specific fields after base normalisation.
+        Map Bitol ODPS v1.0.0-specific fields after base normalisation.
 
         1. team object → info.owners + team (via _parse_team_v31)
         2. outputPorts → extensions.x_odps.output_ports
@@ -145,7 +143,7 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
                     f"domain '{host}' (expected "
                     f"'{_EXPECTED_BITOL_DOMAIN}')"
                 )
-        except Exception:
+        except ValueError:
             pass  # URL parsing failure — not a security event
 
     # ------------------------------------------------------------------

@@ -4,6 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { complianceService } from '../services/complianceService';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import type {
   ComplianceRunCreateRequest,
   ComplianceRunListFilters,
@@ -12,7 +13,7 @@ import type {
 export function useComplianceRuns(filters: ComplianceRunListFilters = {}) {
   return useQuery({
     queryKey: ['compliance', 'runs', 'list', filters],
-    queryFn: () => complianceService.list(filters),
+    queryFn: async () => normalizePaginated(await complianceService.list(filters)),
     refetchInterval: (query) => {
       // Auto-refetch if there are running compliance runs
       const data = query.state.data;
@@ -35,7 +36,10 @@ export function useComplianceRun(id: string | null) {
     refetchInterval: (query) => {
       // Auto-refetch if compliance run is running
       const run = query.state.data;
-      if (run && (run.status === 'PENDING' || run.status === 'QUEUED' || run.status === 'RUNNING')) {
+      if (
+        run &&
+        (run.status === 'PENDING' || run.status === 'QUEUED' || run.status === 'RUNNING')
+      ) {
         return 2000; // Poll every 2 seconds
       }
       return false;

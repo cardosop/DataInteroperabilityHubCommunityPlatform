@@ -157,7 +157,10 @@ export class TestAPI {
             paths = _extract_js_paths(src)
             assert "assets/" in paths
             assert "contracts/" in paths
-            assert "webhooks/webhooks/" in paths
+            # Route-param extraction returns the concrete template variants
+            # (with the JS escape backslash); the bare prefix is not emitted
+            # for templates with parameters.
+            assert "webhooks/webhooks/\\{id}/" in paths
 
 
 class TestPathNormalization:

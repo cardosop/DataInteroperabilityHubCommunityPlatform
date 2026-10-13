@@ -554,7 +554,8 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertEqual(event.event_type, "marketplace.connection.created")
         # Verify fallback: None tenant_id should resolve to publisher default
         self.assertEqual(
-            str(event.tenant_id), str(self.tenant.id),
+            str(event.tenant_id),
+            str(self.tenant.id),
             msg="None tenant_id should fall back to publisher's default tenant_id",
         )
 

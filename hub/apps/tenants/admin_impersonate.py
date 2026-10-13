@@ -46,7 +46,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import permissions, serializers, status
@@ -174,7 +174,7 @@ def _user_has_platform_admin_role(user) -> bool:
         return False
     try:
         return user.user_roles.filter(role__name="PLATFORM_ADMIN").exists()
-    except Exception:
+    except (ValueError, DatabaseError):
         return False
 
 
@@ -202,14 +202,14 @@ def _user_is_active_for_impersonation(user) -> bool:
 class AdminImpersonateStartView(APIView):
     """PLATFORM_ADMIN endpoint to begin a new impersonation session."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (permissions.IsAuthenticated, IsPlatformAdmin)
 
     @extend_schema(
         operation_id="admin_impersonate_start",
         summary="Start a PLATFORM_ADMIN impersonation session",
         description=(
             "Opens a new impersonation session against ``user_id``. "
-            "Returns a short-lived JWT (TTL = max_minutes × 60 seconds, "
+            "Returns a short-lived JWT (TTL = max_minutes x 60 seconds, "
             "hard cap 240 min) carrying the ``impersonation_session_id`` "
             "claim. Emits ``IMPERSONATION_STARTED`` audit rows in BOTH "
             "the impersonated user's tenant AND the impersonator's home "
@@ -442,7 +442,7 @@ class AdminImpersonateStartView(APIView):
 
                 try:
                     send_impersonation_started_email.delay(session_id=session_id)
-                except Exception as exc:  # pragma: no cover — Redis-outage path
+                except Exception as exc:
                     logger.warning(
                         "impersonation_email_enqueue_failed",
                         extra={
@@ -572,10 +572,10 @@ class AdminImpersonateExitView(APIView):
     exit endpoint holds the row.
     """
 
-    permission_classes = [
+    permission_classes = (
         permissions.IsAuthenticated,
         IsPlatformAdminOrActiveImpersonator,
-    ]
+    )
 
     @extend_schema(
         operation_id="admin_impersonate_exit",
@@ -653,10 +653,14 @@ class AdminImpersonateExitView(APIView):
         # may have no tenant context or a different home tenant.
         with transaction.atomic(using="admin"):
             try:
+                # Same Postgres constraint as the expire sweep: FOR UPDATE
+                # cannot be combined with the nullable-side outer join that
+                # select_related on the two nullable tenant FKs produces.
+                # Lock the row ALONE; the related tenants load lazily for
+                # the audit emission below.
                 sess = (
                     ImpersonationSession.objects.using("admin")
                     .select_for_update()
-                    .select_related("impersonated_tenant", "impersonator_tenant")
                     .get(pk=session_id)
                 )
             except ImpersonationSession.DoesNotExist:

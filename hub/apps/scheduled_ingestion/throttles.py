@@ -16,7 +16,7 @@ class ScheduledIngestionTenantThrottle(SimpleRateThrottle):
 
     scope = "scheduled_ingestion"
 
-    def get_cache_key(self, request, view) -> str | None:
+    def get_cache_key(self, request, _view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         tenant_id = get_request_tenant_id(request)
@@ -27,7 +27,7 @@ class ScheduledIngestionTenantThrottle(SimpleRateThrottle):
             "ident": str(tenant_id),
         }
 
-    def throttled(self, request, wait):
+    def _on_throttled(self, request, wait):
         try:
             from hub.apps.audit.utils import create_audit_event
 
@@ -48,4 +48,9 @@ class ScheduledIngestionTenantThrottle(SimpleRateThrottle):
             )
         except Exception:
             pass
-        super().throttled(request, wait)
+
+    def allow_request(self, request, view):
+        allowed = super().allow_request(request, view)
+        if not allowed:
+            self._on_throttled(request, int(self.wait()))
+        return allowed

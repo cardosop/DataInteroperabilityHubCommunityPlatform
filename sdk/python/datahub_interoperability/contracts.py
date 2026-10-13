@@ -5,9 +5,10 @@ Provides high-level methods for managing contracts with support for
 all new objects (Contact, Server, Terms, Definition, Lineage, ServiceLevel, Models).
 """
 
+import builtins
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 from .errors import (
@@ -83,9 +84,9 @@ class ContractsAPI:
                 field_path=f"/{param_name}",
                 expected="valid UUID format (e.g., '123e4567-e89b-12d3-a456-426614174000')",
                 actual=contract_id[:50] if len(contract_id) > 50 else contract_id,
-            )
+            ) from None
 
-    def _validate_odps_version(self, version: Optional[str], param_name: str = "version") -> None:
+    def _validate_odps_version(self, version: str | None, param_name: str = "version") -> None:
         """
         Validate ODPS version format.
 
@@ -119,7 +120,7 @@ class ContractsAPI:
                 actual=version,
             )
 
-    def _validate_odcs_version(self, version: Optional[str], param_name: str = "version") -> None:
+    def _validate_odcs_version(self, version: str | None, param_name: str = "version") -> None:
         """
         Validate ODCS version format.
 
@@ -173,7 +174,7 @@ class ContractsAPI:
             )
 
     def _validate_format(
-        self, format: str, param_name: str = "format", allowed: Optional[List[str]] = None
+        self, format: str, param_name: str = "format", allowed: list[str] | None = None
     ) -> None:
         """
         Validate format parameter.
@@ -269,20 +270,19 @@ class ContractsAPI:
         """
         from .errors import DataHubError
 
-        # If it's already an ODPS error, return it
-        if isinstance(error, (ODPSValidationError, ODPSExportError, ODPSLinkingError)):
-            return error
-
-        # Preserve auth errors — they are not ODPS business errors
-        if isinstance(error, (ForbiddenError, UnauthorizedError)):
-            return error
-
-        # Preserve NetworkError — connectivity is not an ODPS concern
-        if isinstance(error, NetworkError):
-            return error
-
-        # Preserve NotFoundError for 404 cases
-        if isinstance(error, NotFoundError):
+        # If it's already a domain/preserved error, return it unchanged
+        if isinstance(
+            error,
+            (
+                ODPSValidationError,
+                ODPSExportError,
+                ODPSLinkingError,
+                ForbiddenError,
+                UnauthorizedError,
+                NetworkError,
+                NotFoundError,
+            ),
+        ):
             return error
 
         # If it's a DataHubError with 404 status, return NotFoundError
@@ -303,7 +303,7 @@ class ContractsAPI:
             if error_dict:
                 try:
                     return parse_odps_error(error_dict)
-                except Exception:
+                except (AttributeError, TypeError):
                     # If parsing fails, wrap in ODPS error with context
                     return ODPSValidationError(
                         f"ODPS {operation} failed: {error.message}",
@@ -334,20 +334,18 @@ class ContractsAPI:
         """
         from .errors import DataHubError
 
-        # If it's already an ODCS error, return it
-        if isinstance(error, (ODCSValidationError, ODCSExportError)):
-            return error
-
-        # Preserve auth errors — they are not ODCS business errors
-        if isinstance(error, (ForbiddenError, UnauthorizedError)):
-            return error
-
-        # Preserve NetworkError for network/timeout errors
-        if isinstance(error, NetworkError):
-            return error
-
-        # Preserve NotFoundError for 404 cases
-        if isinstance(error, NotFoundError):
+        # If it's already a domain/preserved error, return it unchanged
+        if isinstance(
+            error,
+            (
+                ODCSValidationError,
+                ODCSExportError,
+                ForbiddenError,
+                UnauthorizedError,
+                NetworkError,
+                NotFoundError,
+            ),
+        ):
             return error
 
         # If it's a DataHubError with 404 status, return NotFoundError
@@ -368,7 +366,7 @@ class ContractsAPI:
             if error_dict:
                 try:
                     return parse_odcs_error(error_dict)
-                except Exception:
+                except (AttributeError, TypeError):
                     # If parsing fails, wrap in ODCS error with context
                     return ODCSValidationError(
                         f"ODCS {operation} failed: {error.message}",
@@ -390,24 +388,24 @@ class ContractsAPI:
         self,
         page: int = 1,
         page_size: int = 50,
-        ordering: Optional[str] = None,
-        owner_email: Optional[str] = None,
-        owner_name: Optional[str] = None,
-        tag: Optional[str] = None,
-        quality_profile: Optional[str] = None,
-        compliance_regime: Optional[str] = None,
-        contact_email: Optional[str] = None,
-        contact_name: Optional[str] = None,
-        server_type: Optional[str] = None,
-        server_url: Optional[str] = None,
-        min_availability: Optional[float] = None,
-        max_latency_ms: Optional[float] = None,
-        model_name: Optional[str] = None,
-        spec_type: Optional[str] = None,
-        odps_version: Optional[str] = None,
-        has_odps_link: Optional[bool] = None,
-        spec_version: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        ordering: str | None = None,
+        owner_email: str | None = None,
+        owner_name: str | None = None,
+        tag: str | None = None,
+        quality_profile: str | None = None,
+        compliance_regime: str | None = None,
+        contact_email: str | None = None,
+        contact_name: str | None = None,
+        server_type: str | None = None,
+        server_url: str | None = None,
+        min_availability: float | None = None,
+        max_latency_ms: float | None = None,
+        model_name: str | None = None,
+        spec_type: str | None = None,
+        odps_version: str | None = None,
+        has_odps_link: bool | None = None,
+        spec_version: str | None = None,
+    ) -> dict[str, Any]:
         """
         List contracts with filtering.
 
@@ -435,7 +433,7 @@ class ContractsAPI:
         Returns:
             Paginated response with contracts
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
         }
@@ -477,7 +475,7 @@ class ContractsAPI:
 
         return await self.client.get("contracts/", params=params)
 
-    async def get(self, contract_id: str) -> Dict[str, Any]:
+    async def get(self, contract_id: str) -> dict[str, Any]:
         """
         Get contract by ID.
 
@@ -493,7 +491,7 @@ class ContractsAPI:
         self,
         contract_id: str,
         format: str = "hubcontract",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Export contract in specified format.
 
@@ -504,7 +502,7 @@ class ContractsAPI:
         Returns:
             Exported contract data
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if format:
             params["format"] = format
         return await self.client.get(f"contracts/{contract_id}/export/", params=params)
@@ -513,7 +511,7 @@ class ContractsAPI:
         self,
         contract_id: str,
         format: str = "hubcontract",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Download contract in specified format.
 
@@ -524,7 +522,7 @@ class ContractsAPI:
         Returns:
             Downloaded contract data
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if format:
             params["format"] = format
         return await self.client.get(f"contracts/{contract_id}/download/", params=params)
@@ -533,8 +531,8 @@ class ContractsAPI:
         self,
         original_raw: str,
         original_format: str = "JSON",
-        asset_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        asset_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create contract from ODCS format.
 
@@ -546,7 +544,7 @@ class ContractsAPI:
         Returns:
             Created contract data
         """
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "original_raw": original_raw,
             "original_format": original_format,
         }
@@ -559,12 +557,12 @@ class ContractsAPI:
         self,
         original_raw: str,
         extract_odcs: bool = False,
-        link_odcs_id: Optional[str] = None,
-        original_format: Optional[str] = None,
-        odps_version: Optional[str] = None,
+        link_odcs_id: str | None = None,
+        original_format: str | None = None,
+        odps_version: str | None = None,
         resolve_external_refs: bool = True,
-        asset_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        asset_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create ODPS (Open Data Product Standard) contract.
 
@@ -629,16 +627,13 @@ class ContractsAPI:
         # Auto-detect format if not provided
         if not original_format:
             original_raw_stripped = original_raw.strip()
-            if original_raw_stripped.startswith("{"):
-                detected_format = "JSON"
-            else:
-                detected_format = "YAML"
+            detected_format = "JSON" if original_raw_stripped.startswith("{") else "YAML"
         else:
             # Normalize format to uppercase
             detected_format = original_format.upper()
 
         # Build base request data
-        base_data: Dict[str, Any] = {
+        base_data: dict[str, Any] = {
             "original_raw": original_raw,
             "original_format": detected_format,
             "resolve_external_refs": resolve_external_refs,
@@ -670,10 +665,10 @@ class ContractsAPI:
     async def update(
         self,
         contract_id: str,
-        original_raw: Optional[str] = None,
-        original_format: Optional[str] = None,
+        original_raw: str | None = None,
+        original_format: str | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update contract (partial update supported).
 
@@ -686,7 +681,7 @@ class ContractsAPI:
         Returns:
             Updated contract data
         """
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         if original_raw:
             data["original_raw"] = original_raw
         if original_format:
@@ -704,7 +699,7 @@ class ContractsAPI:
         """
         await self.client.delete(f"contracts/{contract_id}/")
 
-    async def validate(self, contract_id: str) -> Dict[str, Any]:
+    async def validate(self, contract_id: str) -> dict[str, Any]:
         """
         Validate contract.
 
@@ -716,7 +711,7 @@ class ContractsAPI:
         """
         return await self.client.post(f"contracts/{contract_id}/validate/")
 
-    async def lint(self, contract_id: str) -> Dict[str, Any]:
+    async def lint(self, contract_id: str) -> dict[str, Any]:
         """
         Lint contract.
 
@@ -731,11 +726,11 @@ class ContractsAPI:
     async def link_odps_to_odcs(
         self,
         odcs_contract_id: str,
-        odps_contract_id: Optional[str] = None,
-        odps_raw: Optional[str] = None,
-        odps_format: Optional[str] = None,
+        odps_contract_id: str | None = None,
+        odps_raw: str | None = None,
+        odps_format: str | None = None,
         resolve_external_refs: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Link ODPS contract to ODCS contract (bidirectional linking).
 
@@ -763,8 +758,9 @@ class ContractsAPI:
             NotFoundError: If contract is not found
             DataHubError: On other API errors
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
             self._validate_contract_id(odcs_contract_id, "odcs_contract_id")
             if odps_contract_id:
                 self._validate_contract_id(odps_contract_id, "odps_contract_id")
@@ -779,6 +775,9 @@ class ContractsAPI:
                         actual="None",
                     )
                 self._validate_format(odps_format.lower(), "odps_format", ["json", "yaml"])
+
+        try:
+            _validate_params()
         except ODPSValidationError:
             raise
         except Exception as e:
@@ -799,7 +798,7 @@ class ContractsAPI:
             )
 
         # Build request data
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if odps_contract_id:
             # Link to existing ODPS contract
@@ -826,7 +825,7 @@ class ContractsAPI:
                 ) from e
             raise odps_error from e
 
-    async def unlink_odps_from_odcs(self, odcs_contract_id: str) -> Dict[str, Any]:
+    async def unlink_odps_from_odcs(self, odcs_contract_id: str) -> dict[str, Any]:
         """
         Unlink ODPS contract from ODCS contract (removes bidirectional links).
 
@@ -877,7 +876,7 @@ class ContractsAPI:
                 ) from e
             raise odps_error from e
 
-    async def get_linked_contracts(self, contract_id: str) -> Dict[str, Any]:
+    async def get_linked_contracts(self, contract_id: str) -> dict[str, Any]:
         """
         Get all linked contracts for a given contract (ODPS and ODCS links).
 
@@ -899,7 +898,7 @@ class ContractsAPI:
 
     # Helper methods for accessing contract objects
 
-    def get_contact(self, contract: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def get_contact(self, contract: dict[str, Any]) -> builtins.list[dict[str, Any]] | None:
         """
         Get contact objects from contract.
 
@@ -912,7 +911,7 @@ class ContractsAPI:
         hub_contract = contract.get("hub_contract_json", {})
         return hub_contract.get("contact")
 
-    def get_servers(self, contract: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def get_servers(self, contract: dict[str, Any]) -> builtins.list[dict[str, Any]] | None:
         """
         Get server objects from contract.
 
@@ -925,7 +924,7 @@ class ContractsAPI:
         hub_contract = contract.get("hub_contract_json", {})
         return hub_contract.get("servers")
 
-    def get_terms(self, contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get_terms(self, contract: dict[str, Any]) -> dict[str, Any] | None:
         """
         Get terms object from contract.
 
@@ -938,7 +937,7 @@ class ContractsAPI:
         hub_contract = contract.get("hub_contract_json", {})
         return hub_contract.get("terms")
 
-    def get_definitions(self, contract: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def get_definitions(self, contract: dict[str, Any]) -> builtins.list[dict[str, Any]] | None:
         """
         Get definition objects from contract.
 
@@ -951,7 +950,7 @@ class ContractsAPI:
         hub_contract = contract.get("hub_contract_json", {})
         return hub_contract.get("definitions")
 
-    def get_lineage(self, contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get_lineage(self, contract: dict[str, Any]) -> dict[str, Any] | None:
         """
         Get lineage object from contract.
 
@@ -964,7 +963,7 @@ class ContractsAPI:
         hub_contract = contract.get("hub_contract_json", {})
         return hub_contract.get("lineage")
 
-    def get_servicelevels(self, contract: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def get_servicelevels(self, contract: dict[str, Any]) -> builtins.list[dict[str, Any]] | None:
         """
         Get service level objects from contract.
 
@@ -977,7 +976,7 @@ class ContractsAPI:
         hub_contract = contract.get("hub_contract_json", {})
         return hub_contract.get("servicelevels")
 
-    def get_models(self, contract: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def get_models(self, contract: dict[str, Any]) -> builtins.list[dict[str, Any]] | None:
         """
         Get models from contract.
 
@@ -992,7 +991,7 @@ class ContractsAPI:
 
     # ODPS helper methods
 
-    def is_odps_contract(self, contract: Dict[str, Any]) -> bool:
+    def is_odps_contract(self, contract: dict[str, Any]) -> bool:
         """
         Check if contract is an ODPS (Open Data Product Standard) contract.
 
@@ -1005,7 +1004,7 @@ class ContractsAPI:
         original_spec_type = contract.get("original_spec_type")
         return original_spec_type == "ODPS"
 
-    def get_odps_version(self, contract: Dict[str, Any]) -> Optional[str]:
+    def get_odps_version(self, contract: dict[str, Any]) -> str | None:
         """
         Get ODPS version from contract.
 
@@ -1019,7 +1018,7 @@ class ContractsAPI:
             return None
         return contract.get("original_spec_version")
 
-    def get_pricing_plans(self, contract: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def get_pricing_plans(self, contract: dict[str, Any]) -> builtins.list[dict[str, Any]] | None:
         """
         Get pricing plans from ODPS contract.
 
@@ -1050,7 +1049,7 @@ class ContractsAPI:
             return pricing_plans
         return None
 
-    def get_access_methods(self, contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get_access_methods(self, contract: dict[str, Any]) -> dict[str, Any] | None:
         """
         Get access methods from ODPS contract.
 
@@ -1081,7 +1080,7 @@ class ContractsAPI:
             return access_methods
         return None
 
-    def get_payment_gateways(self, contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get_payment_gateways(self, contract: dict[str, Any]) -> dict[str, Any] | None:
         """
         Get payment gateways from ODPS contract.
 
@@ -1112,7 +1111,7 @@ class ContractsAPI:
             return payment_gateways
         return None
 
-    def get_product_strategy(self, contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get_product_strategy(self, contract: dict[str, Any]) -> dict[str, Any] | None:
         """
         Get product strategy from ODPS contract (ODPS 4.1+).
 
@@ -1151,8 +1150,8 @@ class ContractsAPI:
         return None
 
     def get_product_details(
-        self, contract: Dict[str, Any], lang: str = "en"
-    ) -> Optional[Dict[str, Any]]:
+        self, contract: dict[str, Any], lang: str = "en"
+    ) -> dict[str, Any] | None:
         """
         Get product details from ODPS contract for a specific language.
 
@@ -1221,9 +1220,9 @@ class ContractsAPI:
     async def export_odps(
         self,
         contract_id: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         format: str = "json",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Export contract as ODPS (Open Data Product Standard) format.
 
@@ -1257,7 +1256,7 @@ class ContractsAPI:
                 details={"context": {"operation": "export_odps", "original_error": str(e)}},
             ) from e
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "format": "odps",
             "output_format": format,
         }
@@ -1293,15 +1292,16 @@ class ContractsAPI:
                 # If the parsed result is a string, parse it again (handles double-encoded JSON)
                 if isinstance(parsed, str):
                     return json.loads(parsed)
-                return parsed
             except (json.JSONDecodeError, ValueError):
                 # Fallback to response.json() if direct parsing fails
                 return response.json()
+            else:
+                return parsed
 
     async def download_odps(
         self,
         contract_id: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         format: str = "json",
     ) -> bytes:
         """
@@ -1336,7 +1336,7 @@ class ContractsAPI:
                 details={"context": {"operation": "download_odps", "original_error": str(e)}},
             ) from e
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "format": "odps",
             "output_format": format,
         }
@@ -1348,17 +1348,18 @@ class ContractsAPI:
             response = await self.client.request(
                 "GET", f"contracts/{contract_id}/download/", params=params
             )
-            return response.content
         except Exception as e:
             # Map and re-raise with ODPS error context
             raise self._handle_odps_error(e, "download") from e
+        else:
+            return response.content
 
     async def export_odcs(
         self,
         contract_id: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         format: str = "json",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Export contract as ODCS (Open Data Contract Standard) format.
 
@@ -1412,7 +1413,7 @@ class ContractsAPI:
         if version:
             self._validate_odcs_version(version, "version")
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "format": "odcs",
             "output_format": format,
         }
@@ -1448,7 +1449,8 @@ class ContractsAPI:
                 # If the parsed result is a string, parse it again (handles double-encoded JSON)
                 if isinstance(parsed, str):
                     return json.loads(parsed)
-                return parsed
             except (json.JSONDecodeError, ValueError):
                 # Fallback to response.json() if direct parsing fails
                 return response.json()
+            else:
+                return parsed

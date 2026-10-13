@@ -136,7 +136,7 @@ class TestCircuitBreakerGuard:
                 return "recovered"
 
             # Trip the breaker by calling with a failing function
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="trip"):
                 breaker.call(lambda: (_ for _ in ()).throw(ValueError("trip")))
 
             assert breaker.get_state() == CircuitBreakerState.OPEN

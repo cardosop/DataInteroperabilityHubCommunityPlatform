@@ -51,8 +51,8 @@ class IngestionTemplateTest(TestCase):
             file_pattern_template="{file_pattern}",
         )
 
-        self.assertTrue(template.is_system_template)
-        self.assertIsNone(template.tenant)
+        assert template.is_system_template
+        assert template.tenant is None
 
     def test_create_tenant_template(self):
         """Test creating tenant-specific template"""
@@ -70,8 +70,8 @@ class IngestionTemplateTest(TestCase):
             created_by=self.user,
         )
 
-        self.assertFalse(template.is_system_template)
-        self.assertEqual(template.tenant, self.tenant)
+        assert not template.is_system_template
+        assert template.tenant == self.tenant
 
     def test_template_clean_system_with_tenant(self):
         """Test template validation - system template cannot have tenant"""
@@ -171,21 +171,21 @@ class IngestionTemplateManagerTest(TestCase):
             template_variables=template_variables,
         )
 
-        self.assertEqual(scheduled_ingestion.name, "My Ingestion")
-        self.assertEqual(scheduled_ingestion.tenant, self.tenant)
-        self.assertEqual(scheduled_ingestion.source_type, "S3")
+        assert scheduled_ingestion.name == "My Ingestion"
+        assert scheduled_ingestion.tenant == self.tenant
+        assert scheduled_ingestion.source_type == "S3"
 
         # Verify source config was resolved
-        self.assertEqual(scheduled_ingestion.get_source_config()["bucket_name"], "my-bucket")
-        self.assertEqual(scheduled_ingestion.get_source_config()["prefix"], "data/")
-        self.assertEqual(scheduled_ingestion.get_source_config()["region"], "us-east-1")
+        assert scheduled_ingestion.get_source_config()["bucket_name"] == "my-bucket"
+        assert scheduled_ingestion.get_source_config()["prefix"] == "data/"
+        assert scheduled_ingestion.get_source_config()["region"] == "us-east-1"
 
         # Verify file pattern was resolved
-        self.assertEqual(scheduled_ingestion.file_pattern, ".*\\.csv")
+        assert scheduled_ingestion.file_pattern == ".*\\.csv"
 
         # Verify ingestion state with DQ config
-        self.assertTrue(scheduled_ingestion.ingestion_state["enable_dq_validation"])
-        self.assertEqual(scheduled_ingestion.ingestion_state["dq_profile_key"], "intake_basic_gx")
+        assert scheduled_ingestion.ingestion_state["enable_dq_validation"]
+        assert scheduled_ingestion.ingestion_state["dq_profile_key"] == "intake_basic_gx"
 
     def test_resolve_template_variables(self):
         """Test resolving template variables"""
@@ -199,9 +199,9 @@ class IngestionTemplateManagerTest(TestCase):
 
         resolved = IngestionTemplateManager._resolve_template_variables(template, variables)
 
-        self.assertEqual(resolved["bucket_name"], "my-bucket")
-        self.assertEqual(resolved["prefix"], "data/")
-        self.assertEqual(resolved["nested"]["key"], "resolved")
+        assert resolved["bucket_name"] == "my-bucket"
+        assert resolved["prefix"] == "data/"
+        assert resolved["nested"]["key"] == "resolved"
 
     def test_resolve_string_template(self):
         """Test resolving string template"""
@@ -211,7 +211,7 @@ class IngestionTemplateManagerTest(TestCase):
 
         resolved = IngestionTemplateManager._resolve_string_template(template, variables)
 
-        self.assertEqual(resolved, "s3://my-bucket/data/.*\\.csv")
+        assert resolved == "s3://my-bucket/data/.*\\.csv"
 
     def test_get_system_templates(self):
         """Test getting system templates"""
@@ -242,8 +242,8 @@ class IngestionTemplateManagerTest(TestCase):
 
         system_templates = IngestionTemplateManager.get_system_templates()
 
-        self.assertIn(system_template, system_templates)
-        self.assertNotIn(tenant_template, system_templates)
+        assert system_template in system_templates
+        assert tenant_template not in system_templates
 
     def test_get_tenant_templates(self):
         """Test getting templates available to tenant"""
@@ -295,6 +295,6 @@ class IngestionTemplateManagerTest(TestCase):
 
         tenant_templates = IngestionTemplateManager.get_tenant_templates(str(self.tenant.id))
 
-        self.assertIn(system_template, tenant_templates)
-        self.assertIn(tenant_template, tenant_templates)
-        self.assertNotIn(other_template, tenant_templates)
+        assert system_template in tenant_templates
+        assert tenant_template in tenant_templates
+        assert other_template not in tenant_templates

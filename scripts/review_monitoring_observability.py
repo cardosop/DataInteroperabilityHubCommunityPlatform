@@ -72,7 +72,7 @@ class MonitoringReviewer:
                         endpoints.add(pattern)
                     elif not pattern.startswith("^"):
                         endpoints.add(f"/api/v1/{pattern}")
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"Warning: Could not parse {urls_file}: {e}")
 
         return endpoints
@@ -198,7 +198,7 @@ class MonitoringReviewer:
                                     "legend_format": target.get("legendFormat", ""),
                                 }
                             )
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"  Warning: Could not parse dashboard {dashboard_file}: {e}")
 
         print(f"  Reviewed {len(queries)} queries across {len(dashboard_files)} dashboards")

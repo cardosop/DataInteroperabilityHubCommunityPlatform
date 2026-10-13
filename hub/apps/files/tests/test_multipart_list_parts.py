@@ -119,7 +119,8 @@ class MultipartListPartsContractTest(FilesAPITestBase):
             assert resp.status_code == status.HTTP_200_OK
             assert resp.data["upload_id"] == upload_id
             parts = resp.data["parts"]
-            assert isinstance(parts, list) and len(parts) == 1
+            assert isinstance(parts, list)
+            assert len(parts) == 1
             entry = parts[0]
             assert entry["part_number"] == 1
             assert entry["etag"] == etag
@@ -218,7 +219,7 @@ class MultipartListPartsThrottleWiringTest(TestCase):
     def test_parts_action_is_a_get_only_action(self) -> None:
         view = FileViewSet()
         view.action = "parts"
-        getattr(view, "_get_action_methods", lambda: None)()  # type: ignore[arg-type]  # test: reflective callable access
+        getattr(view, "_get_action_methods", lambda: None)()  # test: reflective callable access
         # Smoke: action attribute exists and is callable.
         assert callable(getattr(view, "parts", None)), "FileViewSet.parts action must be defined"
 

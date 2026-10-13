@@ -103,8 +103,8 @@ class RabbitMQEventBus:
 
                 logger.info("rabbitmq_connection_established", exchange=self.exchange_name)
             except AMQPConnectionError as e:
-                logger.error("rabbitmq_connection_failed", error=str(e))
-                raise RabbitMQEventBusError(f"Failed to connect to RabbitMQ: {e}")
+                logger.exception("rabbitmq_connection_failed", error=str(e))
+                raise RabbitMQEventBusError(f"Failed to connect to RabbitMQ: {e}") from e
 
     def publish(
         self,
@@ -153,8 +153,10 @@ class RabbitMQEventBus:
         try:
             validate_event_data(event_type, data)
         except Exception as e:
-            logger.error("rabbitmq_event_validation_failed", event_type=event_type, error=str(e))
-            raise RabbitMQEventBusError(f"Event validation failed: {e}")
+            logger.exception(
+                "rabbitmq_event_validation_failed", event_type=event_type, error=str(e)
+            )
+            raise RabbitMQEventBusError(f"Event validation failed: {e}") from e
 
         # Ensure connection
         self._ensure_connection()
@@ -187,16 +189,16 @@ class RabbitMQEventBus:
                 routing_key=event_type,
             )
 
-            return event_id
-
         except AMQPChannelError as e:
-            logger.error(
+            logger.exception(
                 "rabbitmq_event_publish_failed",
                 event_id=event_id,
                 event_type=event_type,
                 error=str(e),
             )
-            raise RabbitMQEventBusError(f"Failed to publish event: {e}")
+            raise RabbitMQEventBusError(f"Failed to publish event: {e}") from e
+        else:
+            return event_id
 
     def subscribe(
         self,
@@ -261,7 +263,7 @@ class RabbitMQEventBus:
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "rabbitmq_event_processing_failed",
                     subscriber_name=subscriber_name,
                     queue=queue_name,

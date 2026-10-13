@@ -1,7 +1,7 @@
 """Phase 111.7 — Database failover → meaningful error, not hang."""
 
 import pytest
-from django.db import connection
+from django.db import ProgrammingError, connection
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -12,7 +12,7 @@ class DatabaseFailoverTest(TestCase):
 
     def test_bad_query_raises_exception_not_hang(self):
         """Invalid SQL raises an exception, does not hang."""
-        with self.assertRaises(Exception):
+        with self.assertRaises(ProgrammingError):  # undefined_table for the nonexistent relation
             cursor = connection.cursor()
             cursor.execute("SELECT * FROM nonexistent_chaos_table_xyz")
 

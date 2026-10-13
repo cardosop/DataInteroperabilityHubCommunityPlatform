@@ -64,7 +64,9 @@ test.describe('LDN inbox + subscription (TENANT_ADMIN)', () => {
     // After submission, either the URL input clears (success) or an
     // error banner appears (partner unreachable). Both confirm the
     // end-to-end flow executed.
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     const urlCleared = await page.getByTestId('ldn-subscribe-url-input').inputValue().then(v => v === '').catch(() => false);
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     const errorShown = await page.getByTestId('ldn-error').isVisible().catch(() => false);
     expect(urlCleared || errorShown).toBe(true);
   });

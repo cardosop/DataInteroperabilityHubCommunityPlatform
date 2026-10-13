@@ -31,6 +31,5 @@ class ExternalServicesIntegrationTest(TestCase):
         # real deployment; in test environments, all three may be set.
         configured = [u for u in (semantic_url, dq_url, compliance_url) if u is not None]
         self.assertGreaterEqual(
-            len(configured), 1,
-            "Expected at least one external service URL to be configured"
+            len(configured), 1, "Expected at least one external service URL to be configured"
         )

@@ -397,10 +397,16 @@ class TestReferencesCorrect(TestCase):
     def test_workflow_file_exists(self):
         """Test that workflow file referenced in documentation exists."""
         self.assertIn(
-            "marketplace_sync.py", self.content,
-            "DEVELOPMENT.md should reference marketplace_sync.py workflow file"
+            "marketplace_sync.py",
+            self.content,
+            "DEVELOPMENT.md should reference marketplace_sync.py workflow file",
         )
         workflow_path = find_file_path("hub/apps/marketplace/workflows/marketplace_sync.py")
+        if workflow_path is None:
+            from hub.apps.manifest import is_core_only
+
+            if is_core_only():
+                self.skipTest("marketplace_sync workflow is paid-layer — absent in core-only mode")
         self.assertIsNotNone(
             workflow_path, "Workflow file should exist (referenced in documentation)"
         )
@@ -453,13 +459,11 @@ class TestDocumentationCompleteness(TestCase):
 
         content_lower = self.content.lower()
         missing_markers = [
-            m for m in checklist_markers
-            if m not in self.content and m.lower() not in content_lower
+            m for m in checklist_markers if m not in self.content and m.lower() not in content_lower
         ]
 
         self.assertEqual(
-            len(missing_markers), 0,
-            f"Missing checklist items in documentation: {missing_markers}"
+            len(missing_markers), 0, f"Missing checklist items in documentation: {missing_markers}"
         )
 
     def test_has_test_examples(self):

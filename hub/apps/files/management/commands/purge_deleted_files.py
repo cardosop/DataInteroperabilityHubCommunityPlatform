@@ -12,7 +12,7 @@ Safety
 * Redis SET NX + tokenised release (``hub.apps.core.distributed_lock``) on
   ``meshant:purge_deleted_files:v1`` — only one worker runs a destructive pass
   cluster-wide; compare-and-del Lua prevents accidental release of another
-  holder’s lock after TTL races.
+  holder`s lock after TTL races.
 * Batched 500 rows by default to cap transaction / lock duration.
 
 Scheduled via Kubernetes CronJob (``helm/templates/cronjob/purge-deleted-files.yaml``)
@@ -26,9 +26,13 @@ import os
 import sys
 from datetime import timedelta
 
+from botocore.exceptions import BotoCoreError
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from redis.exceptions import RedisError
+
+from hub.apps.files.storage import StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +77,7 @@ class Command(BaseCommand):
             help="Limit to a single tenant UUID.",
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         dry_run = bool(opts.get("dry_run"))
         no_dry_run = bool(opts.get("no_dry_run"))
         batch_size = int(opts.get("batch_size") or DEFAULT_BATCH_SIZE)
@@ -96,7 +100,7 @@ class Command(BaseCommand):
 
         try:
             redis_client = get_redis_client()
-        except Exception as exc:
+        except RedisError as exc:
             self.stderr.write(self.style.ERROR(f"Redis unavailable: {exc}"))
             sys.exit(2)
 
@@ -230,7 +234,7 @@ class Command(BaseCommand):
 
         try:
             storage.delete_file(storage_path)
-        except Exception as exc:
+        except (StorageError, BotoCoreError) as exc:
             logger.warning(
                 "purge_deleted_files_s3_delete_failed file_id=%s error=%s",
                 pk,

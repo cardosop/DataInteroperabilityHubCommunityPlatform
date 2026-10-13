@@ -107,7 +107,7 @@ def test_tenant_has_required_fields():
             pytest.skip("No tenants available to inspect")
         tenant = tenants[0]
 
-    keys_lower = {k.lower() for k in tenant.keys()}
+    keys_lower = {k.lower() for k in tenant}
 
     has_id = any(k in keys_lower for k in ("id", "tenant_id"))
     has_name = any(k in keys_lower for k in ("name", "tenant_name", "display_name"))

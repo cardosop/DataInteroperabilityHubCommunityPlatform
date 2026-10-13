@@ -13,4 +13,4 @@ class VirtualizationConfig(AppConfig):
     verbose_name = "Data Virtualization"
 
     def ready(self):
-        from . import business_rules  # noqa: F401 — preload @register_rule
+        from . import business_rules

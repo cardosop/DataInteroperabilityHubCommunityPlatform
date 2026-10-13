@@ -195,8 +195,9 @@ class URLPatternResolutionTest(TestCase):
 
         # At least half of the tested patterns should resolve with parameters
         self.assertGreaterEqual(
-            resolved_count, len(test_cases) * 0.5,
-            f"Only {resolved_count}/{len(test_cases)} parametrized patterns resolved"
+            resolved_count,
+            len(test_cases) * 0.5,
+            f"Only {resolved_count}/{len(test_cases)} parametrized patterns resolved",
         )
 
     def test_pattern_resolution_consistency(self):
@@ -223,8 +224,9 @@ class URLPatternResolutionTest(TestCase):
         # At least half of the collection patterns should resolve
         total_tested = min(len(collection_patterns), 20)
         self.assertGreaterEqual(
-            resolved_count, total_tested * 0.5,
-            f"Only {resolved_count}/{total_tested} collection patterns resolved"
+            resolved_count,
+            total_tested * 0.5,
+            f"Only {resolved_count}/{total_tested} collection patterns resolved",
         )
 
 
@@ -363,8 +365,9 @@ class URLPatternReverseLookupTest(TestCase):
 
         # At least half of the tested URL names should be consistent
         self.assertGreaterEqual(
-            consistent_count, len(test_url_names) * 0.5,
-            f"Only {consistent_count}/{len(test_url_names)} reverse/resolve pairs consistent"
+            consistent_count,
+            len(test_url_names) * 0.5,
+            f"Only {consistent_count}/{len(test_url_names)} reverse/resolve pairs consistent",
         )
 
 
@@ -642,7 +645,7 @@ class URLPatternValidatorEdgeCasesTest(TestCase):
             self.assertFalse(
                 result.passed,
                 "strict=True with warnings must set passed=False "
-                f"({len(result.warnings)} warnings found)"
+                f"({len(result.warnings)} warnings found)",
             )
 
     def test_format_errors_with_errors(self):

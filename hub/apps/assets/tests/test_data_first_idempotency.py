@@ -27,6 +27,7 @@ their boundaries; idempotency caching uses the real
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import uuid
@@ -519,8 +520,10 @@ class IdempotencyServiceUnitTest(TestCase):
 
         got_a = IdempotencyService.get_cached_response(key, scope="endpoint.a")
         got_b = IdempotencyService.get_cached_response(key, scope="endpoint.b")
-        assert got_a is not None and got_a.data == {"who": "A"}
-        assert got_b is not None and got_b.data == {"who": "B"}
+        assert got_a is not None
+        assert got_a.data == {"who": "A"}
+        assert got_b is not None
+        assert got_b.data == {"who": "B"}
         # No-scope lookup is yet ANOTHER bucket — also isolated.
         got_unscoped = IdempotencyService.get_cached_response(key)
         assert got_unscoped is None
@@ -648,13 +651,11 @@ class IdempotencyConcurrencyLockTest(TestCase):
                 side_effect=RuntimeError("boom — unhandled"),
             ),
         ):
-            try:
+            # The view's wide except re-raises; our smoke test accepts
+            # that — what we're verifying is that the finally / except
+            # path released the lock.
+            with contextlib.suppress(Exception):
                 _post_canonical(client, body, idem_key)
-            except Exception:
-                # The view's wide except re-raises; our smoke test
-                # accepts that — what we're verifying is that the
-                # finally / except path released the lock.
-                pass
 
         # Lock MUST be free even though the workflow blew up.
         assert (

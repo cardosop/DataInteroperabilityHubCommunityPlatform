@@ -18,8 +18,9 @@ This test suite implements comprehensive, engineering-grade validation for all M
 All tests use real implementations (no mocks/stubs) per requirements.
 """
 import os
+import subprocess
 import uuid
-from typing import Optional
+from contextlib import suppress
 
 import pytest
 
@@ -41,9 +42,10 @@ def check_api_available(api_base_url: str) -> bool:
         import requests
 
         response = requests.get(f"{api_base_url}/", timeout=5)
-        return response.status_code < 600
-    except Exception:
+    except requests.RequestException:
         return False
+    else:
+        return response.status_code < 600
 
 
 def is_odh_service_error(error: Exception) -> bool:
@@ -65,7 +67,7 @@ def is_odh_service_error(error: Exception) -> bool:
     return False
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -77,7 +79,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         key = _create_model_serving_tenant_and_key()
         if key:
             return key
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Method 2: Use canonical conftest helper
@@ -87,7 +89,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Fall back to env-var keys
@@ -98,7 +100,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_model_serving_tenant_and_key() -> Optional[str]:
+def _create_model_serving_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``ml_enabled=True`` and return an API key."""
     try:
         unique_id = uuid.uuid4().hex[:8]
@@ -148,21 +150,25 @@ api_key_obj = AuthAPIKey.objects.create(
     user=user,
     tenant=tenant,
     name='Model Serving SDK Test Key',
-    key_hash=api_key_hash
+    key_hash=api_key_hash,
+    scopes=['ml:read', 'ml:write'],
 )
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantPlan
 plan = TenantPlan.objects.first()
 if plan:
-    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
-    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={{"plan": plan, 'status': SubscriptionStatus.ACTIVE}})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={{"plan": plan, 'status': SubscriptionStatus.ACTIVE}})
 
 print('API_KEY_START')
 print(api_key_value)
 print('API_KEY_END')
 """
-        import subprocess
+        # NOTE: no local `import subprocess` here — a local import would shadow
+        # the module-level binding for the whole function and make the
+        # `subprocess.SubprocessError` reference in the outer except clause
+        # an UnboundLocalError when the failure happens before this line.
 
         try:
             subprocess.run(
@@ -197,8 +203,8 @@ print('API_KEY_END')
             output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -212,7 +218,7 @@ print('API_KEY_END')
             if api_key and len(api_key) >= 20:
                 return api_key
 
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     return None
@@ -722,11 +728,9 @@ async def test_sdk_error_handling_server_error(real_model_serving_api):
     model_id = str(uuid.uuid4())
 
     # May raise ServerError if API is misconfigured
-    try:
+    # Expected errors
+    with suppress(NotFoundError, ServerError, NetworkError):
         await real_model_serving_api.deploy_model_as_api(model_id)
-    except (NotFoundError, ServerError, NetworkError):
-        # Expected errors
-        pass
 
 
 # SDK Authentication Tests
@@ -832,11 +836,9 @@ async def test_contract_validation_integration_deploy(real_model_serving_api):
 
     # Contract validation is non-blocking, so this should not raise ValidationError
     # even if contract validation fails
-    try:
+    # Expected if model doesn't exist
+    with suppress(NotFoundError, ServerError):
         await real_model_serving_api.deploy_model_as_api(model_id)
-    except (NotFoundError, ServerError):
-        # Expected if model doesn't exist
-        pass
 
 
 @pytest.mark.asyncio
@@ -847,8 +849,6 @@ async def test_contract_validation_integration_predict(real_model_serving_api):
     input_data = {"feature1": 1.0, "feature2": 2.0}
 
     # Contract validation is non-blocking
-    try:
+    # Expected if model/deployment doesn't exist
+    with suppress(NotFoundError, ServerError):
         await real_model_serving_api.predict_via_api(model_id, input_data)
-    except (NotFoundError, ServerError):
-        # Expected if model/deployment doesn't exist
-        pass

@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, UserTenantMembership
+from hub.apps.users.models import UserStatus, UserTenantMembership
 
 User = get_user_model()
 

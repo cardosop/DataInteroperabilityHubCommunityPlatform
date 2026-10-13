@@ -16,6 +16,7 @@ import * as os from 'node:os';
 import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import {
+  createAssetViaForm,
   loginAndNavigateToRoute,
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
@@ -34,23 +35,8 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
-    const createBtn = page
-      .locator('button:has-text("Create Asset")')
-      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
-    await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
-    await createBtn.first().click();
-
-    await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-    await waitForLoadingComplete(page);
-
     const assetKey = `e2e-attach-pickers-${randomUUID()}`;
-    await page.fill('input[id="asset-key"]', assetKey);
-    await page.fill('input[id="asset-name"]', 'Attach Pickers Test');
-    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
-    await page.locator('button:has-text("Create Asset")').click();
-
-    await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
-    await waitForLoadingComplete(page, { timeout: 45000 });
+    await createAssetViaForm(page, assetKey, 'Attach Pickers Test');
 
     const contractPicker = page.locator(
       '[data-testid="asset-attach-contract-picker"]'
@@ -101,20 +87,8 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     const linkCount = await firstAssetLink.count();
     if (linkCount === 0) {
       // Create an asset so we have one without contract
-      const createBtn = page
-        .locator('button:has-text("Create Asset")')
-        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
-      await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
-      await createBtn.first().click();
-      await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-      await waitForLoadingComplete(page);
       const assetKey = `e2e-contract-picker-${randomUUID()}`;
-      await page.fill('input[id="asset-key"]', assetKey);
-      await page.fill('input[id="asset-name"]', 'Contract Picker Test');
-      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
-      await page.locator('button:has-text("Create Asset")').click();
-      await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
-      await waitForLoadingComplete(page);
+      await createAssetViaForm(page, assetKey, 'Contract Picker Test');
     } else {
       await firstAssetLink.click();
       await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
@@ -171,10 +145,12 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await waitForLoadingComplete(page);
 
     const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
-    if ((await dropzone.count()) === 0) {
-      test.skip(true, 'File upload dropzone not rendered — precondition not met');
-      return;
-    }
+    // Conditional skip: the dropzone is a runtime precondition — when it
+    // isn't rendered the DatasetPicker attach flow can't be exercised.
+    test.skip(
+      (await dropzone.count()) === 0,
+      'File upload dropzone not rendered — precondition not met'
+    );
 
     const fileBaseName = `e2e-attach-${Date.now()}`;
     const tmpDir = path.join(os.tmpdir(), 'e2e-attach-dataset');
@@ -198,17 +174,17 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
           .waitFor({ state: 'visible', timeout: 45000 })
           .then(() => true)
           .catch(() => false);
-        if (!uploadDone) {
-          test.skip(true, 'Upload success/error indicator not visible within 45s — backend may be slow or unavailable');
-          return;
-        }
+        test.skip(
+          !uploadDone,
+          'Upload success/error indicator not visible within 45s — backend may be slow or unavailable'
+        );
         const hasUploadError =
           (await page.locator('.file-upload-error, .error-display, [data-testid="error-display"]').count()) > 0 &&
           (await page.locator('.file-upload-success, .upload-success').count()) === 0;
-        if (hasUploadError) {
-          test.skip(true, 'File upload failed — backend may be unavailable; cannot test DatasetPicker attach flow');
-          return;
-        }
+        test.skip(
+          hasUploadError,
+          'File upload failed — backend may be unavailable; cannot test DatasetPicker attach flow'
+        );
       }
       // linkMode 'none' requires only uploadedFile; no name input
       await page.locator('button:has-text("Create Dataset")').click();
@@ -229,23 +205,8 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       await page.goto('/assets', { waitUntil: 'domcontentloaded' });
       await waitForLoadingComplete(page);
 
-      const createBtn = page
-        .locator('button:has-text("Create Asset")')
-        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
-      await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
-      await createBtn.first().click();
-
-      await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-      await waitForLoadingComplete(page);
-
       const assetKey = `e2e-ds-attach-${randomUUID()}`;
-      await page.fill('input[id="asset-key"]', assetKey);
-      await page.fill('input[id="asset-name"]', 'Dataset Attach Test');
-      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
-      await page.locator('button:has-text("Create Asset")').click();
-
-      await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
-      await waitForLoadingComplete(page);
+      await createAssetViaForm(page, assetKey, 'Dataset Attach Test');
 
       const datasetPicker = page.locator(
         '[data-testid="asset-attach-dataset-picker"]'
@@ -272,8 +233,12 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       await expect(attachBtn).toBeVisible({ timeout: 5000 });
       await attachBtn.click();
 
+      // After a successful attach the linked-datasets table gains a row for
+      // this dataset. The UI renders rows with a "View" button and
+      // client-side navigation — NOT <a href="/datasets/..."> anchors — so
+      // assert the specific row instead of anchor markup.
       await expect(
-        page.locator('a[href*="/datasets/"]').first()
+        page.locator(`[data-testid="dataset-row-${datasetId}"]`)
       ).toBeVisible({ timeout: 15000 });
     } finally {
       try {

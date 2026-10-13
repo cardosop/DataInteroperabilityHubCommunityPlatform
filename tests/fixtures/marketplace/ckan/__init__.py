@@ -10,7 +10,7 @@ This module provides test fixtures for CKAN connector tests including:
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 # Base directory for CKAN fixtures
 FIXTURES_DIR = Path(__file__).parent

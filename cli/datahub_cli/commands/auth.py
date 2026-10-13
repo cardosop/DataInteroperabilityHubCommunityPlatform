@@ -31,7 +31,7 @@ def auth_login(email, password):
         auth_manager.login(email, password)
         click.echo("Login successful.")
     except Exception as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
 
 @auth.command("logout")
@@ -112,7 +112,7 @@ def auth_refresh():
         api_client.post("auth/refresh/", json={})
         click.echo("Token refreshed.")
     except Exception as e:
-        raise click.ClickException(f"Token refresh failed: {e}")
+        raise click.ClickException(f"Token refresh failed: {e}") from e
 
 
 # ── Password Reset ─────────────────────────────────────────────────────

@@ -105,7 +105,7 @@ async function postAs<T extends object = Record<string, unknown>>(
   try {
     body = (await res.json()) as T;
   } catch {
-    /* no body */
+    /* intentional: a non-JSON error body is tolerated — `ok`/`status` carry the verdict —  no body */
   }
   return { ok, status: res.status(), body };
 }
@@ -124,7 +124,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
         visibility: 'INTERNAL',
       },
     );
-    if (!created.ok) test.skip(true, `asset create in tenant A failed: ${created.status}`);
+test.skip(!created.ok, `asset create in tenant A failed: ${created.status}`);
     const assetId = created.body!.id;
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
@@ -143,7 +143,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       '/assets/',
       { key: `e2e-iso-ds-${Date.now()}`, name: 'Iso DS Asset', visibility: 'INTERNAL' },
     );
-    if (!asset.ok) test.skip(true, `asset precond failed: ${asset.status}`);
+test.skip(!asset.ok, `asset precond failed: ${asset.status}`);
     const dataset = await postAs<{ id: string }>(
       { page, token: tokenA },
       '/datasets/',
@@ -152,7 +152,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
         name: `Iso DS ${Date.now()}`,
       },
     );
-    if (!dataset.ok) test.skip(true, `dataset create failed: ${dataset.status}`);
+test.skip(!dataset.ok, `dataset create failed: ${dataset.status}`);
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -174,7 +174,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
         version: '1.0.0',
       },
     );
-    if (!contract.ok) test.skip(true, `contract create failed: ${contract.status}`);
+test.skip(!contract.ok, `contract create failed: ${contract.status}`);
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -192,7 +192,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       '/assets/',
       { key: `e2e-iso-listing-${Date.now()}`, name: 'Iso Listing Asset', visibility: 'INTERNAL' },
     );
-    if (!asset.ok) test.skip(true, `asset precond failed: ${asset.status}`);
+test.skip(!asset.ok, `asset precond failed: ${asset.status}`);
     // Activate before listing.
     await postAs({ page, token: tokenA }, `/assets/${asset.body!.id}/activate/`, {});
     const listing = await postAs<{ id: string }>(
@@ -206,7 +206,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
         price_amount: 0.0,
       },
     );
-    if (!listing.ok) test.skip(true, `listing create failed: ${listing.status}`);
+test.skip(!listing.ok, `listing create failed: ${listing.status}`);
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -224,13 +224,13 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       '/assets/',
       { key: `e2e-iso-dq-${Date.now()}`, name: 'Iso DQ Asset', visibility: 'INTERNAL' },
     );
-    if (!asset.ok) test.skip(true, `asset precond failed: ${asset.status}`);
+test.skip(!asset.ok, `asset precond failed: ${asset.status}`);
     const run = await postAs<{ id: string }>(
       { page, token: tokenA },
       '/data-quality/runs/',
       { asset_id: asset.body!.id, rules: [] },
     );
-    if (!run.ok) test.skip(true, `dq run create failed: ${run.status}`);
+test.skip(!run.ok, `dq run create failed: ${run.status}`);
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -248,13 +248,13 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       '/assets/',
       { key: `e2e-iso-comp-${Date.now()}`, name: 'Iso Comp Asset', visibility: 'INTERNAL' },
     );
-    if (!asset.ok) test.skip(true, `asset precond failed: ${asset.status}`);
+test.skip(!asset.ok, `asset precond failed: ${asset.status}`);
     const run = await postAs<{ id: string }>(
       { page, token: tokenA },
       '/compliance/runs/',
       { asset_id: asset.body!.id },
     );
-    if (!run.ok) test.skip(true, `compliance run create failed: ${run.status}`);
+test.skip(!run.ok, `compliance run create failed: ${run.status}`);
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -273,17 +273,17 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       '/assets/',
       { key: `e2e-iso-audit-${Date.now()}`, name: 'Iso Audit Asset', visibility: 'INTERNAL' },
     );
-    if (!asset.ok) test.skip(true, `asset precond failed: ${asset.status}`);
+test.skip(!asset.ok, `asset precond failed: ${asset.status}`);
 
     // Find the audit row via list endpoint.
     const auditList = await page.request.get(
       `${API_BASE}/audit/audit-events/?resource_id=${asset.body!.id}&page_size=5`,
       { headers: { Authorization: `Bearer ${tokenA}` } },
     );
-    if (!auditList.ok()) test.skip(true, `audit list failed in tenant A: ${auditList.status()}`);
+test.skip(!auditList.ok(), `audit list failed in tenant A: ${auditList.status()}`);
     const listBody = (await auditList.json()) as { results?: Array<{ id: string }> };
     const auditId = listBody.results?.[0]?.id;
-    if (!auditId) test.skip(true, 'no audit event to compare across tenants');
+test.skip(!auditId, 'no audit event to compare across tenants');
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -309,7 +309,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
         active: true,
       },
     );
-    if (!webhook.ok) test.skip(true, `webhook create failed: ${webhook.status}`);
+test.skip(!webhook.ok, `webhook create failed: ${webhook.status}`);
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
     const restore = await asTenantB(page, tokenB);
@@ -328,7 +328,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       '/assets/',
       { key: `e2e-iso-ent-${Date.now()}`, name: 'Iso Ent Asset', visibility: 'INTERNAL' },
     );
-    if (!asset.ok) test.skip(true, `asset precond failed: ${asset.status}`);
+test.skip(!asset.ok, `asset precond failed: ${asset.status}`);
     await postAs({ page, token: tokenA }, `/assets/${asset.body!.id}/activate/`, {});
     const listing = await postAs<{ id: string }>(
       { page, token: tokenA },
@@ -341,17 +341,17 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
         price_amount: 0.0,
       },
     );
-    if (!listing.ok) test.skip(true, `listing create failed: ${listing.status}`);
+test.skip(!listing.ok, `listing create failed: ${listing.status}`);
 
     const orderRes = await postAs<{ id?: string; order?: { id?: string }; entitlement?: { id: string } }>(
       { page, token: tokenA },
       '/marketplace/orders/',
       { listing_id: listing.body!.id },
     );
-    if (!orderRes.ok) test.skip(true, `order create failed: ${orderRes.status}`);
+test.skip(!orderRes.ok, `order create failed: ${orderRes.status}`);
     const entitlementId = orderRes.body!.entitlement?.id;
     if (!entitlementId) {
-      test.skip(true, 'order response did not include entitlement id (auto-approve may not have fulfilled in time)');
+      test.skip(!entitlementId, 'order response did not include entitlement id (auto-approve may not have fulfilled in time)');
     }
 
     const tokenB = await login(page, tenantB.admin.email, tenantB.admin.password);
@@ -401,7 +401,7 @@ test.describe('Dimension: Tenant-isolation matrix', () => {
       );
       if (!exportRes.ok || !exportRes.body?.id) {
         test.skip(
-          true,
+          !exportRes.ok || !exportRes.body?.id,
           `neither scheduled-ingestion nor scheduled-export create succeeded ` +
             `(${ingest.status}/${exportRes.status})`,
         );

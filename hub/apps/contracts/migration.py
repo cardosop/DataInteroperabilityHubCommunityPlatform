@@ -290,8 +290,8 @@ def migrate_hubcontract(
 
     # Parse version numbers
     try:
-        source_major = int(source_version.split(".")[0])
-        target_major = int(target_version.split(".")[0])
+        source_major = int(source_version.split(".", maxsplit=1)[0])
+        target_major = int(target_version.split(".", maxsplit=1)[0])
     except (ValueError, IndexError):
         errors.append(f"Invalid version format: {source_version} or {target_version}")
         return None, warnings, errors
@@ -305,23 +305,25 @@ def migrate_hubcontract(
     if source_major == 1 and target_major == 2:
         try:
             migrated, migration_warnings = migrate_hubcontract_v1_to_v2(hub_contract)
-            warnings.extend(migration_warnings)
-            return migrated, warnings, errors
         except Exception as e:
             errors.append(f"Migration failed: {e!s}")
             logger.exception("HubContract migration failed")
             return None, warnings, errors
+        else:
+            warnings.extend(migration_warnings)
+            return migrated, warnings, errors
 
     # Migration path: pre-v1 (0.x) -> v1 (1.x)
     if source_major == 0 and target_major == 1:
         try:
             migrated, migration_warnings = migrate_hubcontract_v0_to_v1(hub_contract)
-            warnings.extend(migration_warnings)
-            return migrated, warnings, errors
         except Exception as e:
             errors.append(f"Migration failed: {e!s}")
             logger.exception("HubContract v0->v1 migration failed")
             return None, warnings, errors
+        else:
+            warnings.extend(migration_warnings)
+            return migrated, warnings, errors
 
     # Future migration paths can be added here
     # e.g., v2 -> v3, v1 -> v3 (via v2)
@@ -369,23 +371,18 @@ def can_migrate(source_version: str, target_version: str) -> bool:
         True if migration is supported
     """
     try:
-        source_major = int(source_version.split(".")[0])
-        target_major = int(target_version.split(".")[0])
-
-        # Only support forward migration
-        if source_major > target_major:
-            return False
-
-        # Support v1 -> v2
-        if source_major == 1 and target_major == 2:
-            return True
-
-        # Support pre-v1 (0.x) -> v1 (1.x)
-        if source_major == 0 and target_major == 1:
-            return True
-
-        # Add more migration paths as needed
-
-        return False
+        source_major = int(source_version.split(".", maxsplit=1)[0])
+        target_major = int(target_version.split(".", maxsplit=1)[0])
     except (ValueError, IndexError):
         return False
+
+    # Only support forward migration
+    if source_major > target_major:
+        return False
+
+    # Support v1 -> v2
+    if source_major == 1 and target_major == 2:
+        return True
+
+    # Support pre-v1 (0.x) -> v1 (1.x); add more migration paths as needed
+    return source_major == 0 and target_major == 1

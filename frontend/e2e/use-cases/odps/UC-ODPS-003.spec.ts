@@ -5,7 +5,8 @@
  * Persona: Data Product Owner
  * Reference: docs/USE_CASES.md, docs/TEST_TRACEABILITY.md
  *
- * Success/Failure/Edge. Routes: /odps, /odps/:id.
+ * Success/Failure/Edge. Routes: /odps, /odps/:id (legacy — Phase 211.A6
+ * redirects them to /contracts?spec_type=ODPS and /contracts/:id).
  * Real backend only; no mocks.
  */
 
@@ -22,20 +23,20 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
       const user = await getTestUser();
       const odpsId = await createODPSProductViaApi(user);
 
+      // /odps/:id redirects (Phase 211.A6) to the contract detail page — the
+      // ODPS product is a contract internally, so the contract page renders it.
       await loginAndNavigateToRoute(page, user, `/odps/${odpsId}`, {
         timeout: 90000,
-        contentSelector: '.odps-detail-page, .odps-detail, .odps-detail-main, .error-display, [data-testid="error-display"]',
+        contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on ODPS detail');
       }
 
+      expect(page.url()).toContain(`/contracts/${odpsId}`);
       const hasDetail =
-        (await page.locator('.odps-detail-page').count()) > 0 ||
-        (await page.locator('.odps-detail').count()) > 0 ||
-        (await page.locator('.odps-detail-main').count()) > 0 ||
-        page.url().includes('/odps/');
+        (await page.locator('.contract-detail-page, [data-testid="contract-detail-page"]').count()) > 0;
       expect(hasDetail).toBe(true);
     });
   });
@@ -50,7 +51,7 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
         {
           timeout: 90000,
           contentSelector:
-            '.odps-detail-page, .odps-detail, .error-display, [data-testid="error-display"], [role="alert"]',
+            '.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"], [role="alert"]',
           acceptRedirectToLogin: false,
         }
       );
@@ -58,7 +59,7 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
         throw new Error('Unexpected redirect to login on invalid ODPS id');
       }
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.odps-detail-page, .odps-detail',
+        detailContentSelector: '.contract-detail-page, [data-testid="contract-detail-page"]',
         waitAfterLoad: 8000,
         selectorTimeout: 60000,
       });
@@ -68,13 +69,14 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
   test.describe('Edge', () => {
     test('ODPS list with empty state loads', async ({ page }) => {
       const user = await getTestUser();
+      // Legacy /odps redirects (Phase 211.A6) to the contracts list filtered by spec_type=ODPS.
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 90000,
-        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      expect(page.url()).toContain('/odps');
+      expect(page.url()).toContain('/contracts?spec_type=ODPS');
       const hasContent =
-        (await page.locator('.odps-list-page').count()) > 0 ||
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').count()) > 0 ||
         (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });

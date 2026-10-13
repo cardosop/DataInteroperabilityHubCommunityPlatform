@@ -233,7 +233,7 @@ class TestServiceVersionsTest(TestCase):
     def test_database_driver_version_is_compatible(self):
         """Test that database driver version is compatible."""
         try:
-            import psycopg2  # noqa: F401
+            import psycopg2
 
             self.assertIsNotNone(psycopg2.__version__)
         except ImportError:
@@ -242,7 +242,7 @@ class TestServiceVersionsTest(TestCase):
     def test_redis_driver_version_is_compatible(self):
         """Test that Redis driver version is compatible."""
         try:
-            import redis  # noqa: F401
+            import redis
 
             self.assertIsNotNone(redis.__version__)
         except ImportError:

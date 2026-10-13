@@ -85,33 +85,33 @@ class FileResolutionTest(TestCase):
                 return
             except (ConnectionError, OSError):
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)  # noqa: sleep-needed — polling loop
+                    time.sleep(delay_seconds)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
 
     def _create_job(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            user=self.user,
-            job_type=JobType.COMPLIANCE_RUN,
-            resource_type="COMPLIANCE_RUN",
-            resource_id=str(uuid.uuid4()),
-            details_json={
+        defaults = {
+            "tenant": self.tenant,
+            "user": self.user,
+            "job_type": JobType.COMPLIANCE_RUN,
+            "resource_type": "COMPLIANCE_RUN",
+            "resource_id": str(uuid.uuid4()),
+            "details_json": {
                 "scan_mode": "internal",
                 "applicable_regulations": ["GDPR"],
             },
-            timeout_seconds=300,
-            executed_by_prefect=True,
-        )
+            "timeout_seconds": 300,
+            "executed_by_prefect": True,
+        }
         defaults.update(overrides)
         return create_job(**defaults)
 
     def _create_run(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            asset=self.asset,
-            job=self._create_job(),
-            status=ComplianceRunStatus.PENDING,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "asset": self.asset,
+            "job": self._create_job(),
+            "status": ComplianceRunStatus.PENDING,
+        }
         defaults.update(overrides)
         return ComplianceRun.objects.create(**defaults)
 
@@ -141,7 +141,7 @@ class FileResolutionTest(TestCase):
                 ComplianceRunStatus.SUCCEEDED,
                 ComplianceRunStatus.FAILED,
             ):
-                _time.sleep(1)  # noqa: sleep-needed — polling loop
+                _time.sleep(1)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
     # ----------------------------------------------------------------
     # 1. File resolved from direct file FK

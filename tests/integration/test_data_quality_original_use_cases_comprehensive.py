@@ -271,8 +271,9 @@ class UCDQ002ViewQualityResultsTest(DataQualityOriginalUseCasesTestBase):
         # acceptable as long as the response arrives within a reasonable time.
         self.assertIn(results_response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
         self.assertLess(
-            elapsed_time, 10000,
-            f"DQ results view took {elapsed_time:.0f}ms, exceeds 10000ms threshold"
+            elapsed_time,
+            10000,
+            f"DQ results view took {elapsed_time:.0f}ms, exceeds 10000ms threshold",
         )
 
 
@@ -448,8 +449,5 @@ class UCDQ008CompareQualityAcrossVersionsTest(DataQualityOriginalUseCasesTestBas
         self.assertEqual(runs_response.status_code, status.HTTP_200_OK)
         # Should return multiple runs for comparison
         runs_data = runs_response.data
-        if isinstance(runs_data, dict):
-            results = runs_data.get("results", [])
-        else:
-            results = runs_data
+        results = runs_data.get("results", []) if isinstance(runs_data, dict) else runs_data
         self.assertGreaterEqual(len(results), 3)

@@ -87,14 +87,18 @@ def _set_cleanup_metrics(*, deleted_count: int, skipped_with_activity_count: int
         from services.shared.metrics import (
             unverified_users_deleted_total,
             unverified_users_with_activity,
-        )  # type: ignore[attr-defined]  # prometheus_client Gauge.labels().set() — attr chain not visible to mypy
+        )  # prometheus_client Gauge.labels().set() — attr chain not visible to mypy
     except ImportError:
         return
 
-    unverified_users_deleted_total.labels(service="hub").set(  # type: ignore[attr-defined]  # prometheus_client Gauge.labels().set() chain
+    unverified_users_deleted_total.labels(
+        service="hub"
+    ).set(  # prometheus_client Gauge.labels().set() chain
         deleted_count
     )
-    unverified_users_with_activity.labels(service="hub").set(  # type: ignore[attr-defined]  # prometheus_client Gauge.labels().set() chain
+    unverified_users_with_activity.labels(
+        service="hub"
+    ).set(  # prometheus_client Gauge.labels().set() chain
         skipped_with_activity_count
     )
 
@@ -117,7 +121,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         from hub.apps.users.models import User
 
         retention_days = self._resolve_retention_days(explicit_days=opts.get("retention_days"))

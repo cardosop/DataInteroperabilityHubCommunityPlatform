@@ -73,7 +73,7 @@ def validate_and_enhance_specs():
 
             print("  ✅ File validated and enhanced")
 
-        except Exception as e:
+        except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e:
             errors.append(f"{spec_file}: {e}")
             print(f"  ❌ Error: {e}")
 
@@ -107,7 +107,7 @@ def enhance_schema_comprehensively(schema, schema_name):
     return enhanced
 
 
-def enhance_property_comprehensively(prop_schema, prop_name, parent_schema_name):
+def enhance_property_comprehensively(prop_schema, prop_name, _parent_schema_name):
     """Comprehensively enhance a property with validation rules, defaults, and examples."""
     enhanced = prop_schema.copy()
     prop_type = enhanced.get("type")

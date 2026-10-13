@@ -141,7 +141,7 @@ def test_real_token_payload_tampering_returns_401():
             payload_b64 + "=" * (4 - len(payload_b64) % 4)
         ).decode()
         payload = json.loads(payload_json)
-    except Exception:
+    except ValueError:
         pytest.skip("Could not decode real token payload")
 
     # Escalate privileges in the payload

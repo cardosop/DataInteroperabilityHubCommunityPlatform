@@ -34,11 +34,15 @@ standard ``api_error_response`` shape — the spec explicitly mandates
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from rest_framework import status
 from rest_framework.response import Response
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import get_request_tenant
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
 
 # Sentinel error_code values exposed on the 403 wire.  Test suite
 # imports these so a future rename surfaces in CI.

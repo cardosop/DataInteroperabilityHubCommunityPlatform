@@ -10,12 +10,13 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.db import connections
+from django.test import override_settings
 
 from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 # Optional channels import
 try:
-    from channels.db import database_sync_to_async
+    from channels.db import database_sync_to_async  # type: ignore[import-untyped]
 
     CHANNELS_AVAILABLE = True
 except ImportError:
@@ -130,9 +131,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
                 return False
             if isinstance(user, AnonymousUser):
                 return False
-            if user.id != self.user.id:
-                return False
-            return True
+            return user.id == self.user.id
         else:
             # Message-based auth: the middleware passes through unauthenticated
             # connections so the consumer can handle an ``authenticate`` message
@@ -144,10 +143,9 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
                 return False
             if scope.get("auth_method") != "pending_message_auth":
                 return False
-            if scope.get("user") is not None:
-                return False
-            return True
+            return scope.get("user") is None
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_extracts_token_from_query_params(self):
         """Test that middleware extracts JWT token from query parameters."""
 
@@ -180,6 +178,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_extracts_token_from_access_token_query_param(self):
         """Test that middleware extracts token from access_token query parameter."""
 
@@ -195,6 +194,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_passes_through_invalid_token_for_message_auth(self):
         """Test that middleware passes through invalid token (connection is NOT rejected —
         auth is deferred to message-based authenticate after accept)."""
@@ -227,6 +227,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_extracts_api_key_from_query_params(self):
         """Test that middleware extracts API key from query parameters."""
 
@@ -259,6 +260,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_passes_through_invalid_api_key_for_message_auth(self):
         """Test that middleware passes through invalid API key (connection is NOT rejected —
         auth is deferred to message-based authenticate after accept)."""
@@ -275,6 +277,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_passes_through_expired_api_key_for_message_auth(self):
         """Test that middleware passes through expired API key (connection is NOT rejected —
         auth is deferred to message-based authenticate after accept)."""
@@ -305,6 +308,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_prefers_jwt_over_api_key(self):
         """Test that middleware prefers JWT token over API key when both are provided."""
         # Ensure database connection is available before async call
@@ -334,6 +338,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_extracts_tenant_from_user(self):
         """Test that middleware extracts tenant from authenticated user."""
 
@@ -389,6 +394,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
+    @override_settings(WEBSOCKET_QUERY_PARAM_AUTH_DISABLED=False)
     def test_middleware_handles_url_encoded_tokens(self):
         """Test that middleware handles URL-encoded tokens correctly."""
         import urllib.parse

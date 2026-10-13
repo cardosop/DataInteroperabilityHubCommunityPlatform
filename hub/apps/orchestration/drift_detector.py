@@ -48,7 +48,7 @@ _WARNING_CHANGE_TYPES: frozenset[str] = frozenset(
 )
 
 # Compatible type widening — old_type → new_type is safe.
-_COMPATIBLE_WIDENING: set[Tuple[str, str]] = {
+_COMPATIBLE_WIDENING: set[tuple[str, str]] = {
     ("int", "bigint"),
     ("int", "float"),
     ("float", "double"),
@@ -173,7 +173,7 @@ class ContractDriftDetector:
                 },
             )
         except Exception as exc:
-            logger.error("drift_audit_failed", error=str(exc))
+            logger.exception("drift_audit_failed", error=str(exc))
 
         return count
 

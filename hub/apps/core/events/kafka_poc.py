@@ -158,8 +158,8 @@ class KafkaEventBus:
         try:
             validate_event_data(event_type, data)
         except Exception as e:
-            logger.error("kafka_event_validation_failed", event_type=event_type, error=str(e))
-            raise KafkaEventBusError(f"Event validation failed: {e}")
+            logger.exception("kafka_event_validation_failed", event_type=event_type, error=str(e))
+            raise KafkaEventBusError(f"Event validation failed: {e}") from e
 
         # Determine topic and partition key
         # Use event_type as partition key for ordering within event type
@@ -182,13 +182,13 @@ class KafkaEventBus:
                 offset=record_metadata.offset,
             )
 
-            return event_id
-
         except KafkaError as e:
-            logger.error(
+            logger.exception(
                 "kafka_event_publish_failed", event_id=event_id, event_type=event_type, error=str(e)
             )
-            raise KafkaEventBusError(f"Failed to publish event: {e}")
+            raise KafkaEventBusError(f"Failed to publish event: {e}") from e
+        else:
+            return event_id
 
     def _get_topic_for_event_type(self, event_type: str) -> str:
         """
@@ -197,7 +197,7 @@ class KafkaEventBus:
         Strategy: Use domain from event_type (e.g., 'contract.created' -> 'events.contract')
         """
         # Extract domain from event_type (e.g., 'contract.created' -> 'contract')
-        domain = event_type.split(".")[0] if "." in event_type else "default"
+        domain = event_type.split(".", maxsplit=1)[0] if "." in event_type else "default"
         return f"{self.topic_prefix}.{domain}"
 
     def subscribe(
@@ -312,7 +312,7 @@ class KafkaEventBus:
                             consumer.commit()
 
                         except Exception as e:
-                            logger.error(
+                            logger.exception(
                                 "kafka_event_processing_failed",
                                 subscriber_name=subscriber_name,
                                 topic=topic_partition.topic,

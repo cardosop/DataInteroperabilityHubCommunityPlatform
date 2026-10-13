@@ -120,7 +120,9 @@ class RetentionPolicyAPIIntegrationTest(TestCase):
         )
 
         initial_audit_count = AuditEvent.objects.filter(
-            resource_type="RETENTION_POLICY", action="RETENTION_POLICY_UPDATED"
+            resource_type="RETENTION_POLICY",
+            action="RETENTION_POLICY_UPDATED",
+            resource_id=str(policy.id),
         ).count()
 
         response = self.client.patch(
@@ -497,3 +499,49 @@ class RetentionPolicyAPIIntegrationTest(TestCase):
         updated_at_str = response.data["updated_at"]
         updated_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
         self.assertGreater(updated_at, original_updated_at)
+
+    def test_retention_dashboard_endpoint(self):
+        """GET /retention-policies/dashboard/ serves the 232.7 snapshot.
+
+        The frontend RetentionDashboardPage has called this path since
+        232.7 but the viewset never exposed it — the capability
+        ``compliance_retention_enforcer`` (path-derived) stayed false
+        and the SPA route gate bounced to /unavailable (b6 root cause).
+        """
+        response = self.client.get(
+            "/api/v1/governance/retention-policies/dashboard/", format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        for key in (
+            "generated_at",
+            "enabled_policies",
+            "awaiting_initial_tombstone",
+            "awaiting_hard_delete_after_grace",
+            "policies_under_legal_hold",
+            "autosweep_hard_delete_grace_days",
+            "audit_event_retention_overrides",
+        ):
+            self.assertIn(key, body, f"dashboard missing {key!r}")
+
+    def test_retention_quarterly_report_endpoint(self):
+        """GET /retention-policies/quarterly-report/?period=YYYY-Qn."""
+        response = self.client.get(
+            "/api/v1/governance/retention-policies/quarterly-report/",
+            {"period": "2026-Q3"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["year"], 2026)
+        self.assertEqual(body["quarter"], 3)
+        self.assertIn("tombstone_events_in_quarter", body)
+        self.assertIn("hard_delete_events_in_quarter", body)
+
+    def test_retention_quarterly_report_rejects_bad_period(self):
+        response = self.client.get(
+            "/api/v1/governance/retention-policies/quarterly-report/",
+            {"period": "not-a-period"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

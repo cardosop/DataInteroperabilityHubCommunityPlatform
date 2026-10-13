@@ -245,7 +245,7 @@ def enhance_openapi_spec(file_path: Path) -> bool:
 
 
 def enhance_operation(
-    operation: dict[str, Any], path: str, method: str, reqs: dict[str, Any], spec: dict[str, Any]
+    operation: dict[str, Any], _path: str, _method: str, reqs: dict[str, Any], _spec: dict[str, Any]
 ) -> bool:
     """Enhance a single operation with security requirements."""
     enhanced = False

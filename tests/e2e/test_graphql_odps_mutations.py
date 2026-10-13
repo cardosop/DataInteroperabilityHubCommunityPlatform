@@ -29,9 +29,10 @@ def _decode_relay_id(relay_id: str) -> str:
         return relay_id
     try:
         _type_name, decoded = graphql_relay.from_global_id(str(relay_id))
-        return decoded
     except (ValueError, TypeError):
         return relay_id
+    else:
+        return decoded
 
 
 class GraphQLODPSMutationsE2ETest(E2ETestBase):

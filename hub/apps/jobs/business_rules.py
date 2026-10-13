@@ -19,7 +19,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from django.db import DatabaseError
 from django.utils import timezone
+from redis.exceptions import RedisError
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -88,7 +90,7 @@ class JobsBusinessRules(BusinessRules):
         return "JobsBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -129,9 +131,13 @@ class JobsBusinessRules(BusinessRules):
                 user = user or context.metadata.get("user")
 
             # Also check context.resource
-            if not job and context and hasattr(context, "resource"):
-                if isinstance(context.resource, Job):
-                    job = context.resource
+            if (
+                not job
+                and context
+                and hasattr(context, "resource")
+                and isinstance(context.resource, Job)
+            ):
+                job = context.resource
 
         # Determine what to validate based on what's provided
         validation_type = kwargs.get("validation_type", "all")
@@ -767,7 +773,7 @@ class JobsBusinessRules(BusinessRules):
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_job_quota(self, job: Job, tenant: Any) -> ValidationResult:
+    def _validate_job_quota(self, _job: Job, tenant: Any) -> ValidationResult:
         """
         Validate job quota (tenant job quota not exceeded).
 
@@ -880,7 +886,7 @@ class JobsBusinessRules(BusinessRules):
             details["quota_valid"] = len(errors) == 0
             details["quota_validated"] = True
 
-        except Exception as e:
+        except (RedisError, DatabaseError) as e:
             logger.warning(
                 f"Job quota validation failed: {e!s}", extra={"tenant_id": tenant_id}, exc_info=True
             )
@@ -898,8 +904,8 @@ class JobsBusinessRules(BusinessRules):
         job: Job,
         current_status: str | None = None,
         new_status: str | None = None,
-        tenant: Any | None = None,
-        user: User | None = None,
+        _tenant: Any | None = None,
+        _user: User | None = None,
     ) -> ValidationResult:
         """
         Comprehensive job execution validation.

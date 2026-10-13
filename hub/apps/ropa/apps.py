@@ -8,4 +8,6 @@ class RopaConfig(AppConfig):
     verbose_name = "RoPA"
 
     def ready(self) -> None:
-        from hub.apps.ropa import signals  # noqa: F401
+        from hub.apps.ropa import (
+            signals,
+        )

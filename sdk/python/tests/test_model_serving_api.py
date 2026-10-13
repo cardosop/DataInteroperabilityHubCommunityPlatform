@@ -10,6 +10,7 @@ Comprehensive tests for ModelServingAPI class including:
 - Integration tests with real API endpoints (no mocks/stubs)
 - E2E tests for complete workflows
 """
+import contextlib
 import os
 import uuid
 
@@ -24,7 +25,6 @@ from datahub_interoperability.errors import (
 )
 from datahub_interoperability.model_serving import ModelServingAPI
 from tests.conftest import default_api_base_url, get_api_key, is_api_available
-import contextlib
 
 
 def _reset_odh_circuit_breaker():

@@ -102,7 +102,7 @@ class RotationReminderScanTest(TestCase):
         # No expiry
         self._make_key(expires_at=None)
 
-        counters = run_api_key_rotation_reminder_scan(now=now)
+        counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters["scanned"], 1)
         self.assertEqual(
             APIKey.objects.get(pk=active.pk).last_rotation_reminder_at.date(),
@@ -116,7 +116,7 @@ class RotationReminderScanTest(TestCase):
         self._make_key(expires_at=now + timedelta(days=30))
 
         with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
-            counters = run_api_key_rotation_reminder_scan(now=now)
+            counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
 
         self.assertEqual(counters["reminder_30d"], 1)
         mock_send.assert_called_once()
@@ -132,7 +132,7 @@ class RotationReminderScanTest(TestCase):
 
         # First scan: send 30d reminder (at 60 days out, 60 > 30 so nothing)
         # Actually at 60 days remaining, no threshold applies
-        counters1 = run_api_key_rotation_reminder_scan(now=now)
+        counters1 = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters1["scanned"], 1)
         # No reminder — 60 > 30
         api_key.refresh_from_db()
@@ -140,7 +140,7 @@ class RotationReminderScanTest(TestCase):
 
         # Advance to 25 days remaining — 30d threshold
         now2 = now + timedelta(days=35)
-        counters2 = run_api_key_rotation_reminder_scan(now=now2)
+        counters2 = run_api_key_rotation_reminder_scan(now=now2, tenant_id=str(self.tenant.id))
         self.assertEqual(counters2["reminder_30d"], 1)
         api_key.refresh_from_db()
         self.assertIsNotNone(api_key.last_rotation_reminder_at)
@@ -148,7 +148,7 @@ class RotationReminderScanTest(TestCase):
         # Advance to 14 days remaining — 14d threshold
         now3 = now + timedelta(days=46)
         with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
-            counters3 = run_api_key_rotation_reminder_scan(now=now3)
+            counters3 = run_api_key_rotation_reminder_scan(now=now3, tenant_id=str(self.tenant.id))
         self.assertEqual(counters3["reminder_14d"], 1)
         mock_send.assert_called_once()
         self.assertIn("14 day", mock_send.call_args.kwargs["subject"])
@@ -160,11 +160,11 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now + timedelta(days=7))
 
-        counters1 = run_api_key_rotation_reminder_scan(now=now)
+        counters1 = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters1["reminder_7d"], 1)
 
         # Same day, second scan
-        counters2 = run_api_key_rotation_reminder_scan(now=now)
+        counters2 = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters2["reminder_7d"], 0)
 
     @override_settings(API_KEY_ROTATION_REMINDER_DAYS=[30, 14, 7, 1])
@@ -175,7 +175,7 @@ class RotationReminderScanTest(TestCase):
         self._make_key(expires_at=now + timedelta(days=3))
 
         with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
-            counters = run_api_key_rotation_reminder_scan(now=now)
+            counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
 
         self.assertEqual(counters["reminder_7d"], 1)
         self.assertEqual(counters["reminder_30d"], 0)
@@ -189,7 +189,7 @@ class RotationReminderScanTest(TestCase):
         self._make_key(expires_at=now - timedelta(days=1))
 
         with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
-            counters = run_api_key_rotation_reminder_scan(now=now)
+            counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
 
         self.assertEqual(counters["expired"], 1)
         call_kwargs = mock_send.call_args.kwargs
@@ -201,10 +201,10 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now - timedelta(days=1))
 
-        counters1 = run_api_key_rotation_reminder_scan(now=now)
+        counters1 = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters1["expired"], 1)
 
-        counters2 = run_api_key_rotation_reminder_scan(now=now)
+        counters2 = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters2["expired"], 0)
         self.assertGreaterEqual(counters2["already_reminded"], 1)
 
@@ -220,13 +220,13 @@ class RotationReminderScanTest(TestCase):
             customer_email=None,
         )
 
-        counters = run_api_key_rotation_reminder_scan(now=now)
+        counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters["no_recipient"], 1)
         api_key.refresh_from_db()
         self.assertIsNotNone(api_key.last_rotation_reminder_at)
 
         # Second scan: already reminded
-        counters2 = run_api_key_rotation_reminder_scan(now=now)
+        counters2 = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters2["no_recipient"], 0)
 
     @override_settings(API_KEY_ROTATION_REMINDER_DAYS=[30, 14, 7, 1])
@@ -237,7 +237,7 @@ class RotationReminderScanTest(TestCase):
         self._make_key(expires_at=now + timedelta(days=30))
 
         # Day 0 (30 days out): exactly at the 30d window
-        counters = run_api_key_rotation_reminder_scan(now=now)
+        counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertEqual(counters["reminder_30d"], 1)
 
         # Advance to 14 days
@@ -261,7 +261,7 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now + timedelta(days=10))
 
-        counters = run_api_key_rotation_reminder_scan(now=now)
+        counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         self.assertIn("skipped (no thresholds configured)", counters)
 
     @override_settings(API_KEY_ROTATION_REMINDER_DAYS=[14, 7])
@@ -270,7 +270,7 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now + timedelta(days=30))
 
-        counters = run_api_key_rotation_reminder_scan(now=now)
+        counters = run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
         # 30 days remaining is > 14, so no reminder
         self.assertEqual(counters.get("reminder_14d", 0), 0)
 
@@ -294,7 +294,7 @@ class RotationReminderScanTest(TestCase):
             "hub.apps.notifications.tasks.send_email_async",
             side_effect=failing_send,
         ):
-            run_api_key_rotation_reminder_scan(now=now)
+            run_api_key_rotation_reminder_scan(now=now, tenant_id=str(self.tenant.id))
 
         # Both keys should be marked as reminded
         key_a.refresh_from_db()
@@ -366,12 +366,14 @@ class ManagementCommandTest(TestCase):
     def test_command_marks_job_failed_on_exception(self):
         Job.objects.filter(type=JobType.API_KEY_ROTATION_REMINDER).count()
 
-        with patch(
-            "hub.apps.auth.management.commands.api_key_rotation_reminder.run_api_key_rotation_reminder_scan",
-            side_effect=RuntimeError("DB connection lost"),
+        with (
+            patch(
+                "hub.apps.auth.management.commands.api_key_rotation_reminder.run_api_key_rotation_reminder_scan",
+                side_effect=RuntimeError("DB connection lost"),
+            ),
+            self.assertRaises(RuntimeError),
         ):
-            with self.assertRaises(RuntimeError):
-                call_command("api_key_rotation_reminder")
+            call_command("api_key_rotation_reminder")
 
         job = Job.objects.filter(type=JobType.API_KEY_ROTATION_REMINDER).latest("created_at")
         self.assertEqual(job.status, "FAILED")

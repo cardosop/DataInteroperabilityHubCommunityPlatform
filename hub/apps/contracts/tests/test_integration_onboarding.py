@@ -18,6 +18,7 @@ import boto3
 import pytest
 from django.conf import settings
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -30,7 +31,7 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQRun, DQRunStatus
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.service_utils import check_service_health
 
@@ -119,7 +120,6 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                 "key": "test-asset",
                 "name": "Test Asset",
                 "description": "Test description",
-                "visibility": "INTERNAL",
             },
             format="json",
         )
@@ -169,6 +169,15 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
         )
         self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
 
+        # The malware scan enqueues via transaction.on_commit, which never
+        # fires under TestCase's outer atomic — model the post-scan state
+        # so the dataset source gate sees a clean file. The scan pipeline
+        # itself is covered by the files virus-scan E2E suite.
+        file_obj.refresh_from_db()
+        file_obj.scan_status = FileScanStatus.CLEAN
+        file_obj.scanned_at = timezone.now()
+        file_obj.save(update_fields=["scan_status", "scanned_at", "updated_at"])
+
         # Step 4: Create dataset from file (uses real MinIO)
         dataset_response = self.client.post(
             "/api/v1/datasets/", {"file_id": file_id, "asset_id": asset_id}, format="json"
@@ -206,7 +215,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                     break
             except ComplianceRun.DoesNotExist:
                 pass
-            time.sleep(0.5)  # noqa: sleep-needed — polling loop
+            time.sleep(0.5)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         # If real service didn't finish in time, set status manually so the
         # rest of the onboarding flow can be exercised. The compliance service
@@ -252,7 +261,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                     break
             except DQRun.DoesNotExist:
                 pass
-            time.sleep(0.5)  # noqa: sleep-needed — polling loop
+            time.sleep(0.5)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         # If real service didn't finish in time, set status manually so the
         # rest of the onboarding flow can be exercised.
@@ -354,7 +363,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
         # Create asset
         asset_response = self.client.post(
             "/api/v1/assets/",
-            {"key": "test-asset", "name": "Test Asset", "visibility": "INTERNAL"},
+            {"key": "test-asset", "name": "Test Asset"},
             format="json",
         )
         asset_id = asset_response.data["id"]
@@ -395,7 +404,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                 ContentType="text/csv",
             )
         except Exception as e:
-            raise unittest.SkipTest(f"MinIO not available: {e!s}")
+            raise unittest.SkipTest(f"MinIO not available: {e!s}") from e
 
         self.client.post(
             f"/api/v1/files/{file_id}/complete/",
@@ -417,7 +426,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                     ComplianceRunStatus.FAILED,
                 ]:
                     break
-                time.sleep(0.5)  # noqa: sleep-needed — polling loop
+                time.sleep(0.5)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             # If service didn't finish in time, set manually — this test focuses on
             # the compliance-failure flow, not the service's processing speed.
@@ -518,7 +527,7 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
         # Step 1: Create asset
         asset_response = self.client.post(
             "/api/v1/assets/",
-            {"key": "test-asset", "name": "Test Asset", "visibility": "INTERNAL"},
+            {"key": "test-asset", "name": "Test Asset"},
             format="json",
         )
         asset_id = asset_response.data["id"]
@@ -588,6 +597,15 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
             file_obj.content_sha256 = content_sha256
             file_obj.save(update_fields=["status", "content_sha256", "updated_at"])
 
+        # The malware scan enqueues via transaction.on_commit, which never
+        # fires under TestCase's outer atomic — model the post-scan state
+        # so the dataset source gate sees a clean file. The scan pipeline
+        # itself is covered by the files virus-scan E2E suite.
+        file_obj.refresh_from_db()
+        file_obj.scan_status = FileScanStatus.CLEAN
+        file_obj.scanned_at = timezone.now()
+        file_obj.save(update_fields=["scan_status", "scanned_at", "updated_at"])
+
         # Step 6: Create dataset from file (uses real MinIO)
         # File should already be uploaded to MinIO from complete_file_upload
         dataset_response = self.client.post(
@@ -630,7 +648,7 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
                 ComplianceRunStatus.FAILED,
             ] and dq_run.status in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
                 break
-            time.sleep(0.5)  # noqa: sleep-needed — polling loop
+            time.sleep(0.5)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
         # If services didn't finish, set statuses manually so the rest of the
         # onboarding flow can be exercised.
@@ -732,7 +750,7 @@ class ContractOnlyOnboardingTest(ContractsAPITestBase):
         # Step 1: Create asset
         asset_response = self.client.post(
             "/api/v1/assets/",
-            {"key": "test-asset", "name": "Test Asset", "visibility": "INTERNAL"},
+            {"key": "test-asset", "name": "Test Asset"},
             format="json",
         )
         asset_id = asset_response.data["id"]

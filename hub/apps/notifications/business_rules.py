@@ -19,6 +19,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from django.core.exceptions import ImproperlyConfigured
+from django.template import TemplateDoesNotExist, TemplateSyntaxError
+
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
@@ -90,7 +93,7 @@ class NotificationsBusinessRules(BusinessRules):
         return "NotificationsBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -529,7 +532,7 @@ class NotificationsBusinessRules(BusinessRules):
             get_template(template_name)
             details["template_exists"] = True
             details["template_loaded"] = True
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             errors.append(f"Template '{template_name}' cannot be loaded: {e!s}")
             details["template_exists"] = False
             details["template_loaded"] = False
@@ -620,7 +623,7 @@ class NotificationsBusinessRules(BusinessRules):
 
             # Validate Django template syntax (basic check)
             try:
-                from django.template import Template, TemplateSyntaxError
+                from django.template import Template
 
                 Template(template_source)
                 details["syntax_valid"] = True
@@ -633,7 +636,7 @@ class NotificationsBusinessRules(BusinessRules):
                 details["syntax_valid"] = None
                 details["syntax_error"] = str(e)
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, ValueError, ImproperlyConfigured) as e:
             warnings.append(f"Could not read template source: {e!s}")
             details["has_source"] = False
             details["source_error"] = str(e)
@@ -683,7 +686,7 @@ class NotificationsBusinessRules(BusinessRules):
             rendered = render_to_string(template_name, context)
             details["rendered_successfully"] = True
             details["rendered_length"] = len(rendered)
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             # Check if error is due to missing variables
             error_str = str(e).lower()
             if "variable" in error_str or "undefined" in error_str:
@@ -764,7 +767,7 @@ class NotificationsBusinessRules(BusinessRules):
 
             details["variables_validated"] = True
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, ValueError, ImproperlyConfigured) as e:
             warnings.append(f"Could not extract variables from template: {e!s}")
             details["variables_validated"] = False
             details["variable_extraction_error"] = str(e)
@@ -810,7 +813,7 @@ class NotificationsBusinessRules(BusinessRules):
             rendered = render_to_string(template_name, context)
             details["rendered_successfully"] = True
             details["rendered_length"] = len(rendered)
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             errors.append(f"Template '{template_name}' rendering failed: {e!s}")
             details["rendered_successfully"] = False
             details["render_error"] = str(e)
@@ -927,7 +930,7 @@ class NotificationsBusinessRules(BusinessRules):
             rendered = render_to_string(template_name, context)
             details["rendered_successfully"] = True
             details["rendered_length"] = len(rendered)
-        except Exception as e:
+        except (TemplateDoesNotExist, TemplateSyntaxError, ImproperlyConfigured) as e:
             errors.append(f"Template '{template_name}' rendering failed: {e!s}")
             details["rendered_successfully"] = False
             details["render_error"] = str(e)
@@ -1909,7 +1912,9 @@ class NotificationsBusinessRules(BusinessRules):
         # Handle Django TextChoices enum values
         if hasattr(email_type, "value") and not isinstance(email_type, str):
             # It's an enum, get the value
-            email_type = getattr(email_type, "value", str(email_type))  # type: ignore[attr-defined]  # string-or-enum union branch; mypy narrows to str
+            email_type = getattr(
+                email_type, "value", str(email_type)
+            )  # string-or-enum union branch; mypy narrows to str
         elif isinstance(email_type, tuple):
             # It's a tuple (choice value, label)
             email_type = email_type[0] if len(email_type) > 0 else str(email_type)

@@ -116,7 +116,6 @@ class WorkflowRegistry:
                 logger.debug(f"Workflow {workflow_name} version {version} found in process cache")
                 dependencies = dsl_json.get("dependencies", [])
                 self._update_dependency_graph(workflow_name, dependencies)
-                return cached
             except WorkflowDefinition.DoesNotExist:
                 # Row was deleted / rolled back — evict and re-create.
                 logger.debug(
@@ -124,6 +123,8 @@ class WorkflowRegistry:
                 )
                 _process_workflow_cache.pop(proc_key, None)
                 self._workflow_cache.pop(proc_key, None)
+            else:
+                return cached
 
         # ── Instance cache ────────────────────────────────────────────
         cache_key = f"{workflow_name}:{version}"
@@ -136,11 +137,12 @@ class WorkflowRegistry:
                 _process_workflow_cache[proc_key] = cached_workflow
                 dependencies = dsl_json.get("dependencies", [])
                 self._update_dependency_graph(workflow_name, dependencies)
-                return cached_workflow
             except WorkflowDefinition.DoesNotExist:
                 # Workflow was deleted, remove from cache
                 del self._workflow_cache[cache_key]
                 _process_workflow_cache.pop(proc_key, None)
+            else:
+                return cached_workflow
 
         # Check if workflow already exists (idempotent check)
         # Use select_for_update with skip_locked=True to avoid blocking on concurrent registrations
@@ -158,7 +160,9 @@ class WorkflowRegistry:
             # completely silent.
             logger.debug(
                 "select_for_update fallback for workflow %s v%s: %s",
-                workflow_name, version, select_err,
+                workflow_name,
+                version,
+                select_err,
             )
             existing = WorkflowDefinition.objects.filter(
                 name=workflow_name, version=version
@@ -349,9 +353,9 @@ class WorkflowRegistry:
                 raise ConflictError(
                     f"Workflow {workflow_name} version {version} was reported as existing but cannot be retrieved. "
                     f"This is likely a transaction isolation issue. The workflow exists and will be available shortly."
-                )
+                ) from None
             else:
-                logger.error(
+                logger.exception(
                     f"Unexpected {type(e).__name__} during workflow creation "
                     f"(not an already-exists or lock error): {error_msg}"
                 )

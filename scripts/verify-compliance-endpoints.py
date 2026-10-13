@@ -10,9 +10,11 @@ It searches for old patterns and verifies all consumers are using the new patter
 
 import json
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 
 @dataclass
@@ -44,7 +46,7 @@ class ComplianceEndpointVerifier:
     """Verifies compliance endpoint usage across the codebase"""
 
     # Old patterns to search for (various forms)
-    OLD_PATTERNS = [
+    OLD_PATTERNS: ClassVar[list[str]] = [
         r"compliance/compliance-runs",
         r"compliance-runs",
         r"compliance/compliance_runs",
@@ -57,7 +59,7 @@ class ComplianceEndpointVerifier:
     NEW_PATTERN = r"compliance/runs"
 
     # Consumer locations to check
-    CONSUMER_LOCATIONS = {
+    CONSUMER_LOCATIONS: ClassVar[dict[str, str | list[str]]] = {
         "cli": "cli/datahub_cli/commands/",
         "sdk_js": "sdk/js/src/",
         "service_clients": "hub/apps/api/utils/service_clients.py",
@@ -70,7 +72,7 @@ class ComplianceEndpointVerifier:
     }
 
     # Files to exclude from search
-    EXCLUDE_PATTERNS = [
+    EXCLUDE_PATTERNS: ClassVar[list[str]] = [
         r"\.pyc$",
         r"__pycache__",
         r"\.git",
@@ -92,7 +94,7 @@ class ComplianceEndpointVerifier:
     ]
 
     # Patterns that indicate a negative assertion (checking for absence)
-    NEGATIVE_ASSERTION_PATTERNS = [
+    NEGATIVE_ASSERTION_PATTERNS: ClassVar[list[str]] = [
         r"not\.toContain",
         r"not\.toMatch",
         r"not\.toHave",
@@ -103,7 +105,7 @@ class ComplianceEndpointVerifier:
     ]
 
     # Patterns that indicate metrics (not API endpoints)
-    METRICS_PATTERNS = [
+    METRICS_PATTERNS: ClassVar[list[str]] = [
         r"_total",
         r"_count",
         r"_gauge",
@@ -116,7 +118,7 @@ class ComplianceEndpointVerifier:
     ]
 
     # Patterns that indicate test function names or variable names (not API endpoints)
-    TEST_FUNCTION_PATTERNS = [
+    TEST_FUNCTION_PATTERNS: ClassVar[list[str]] = [
         r"def test_",
         r"def _\w*compliance",
         r"class Test",
@@ -128,7 +130,7 @@ class ComplianceEndpointVerifier:
         r"report_data\[",
     ]
 
-    def __init__(self, root_dir: str = None):
+    def __init__(self, root_dir: str | None = None):
         """Initialize verifier"""
         if root_dir is None:
             root_dir = Path(__file__).parent.parent
@@ -139,10 +141,7 @@ class ComplianceEndpointVerifier:
     def should_exclude_file(self, file_path: Path) -> bool:
         """Check if file should be excluded from search"""
         file_str = str(file_path)
-        for pattern in self.EXCLUDE_PATTERNS:
-            if re.search(pattern, file_str):
-                return True
-        return False
+        return any(re.search(pattern, file_str) for pattern in self.EXCLUDE_PATTERNS)
 
     def is_negative_assertion(self, line: str) -> bool:
         """Check if line is a negative assertion (checking for absence)"""
@@ -153,10 +152,7 @@ class ComplianceEndpointVerifier:
 
     def is_metrics_reference(self, line: str) -> bool:
         """Check if line is a metrics reference (not an API endpoint)"""
-        for pattern in self.METRICS_PATTERNS:
-            if re.search(pattern, line, re.IGNORECASE):
-                return True
-        return False
+        return any(re.search(pattern, line, re.IGNORECASE) for pattern in self.METRICS_PATTERNS)
 
     def is_test_function_name(self, line: str) -> bool:
         """Check if line is a test function name (not an API endpoint)"""
@@ -246,7 +242,7 @@ class ComplianceEndpointVerifier:
                             context=self._get_context(file_path, line_num),
                         )
                         references.append(ref)
-        except Exception as e:
+        except OSError as e:
             print(f"Error reading {file_path}: {e}")
 
         return references
@@ -260,7 +256,7 @@ class ComplianceEndpointVerifier:
                 end = min(len(lines), line_num + context_lines)
                 context = "".join(lines[start:end])
                 return context
-        except:
+        except OSError:
             return ""
 
     def search_codebase(self) -> list[EndpointReference]:
@@ -558,9 +554,9 @@ def main():
 
     # Exit with error code if verification failed
     if report["summary"]["verification_status"] == "FAIL":
-        exit(1)
+        sys.exit(1)
     else:
-        exit(0)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

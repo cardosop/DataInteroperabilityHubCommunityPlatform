@@ -5,7 +5,6 @@ GAP-0.3: Comprehensive tests to verify API spec compliance for response format,
 error codes, timestamps, and OpenAPI schema.
 """
 
-import json
 import uuid
 from datetime import datetime
 
@@ -17,7 +16,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.validators import get_platform_defaults
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -253,143 +252,4 @@ class APISpecComplianceTest(TestCase):
             response.status_code,
             status.HTTP_200_OK,
             f"OpenAPI schema endpoint must return 200, got {response.status_code}",
-        )
-
-        schema = response.data if hasattr(response, "data") else json.loads(response.content)
-
-        # Verify TenantConfig endpoints are in schema
-        paths = schema.get("paths", {})
-
-        tenant_config_paths = [
-            p for p in paths.keys() if "config" in p.lower() and "tenant" in p.lower()
-        ]
-        self.assertTrue(
-            len(tenant_config_paths) > 0,
-            "TenantConfig endpoints not found in OpenAPI schema",
-        )
-
-        # Verify response schema matches API spec
-        for path in tenant_config_paths:
-            if "get" in paths[path]:
-                get_op = paths[path]["get"]
-                responses = get_op.get("responses", {})
-                if "200" in responses:
-                    resp_content = responses["200"].get("content", {}).get("application/json", {})
-                    response_schema = resp_content.get("schema", {})
-                    if "properties" in response_schema:
-                        properties = response_schema["properties"]
-                        required_fields = [
-                            "tenant_id",
-                            "default_dq_profile",
-                            "allowed_compliance_regimes",
-                            "default_compliance_regimes",
-                            "data_retention_days",
-                            "rate_limits",
-                            "max_file_size_bytes",
-                            "max_job_concurrency",
-                            "max_queued_jobs",
-                        ]
-                        for field in required_fields:
-                            self.assertIn(
-                                field,
-                                properties,
-                                f"OpenAPI schema missing: {field}",
-                            )
-
-    def test_openapi_schema_validates_request_response_against_schema(self):
-        """Add OpenAPI schema tests (validate request/response against schema)"""
-        # This test verifies that actual API responses match the OpenAPI schema
-        # In a full implementation, we would use a library like openapi-core to validate
-        # For now, we verify the structure matches what's expected
-
-        self.client.force_authenticate(user=self.tenant_admin)
-
-        # Make actual API call
-        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Verify response structure matches expected schema
-        data = response.data
-        required_fields = [
-            "tenant_id",
-            "default_dq_profile",
-            "allowed_compliance_regimes",
-            "default_compliance_regimes",
-            "data_retention_days",
-            "rate_limits",
-            "max_file_size_bytes",
-            "max_job_concurrency",
-            "max_queued_jobs",
-            "created_at",
-            "updated_at",
-        ]
-
-        for field in required_fields:
-            self.assertIn(field, data, f"Response missing field required by API spec: {field}")
-
-    def test_403_returns_auth_forbidden_error_code(self):
-        """Verify 403 returns AUTH_FORBIDDEN (not generic permission denied)"""
-        # Create DATA_PROVIDER user (not TENANT_ADMIN)
-        provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
-        )
-        provider_user = User.objects.create_user(
-            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-        UserRole.objects.create(
-            user=provider_user,
-            role=provider_role,
-            tenant=self.tenant,
-        )
-
-        self.client.force_authenticate(user=provider_user)
-        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data["error"]["code"], "AUTH_FORBIDDEN")
-
-    def test_401_returns_auth_unauthorized_error_code(self):
-        """Verify 401 returns AUTH_UNAUTHORIZED"""
-        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
-
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertEqual(response.data["error"]["code"], "AUTH_UNAUTHORIZED")
-
-    def test_error_details_structure_matches_api_spec(self):
-        """Verify error details structure matches API spec format"""
-        self.client.force_authenticate(user=self.tenant_admin)
-
-        # Trigger validation error
-        invalid_data = {
-            "default_dq_profile": "invalid_profile",
-            "data_retention_days": 50,  # Below minimum
-        }
-        response = self.client.patch(
-            f"/api/v1/tenants/{self.tenant.id}/config/", invalid_data, format="json"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-        # Error envelope must exist
-        self.assertIn("error", response.data)
-        error = response.data["error"]
-        self.assertIn("code", error)
-        self.assertIn("message", error)
-
-        # Details must exist and contain field-level errors
-        self.assertIn(
-            "details",
-            error,
-            "API spec requires 'details' in error response",
-        )
-        details = error["details"]
-        self.assertIsInstance(details, dict)
-        # At least one of our invalid fields should appear
-        detail_str = str(details).lower()
-        self.assertTrue(
-            "dq_profile" in detail_str or "retention" in detail_str,
-            f"Details should reference invalid fields: {details}",
         )

@@ -1,5 +1,5 @@
 """
-Phase J — Management Command Tests (TR.J.1–J.4).
+Phase J — Management Command Tests (TR.J.1-J.4).
 
 Risk classification and pytest tests for data-mutating management commands.
 """
@@ -81,7 +81,9 @@ _COMMAND_RISK = {
     "seed_contract_lineage": "medium",
     "seed_demo_data": "medium",
     "warm_cache": "medium",
-    "process_event_outbox": "medium",
+    # process_event_outbox retired with the event_outbox table (core 0005
+    # DeleteModel — U.7 rehearsal); superseded by the Event store +
+    # write-behind buffer.
     "process_dlq": "medium",
     "replay_events": "medium",
     "process_workflows": "medium",
@@ -152,7 +154,8 @@ _COMMAND_RISK = {
     "detect_stuck_dq_compliance_runs": "none",
     "report_workflow_post_deployment_metrics": "none",
 }
-# Total: 124 commands classified (31 high + 75 medium + 10 low + 8 none)
+# Total: 123 commands classified (31 high + 74 medium + 10 low + 8 none)
+# — process_event_outbox removed with the event_outbox table (core 0005).
 
 
 # ── TR.J.2 — High-risk command tests ────────────────────────────────────

@@ -95,7 +95,9 @@ describe('<MvpGatedRoute>', () => {
 
   it('redirects each newly-gated path added in PR 3', () => {
     mockedIsMvpModeEnabled.mockReturnValue(true);
-    for (const p of ['/search', '/developer', '/observability']) {
+    // '/search' removed — Phase 273.1 made /search permanently
+    // MVP-in-scope (see docs/mvp-gate.md and hub/api/mvp_mode.py).
+    for (const p of ['/developer', '/observability']) {
       const { unmount } = renderAt(p);
       expect(
         screen.getByTestId('coming-soon'),

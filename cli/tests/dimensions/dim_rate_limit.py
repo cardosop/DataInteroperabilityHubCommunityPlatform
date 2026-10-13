@@ -87,7 +87,7 @@ def test_backoff_resolves_after_waiting():
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", "2"))
-            time.sleep(min(wait, 10))
+            time.sleep(min(wait, 10))  # INTENTIONAL: rate-limit backoff
             retry = requests.get(url, headers=headers, timeout=10)
             assert retry.status_code == 200, f"After backoff, still got {retry.status_code}"
             return

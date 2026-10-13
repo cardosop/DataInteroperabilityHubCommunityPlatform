@@ -6,7 +6,7 @@ All create/update/delete paths call DQBusinessRules before mutation.
 """
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from django.db import transaction
 from django.utils import timezone
@@ -148,7 +148,7 @@ class DQService(BaseService):
     # Phase 250.1.A.2 — fail-closed-at-intake in-memory DQ scan
     # ------------------------------------------------------------------
 
-    _FORMAT_BY_CONTENT_TYPE = {
+    _FORMAT_BY_CONTENT_TYPE: ClassVar[dict[str, str]] = {
         "text/csv": "csv",
         "application/csv": "csv",
         "application/json": "json",
@@ -157,7 +157,7 @@ class DQService(BaseService):
         "application/parquet": "parquet",
         "application/x-parquet": "parquet",
     }
-    _FORMAT_BY_EXTENSION = {
+    _FORMAT_BY_EXTENSION: ClassVar[dict[str, str]] = {
         "csv": "csv",
         "json": "json",
         "ndjson": "json",
@@ -252,7 +252,7 @@ class DQService(BaseService):
                     "file_id": str(file_id),
                     "tenant_id": str(tenant.id),
                 },
-            )
+            ) from None
 
         actor = user or file_obj.created_by
         effective_correlation_id = correlation_id or str(file_obj.id)
@@ -389,6 +389,26 @@ class DQService(BaseService):
                 ]
             )
 
+            # W1.19 — convention 8: a compiler SQL-safety rejection emits
+            # its audit event (best-effort; the details carry the code,
+            # never the payload).
+            from hub.apps.dq.sql_safety import SQLSafetyError
+
+            if isinstance(exc, SQLSafetyError):
+                try:
+                    from hub.apps.audit.utils import create_audit_event
+
+                    create_audit_event(
+                        resource_type="DQ_RUN",
+                        action="DQ_WAREHOUSE_SQL_SAFETY_REJECTED",
+                        tenant=tenant,
+                        resource_id=str(run.id),
+                        result="REJECTED",
+                        details={"code": "SQL_SAFETY_REJECTED"},
+                    )
+                except Exception:
+                    logger.warning("dq_sql_safety_audit_failed", exc_info=True)
+
         run.refresh_from_db()
         return run
 
@@ -417,7 +437,6 @@ class DQService(BaseService):
                 is missing.
             DQRun.DoesNotExist: *run_id* not found.
         """
-        from hub.apps.tenants.models import Tenant
 
         dq_run = DQRun.objects.get(id=run_id)
         tenant = dq_run.tenant
@@ -483,6 +502,7 @@ class DQService(BaseService):
                 warehouse_config=warehouse_config,
                 user=None,
                 correlation_id=str(run_id),
+                sample_limit=(dq_run.details_json or {}).get("sample_limit"),
             )
         except Exception as _exc:
             # Programming errors MUST propagate — they indicate bugs,
@@ -530,6 +550,7 @@ class DQService(BaseService):
         user=None,
         correlation_id=None,
         asset=None,
+        sample_limit=None,
     ) -> DQRun:
         """Run DQ checks directly in the customer's warehouse via SQL pushdown.
 
@@ -600,6 +621,9 @@ class DQService(BaseService):
             "warehouse_config": warehouse_config,
             "status": DQRunStatus.RUNNING,
             "started_at": timezone.now(),
+            # Phase 275.E.1 — sampled DQ (LIMIT N) is distinguishable from
+            # a full scan in telemetry, audit, and plan metering.
+            "sampled": bool(sample_limit),
         }
         if dataset is not None:
             run_kwargs["dataset"] = dataset
@@ -630,7 +654,14 @@ class DQService(BaseService):
             connector.connect()
             try:
                 for c in compiled:
-                    rows, _cols = connector.execute_query(c.sql)
+                    sql = c.sql
+                    if sample_limit:
+                        # Cap the scan at N rows (Phase 275.E.1).  Only
+                        # applied when the compiled SQL has no LIMIT of its
+                        # own — the compiler owns ordering/clauses.
+                        if "limit" not in sql.lower():
+                            sql = f"{sql} LIMIT {int(sample_limit)}"
+                    rows, _cols = connector.execute_query(sql)
                     passed = rows[0][0] == 0 if rows else True
                     results.append(
                         {
@@ -662,6 +693,7 @@ class DQService(BaseService):
                 "engine_type": f"{warehouse_type}_warehouse_sql",
                 "warehouse_type": warehouse_type,
                 "warehouse_table": warehouse_config.get("table_fqn"),
+                "sample_limit": sample_limit,
                 "checks_count": total_checks,
                 "passed_checks": passed_checks,
                 "metering": {
@@ -801,6 +833,7 @@ class DQService(BaseService):
         dataset_id: str | None = None,
         file_id: str | None = None,
         profile_key: str | None = None,
+        sample_limit: int | None = None,
         tenant=None,
         user=None,
         asset=None,
@@ -856,7 +889,7 @@ class DQService(BaseService):
                     "Asset not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"asset_id": asset_id},
-                )
+                ) from None
         if dataset is None and dataset_id:
             try:
                 dataset = Dataset.objects.get(id=dataset_id, tenant_id=tenant_id)
@@ -865,7 +898,7 @@ class DQService(BaseService):
                     "Dataset not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"dataset_id": dataset_id},
-                )
+                ) from None
             if asset and dataset.asset != asset:
                 raise ValidationError(
                     "Dataset does not belong to the specified asset",
@@ -879,7 +912,7 @@ class DQService(BaseService):
                     "File not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"file_id": file_id},
-                )
+                ) from None
 
         profile_key = profile_key or get_tenant_dq_profile(tenant_id)
         # Phase 240.3.A.8 — engine resolution lives in the
@@ -933,6 +966,9 @@ class DQService(BaseService):
             profile_key=profile_key,
             engine=engine,
             status=DQRunStatus.PENDING,
+            # Phase 275.E.1 — sampled DQ (LIMIT N) distinguishable from full scan.
+            sampled=bool(sample_limit),
+            details_json={"sample_limit": sample_limit} if sample_limit else None,
         )
         job.resource_id = str(dq_run.id)
         job.details_json["dq_run_id"] = str(dq_run.id)

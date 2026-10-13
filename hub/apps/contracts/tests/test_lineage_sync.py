@@ -22,6 +22,7 @@ boundary the spec explicitly requires fail-soft semantics for.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import timedelta
 from unittest import mock
@@ -241,7 +242,7 @@ class TestSignalRunsOnCommitOnly(ContractsTransactionTestBase):
         tenant = _create_tenant()
         upstream = _create_contract(tenant)
 
-        try:
+        def _create_and_force_rollback():
             with transaction.atomic():
                 _create_contract(
                     tenant,
@@ -256,8 +257,9 @@ class TestSignalRunsOnCommitOnly(ContractsTransactionTestBase):
                 # Force rollback. The handler registered via on_commit
                 # MUST NOT fire because the transaction did not commit.
                 raise RuntimeError("intentional rollback")
-        except RuntimeError:
-            pass
+
+        with contextlib.suppress(RuntimeError):
+            _create_and_force_rollback()
 
         # The contract row itself rolled back too (since we created it
         # inside the atomic block), but ALSO assert no orphan edges.

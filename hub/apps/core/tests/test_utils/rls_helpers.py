@@ -8,10 +8,12 @@ are correctly enforced across all tenant-scoped models.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 from django.db import connection, models, transaction
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 
 @contextmanager

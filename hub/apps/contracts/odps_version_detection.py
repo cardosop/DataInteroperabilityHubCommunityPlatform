@@ -17,6 +17,11 @@ from typing import Any
 # Pattern to extract version from Bitol ODPS schema URL
 _BITOL_VERSION_PATTERN = re.compile(r"bitol-io\.github\.io/open-data-product-standard/v([\d.]+)")
 
+# Exact minor versions supported for ODPS 4.x
+_FOUR_MINOR_CODES = {2: "4.2", 1: "4.1", 0: "4.0"}
+# Default grouped version code per supported major
+_MAJOR_CODES = {3: "3.x", 2: "2.x", 1: "1.x"}
+
 
 def detect_odps_version(contract_data: dict[str, Any]) -> str:
     """
@@ -178,6 +183,37 @@ def _normalize_version_from_field(version_field: Any) -> str:
     return _normalize_version_string(version_str)
 
 
+def _normalize_two_component_version(major_str: str, minor_str: str) -> str:
+    """
+    Normalize a two-component version (major.minor) to a supported code.
+
+    Args:
+        major_str: Major version component as string
+        minor_str: Minor version component as string
+
+    Returns:
+        Normalized version string or "unknown"
+    """
+    try:
+        major = int(major_str)
+
+        # Check if minor is a number or "x"
+        if minor_str.lower() == "x":
+            return f"{major}.x"
+
+        minor = int(minor_str)
+    except (ValueError, IndexError):
+        return "unknown"
+
+    # Normalize to supported versions
+    if major == 4:
+        # 4.2, 4.1, and 4.0 are exact versions;
+        # other 4.x versions -> "4.2" (latest supported)
+        return _FOUR_MINOR_CODES.get(minor, "4.2")
+    # 3.x, 2.x, and 1.x are grouped; unsupported majors -> "unknown"
+    return _MAJOR_CODES.get(major, "unknown")
+
+
 def _normalize_version_string(version_str: str) -> str:
     """
     Normalize version string to supported format.
@@ -202,7 +238,7 @@ def _normalize_version_string(version_str: str) -> str:
     version_str = version_str.strip()
 
     # Remove "v" prefix if present
-    if version_str.startswith("v") or version_str.startswith("V"):
+    if version_str.startswith(("v", "V")):
         version_str = version_str[1:]
 
     # Parse version components
@@ -211,44 +247,9 @@ def _normalize_version_string(version_str: str) -> str:
         # Try to parse as single number (e.g., "4" -> "4.0")
         try:
             major = int(parts[0])
-            return f"{major}.0"
         except (ValueError, IndexError):
             return "unknown"
-
-    try:
-        major = int(parts[0])
-        minor_str = parts[1]
-
-        # Check if minor is a number or "x"
-        if minor_str.lower() == "x":
-            return f"{major}.x"
-
-        minor = int(minor_str)
-
-        # Normalize to supported versions
-        if major == 4:
-            # 4.2, 4.1, and 4.0 are exact versions
-            if minor == 2:
-                return "4.2"
-            elif minor == 1:
-                return "4.1"
-            elif minor == 0:
-                return "4.0"
-            else:
-                # Other 4.x versions -> "4.2" (latest supported)
-                return "4.2"
-        elif major == 3:
-            # All 3.x versions -> "3.x"
-            return "3.x"
-        elif major == 2:
-            # All 2.x versions -> "2.x"
-            return "2.x"
-        elif major == 1:
-            # All 1.x versions -> "1.x"
-            return "1.x"
         else:
-            # Unsupported major version
-            return "unknown"
+            return f"{major}.0"
 
-    except (ValueError, IndexError):
-        return "unknown"
+    return _normalize_two_component_version(parts[0], parts[1])

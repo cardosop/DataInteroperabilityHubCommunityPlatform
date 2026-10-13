@@ -54,7 +54,7 @@ def verify_ingest_key(plaintext: str, key_hash: str) -> bool:
 
     try:
         return bcrypt.checkpw(plaintext.encode("utf-8"), key_hash.encode("utf-8"))
-    except Exception:
+    except ValueError:
         return False
 
 
@@ -173,9 +173,7 @@ class OpenLineageIngestApiKey(models.Model):
         n = now or timezone.now()
         if self.revoked_at is not None:
             return False
-        if self.expires_at is not None and self.expires_at <= n:
-            return False
-        return True
+        return not (self.expires_at is not None and self.expires_at <= n)
 
 
 class OpenLineageDeadLetter(models.Model):

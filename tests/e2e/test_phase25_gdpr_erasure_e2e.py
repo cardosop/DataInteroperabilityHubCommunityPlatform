@@ -110,15 +110,14 @@ class Phase25GDPRErasureE2ETest(TestCase):
         # user erasure endpoint is not deployed in this environment —
         # skip rather than failing.
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body
                 "User erasure request endpoint not available (404) — "
                 "feature may not be deployed in this environment"
             )
         self.assertIn(
             response.status_code,
             [status.HTTP_201_CREATED, status.HTTP_200_OK],
-            f"Erasure request failed with {response.status_code}: "
-            f"{get_response_data(response)}",
+            f"Erasure request failed with {response.status_code}: {get_response_data(response)}",
         )
 
         erasure_request_id = (get_response_data(response) or {}).get("request_id")
@@ -151,8 +150,7 @@ class Phase25GDPRErasureE2ETest(TestCase):
         # Display name must be anonymized (not the original value)
         self.assertNotEqual(self.user_to_erase.display_name, "User To Erase E2E")
         self.assertFalse(
-            self.user_to_erase.display_name
-            and "User To Erase" in self.user_to_erase.display_name,
+            self.user_to_erase.display_name and "User To Erase" in self.user_to_erase.display_name,
             "display_name still contains original PII after erasure",
         )
 

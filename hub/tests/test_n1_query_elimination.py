@@ -12,6 +12,7 @@ Phase 12 — N+1 Query Elimination & Docker Hardening Tests
 import os
 import re
 import uuid
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -302,7 +303,7 @@ class TestDockerComposePortBinding:
     """
 
     # Data-store services whose host ports must be loopback-only
-    DATA_STORE_SERVICES = {
+    DATA_STORE_SERVICES: ClassVar[set[str]] = {
         "postgres",
         "postgres-baas",
         "redis-cache",
@@ -315,7 +316,8 @@ class TestDockerComposePortBinding:
     }
 
     @pytest.fixture(scope="class")
-    def compose(self):
+    @classmethod
+    def compose(cls):
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         compose_path = os.path.join(repo_root, "docker-compose.yml")
         with open(compose_path) as f:
@@ -360,7 +362,7 @@ class TestDockerComposePortBinding:
             env = svc.get("environment") or {}
             # environment can be a list of "KEY=VALUE" or a dict
             if isinstance(env, list):
-                env = dict((e.split("=", 1)[0], e.split("=", 1)[1]) for e in env if "=" in e)
+                env = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in env if "=" in e}
             for var in secret_vars:
                 val = env.get(var, "")
                 # Check for silent-fallback pattern: ${VAR:-...}

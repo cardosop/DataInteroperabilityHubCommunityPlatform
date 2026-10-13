@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 if TYPE_CHECKING:
     User = get_user_model()
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 
 from hub.apps.audit.utils import log_user_operation
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
@@ -76,7 +77,7 @@ class UserService(BaseService):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant {tenant_id} not found")
+            raise NotFoundError(f"Tenant {tenant_id} not found") from None
 
         # Plan limit enforcement
         from hub.apps.tenants.services import PlanLimitService
@@ -92,14 +93,11 @@ class UserService(BaseService):
         try:
             actor_user = User.objects.get(id=actor_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"Actor user {actor_user_id} not found")
+            raise NotFoundError(f"Actor user {actor_user_id} not found") from None
 
         # Set status based on invitation, but respect explicit status if provided
         if status is None:
-            if send_invitation:
-                status = UserStatus.INVITED
-            else:
-                status = UserStatus.ACTIVE
+            status = UserStatus.INVITED if send_invitation else UserStatus.ACTIVE
 
         # Create user (nested atomic block acts as savepoint for IntegrityError)
         try:
@@ -116,7 +114,7 @@ class UserService(BaseService):
             raise ValidationError(
                 "Email address is already registered",
                 code="EMAIL_EXISTS",
-            )
+            ) from None
 
         # Assign roles if provided — bulk_create is O(1) queries vs O(n)
         if role_ids:
@@ -127,7 +125,9 @@ class UserService(BaseService):
             )
 
         # Create audit event (USER_INVITED when inviting, USER_CREATED otherwise)
-        audit_action = "USER_INVITED" if status == UserStatus.INVITED else "USER_CREATED"
+        audit_action = (
+            "USER_INVITED" if status == UserStatus.INVITED else "USER_CREATED"
+        )
         log_user_operation(
             action=audit_action,
             user=user,
@@ -172,7 +172,7 @@ class UserService(BaseService):
         try:
             actor_user = User.objects.get(id=actor_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"Actor user {actor_user_id} not found")
+            raise NotFoundError(f"Actor user {actor_user_id} not found") from None
 
         # Handle role_ids (replace user roles)
         role_ids = update_data.pop("role_ids", None)
@@ -201,7 +201,7 @@ class UserService(BaseService):
             raise ValidationError(
                 "Email address is already registered",
                 code="EMAIL_EXISTS",
-            )
+            ) from None
 
         # Create audit event (include role_ids if changed)
         audit_details = dict(update_data)
@@ -250,12 +250,12 @@ class UserService(BaseService):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant {tenant_id} not found")
+            raise NotFoundError(f"Tenant {tenant_id} not found") from None
 
         try:
             actor_user = User.objects.get(id=actor_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"Actor user {actor_user_id} not found")
+            raise NotFoundError(f"Actor user {actor_user_id} not found") from None
 
         membership_service = UserTenantMembershipService()
 
@@ -266,7 +266,9 @@ class UserService(BaseService):
             already_member = (
                 existing_user.tenant_id is not None
                 and str(existing_user.tenant_id) == str(tenant_id)
-            ) or UserTenantMembership.objects.filter(user=existing_user, tenant=tenant).exists()
+            ) or UserTenantMembership.objects.filter(
+                user=existing_user, tenant=tenant
+            ).exists()
             if already_member:
                 # Idempotent: user already a member → return existing user with
                 # created=False, matching the non-member existing-user branch below.
@@ -277,7 +279,10 @@ class UserService(BaseService):
                 roles = Role.objects.filter(id__in=role_ids, tenant=tenant)
                 # bulk_create is O(1) queries vs O(n) get_or_create round-trips (13.9)
                 UserRole.objects.bulk_create(
-                    [UserRole(user=existing_user, tenant=role.tenant, role=role) for role in roles],
+                    [
+                        UserRole(user=existing_user, tenant=role.tenant, role=role)
+                        for role in roles
+                    ],
                     ignore_conflicts=True,
                 )
 
@@ -324,9 +329,7 @@ class UserService(BaseService):
             return True
         if Contract.objects.filter(created_by=user).exists():
             return True
-        if File.objects.filter(created_by=user).exists():
-            return True
-        return False
+        return bool(File.objects.filter(created_by=user).exists())
 
     @transaction.atomic
     def delete_user(
@@ -365,9 +368,19 @@ class UserService(BaseService):
         try:
             actor_user = User.objects.get(id=actor_user_id)
         except User.DoesNotExist:
-            raise NotFoundError(f"Actor user {actor_user_id} not found")
+            raise NotFoundError(f"Actor user {actor_user_id} not found") from None
 
-        if self._user_has_resources(user):
+        # W4.3 (E8) — PROTECT/RESTRICT referrers (feature-flag
+        # approvals, impersonation sessions, plan-price approvals, and
+        # any future PROTECTing model) are enumerated from model
+        # metadata. A user any of them references must take the
+        # soft-delete path: a hard delete would raise ProtectedError.
+        # The itemized report lands in the USER_DISABLED audit.
+        from hub.apps.users.protected_referrers import protected_referrer_report
+
+        protected_referrers = protected_referrer_report(user)
+
+        if self._user_has_resources(user) or protected_referrers:
             # Soft delete: set status to DISABLED + bump token_version so
             # existing JWTs are rejected immediately (B3 fix —
             # glittery-dreaming-micali.md). Without the version bump, the
@@ -390,7 +403,14 @@ class UserService(BaseService):
                 action="USER_DISABLED",
                 user=user,
                 actor_user=actor_user,
-                details={"reason": "User has resources"},
+                details={
+                    "reason": (
+                        "User has protected referrers"
+                        if protected_referrers
+                        else "User has resources"
+                    ),
+                    "protected_referrers": protected_referrers,
+                },
             )
             return True
 
@@ -401,21 +421,44 @@ class UserService(BaseService):
             actor_user=actor_user,
             details={"email": user.email},
         )
-        user.delete()
+        try:
+            user.delete()
+        except ProtectedError:
+            # Defence-in-depth: a referrer row inserted between the
+            # pre-check and the delete (concurrent write) must not 500 —
+            # degrade to the soft-delete contract with an itemized audit.
+            user.refresh_from_db()
+            user.status = UserStatus.DISABLED
+            user.token_version += 1
+            user.save(
+                update_fields=[
+                    "status",
+                    "token_version",
+                    "updated_at",
+                ]
+            )
+            log_user_operation(
+                action="USER_DISABLED",
+                user=user,
+                actor_user=actor_user,
+                details={
+                    "reason": "User gained protected referrers concurrently",
+                    "protected_referrers": protected_referrer_report(user),
+                },
+            )
+            return True
         return False
 
 
 class UserTenantMembershipService:
     """
-    Service for user–tenant membership operations (tenant switch).
+    Service for user-tenant membership operations (tenant switch).
 
     Provides add_membership, list_tenants_for_user, validate_membership.
     Per design D16 and specs/tenants/spec.md User Tenant Membership.
     """
 
-    def add_membership(
-        self, user, tenant, actor_user=None, reason: str = ""
-    ) -> None:
+    def add_membership(self, user, tenant, actor_user=None, reason: str = "") -> None:
         """
         Add user to tenant (idempotent). Creates UserTenantMembership if not exists.
 
@@ -477,13 +520,19 @@ class UserTenantMembershipService:
         )
         return [m.tenant for m in memberships]
 
-    def validate_membership(self, user, tenant_id) -> bool:
+    def validate_membership(self, user, tenant_id, using=None) -> bool:
         """
         Check if user has membership in the given tenant.
 
         Args:
             user: User instance
             tenant_id: Tenant ID (str or UUID)
+            using: Optional DB alias for the lookup.  Pre-tenant callers
+                (the tenant-scoping middleware, before the RLS tenant
+                GUC exists) pass the pre-tenant alias — the
+                ``user_tenant_memberships`` table carries an RLS policy
+                and an enforcing role would see zero rows otherwise
+                (W1.20 / D2).
 
         Returns:
             True if membership exists, False otherwise.
@@ -500,7 +549,10 @@ class UserTenantMembershipService:
 
         from .models import UserTenantMembership
 
-        return UserTenantMembership.objects.filter(user=user, tenant_id=tenant_id).exists()
+        queryset = UserTenantMembership.objects
+        if using:
+            queryset = queryset.using(using)
+        return queryset.filter(user=user, tenant_id=tenant_id).exists()
 
     def remove_membership(
         self,

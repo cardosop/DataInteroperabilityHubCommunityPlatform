@@ -74,7 +74,7 @@ class EventBusAlerting:
                     }
                 )
         except Exception as e:
-            logger.error("alert_check_publish_failures_error", error=str(e))
+            logger.exception("alert_check_publish_failures_error", error=str(e))
 
         return alerts
 
@@ -120,7 +120,7 @@ class EventBusAlerting:
                     }
                 )
         except Exception as e:
-            logger.error("alert_check_consume_failures_error", error=str(e))
+            logger.exception("alert_check_consume_failures_error", error=str(e))
 
         return alerts
 
@@ -161,7 +161,7 @@ class EventBusAlerting:
                     }
                 )
         except Exception as e:
-            logger.error("alert_check_dlq_size_error", error=str(e))
+            logger.exception("alert_check_dlq_size_error", error=str(e))
 
         return alerts
 

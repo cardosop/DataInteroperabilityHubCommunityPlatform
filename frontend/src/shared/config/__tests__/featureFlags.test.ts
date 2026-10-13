@@ -3,7 +3,7 @@
  *
  * Verifies FEATURE_COMPLIANCE_THRESHOLD_BADGE_V2 default and env override.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 const DEFAULT_FLAGS = {
   FEATURE_COMPLIANCE_THRESHOLD_BADGE_V2: true,
@@ -16,7 +16,6 @@ describe('featureFlags', () => {
   });
 
   it('VITE_FEATURE_COMPLIANCE_THRESHOLD_BADGE_V2=false disables the badge', () => {
-    const original = import.meta.env.VITE_FEATURE_COMPLIANCE_THRESHOLD_BADGE_V2;
     // Vitest stubs import.meta.env; verify the flag is overridable.
     expect(typeof DEFAULT_FLAGS.FEATURE_COMPLIANCE_THRESHOLD_BADGE_V2).toBe('boolean');
   });

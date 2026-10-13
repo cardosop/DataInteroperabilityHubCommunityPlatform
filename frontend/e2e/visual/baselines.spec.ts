@@ -37,7 +37,7 @@
  */
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { getTestUser, loginUser } from '../fixtures/auth';
+import { getTenantAdminUser, getTestUser, loginUser } from '../fixtures/auth';
 
 const TERMINAL_LOAD_SELECTORS =
   '.app-header, [data-testid="app-header"], .app-shell, [data-testid="app-shell"], main, [role="main"]';
@@ -171,14 +171,14 @@ test.describe('Visual regression baselines @visual', () => {
   test('data-quality detail', async ({ page }) => {
     const user = await getTestUser();
     await loginUser(page, user);
-    await page.goto('/data-quality', { waitUntil: 'domcontentloaded' });
+    await page.goto('/dq', { waitUntil: 'domcontentloaded' });
     const id = await pickFirstResourceId(page, '/api/v1/dq/runs/');
     test.skip(
       id === null,
       'No DQ run available — seed one and re-run with --update-snapshots.',
     );
     if (id === null) return;
-    await navigateAndStabilise(page, `/data-quality/runs/${id}`, 'dq-detail');
+    await navigateAndStabilise(page, `/dq/runs/${id}`, 'dq-detail');
     await expect(page).toHaveScreenshot('dq-detail.png', {
       fullPage: true,
       mask: masksFor(page),
@@ -230,9 +230,13 @@ test.describe('Visual regression baselines @visual', () => {
   });
 
   test('admin settings', async ({ page }) => {
-    const user = await getTestUser();
+    // close-test-coverage-gaps 5.3: /settings/tenant is TENANT_ADMIN-
+    // gated — the old /admin/settings baseline ran as the default user
+    // and captured the 403 page. A TENANT_ADMIN captures the real
+    // tenant-settings surface.
+    const user = await getTenantAdminUser();
     await loginUser(page, user);
-    await navigateAndStabilise(page, '/admin/settings', 'admin-settings');
+    await navigateAndStabilise(page, '/settings/tenant', 'admin-settings');
     await expect(page).toHaveScreenshot('admin-settings.png', {
       fullPage: true,
       mask: masksFor(page),

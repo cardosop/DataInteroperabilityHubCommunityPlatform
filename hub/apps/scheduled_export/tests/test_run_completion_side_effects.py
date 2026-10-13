@@ -116,9 +116,9 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
 
         # Refresh scheduled export
         self.scheduled_export.refresh_from_db()
-        self.assertIsNotNone(self.scheduled_export.next_run_at)
-        self.assertEqual(self.scheduled_export.last_run_status, "COMPLETED")
-        self.assertIsNotNone(self.scheduled_export.last_run_at)
+        assert self.scheduled_export.next_run_at is not None
+        assert self.scheduled_export.last_run_status == "COMPLETED"
+        assert self.scheduled_export.last_run_at is not None
 
     def test_patch_run_completed_creates_cost_record(self):
         """PATCH run to COMPLETED creates cost record."""
@@ -140,14 +140,14 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
 
         # Verify cost record was created
         cost_exists = ExportRunCost.objects.filter(run=run).exists()
-        self.assertTrue(cost_exists, "Cost record should be created on COMPLETED")
+        assert cost_exists, "Cost record should be created on COMPLETED"
 
         # Verify cost record has components
         cost = ExportRunCost.objects.get(run=run)
-        self.assertIsNotNone(cost.cost_components)
-        self.assertIn("storage", cost.cost_components)
-        self.assertIn("compute", cost.cost_components)
-        self.assertIn("network", cost.cost_components)
+        assert cost.cost_components is not None
+        assert "storage" in cost.cost_components
+        assert "compute" in cost.cost_components
+        assert "network" in cost.cost_components
 
     def test_patch_run_completed_clears_error_status(self):
         """PATCH run to COMPLETED clears ERROR status on scheduled export."""
@@ -171,7 +171,7 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
 
         # Refresh scheduled export
         self.scheduled_export.refresh_from_db()
-        self.assertEqual(self.scheduled_export.status, ScheduledExportStatus.ACTIVE)
+        assert self.scheduled_export.status == ScheduledExportStatus.ACTIVE
 
     def test_patch_run_failed_sets_error_status(self):
         """PATCH run to FAILED sets ERROR status on scheduled export."""
@@ -192,8 +192,8 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
 
         # Refresh scheduled export
         self.scheduled_export.refresh_from_db()
-        self.assertEqual(self.scheduled_export.status, ScheduledExportStatus.ERROR)
-        self.assertEqual(self.scheduled_export.last_run_status, "FAILED")
+        assert self.scheduled_export.status == ScheduledExportStatus.ERROR
+        assert self.scheduled_export.last_run_status == "FAILED"
 
     def test_patch_run_completed_via_api_triggers_side_effects(self):
         """PATCH run to COMPLETED via API triggers all side effects."""
@@ -209,7 +209,7 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
             format="json",
             HTTP_X_TENANT_ID=str(self.tenant.id),
         )
-        self.assertEqual(r_create.status_code, status.HTTP_201_CREATED)
+        assert r_create.status_code == status.HTTP_201_CREATED
         run_id = r_create.data["id"]
 
         # Update run to COMPLETED via API
@@ -224,17 +224,17 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
 
         # Verify side effects
         self.scheduled_export.refresh_from_db()
-        self.assertIsNotNone(self.scheduled_export.next_run_at)
-        self.assertEqual(self.scheduled_export.last_run_status, "COMPLETED")
+        assert self.scheduled_export.next_run_at is not None
+        assert self.scheduled_export.last_run_status == "COMPLETED"
 
         # Verify cost record was created
         run = ScheduledExportRun.objects.get(id=run_id)
         cost_exists = ExportRunCost.objects.filter(run=run).exists()
-        self.assertTrue(cost_exists, "Cost record should be created on COMPLETED")
+        assert cost_exists, "Cost record should be created on COMPLETED"
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
@@ -242,4 +242,4 @@ class RunCompletionSideEffectsIntegrationTest(TestCase):
             action="UPDATED",
             resource_id=run_id,
         )
-        self.assertEqual(audit_events.count(), 1)
+        assert audit_events.count() == 1

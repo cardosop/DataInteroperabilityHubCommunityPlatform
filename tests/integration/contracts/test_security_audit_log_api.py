@@ -136,8 +136,10 @@ class SecurityAuditLogAPIIntegrationTest(TestCase):
         """Test filtering security audit logs by time range."""
         self.client.force_authenticate(user=self.admin_user)
 
-        # Clear existing logs and create fresh ones with known timestamps
-        SecurityAuditLog.objects.all().delete()
+        # Clear existing logs for this tenant and create fresh ones with known
+        # timestamps.  Scoped to tenant1: an unscoped delete would also remove
+        # (and lock) rows committed to the shared test DB by the live API stack.
+        SecurityAuditLog.objects.filter(tenant=self.tenant1).delete()
         now = timezone.now()
 
         # Note: timestamp has auto_now_add=True and save() prevents updates, so we use update() directly

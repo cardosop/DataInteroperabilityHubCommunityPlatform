@@ -77,7 +77,7 @@ class Command(BaseCommand):
             help="Custom connection name (defaults to instance name)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         instance_name = options["instance"]
         tenant_spec = options.get("tenant")
         user_spec = options.get("user")
@@ -111,7 +111,7 @@ class Command(BaseCommand):
                 else:
                     tenant = Tenant.objects.get(slug=tenant_spec)
             except Tenant.DoesNotExist:
-                raise CommandError(f"Tenant '{tenant_spec}' not found")
+                raise CommandError(f"Tenant '{tenant_spec}' not found") from None
         else:
             tenant = Tenant.objects.first()
             if not tenant:
@@ -128,7 +128,7 @@ class Command(BaseCommand):
                 else:
                     user = User.objects.get(email=user_spec)
             except User.DoesNotExist:
-                raise CommandError(f"User '{user_spec}' not found")
+                raise CommandError(f"User '{user_spec}' not found") from None
         else:
             # Try to get a user from the same tenant first
             user = User.objects.filter(tenant_id=tenant.id).first()
@@ -202,7 +202,8 @@ class Command(BaseCommand):
 
         # Test connection first (skip if dry-run and connection fails - allow workflow to handle errors)
         self.stdout.write("\nTesting connection...")
-        try:
+
+        def _test_connection() -> None:
             from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
             connector = MarketplaceConnectorFactory.create_connector(
@@ -222,6 +223,9 @@ class Command(BaseCommand):
                 )
             else:
                 raise CommandError("Connection test failed")
+
+        try:
+            _test_connection()
         except Exception as e:
             if dry_run:
                 self.stdout.write(
@@ -231,7 +235,7 @@ class Command(BaseCommand):
                     )
                 )
             else:
-                raise CommandError(f"Connection test failed: {e}")
+                raise CommandError(f"Connection test failed: {e}") from None
 
         # Create sync job
         self.stdout.write(f"\nStarting harvest (limit: {limit})...")
@@ -269,4 +273,4 @@ class Command(BaseCommand):
                 )
 
         except Exception as e:
-            raise CommandError(f"Failed to create sync job: {e}")
+            raise CommandError(f"Failed to create sync job: {e}") from e

@@ -326,13 +326,12 @@ class FileService(BaseService, FileEventPublisher):
                 updates["status"] = new_status
             if updates:
                 try:
-                    file_obj.save(update_fields=list(updates.keys()) + ["updated_at"])
+                    file_obj.save(update_fields=[*list(updates.keys()), "updated_at"])
                 except IntegrityError:
                     # The partial unique index unique_active_filename_per_tenant
                     # caught a concurrent save with the same (tenant, name, ACTIVE).
                     raise ValidationError(
-                        f"Filename collision: {file_obj.name!r} is already ACTIVE "
-                        "in this tenant.",
+                        f"Filename collision: {file_obj.name!r} is already ACTIVE in this tenant.",
                         code="FILENAME_COLLISION",
                         http_status=409,
                     ) from None

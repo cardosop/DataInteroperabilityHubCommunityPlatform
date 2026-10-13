@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { marketplaceSyncJobService } from '../services/marketplaceSyncJobService';
 import type {
   MarketplaceSyncJob,
@@ -15,7 +16,7 @@ import type {
 export function useMarketplaceSyncJobs(filters: MarketplaceSyncJobListFilters = {}) {
   return useQuery({
     queryKey: ['integrations', 'marketplace', 'sync', 'list', filters],
-    queryFn: () => marketplaceSyncJobService.list(filters),
+    queryFn: async () => normalizePaginated(await marketplaceSyncJobService.list(filters)),
     // Auto-refetch for running jobs
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -69,7 +70,9 @@ export function useCancelMarketplaceSyncJob() {
     errorMessage: 'Failed to cancel sync job',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'sync'] });
-      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'sync', 'detail', variables.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['integrations', 'marketplace', 'sync', 'detail', variables.id],
+      });
     },
   });
 }

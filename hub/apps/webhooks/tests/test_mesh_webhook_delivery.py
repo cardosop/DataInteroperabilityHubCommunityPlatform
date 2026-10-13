@@ -80,10 +80,12 @@ class MeshWebhookDeliveryTest(TestCase):
                 event_data=event_data,
             )
             wait_until(
-                lambda: WebhookDelivery.objects.filter(
-                    webhook=webhook, event_type="mesh.domain.created"
-                ).count()
-                >= 1,
+                lambda: (
+                    WebhookDelivery.objects.filter(
+                        webhook=webhook, event_type="mesh.domain.created"
+                    ).count()
+                    >= 1
+                ),
                 timeout=5.0,
                 message="mesh.domain.created delivery not recorded",
             )
@@ -126,10 +128,12 @@ class MeshWebhookDeliveryTest(TestCase):
                 event_data=event_data,
             )
             wait_until(
-                lambda: WebhookDelivery.objects.filter(
-                    webhook=webhook, event_type="mesh.domain.updated"
-                ).count()
-                >= 1,
+                lambda: (
+                    WebhookDelivery.objects.filter(
+                        webhook=webhook, event_type="mesh.domain.updated"
+                    ).count()
+                    >= 1
+                ),
                 timeout=5.0,
                 message="mesh.domain.updated delivery not recorded",
             )
@@ -170,10 +174,12 @@ class MeshWebhookDeliveryTest(TestCase):
                 event_data=event_data,
             )
             wait_until(
-                lambda: WebhookDelivery.objects.filter(
-                    webhook=webhook, event_type="mesh.policy.applied"
-                ).count()
-                >= 1,
+                lambda: (
+                    WebhookDelivery.objects.filter(
+                        webhook=webhook, event_type="mesh.policy.applied"
+                    ).count()
+                    >= 1
+                ),
                 timeout=5.0,
                 message="mesh.policy.applied delivery not recorded",
             )
@@ -215,10 +221,12 @@ class MeshWebhookDeliveryTest(TestCase):
                 event_data=event_data,
             )
             wait_until(
-                lambda: WebhookDelivery.objects.filter(
-                    webhook=webhook, event_type="mesh.compliance.checked"
-                ).count()
-                >= 1,
+                lambda: (
+                    WebhookDelivery.objects.filter(
+                        webhook=webhook, event_type="mesh.compliance.checked"
+                    ).count()
+                    >= 1
+                ),
                 timeout=5.0,
                 message="mesh.compliance.checked delivery not recorded",
             )
@@ -257,10 +265,12 @@ class MeshWebhookDeliveryTest(TestCase):
                 event_data=event_data,
             )
             wait_until(
-                lambda: WebhookDelivery.objects.filter(
-                    webhook=webhook, event_type="mesh.topology.updated"
-                ).count()
-                >= 1,
+                lambda: (
+                    WebhookDelivery.objects.filter(
+                        webhook=webhook, event_type="mesh.topology.updated"
+                    ).count()
+                    >= 1
+                ),
                 timeout=5.0,
                 message="mesh.topology.updated delivery not recorded",
             )
@@ -301,10 +311,12 @@ class MeshWebhookDeliveryTest(TestCase):
                 event_data=event_data,
             )
             wait_until(
-                lambda: WebhookDelivery.objects.filter(
-                    webhook=webhook, event_type="mesh.health.status_changed"
-                ).count()
-                >= 1,
+                lambda: (
+                    WebhookDelivery.objects.filter(
+                        webhook=webhook, event_type="mesh.health.status_changed"
+                    ).count()
+                    >= 1
+                ),
                 timeout=5.0,
                 message="mesh.health.status_changed delivery not recorded",
             )

@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="assetprocessormembership",
-            constraint=models.UniqueConstraint(fields=("asset", "processor"), name="pa_ast_proc_uniq"),
+            constraint=models.UniqueConstraint(fields=["asset", "processor"], name="pa_ast_proc_uniq"),
         ),
         migrations.AddIndex(
             model_name="assetprocessormembership",

@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -32,21 +34,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Fixture to check if API service is available"""
-    return _check_api_available()
+    return api_available()
 
 
 class TestMeshTopologyCommandsRealAPI:
@@ -147,23 +138,24 @@ print(f"API_KEY={api_key_value}")
                 # Extract API key from output
                 # Look for line starting with "API_KEY=" first (most reliable)
                 output_lines = result.stdout.strip().split("\n")
-                for line in output_lines:
-                    line = line.strip()
+                for raw_line in output_lines:
+                    line = raw_line.strip()
                     if line.startswith("API_KEY="):
                         api_key = line.split("=", 1)[1].strip()
                         if api_key and len(api_key) > 20:
                             return api_key
 
                 # Fallback: look for lines that look like API keys (long alphanumeric with dashes/underscores)
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     # API keys are typically long strings with dashes/underscores
                     if len(line) > 40 and (line.replace("-", "").replace("_", "").isalnum()):
                         return line
 
-            return None
         except Exception as e:
             print(f"Failed to create test API key: {e}")
+            return None
+        else:
             return None
 
     def _create_test_domain(self, name_suffix=None):
@@ -201,7 +193,7 @@ print(f"API_KEY={api_key_value}")
                 return None
 
             # Wait a bit for domain to be fully created
-            time.sleep(1)  # noqa: sleep-needed — test timing requirement
+            time.sleep(1)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             return {"id": str(domain_id), "name": domain_name}
         except Exception as e:
@@ -221,15 +213,16 @@ print(f"API_KEY={api_key_value}")
                 timeout=30,
             )
             # 204 or 404 is OK (already deleted)
-            return response.status_code in [200, 204, 404]
         except Exception:
             return False
+        else:
+            return response.status_code in [200, 204, 404]
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_topology_success_table_format(self, api_available):
+    def test_get_topology_success_table_format(self, api_service_available):
         """Test getting topology in table format with real API"""
         if not self.api_key:
             pytest.skip(
@@ -247,10 +240,10 @@ print(f"API_KEY={api_key_value}")
         )
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_topology_success_json_format(self, api_available):
+    def test_get_topology_success_json_format(self, api_service_available):
         """Test getting topology in JSON format with real API"""
         if not self.api_key:
             pytest.skip(
@@ -275,10 +268,10 @@ print(f"API_KEY={api_key_value}")
             pytest.fail(f"Output is not valid JSON: {result.output}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_topology_without_health_metrics(self, api_available):
+    def test_get_topology_without_health_metrics(self, api_service_available):
         """Test getting topology without health metrics with real API"""
         if not self.api_key:
             pytest.skip(
@@ -301,10 +294,10 @@ print(f"API_KEY={api_key_value}")
             pytest.fail(f"Output is not valid JSON: {result.output}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_topology_with_health_metrics(self, api_available):
+    def test_get_topology_with_health_metrics(self, api_service_available):
         """Test getting topology with health metrics with real API"""
         if not self.api_key:
             pytest.skip(
@@ -326,10 +319,10 @@ print(f"API_KEY={api_key_value}")
             pytest.fail(f"Output is not valid JSON: {result.output}")
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_domain_topology_success_table_format(self, api_available):
+    def test_get_domain_topology_success_table_format(self, api_service_available):
         """Test getting domain topology in table format with real API"""
         if not self.api_key:
             pytest.skip(
@@ -362,10 +355,10 @@ print(f"API_KEY={api_key_value}")
             self._delete_test_domain(domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_domain_topology_success_json_format(self, api_available):
+    def test_get_domain_topology_success_json_format(self, api_service_available):
         """Test getting domain topology in JSON format with real API"""
         if not self.api_key:
             pytest.skip(
@@ -406,10 +399,10 @@ print(f"API_KEY={api_key_value}")
             self._delete_test_domain(domain_id)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_domain_topology_not_found(self, api_available):
+    def test_get_domain_topology_not_found(self, api_service_available):
         """Test getting topology for non-existent domain with real API"""
         if not self.api_key:
             pytest.skip(
@@ -426,10 +419,10 @@ print(f"API_KEY={api_key_value}")
         assert "not found" in result.output.lower() or "failed" in result.output.lower()
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_get_topology_with_domains(self, api_available):
+    def test_get_topology_with_domains(self, api_service_available):
         """Test getting topology when domains exist with real API"""
         if not self.api_key:
             pytest.skip(
@@ -443,13 +436,14 @@ print(f"API_KEY={api_key_value}")
         if not test_domain1 or not test_domain2:
             pytest.skip("Failed to create test domains")
 
-        assert test_domain1 is not None and test_domain2 is not None  # Type assertion for linter
+        assert test_domain1 is not None
+        assert test_domain2 is not None
         domain_id1 = test_domain1["id"]
         domain_id2 = test_domain2["id"]
 
         try:
             # Wait a bit for topology to update
-            time.sleep(2)  # noqa: sleep-needed — test timing requirement
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
             runner = CliRunner()
             result = runner.invoke(cli, ["mesh", "topology", "get", "--format", "json"])
@@ -474,10 +468,10 @@ print(f"API_KEY={api_key_value}")
             self._delete_test_domain(domain_id2)
 
     @pytest.mark.skipif(
-        not _check_api_available(),
+        not api_available(),
         reason="API service is not available. Ensure Docker Compose services are running.",
     )
-    def test_topology_command_structure(self, api_available):
+    def test_topology_command_structure(self, api_service_available):
         """Test that topology commands are properly registered"""
         runner = CliRunner()
 

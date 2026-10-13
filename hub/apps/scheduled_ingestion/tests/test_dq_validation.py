@@ -59,7 +59,7 @@ class DQValidationTest(TestCase):
 
     def test_should_run_dq_check_enabled(self):
         """Test should_run_dq_check when enabled"""
-        self.assertTrue(self.processor._should_run_dq_check())
+        assert self.processor._should_run_dq_check()
 
     def test_should_run_dq_check_disabled(self):
         """Test should_run_dq_check when disabled"""
@@ -67,7 +67,7 @@ class DQValidationTest(TestCase):
         self.scheduled_ingestion.save()
 
         processor = ScheduledIngestionProcessor(self.scheduled_ingestion)
-        self.assertFalse(processor._should_run_dq_check())
+        assert not processor._should_run_dq_check()
 
     def test_run_dq_check_success(self):
         """Test running DQ check successfully using real InMemoryDQClient."""
@@ -90,9 +90,9 @@ class DQValidationTest(TestCase):
         file_content = b"col1,col2\nval1,val2\n"
         file_format = "csv"
         result = processor._run_dq_check(file_content, file_format)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["overall_status"], "PASS")
-        self.assertEqual(result["quality_score"], 0.95)
+        assert result is not None
+        assert result["overall_status"] == "PASS"
+        assert result["quality_score"] == 0.95
 
     def test_run_dq_check_service_unavailable(self):
         """Test running DQ check when service is unavailable (real client)."""
@@ -104,7 +104,7 @@ class DQValidationTest(TestCase):
         file_content = b"col1,col2\nval1,val2\n"
         file_format = "csv"
         result = processor._run_dq_check(file_content, file_format)
-        self.assertIsNone(result)
+        assert result is None
 
     def test_run_dq_check_strict_mode_failure(self):
         """Test running DQ check in strict mode when check raises (real client)."""
@@ -120,7 +120,7 @@ class DQValidationTest(TestCase):
         file_format = "csv"
         with self.assertRaises(ValueError) as cm:
             processor._run_dq_check(file_content, file_format)
-        self.assertIn("DQ check failed", str(cm.exception))
+        assert "DQ check failed" in str(cm.exception)
 
     def test_is_dq_result_valid_pass(self):
         """Test is_dq_result_valid for passing result"""
@@ -133,13 +133,13 @@ class DQValidationTest(TestCase):
             ],
         }
 
-        self.assertTrue(self.processor._is_dq_result_valid(dq_result))
+        assert self.processor._is_dq_result_valid(dq_result)
 
     def test_is_dq_result_valid_fail_status(self):
         """Test is_dq_result_valid for failing status"""
         dq_result = {"overall_status": "FAIL", "quality_score": 0.95, "checks": []}
 
-        self.assertFalse(self.processor._is_dq_result_valid(dq_result))
+        assert not self.processor._is_dq_result_valid(dq_result)
 
     def test_is_dq_result_valid_low_score(self):
         """Test is_dq_result_valid for low quality score"""
@@ -149,7 +149,7 @@ class DQValidationTest(TestCase):
             "checks": [],
         }
 
-        self.assertFalse(self.processor._is_dq_result_valid(dq_result))
+        assert not self.processor._is_dq_result_valid(dq_result)
 
     def test_is_dq_result_valid_critical_failure(self):
         """Test is_dq_result_valid for critical check failure"""
@@ -162,7 +162,7 @@ class DQValidationTest(TestCase):
             ],
         }
 
-        self.assertFalse(self.processor._is_dq_result_valid(dq_result))
+        assert not self.processor._is_dq_result_valid(dq_result)
 
     def test_format_dq_failure_message(self):
         """Test formatting DQ failure message"""
@@ -178,7 +178,7 @@ class DQValidationTest(TestCase):
 
         message = self.processor._format_dq_failure_message(dq_result)
 
-        self.assertIn("FAIL", message)
-        self.assertIn("60.00%", message)
-        self.assertIn("Critical failures: 1", message)
-        self.assertIn("Total failures: 2", message)
+        assert "FAIL" in message
+        assert "60.00%" in message
+        assert "Critical failures: 1" in message
+        assert "Total failures: 2" in message

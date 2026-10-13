@@ -8,7 +8,7 @@ in setUp methods across test files.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.db import connections
+from django.db import DatabaseError, connections
 from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
@@ -90,7 +90,7 @@ class ContractsTransactionTestBase(TransactionTestCase):
             _conn.ensure_connection()
             with _conn.cursor() as cur:
                 cur.execute("SET lock_timeout = '30s'")
-        except Exception:
+        except DatabaseError:
             pass
 
         uid = uuid.uuid4().hex[:8]
@@ -155,9 +155,10 @@ def get_real_redis_client_or_none():
             redis_url, decode_responses=False, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
-        return client
-    except Exception:
+    except (_redis.RedisError, ValueError):
         return None
+    else:
+        return client
 
 
 def check_datacontract_cli_available():

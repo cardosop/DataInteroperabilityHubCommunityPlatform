@@ -14,7 +14,7 @@ class SearchConfig(AppConfig):
 
     def ready(self):
         """Import business rules and register deprecated endpoints."""
-        import hub.apps.search.business_rules  # noqa: F401 - Import to register business rules
+        import hub.apps.search.business_rules
 
         # Register SearchViewSet deprecation in the central
         # APIVersionManager so the deprecation calendar is

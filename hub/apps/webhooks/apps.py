@@ -37,6 +37,13 @@ class WebhooksConfig(AppConfig):
         try:
             # Initialize ODPS event subscriber
             # Initialize mesh event subscriber
+            # Initialize asset event subscriber (Phase 226 G11 bridge —
+            # asset.created/updated/activated → webhook delivery; without
+            # it no subscriber covers the asset.* domain and webhooks
+            # subscribed to asset events never receive deliveries).
+            from hub.apps.webhooks.asset_event_subscriber import (
+                initialize_asset_event_subscriber,
+            )
             from hub.apps.webhooks.mesh_event_subscriber import initialize_mesh_event_subscriber
             from hub.apps.webhooks.odps_event_subscriber import initialize_odps_event_subscriber
 
@@ -48,6 +55,7 @@ class WebhooksConfig(AppConfig):
             initialize_odps_event_subscriber()
             initialize_mesh_event_subscriber()
             initialize_virtualization_event_subscriber()
+            initialize_asset_event_subscriber()
             logger.info("webhooks_app_ready", message="Webhooks app initialized")
         except (ImportError, RuntimeError, OSError) as e:
             # Log but don't fail startup - subscriber will be initialized when needed

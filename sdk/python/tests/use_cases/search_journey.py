@@ -100,7 +100,7 @@ def test_search_returns_pagination():
         # Bare lists are acceptable but lack pagination
         pytest.skip("Search returns a bare list without pagination metadata")
 
-    keys_lower = {k.lower() for k in body.keys()}
+    keys_lower = {k.lower() for k in body}
     has_pagination = any(
         k in keys_lower
         for k in (

@@ -12,7 +12,7 @@ The two spec scenarios are covered directly:
 * "Synonym expansion surfaces equivalent-class match" — `Customer
   owl:equivalentClass Client`, asset tagged "client" surfaces with
   ``matched_via=ontology`` and ``bridge_term=Client``, ranked below
-  exact "customer" matches (0.5× multiplier on expanded matches).
+  exact "customer" matches (0.5x multiplier on expanded matches).
 * "Toggle off reproduces today's behaviour" — same query, same
   ontology, but no ``?semantic=true`` → asset does NOT appear.
 
@@ -273,11 +273,11 @@ class SemanticSearchViewTests(TransactionTestCase):
             {"client"},
             msg=f"row: {bridge_row}",
         )
-        # 0.5× multiplier — bridge-match rank MUST be ≤ exact-match rank.
+        # 0.5x multiplier — bridge-match rank MUST be ≤ exact-match rank.
         self.assertLessEqual(
             float(bridge_row["rank"]),
             float(exact_row["rank"]),
-            msg="bridge match should rank ≤ exact match (0.5× multiplier)",
+            msg="bridge match should rank ≤ exact match (0.5x multiplier)",
         )
 
     def test_toggle_off_reproduces_today_behaviour(self):

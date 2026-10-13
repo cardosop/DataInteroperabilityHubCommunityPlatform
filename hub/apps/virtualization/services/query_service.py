@@ -3,7 +3,7 @@
 import contextlib
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
 
@@ -33,7 +33,30 @@ from hub.apps.virtualization.models import (
     VirtualDatasetStatus,
 )
 
+if TYPE_CHECKING:
+    from hub.apps.assets.models import Asset
+
 logger = logging.getLogger(__name__)
+
+# Hub source type -> connector factory type mapping. Sparql, graphql, minio,
+# federated_asset and external_resource have no connector and map to None.
+_SOURCE_TYPE_CONNECTOR_MAP: dict[str, str] = {
+    "postgresql": "DATABASE",
+    "mysql": "DATABASE",
+    "sqlserver": "DATABASE",
+    "mssql": "DATABASE",
+    "oracle": "DATABASE",
+    "sqlite": "DATABASE",
+    "rest": "HTTP",
+    "http": "HTTP",
+    "https": "HTTP",
+    "s3": "S3",
+    "gcs": "GCS",
+    "azure_blob": "AZURE_BLOB",
+    "azureblob": "AZURE_BLOB",
+    "ftp": "FTP",
+    "sftp": "SFTP",
+}
 
 
 class QueryServiceMixin:
@@ -68,10 +91,15 @@ class QueryServiceMixin:
             )
             # Verify tenant isolation (compare as strings to handle UUID vs string)
             if str(execution.virtual_dataset.tenant_id) != str(effective_tenant_id):
-                raise NotFoundError(f"QueryExecution with id {query_execution_id} not found")
-            return execution
+                raise NotFoundError(
+                    f"QueryExecution with id {query_execution_id} not found"
+                )
         except QueryExecution.DoesNotExist:
-            raise NotFoundError(f"QueryExecution with id {query_execution_id} not found")
+            raise NotFoundError(
+                f"QueryExecution with id {query_execution_id} not found"
+            ) from None
+        else:
+            return execution
 
     def get_query_executions(
         self,
@@ -102,7 +130,9 @@ class QueryServiceMixin:
         self.get_virtual_dataset(virtual_dataset_id, effective_tenant_id)
 
         def _get_query_executions():
-            queryset = QueryExecution.objects.filter(virtual_dataset_id=virtual_dataset_id)
+            queryset = QueryExecution.objects.filter(
+                virtual_dataset_id=virtual_dataset_id
+            )
 
             if status:
                 queryset = queryset.filter(status=status)
@@ -243,7 +273,9 @@ class QueryServiceMixin:
             return  # Schema is optional
 
         if not isinstance(schema, dict):
-            raise ValidationError("Schema must be a JSON object", code="INVALID_SCHEMA_FORMAT")
+            raise ValidationError(
+                "Schema must be a JSON object", code="INVALID_SCHEMA_FORMAT"
+            )
 
         # Validate schema structure
         # Schema can be in different formats:
@@ -260,7 +292,8 @@ class QueryServiceMixin:
             for i, field in enumerate(schema["fields"]):
                 if not isinstance(field, dict):
                     raise ValidationError(
-                        f"Schema field at index {i} must be an object", code="INVALID_SCHEMA_FORMAT"
+                        f"Schema field at index {i} must be an object",
+                        code="INVALID_SCHEMA_FORMAT",
                     )
                 if "name" not in field:
                     raise ValidationError(
@@ -276,21 +309,8 @@ class QueryServiceMixin:
         """
         if not source_type:
             return None
-        st = source_type.lower()
-        if st in ("postgresql", "mysql", "sqlserver", "mssql", "oracle", "sqlite"):
-            return "DATABASE"
-        if st in ("rest", "http", "https"):
-            return "HTTP"
-        if st == "s3":
-            return "S3"
-        if st == "gcs":
-            return "GCS"
-        if st in ("azure_blob", "azureblob"):
-            return "AZURE_BLOB"
-        if st in ("ftp", "sftp"):
-            return st.upper()
         # sparql, graphql, minio, federated_asset, external_resource have no connector
-        return None
+        return _SOURCE_TYPE_CONNECTOR_MAP.get(source_type.lower())
 
     def _validate_source_connectivity(
         self, sources: list[dict[str, Any]] | None, tenant_id: str
@@ -322,7 +342,7 @@ class QueryServiceMixin:
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(f"Tenant with id {tenant_id} not found")
+            raise NotFoundError(f"Tenant with id {tenant_id} not found") from None
 
         # Test connectivity to each source
         for i, source_config in enumerate(sources):
@@ -341,12 +361,16 @@ class QueryServiceMixin:
 
             # Handle federated asset sources
             if source_type == "federated_asset":
-                self._validate_federated_asset_source(source_config, tenant, source_index=i)
+                self._validate_federated_asset_source(
+                    source_config, tenant, source_index=i
+                )
                 continue  # Skip traditional connectivity check
 
             # Handle external resource sources
             if source_type == "external_resource":
-                self._validate_external_resource_source(source_config, tenant, source_index=i)
+                self._validate_external_resource_source(
+                    source_config, tenant, source_index=i
+                )
                 continue  # Skip traditional connectivity check
 
             # Test connection using connector factory for traditional sources
@@ -362,7 +386,8 @@ class QueryServiceMixin:
                 import sys
 
                 connector_path = os.path.join(
-                    os.path.dirname(__file__), "../../../../services/prefect-integration"
+                    os.path.dirname(__file__),
+                    "../../../../services/prefect-integration",
                 )
                 sys.path.insert(0, connector_path)
 
@@ -387,45 +412,59 @@ class QueryServiceMixin:
                         extra={"source_index": i, "source_type": source_type},
                     )
                     continue
-
-                if hasattr(connector, "test_connection"):
-                    # Some connectors return dict with 'success' key
-                    test_result = connector.test_connection(source_config)
-                    if isinstance(test_result, dict):
-                        if not test_result.get("success", False):
-                            error_msg = test_result.get("error", "Connection test failed")
-                            raise ValidationError(
-                                f"Source connectivity check failed for source {i} (type: {source_type}): {error_msg}",
-                                code="SOURCE_CONNECTIVITY_FAILED",
-                                details={
-                                    "source_index": i,
-                                    "source_type": source_type,
-                                    "error": error_msg,
-                                },
-                            )
-                    elif not test_result:
-                        # Boolean result
-                        raise ValidationError(
-                            f"Source connectivity check failed for source {i} (type: {source_type})",
-                            code="SOURCE_CONNECTIVITY_FAILED",
-                            details={"source_index": i, "source_type": source_type},
-                        )
-                else:
-                    logger.warning(
-                        f"Connector for type '{source_type}' does not support test_connection method",
-                        extra={"source_index": i, "source_type": source_type},
-                    )
-
             except Exception as e:
-                # If it's already a ValidationError, re-raise it
-                if isinstance(e, ValidationError):
-                    raise
-                # Otherwise, wrap it in a ValidationError
+                # Wrap unexpected setup errors in a ValidationError
                 raise ValidationError(
                     f"Failed to test connectivity for source {i} (type: {source_type}): {e!s}",
                     code="SOURCE_CONNECTIVITY_ERROR",
-                    details={"source_index": i, "source_type": source_type, "error": str(e)},
+                    details={
+                        "source_index": i,
+                        "source_type": source_type,
+                        "error": str(e),
+                    },
                 ) from e
+
+            if hasattr(connector, "test_connection"):
+                try:
+                    # Some connectors return dict with 'success' key
+                    test_result = connector.test_connection(source_config)
+                except ValidationError:
+                    raise
+                except Exception as e:
+                    raise ValidationError(
+                        f"Failed to test connectivity for source {i} (type: {source_type}): {e!s}",
+                        code="SOURCE_CONNECTIVITY_ERROR",
+                        details={
+                            "source_index": i,
+                            "source_type": source_type,
+                            "error": str(e),
+                        },
+                    ) from e
+
+                if isinstance(test_result, dict):
+                    if not test_result.get("success", False):
+                        error_msg = test_result.get("error", "Connection test failed")
+                        raise ValidationError(
+                            f"Source connectivity check failed for source {i} (type: {source_type}): {error_msg}",
+                            code="SOURCE_CONNECTIVITY_FAILED",
+                            details={
+                                "source_index": i,
+                                "source_type": source_type,
+                                "error": error_msg,
+                            },
+                        )
+                elif not test_result:
+                    # Boolean result
+                    raise ValidationError(
+                        f"Source connectivity check failed for source {i} (type: {source_type})",
+                        code="SOURCE_CONNECTIVITY_FAILED",
+                        details={"source_index": i, "source_type": source_type},
+                    )
+            else:
+                logger.warning(
+                    f"Connector for type '{source_type}' does not support test_connection method",
+                    extra={"source_index": i, "source_type": source_type},
+                )
 
     def _validate_federated_asset_source(
         self, source_config: dict[str, Any], tenant, source_index: int = 0
@@ -461,7 +500,7 @@ class QueryServiceMixin:
                 f"Invalid asset_id format at source index {source_index}: {asset_id}",
                 code="INVALID_ASSET_ID",
                 details={"source_index": source_index, "asset_id": asset_id},
-            )
+            ) from None
 
         # Get asset
         try:
@@ -471,7 +510,7 @@ class QueryServiceMixin:
                 f"Federated asset source at index {source_index} references non-existent asset: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Validate asset is FEDERATED type
         if asset.source_type != AssetSourceType.FEDERATED:
@@ -487,7 +526,9 @@ class QueryServiceMixin:
             )
 
         # Validate cross-tenant access permissions
-        self._validate_cross_tenant_source_access(asset, str(tenant.id), source_index=source_index)
+        self._validate_cross_tenant_source_access(
+            asset, str(tenant.id), source_index=source_index
+        )
 
         # Validate query is provided (optional but recommended)
         query = source_config.get("query")
@@ -524,7 +565,11 @@ class QueryServiceMixin:
         """
         import uuid
 
-        from hub.apps.assets.models import Asset, AssetSourceType, ExternalResourceReference
+        from hub.apps.assets.models import (
+            Asset,
+            AssetSourceType,
+            ExternalResourceReference,
+        )
 
         resource_id = source_config.get("resource_id")
         asset_id = source_config.get("asset_id")
@@ -551,7 +596,7 @@ class QueryServiceMixin:
                 f"Invalid asset_id format at source index {source_index}: {asset_id}",
                 code="INVALID_ASSET_ID",
                 details={"source_index": source_index, "asset_id": asset_id},
-            )
+            ) from None
 
         # Get asset
         try:
@@ -561,7 +606,7 @@ class QueryServiceMixin:
                 f"External resource source at index {source_index} references non-existent asset: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Validate asset is FEDERATED type
         if asset.source_type != AssetSourceType.FEDERATED:
@@ -577,12 +622,20 @@ class QueryServiceMixin:
             )
 
         # Validate cross-tenant access permissions
-        self._validate_cross_tenant_source_access(asset, str(tenant.id), source_index=source_index)
+        self._validate_cross_tenant_source_access(
+            asset, str(tenant.id), source_index=source_index
+        )
 
         # Validate external resource exists and belongs to asset
         try:
-            ExternalResourceReference.objects.get(asset=asset, resource_id=str(resource_id))
+            ExternalResourceReference.objects.get(
+                asset=asset, resource_id=str(resource_id)
+            )
         except ExternalResourceReference.DoesNotExist:
+            # W4.3 (R2-I3/E6) — http_status 404 per the error-code
+            # catalogue. The default manager now excludes consumer-side
+            # soft-deleted rows, so a deleted federated copy raises here
+            # instead of silently granting access.
             raise ValidationError(
                 f"External resource '{resource_id}' not found for asset {asset_id} at source index {source_index}",
                 code="EXTERNAL_RESOURCE_NOT_FOUND",
@@ -591,7 +644,8 @@ class QueryServiceMixin:
                     "asset_id": str(asset.id),
                     "resource_id": str(resource_id),
                 },
-            )
+                http_status=404,
+            ) from None
 
         # Validate resource can be accessed (check data_strategy)
         if not asset.can_download_resource(str(resource_id)):
@@ -675,7 +729,7 @@ class QueryServiceMixin:
                     f"Source at index {i} references non-existent asset: {asset_id}",
                     code="SOURCE_ASSET_NOT_FOUND",
                     details={"source_index": i, "asset_id": asset_id},
-                )
+                ) from None
 
             # Check cross-tenant access permissions
             self._validate_cross_tenant_source_access(asset, tenant_id, source_index=i)
@@ -692,7 +746,9 @@ class QueryServiceMixin:
             # Download file content for compliance scan
             try:
                 storage_client = S3StorageClient()
-                file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
+                file_content = storage_client.get_file_content(
+                    latest_dataset.file.storage_path
+                )
                 file_format = latest_dataset.format or "csv"
             except Exception as e:
                 logger.warning(
@@ -703,9 +759,16 @@ class QueryServiceMixin:
                 continue
 
             # Run compliance scan
-            try:
+            def _run_compliance_scan(
+                file_content=file_content,
+                file_format=file_format,
+                asset=asset,
+                i=i,
+            ) -> None:
                 compliance_result = compliance_client.scan_file(
-                    file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
+                    file_content=file_content,
+                    file_format=file_format.lower(),
+                    scan_mode="internal",
                 )
 
                 # Extract compliance status
@@ -730,9 +793,15 @@ class QueryServiceMixin:
                             "overall_status": overall_status,
                             "risk_level": risk_level,
                             "allowed_to_store": allowed_to_store,
-                            "detected_categories": compliance_result.get("detected_categories", {}),
-                            "column_findings": compliance_result.get("column_findings", []),
-                            "regulation_mapping": compliance_result.get("regulation_mapping", {}),
+                            "detected_categories": compliance_result.get(
+                                "detected_categories", {}
+                            ),
+                            "column_findings": compliance_result.get(
+                                "column_findings", []
+                            ),
+                            "regulation_mapping": compliance_result.get(
+                                "regulation_mapping", {}
+                            ),
                         },
                     )
 
@@ -747,6 +816,8 @@ class QueryServiceMixin:
                     },
                 )
 
+            try:
+                _run_compliance_scan()
             except ValidationError:
                 # Re-raise validation errors (compliance violations)
                 raise
@@ -754,7 +825,11 @@ class QueryServiceMixin:
                 # Log error but don't fail dataset creation for compliance service errors
                 logger.error(
                     f"Error running compliance check for source at index {i}: {e}",
-                    extra={"source_index": i, "asset_id": str(asset.id), "error": str(e)},
+                    extra={
+                        "source_index": i,
+                        "asset_id": str(asset.id),
+                        "error": str(e),
+                    },
                     exc_info=True,
                 )
                 # Continue with other sources even if one fails
@@ -782,11 +857,14 @@ class QueryServiceMixin:
         if asset_tenant_id == tenant_id:
             return  # Same tenant, access allowed
 
-        # Cross-tenant access - check entitlements
-        from hub.apps.marketplace.access_utils import check_entitlement
+        # Cross-tenant access — the entitlement verification resolves
+        # through the commercial hook (fail-closed in core-only mode).
+        from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
 
-        has_access, error_code, entitlement = check_entitlement(
-            consumer_tenant_id=tenant_id, asset_id=str(asset.id), provider_tenant_id=asset_tenant_id
+        has_access, error_code, entitlement = check_cross_tenant_entitlement(
+            consumer_tenant_id=tenant_id,
+            asset_id=str(asset.id),
+            provider_tenant_id=asset_tenant_id,
         )
 
         if not has_access:
@@ -798,11 +876,11 @@ class QueryServiceMixin:
             message = error_messages.get(error_code or "UNKNOWN", "Access denied.")
 
             source_context = (
-                f" for source at index {source_index}" if source_index is not None else ""
+                f" for source at index {source_index}"
+                if source_index is not None
+                else ""
             )
-            error_msg = (
-                f"Cross-tenant access denied{source_context} (asset: {asset.name}). {message}"
-            )
+            error_msg = f"Cross-tenant access denied{source_context} (asset: {asset.name}). {message}"
 
             raise ValidationError(
                 error_msg,
@@ -832,9 +910,9 @@ class QueryServiceMixin:
     def _validate_query_compliance(
         self,
         query: str,
-        query_type: QueryType,
-        sources: list[dict[str, Any]] | None,
-        tenant_id: str,
+        _query_type: QueryType,
+        _sources: list[dict[str, Any]] | None,
+        _tenant_id: str,
     ) -> None:
         """
         Validate query doesn't violate compliance rules.
@@ -893,7 +971,7 @@ class QueryServiceMixin:
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            raise PermissionError(f"User {user_id} not found")
+            raise PermissionError(f"User {user_id} not found") from None
 
         # Platform admins have all permissions (can operate on any tenant)
         if user.is_platform_admin:
@@ -901,7 +979,9 @@ class QueryServiceMixin:
 
         # For non-platform admins, verify tenant matches
         if str(user.tenant_id) != tenant_id:
-            raise PermissionError(f"User {user_id} does not belong to tenant {tenant_id}")
+            raise PermissionError(
+                f"User {user_id} does not belong to tenant {tenant_id}"
+            )
 
         # Check if user has required role (DATA_PROVIDER or TENANT_ADMIN)
         has_required_role = user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
@@ -989,10 +1069,15 @@ class QueryServiceMixin:
         metadata_storage_gb = metadata_storage_mb / 1024.0
 
         # Build requested quota dictionary
-        requested_quota = {"query_quota": query_quota, "storage_gb": metadata_storage_gb}
+        requested_quota = {
+            "query_quota": query_quota,
+            "storage_gb": metadata_storage_gb,
+        }
 
         # Validate quota via GovernanceService
-        governance_service = GovernanceService(tenant_id=tenant_id, user_id=self.user_id)
+        governance_service = GovernanceService(
+            tenant_id=tenant_id, user_id=self.user_id
+        )
 
         try:
             # Validate and allocate resource quota
@@ -1101,7 +1186,9 @@ class QueryServiceMixin:
         if not requested_quota:
             return
 
-        governance_service = GovernanceService(tenant_id=tenant_id, user_id=self.user_id)
+        governance_service = GovernanceService(
+            tenant_id=tenant_id, user_id=self.user_id
+        )
 
         try:
             governance_service.check_tenant_resource_limits(
@@ -1163,7 +1250,9 @@ class QueryServiceMixin:
 
         from hub.apps.orchestration.registry import WorkflowRegistry
         from hub.apps.orchestration.workflow_engine import WorkflowEngine
-        from hub.apps.orchestration.workflows.virtualization import VirtualizationWorkflow
+        from hub.apps.orchestration.workflows.virtualization import (
+            VirtualizationWorkflow,
+        )
 
         effective_tenant_id = tenant_id or self.tenant_id
         if not effective_tenant_id:
@@ -1174,7 +1263,9 @@ class QueryServiceMixin:
             raise ValidationError("user_id is required")
 
         # Get virtual dataset
-        virtual_dataset = self.get_virtual_dataset(virtual_dataset_id, effective_tenant_id)
+        virtual_dataset = self.get_virtual_dataset(
+            virtual_dataset_id, effective_tenant_id
+        )
 
         # Validate dataset is active
         if virtual_dataset.status != VirtualDatasetStatus.ACTIVE:
@@ -1219,7 +1310,9 @@ class QueryServiceMixin:
 
                 # Track execution metrics for cached result
                 virtualization_query_execution_started_total.labels(
-                    tenant_id=tenant_id_str, query_type=query_type_str, execution_mode="SYNC"
+                    tenant_id=tenant_id_str,
+                    query_type=query_type_str,
+                    execution_mode="SYNC",
                 ).inc()
 
                 virtualization_query_execution_completed_total.labels(
@@ -1234,12 +1327,16 @@ class QueryServiceMixin:
                 if isinstance(result_data, list):
                     result_size_bytes = len(str(result_data).encode("utf-8"))
                     virtualization_query_result_size_bytes.labels(
-                        tenant_id=tenant_id_str, query_type=query_type_str, execution_mode="SYNC"
+                        tenant_id=tenant_id_str,
+                        query_type=query_type_str,
+                        execution_mode="SYNC",
                     ).observe(result_size_bytes)
 
                     row_count = cached_result.get("row_count", len(result_data))
                     virtualization_query_result_rows_total.labels(
-                        tenant_id=tenant_id_str, query_type=query_type_str, execution_mode="SYNC"
+                        tenant_id=tenant_id_str,
+                        query_type=query_type_str,
+                        execution_mode="SYNC",
                     ).observe(row_count)
 
                 logger.info(
@@ -1290,7 +1387,9 @@ class QueryServiceMixin:
         execution_mode_str = get_execution_mode(effective_execution_mode)
 
         virtualization_query_execution_started_total.labels(
-            tenant_id=tenant_id_str, query_type=query_type_str, execution_mode=execution_mode_str
+            tenant_id=tenant_id_str,
+            query_type=query_type_str,
+            execution_mode=execution_mode_str,
         ).inc()
 
         # ASYNC path: create a PENDING execution + job, return immediately.
@@ -1376,18 +1475,19 @@ class QueryServiceMixin:
             if workflow_instance_id:
                 from hub.apps.orchestration.models import WorkflowInstance
 
-                workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
+                workflow_instance = WorkflowInstance.objects.get(
+                    id=workflow_instance_id
+                )
                 execution.workflow_instance = workflow_instance
                 execution.save(update_fields=["workflow_instance"])
-
-            return execution
 
         except ValueError as e:
             # Workflow execution failed - try to get execution from workflow instance
             from hub.apps.orchestration.models import WorkflowInstance
 
             workflow_instances = WorkflowInstance.objects.filter(
-                workflow_name=VirtualizationWorkflow.WORKFLOW_NAME, tenant_id=effective_tenant_id
+                workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
+                tenant_id=effective_tenant_id,
             ).order_by("-created_at")
 
             if workflow_instances.exists():
@@ -1398,12 +1498,13 @@ class QueryServiceMixin:
                         execution = QueryExecution.objects.get(id=execution_id)
                         execution.workflow_instance = workflow_instance
                         execution.save(update_fields=["workflow_instance"])
-                        # Return the execution even though workflow failed
-                        # This allows callers to check the execution status
-                        return execution
                     except QueryExecution.DoesNotExist:
                         # Execution was referenced but doesn't exist (might have been rolled back)
                         pass
+                    else:
+                        # Return the execution even though workflow failed
+                        # This allows callers to check the execution status
+                        return execution
 
             # If no execution found, raise error with workflow context
             error_msg = f"Query execution failed: {e!s}"
@@ -1411,8 +1512,12 @@ class QueryServiceMixin:
                 workflow_instance = workflow_instances.first()
                 error_msg += f" (workflow_instance_id: {workflow_instance.id})"
             raise ValidationError(error_msg) from e
+        else:
+            return execution
 
-    def get_workflow_instance(self, execution_id: str, tenant_id: str | None = None) -> Any | None:
+    def get_workflow_instance(
+        self, execution_id: str, tenant_id: str | None = None
+    ) -> Any | None:
         """
         Get workflow instance for a query execution.
 
@@ -1435,11 +1540,14 @@ class QueryServiceMixin:
             execution = QueryExecution.objects.get(
                 id=execution_id, virtual_dataset__tenant_id=effective_tenant_id
             )
-            return execution.workflow_instance
         except QueryExecution.DoesNotExist:
-            raise NotFoundError(f"Query execution {execution_id} not found")
+            raise NotFoundError(f"Query execution {execution_id} not found") from None
+        else:
+            return execution.workflow_instance
 
-    def get_workflow_state(self, execution_id: str, tenant_id: str | None = None) -> dict[str, Any]:
+    def get_workflow_state(
+        self, execution_id: str, tenant_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Get workflow state data for a query execution.
 
@@ -1463,7 +1571,9 @@ class QueryServiceMixin:
             "workflow_version": workflow_instance.workflow_version,
             "status": workflow_instance.status,
             "current_step": workflow_instance.state_data.get("current_step"),
-            "progress_percentage": workflow_instance.state_data.get("progress_percentage", 0),
+            "progress_percentage": workflow_instance.state_data.get(
+                "progress_percentage", 0
+            ),
             "state_data": workflow_instance.state_data,
             "error_message": workflow_instance.error_message,
             "error_details": workflow_instance.error_details,
@@ -1490,7 +1600,9 @@ class QueryServiceMixin:
             return {"progress_percentage": 0, "current_step": None, "status": "UNKNOWN"}
 
         return {
-            "progress_percentage": workflow_instance.state_data.get("progress_percentage", 0),
+            "progress_percentage": workflow_instance.state_data.get(
+                "progress_percentage", 0
+            ),
             "current_step": workflow_instance.state_data.get("current_step"),
             "status": workflow_instance.status,
             "workflow_instance_id": str(workflow_instance.id),
@@ -1514,7 +1626,9 @@ class QueryServiceMixin:
 
         # Create cache key from dataset ID, query hash, and parameters
         query_hash = hashlib.md5(virtual_dataset.query.encode()).hexdigest()[:8]
-        params_hash = hashlib.md5(json.dumps(parameters, sort_keys=True).encode()).hexdigest()[:8]
+        params_hash = hashlib.md5(
+            json.dumps(parameters, sort_keys=True).encode()
+        ).hexdigest()[:8]
         return f"virtual_query:{virtual_dataset.id}:{query_hash}:{params_hash}"
 
     # ------------------------------------------------------------------
@@ -1735,19 +1849,25 @@ class QueryServiceMixin:
 
         try:
             # Parse and validate query
-            self._parse_and_validate_query(virtual_dataset.query, virtual_dataset.query_type)
+            self._parse_and_validate_query(
+                virtual_dataset.query, virtual_dataset.query_type
+            )
 
             # Run compliance checks before query execution
             try:
                 self._run_compliance_check_before_query(
-                    virtual_dataset, execution, str(self.tenant_id) if self.tenant_id else None
+                    virtual_dataset,
+                    execution,
+                    str(self.tenant_id) if self.tenant_id else None,
                 )
             except ValidationError:
                 # Re-raise validation errors (compliance violations)
                 raise
             except Exception as e:
                 # Log compliance check failure but don't fail query execution if service unavailable
-                execution.add_log_entry("WARNING", f"Compliance check failed: {e!s}", save=False)
+                execution.add_log_entry(
+                    "WARNING", f"Compliance check failed: {e!s}", save=False
+                )
                 logger.warning(
                     f"Compliance check failed for query execution {execution.id}: {e}",
                     extra={"execution_id": str(execution.id), "error": str(e)},
@@ -1758,7 +1878,9 @@ class QueryServiceMixin:
 
             # Optimize query
             optimized_query = self._optimize_query(
-                virtual_dataset.query, virtual_dataset.query_type, virtual_dataset.get_sources()
+                virtual_dataset.query,
+                virtual_dataset.query_type,
+                virtual_dataset.get_sources(),
             )
 
             # Execute query against sources
@@ -1771,7 +1893,9 @@ class QueryServiceMixin:
             )
 
             # Aggregate results from multiple sources
-            aggregated_results = self._aggregate_results(results, virtual_dataset.query_type)
+            aggregated_results = self._aggregate_results(
+                results, virtual_dataset.query_type
+            )
 
             # Run quality checks on results (if results are available)
             quality_metrics = None
@@ -1782,7 +1906,9 @@ class QueryServiceMixin:
                     )
                 except Exception as e:
                     # Log quality check failure but don't fail query execution
-                    execution.add_log_entry("WARNING", f"Quality check failed: {e!s}", save=False)
+                    execution.add_log_entry(
+                        "WARNING", f"Quality check failed: {e!s}", save=False
+                    )
                     logger.warning(
                         f"Quality check failed for query execution {execution.id}: {e}",
                         extra={"execution_id": str(execution.id), "error": str(e)},
@@ -1795,9 +1921,11 @@ class QueryServiceMixin:
                 cache_key,
                 {
                     "data": aggregated_results,
-                    "row_count": len(aggregated_results)
-                    if isinstance(aggregated_results, list)
-                    else 0,
+                    "row_count": (
+                        len(aggregated_results)
+                        if isinstance(aggregated_results, list)
+                        else 0
+                    ),
                     "query_type": virtual_dataset.query_type,
                     "cached_at": timezone.now().isoformat(),
                 },
@@ -1807,15 +1935,19 @@ class QueryServiceMixin:
             # Calculate metrics
             duration_seconds = time.time() - start_time
             duration_ms = int(duration_seconds * 1000)
-            row_count = len(aggregated_results) if isinstance(aggregated_results, list) else 0
+            row_count = (
+                len(aggregated_results) if isinstance(aggregated_results, list) else 0
+            )
 
             # Build metrics dictionary
             metrics = {
                 "duration_ms": duration_ms,
                 "rows_processed": row_count,
-                "sources_count": len(virtual_dataset.get_sources())
-                if virtual_dataset.get_sources()
-                else 0,
+                "sources_count": (
+                    len(virtual_dataset.get_sources())
+                    if virtual_dataset.get_sources()
+                    else 0
+                ),
             }
 
             # Track Prometheus metrics
@@ -1890,15 +2022,21 @@ class QueryServiceMixin:
                         "execution_mode": execution.execution_mode,
                         "duration_ms": duration_ms,
                         "row_count": row_count,
-                        "sources_count": len(virtual_dataset.get_sources())
-                        if virtual_dataset.get_sources()
-                        else 0,
-                        "quality_score": quality_metrics.get("quality_score")
-                        if quality_metrics
-                        else None,
-                        "quality_status": quality_metrics.get("overall_status")
-                        if quality_metrics
-                        else None,
+                        "sources_count": (
+                            len(virtual_dataset.get_sources())
+                            if virtual_dataset.get_sources()
+                            else 0
+                        ),
+                        "quality_score": (
+                            quality_metrics.get("quality_score")
+                            if quality_metrics
+                            else None
+                        ),
+                        "quality_status": (
+                            quality_metrics.get("overall_status")
+                            if quality_metrics
+                            else None
+                        ),
                     },
                 )
             except Exception as e:
@@ -2025,7 +2163,8 @@ class QueryServiceMixin:
 
             # Check for basic SQL structure
             if not any(
-                keyword in query_upper for keyword in ["SELECT", "WITH", "INSERT", "UPDATE"]
+                keyword in query_upper
+                for keyword in ["SELECT", "WITH", "INSERT", "UPDATE"]
             ):
                 raise ValidationError(
                     "SQL query must contain SELECT, WITH, INSERT, or UPDATE",
@@ -2055,7 +2194,7 @@ class QueryServiceMixin:
         # Additional validation can be added for other query types
 
     def _optimize_query(
-        self, query: str, query_type: QueryType, sources: list[dict[str, Any]] | None
+        self, query: str, _query_type: QueryType, _sources: list[dict[str, Any]] | None
     ) -> str:
         """
         Optimize query for execution.
@@ -2080,7 +2219,10 @@ class QueryServiceMixin:
         return query
 
     def _run_compliance_check_before_query(
-        self, virtual_dataset: VirtualDataset, execution: QueryExecution, tenant_id: str | None
+        self,
+        virtual_dataset: VirtualDataset,
+        execution: QueryExecution,
+        tenant_id: str | None,
     ) -> None:
         """
         Run compliance checks before query execution.
@@ -2125,7 +2267,9 @@ class QueryServiceMixin:
         is_healthy, _ = compliance_client.health_check()
         if not is_healthy:
             execution.add_log_entry(
-                "WARNING", "Compliance service unavailable, skipping compliance check", save=False
+                "WARNING",
+                "Compliance service unavailable, skipping compliance check",
+                save=False,
             )
             logger.warning(
                 f"Compliance service unavailable for query execution {execution.id}, skipping compliance check",
@@ -2168,7 +2312,7 @@ class QueryServiceMixin:
                     f"Source at index {i} references non-existent asset: {asset_id}",
                     code="SOURCE_ASSET_NOT_FOUND",
                     details={"source_index": i, "asset_id": asset_id},
-                )
+                ) from None
 
             # Check cross-tenant source access permissions
             self._validate_cross_tenant_source_access(asset, tenant_id, source_index=i)
@@ -2189,7 +2333,9 @@ class QueryServiceMixin:
             # Download file content for compliance scan
             try:
                 storage_client = S3StorageClient()
-                file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
+                file_content = storage_client.get_file_content(
+                    latest_dataset.file.storage_path
+                )
                 file_format = latest_dataset.format or "csv"
             except Exception as e:
                 logger.warning(
@@ -2205,9 +2351,16 @@ class QueryServiceMixin:
                 continue
 
             # Run compliance scan
-            try:
+            def _run_compliance_scan(
+                file_content=file_content,
+                file_format=file_format,
+                asset=asset,
+                i=i,
+            ) -> None:
                 compliance_result = compliance_client.scan_file(
-                    file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
+                    file_content=file_content,
+                    file_format=file_format.lower(),
+                    scan_mode="internal",
                 )
 
                 # Extract compliance status
@@ -2233,9 +2386,15 @@ class QueryServiceMixin:
                             "overall_status": overall_status,
                             "risk_level": risk_level,
                             "allowed_to_store": allowed_to_store,
-                            "detected_categories": compliance_result.get("detected_categories", {}),
-                            "column_findings": compliance_result.get("column_findings", []),
-                            "regulation_mapping": compliance_result.get("regulation_mapping", {}),
+                            "detected_categories": compliance_result.get(
+                                "detected_categories", {}
+                            ),
+                            "column_findings": compliance_result.get(
+                                "column_findings", []
+                            ),
+                            "regulation_mapping": compliance_result.get(
+                                "regulation_mapping", {}
+                            ),
                         },
                     )
 
@@ -2257,6 +2416,8 @@ class QueryServiceMixin:
                     },
                 )
 
+            try:
+                _run_compliance_scan()
             except ValidationError:
                 # Re-raise validation errors (compliance violations)
                 raise
@@ -2289,20 +2450,25 @@ class QueryServiceMixin:
         # This is a basic check - more sophisticated rule-based validation can be added
 
         # SQL-specific checks
-        if virtual_dataset.query_type == QueryType.SQL:
+        if (
+            virtual_dataset.query_type == QueryType.SQL
+            and "SELECT *" in query_upper
+            and "LIMIT" not in query_upper
+        ):
             # Check for operations that might expose sensitive data
-            if "SELECT *" in query_upper and "LIMIT" not in query_upper:
-                # Unbounded SELECT * queries might expose too much data
-                # This is a warning, not a block
-                execution.add_log_entry(
-                    "WARNING",
-                    "Query uses SELECT * without LIMIT - may expose large amounts of data",
-                    save=False,
-                )
+            # Unbounded SELECT * queries might expose too much data
+            # This is a warning, not a block
+            execution.add_log_entry(
+                "WARNING",
+                "Query uses SELECT * without LIMIT - may expose large amounts of data",
+                save=False,
+            )
 
         # Log compliance check completion
         execution.add_log_entry(
-            "INFO", "Compliance check completed successfully - query execution allowed", save=False
+            "INFO",
+            "Compliance check completed successfully - query execution allowed",
+            save=False,
         )
         logger.info(
             f"Compliance check completed for query execution {execution.id}",
@@ -2346,7 +2512,12 @@ class QueryServiceMixin:
             for i, source in enumerate(sources):
                 try:
                     source_result = self._execute_query_against_source(
-                        query, query_type, source, parameters, timeout_seconds, source_index=i
+                        query,
+                        query_type,
+                        source,
+                        parameters,
+                        timeout_seconds,
+                        source_index=i,
                     )
                     results.append(source_result)
                 except Exception as e:
@@ -2399,15 +2570,13 @@ class QueryServiceMixin:
         """
         source_type = source.get("type", "").lower()
 
-        # Handle federated asset sources
-        if source_type == "federated_asset":
-            return self._execute_query_against_federated_asset(
-                query, query_type, source, parameters, timeout_seconds, source_index
-            )
-
-        # Handle external resource sources
-        if source_type == "external_resource":
-            return self._execute_query_against_external_resource(
+        # Handle federated asset / external resource sources via dispatch
+        source_handlers = {
+            "federated_asset": self._execute_query_against_federated_asset,
+            "external_resource": self._execute_query_against_external_resource,
+        }
+        if source_type in source_handlers:
+            return source_handlers[source_type](
                 query, query_type, source, parameters, timeout_seconds, source_index
             )
 
@@ -2415,9 +2584,13 @@ class QueryServiceMixin:
         if query_type == QueryType.SQL:
             # Execute SQL query against database
             if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
-                return self._execute_sql_query(source, query, parameters, timeout_seconds)
+                return self._execute_sql_query(
+                    source, query, parameters, timeout_seconds
+                )
             elif source_type == "odbc":
-                return self._execute_odbc_query(source, query, parameters, timeout_seconds)
+                return self._execute_odbc_query(
+                    source, query, parameters, timeout_seconds
+                )
             else:
                 raise ValidationError(
                     f"Unsupported database type for SQL query: {source_type}",
@@ -2434,7 +2607,9 @@ class QueryServiceMixin:
 
         elif query_type == QueryType.GRAPHQL:
             # Execute GraphQL query
-            return self._execute_graphql_query(source, query, parameters, timeout_seconds)
+            return self._execute_graphql_query(
+                source, query, parameters, timeout_seconds
+            )
 
         elif query_type == QueryType.FEDERATED:
             # Federated query - execute against multiple sources
@@ -2491,13 +2666,15 @@ class QueryServiceMixin:
 
         # Get asset
         try:
-            asset = Asset.objects.select_related("tenant").get(id=uuid.UUID(str(asset_id)))
+            asset = Asset.objects.select_related("tenant").get(
+                id=uuid.UUID(str(asset_id))
+            )
         except Asset.DoesNotExist:
             raise ValidationError(
                 f"Federated asset not found: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Use source-specific query if provided, otherwise use dataset query
         source_query = source.get("query") or query
@@ -2514,7 +2691,9 @@ class QueryServiceMixin:
 
                 storage_client = S3StorageClient()
                 try:
-                    file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
+                    file_content = storage_client.get_file_content(
+                        latest_dataset.file.storage_path
+                    )
                     file_format = latest_dataset.format or "CSV"
 
                     # Execute query against file content
@@ -2549,7 +2728,9 @@ class QueryServiceMixin:
         # No downloaded datasets - check if we can query metadata or download on-demand
         if asset.data_strategy == DataStrategy.METADATA_ONLY:
             # Metadata-only queries - return schema/metadata information
-            return self._execute_metadata_only_query(asset, source_query, query_type, source_index)
+            return self._execute_metadata_only_query(
+                asset, source_query, query_type, source_index
+            )
 
         # Try to download and query external resources on-demand
         if asset.has_external_resources():
@@ -2587,10 +2768,9 @@ class QueryServiceMixin:
 
                         if os.path.exists(file_path):
                             os.remove(file_path)
-                    except Exception:
+                    except OSError:  # temp-file cleanup is best-effort
                         pass
 
-                    return result
                 except Exception as e:
                     logger.error(
                         f"Failed to download and query external resource for federated asset {asset_id}: {e}",
@@ -2612,6 +2792,8 @@ class QueryServiceMixin:
                             "error": str(e),
                         },
                     ) from e
+                else:
+                    return result
 
         # No resources available
         raise ValidationError(
@@ -2665,13 +2847,15 @@ class QueryServiceMixin:
 
         # Get asset
         try:
-            asset = Asset.objects.select_related("tenant").get(id=uuid.UUID(str(asset_id)))
+            asset = Asset.objects.select_related("tenant").get(
+                id=uuid.UUID(str(asset_id))
+            )
         except Asset.DoesNotExist:
             raise ValidationError(
                 f"Asset not found: {asset_id}",
                 code="ASSET_NOT_FOUND",
                 details={"source_index": source_index, "asset_id": str(asset_id)},
-            )
+            ) from None
 
         # Download external resource on-demand
         try:
@@ -2710,7 +2894,12 @@ class QueryServiceMixin:
         try:
             # Execute query against downloaded content
             result = self._execute_query_against_file_content(
-                query, query_type, file_content, file_format, parameters, timeout_seconds
+                query,
+                query_type,
+                file_content,
+                file_format,
+                parameters,
+                timeout_seconds,
             )
 
             # Cleanup temp file
@@ -2719,10 +2908,9 @@ class QueryServiceMixin:
 
                 if os.path.exists(file_path):
                     os.remove(file_path)
-            except Exception:
+            except OSError:  # temp-file cleanup is best-effort
                 pass
 
-            return result
         except Exception:
             # Cleanup temp file on error
             try:
@@ -2730,9 +2918,11 @@ class QueryServiceMixin:
 
                 if os.path.exists(file_path):
                     os.remove(file_path)
-            except Exception:
+            except OSError:  # temp-file cleanup is best-effort
                 pass
             raise
+        else:
+            return result
 
     def _execute_query_against_file_content(
         self,
@@ -2741,7 +2931,7 @@ class QueryServiceMixin:
         file_content: bytes,
         file_format: str,
         parameters: dict[str, Any],
-        timeout_seconds: int,
+        _timeout_seconds: int,
     ) -> dict[str, Any]:
         """
         Execute query against file content in memory.
@@ -2761,7 +2951,7 @@ class QueryServiceMixin:
         """
         import io
 
-        import pandas as pd
+        import pandas as pd  # type: ignore[import-untyped]
 
         # Parse file content based on format
         if file_format.upper() == "CSV":
@@ -2774,28 +2964,29 @@ class QueryServiceMixin:
                     details={"error": str(e)},
                 ) from e
         elif file_format.upper() == "JSON":
-            try:
+
+            def _parse_json() -> pd.DataFrame:
                 import json
 
                 data = json.loads(file_content.decode("utf-8"))
                 # Handle both list and dict JSON
                 if isinstance(data, list):
-                    df = pd.DataFrame(data)
-                elif isinstance(data, dict):
+                    return pd.DataFrame(data)
+                if isinstance(data, dict):
                     # If dict, try to find list values
                     if any(isinstance(v, list) for v in data.values()):
                         # Use first list value
                         for _key, value in data.items():
                             if isinstance(value, list):
-                                df = pd.DataFrame(value)
-                                break
-                    else:
-                        # Single record dict
-                        df = pd.DataFrame([data])
-                else:
-                    raise ValidationError(
-                        "Unsupported JSON structure", code="INVALID_JSON_STRUCTURE"
-                    )
+                                return pd.DataFrame(value)
+                    # Single record dict
+                    return pd.DataFrame([data])
+                raise ValidationError(
+                    "Unsupported JSON structure", code="INVALID_JSON_STRUCTURE"
+                )
+
+            try:
+                df = _parse_json()
             except Exception as e:
                 raise ValidationError(
                     f"Failed to parse JSON file: {e!s}",
@@ -2829,7 +3020,9 @@ class QueryServiceMixin:
                     if not remainder or remainder.upper().startswith("FROM "):
                         result_df = df
                     elif remainder.upper().startswith("WHERE "):
-                        result_df = df.query(remainder[6:].strip())  # "WHERE col > 5" -> "col > 5"
+                        result_df = df.query(
+                            remainder[6:].strip()
+                        )  # "WHERE col > 5" -> "col > 5"
                     else:
                         result_df = df
                 else:
@@ -2856,7 +3049,11 @@ class QueryServiceMixin:
         }
 
     def _execute_metadata_only_query(
-        self, asset: "Asset", query: str, query_type: QueryType, source_index: int = 0
+        self,
+        asset: "Asset",
+        _query: str,
+        _query_type: QueryType,
+        _source_index: int = 0,
     ) -> dict[str, Any]:
         """
         Execute metadata-only query against federated asset.
@@ -2919,7 +3116,11 @@ class QueryServiceMixin:
         }
 
     def _execute_sql_query(
-        self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
+        self,
+        source: dict[str, Any],
+        query: str,
+        parameters: dict[str, Any],
+        timeout_seconds: int,
     ) -> dict[str, Any]:
         """
         Execute SQL query against database source.
@@ -2940,7 +3141,7 @@ class QueryServiceMixin:
             psycopg2 = None
 
         try:
-            import pymysql
+            import pymysql  # type: ignore[import-untyped]
         except ImportError:
             pymysql = None
 
@@ -2960,10 +3161,13 @@ class QueryServiceMixin:
 
         if not host or not database:
             raise ValidationError(
-                "Database host and database name are required", code="MISSING_DATABASE_CONFIG"
+                "Database host and database name are required",
+                code="MISSING_DATABASE_CONFIG",
             )
 
-        try:
+        def _run_sql() -> dict[str, Any]:
+            nonlocal port
+
             if source_type == "postgresql":
                 if psycopg2 is None:
                     raise ValidationError(
@@ -2990,11 +3194,15 @@ class QueryServiceMixin:
                         cursor.execute(safe_query, params)
                     else:
                         cursor.execute(safe_query)
-                    columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                    columns = (
+                        [desc[0] for desc in cursor.description]
+                        if cursor.description
+                        else []
+                    )
                     rows = cursor.fetchall()
 
                     # Convert to list of dictionaries
-                    data = [dict(zip(columns, row)) for row in rows]
+                    data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                     return {
                         "data": data,
@@ -3032,10 +3240,14 @@ class QueryServiceMixin:
                         cursor.execute(safe_query, params)
                     else:
                         cursor.execute(safe_query)
-                    columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                    columns = (
+                        [desc[0] for desc in cursor.description]
+                        if cursor.description
+                        else []
+                    )
                     rows = cursor.fetchall()
 
-                    data = [dict(zip(columns, row)) for row in rows]
+                    data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                     return {
                         "data": data,
@@ -3060,16 +3272,19 @@ class QueryServiceMixin:
 
                 connection_string = f"mssql+pyodbc://{username}:{password}@{host}:{port}/{database}?driver=ODBC+Driver+17+for+SQL+Server"
                 engine = create_engine(
-                    connection_string, connect_args={"timeout": min(timeout_seconds, 10)}
+                    connection_string,
+                    connect_args={"timeout": min(timeout_seconds, 10)},
                 )
 
                 with engine.connect() as conn:
-                    safe_query, params = self._normalise_query_params_named(query, parameters)
+                    safe_query, params = self._normalise_query_params_named(
+                        query, parameters
+                    )
                     result = conn.execute(text(safe_query), params or None)
                     columns = result.keys()
                     rows = result.fetchall()
 
-                    data = [dict(zip(columns, row)) for row in rows]
+                    data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                     return {
                         "data": data,
@@ -3080,9 +3295,12 @@ class QueryServiceMixin:
 
             else:
                 raise ValidationError(
-                    f"Unsupported database type: {source_type}", code="UNSUPPORTED_DATABASE_TYPE"
+                    f"Unsupported database type: {source_type}",
+                    code="UNSUPPORTED_DATABASE_TYPE",
                 )
 
+        try:
+            result = _run_sql()
         except Exception as e:
             logger.error(
                 f"SQL query execution failed: {e}",
@@ -3097,9 +3315,14 @@ class QueryServiceMixin:
             raise ValidationError(
                 f"SQL query execution failed: {e!s}", code="SQL_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _execute_odbc_query(
-        self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
+        self,
+        source: dict[str, Any],
+        query: str,
+        parameters: dict[str, Any],
+        timeout_seconds: int,
     ) -> dict[str, Any]:
         """
         Execute SQL query against ODBC source.
@@ -3124,7 +3347,7 @@ class QueryServiceMixin:
             raise ValidationError(
                 "pyodbc is required for ODBC connections. Install it with: pip install pyodbc",
                 code="MISSING_DEPENDENCY",
-            )
+            ) from None
 
         connection_string = source.get("connection_string")
         host = source.get("host")
@@ -3172,10 +3395,14 @@ class QueryServiceMixin:
                     cursor.execute(safe_query, params)
                 else:
                     cursor.execute(safe_query)
-                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                columns = (
+                    [desc[0] for desc in cursor.description]
+                    if cursor.description
+                    else []
+                )
                 rows = cursor.fetchall()
 
-                data = [dict(zip(columns, row)) for row in rows]
+                data = [dict(zip(columns, row, strict=False)) for row in rows]
 
                 return {
                     "data": data,
@@ -3199,7 +3426,12 @@ class QueryServiceMixin:
         except Exception as e:
             logger.error(
                 f"ODBC query execution failed: {e}",
-                extra={"source_type": "odbc", "host": host, "database": database, "error": str(e)},
+                extra={
+                    "source_type": "odbc",
+                    "host": host,
+                    "database": database,
+                    "error": str(e),
+                },
                 exc_info=True,
             )
             raise ValidationError(
@@ -3217,10 +3449,19 @@ class QueryServiceMixin:
         Returns:
             Result dictionary with data and metadata
         """
-        from hub.apps.semantic.service_client import SemanticServiceClient
+        # SPARQL execution is paid-layer — semantic registers the client
+        # factory; fail closed (ValidationError) without it.
+        from hub.apps.core.commercial_hooks import get_service_client_factory
 
-        try:
-            client = SemanticServiceClient()
+        client_cls = get_service_client_factory("SEMANTIC")
+        if client_cls is None:
+            raise ValidationError(
+                "SPARQL query execution is not available in core-only deployments",
+                code="SPARQL_EXECUTION_FAILED",
+            )
+
+        def _run_sparql() -> dict[str, Any]:
+            client = client_cls()
             result = client.query_sparql(
                 query=query,
                 output_format="json",
@@ -3251,16 +3492,25 @@ class QueryServiceMixin:
                 "source_type": "sparql",
             }
 
+        try:
+            result = _run_sparql()
         except Exception as e:
             logger.error(
-                f"SPARQL query execution failed: {e}", extra={"error": str(e)}, exc_info=True
+                f"SPARQL query execution failed: {e}",
+                extra={"error": str(e)},
+                exc_info=True,
             )
             raise ValidationError(
                 f"SPARQL query execution failed: {e!s}", code="SPARQL_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _execute_rest_query(
-        self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
+        self,
+        source: dict[str, Any],
+        query: str,
+        parameters: dict[str, Any],
+        timeout_seconds: int,
     ) -> dict[str, Any]:
         """
         Execute REST API query.
@@ -3296,7 +3546,7 @@ class QueryServiceMixin:
             query_params = urllib.parse.urlencode(parameters)
             url = f"{url}?{query_params}" if "?" not in url else f"{url}&{query_params}"
 
-        try:
+        def _run_rest() -> dict[str, Any]:
             headers = source.get("headers", {})
             method = source.get("method", "GET").upper()
 
@@ -3307,13 +3557,16 @@ class QueryServiceMixin:
                     response = client.post(url, headers=headers, json=parameters)
                 else:
                     raise ValidationError(
-                        f"Unsupported HTTP method: {method}", code="UNSUPPORTED_HTTP_METHOD"
+                        f"Unsupported HTTP method: {method}",
+                        code="UNSUPPORTED_HTTP_METHOD",
                     )
 
                 response.raise_for_status()
                 data = (
                     response.json()
-                    if response.headers.get("content-type", "").startswith("application/json")
+                    if response.headers.get("content-type", "").startswith(
+                        "application/json"
+                    )
                     else response.text
                 )
 
@@ -3334,11 +3587,17 @@ class QueryServiceMixin:
 
                 return {
                     "data": data,
-                    "columns": list(data[0].keys()) if data and isinstance(data[0], dict) else [],
+                    "columns": (
+                        list(data[0].keys())
+                        if data and isinstance(data[0], dict)
+                        else []
+                    ),
                     "row_count": len(data) if isinstance(data, list) else 1,
                     "source_type": "rest",
                 }
 
+        try:
+            result = _run_rest()
         except Exception as e:
             logger.error(
                 f"REST API query execution failed: {e}",
@@ -3348,9 +3607,14 @@ class QueryServiceMixin:
             raise ValidationError(
                 f"REST API query execution failed: {e!s}", code="REST_EXECUTION_FAILED"
             ) from e
+        return result
 
     def _execute_graphql_query(
-        self, source: dict[str, Any], query: str, parameters: dict[str, Any], timeout_seconds: int
+        self,
+        source: dict[str, Any],
+        query: str,
+        parameters: dict[str, Any],
+        timeout_seconds: int,
     ) -> dict[str, Any]:
         """
         Execute GraphQL query.
@@ -3372,7 +3636,7 @@ class QueryServiceMixin:
                 "GraphQL endpoint or url is required", code="MISSING_GRAPHQL_CONFIG"
             )
 
-        try:
+        def _run_graphql() -> dict[str, Any]:
             headers = source.get("headers", {})
             if "Content-Type" not in headers:
                 headers["Content-Type"] = "application/json"
@@ -3385,7 +3649,9 @@ class QueryServiceMixin:
                 result = response.json()
 
                 if "errors" in result:
-                    error_messages = [err.get("message", str(err)) for err in result["errors"]]
+                    error_messages = [
+                        err.get("message", str(err)) for err in result["errors"]
+                    ]
                     raise ValidationError(
                         f"GraphQL query errors: {', '.join(error_messages)}",
                         code="GRAPHQL_EXECUTION_FAILED",
@@ -3405,11 +3671,17 @@ class QueryServiceMixin:
 
                 return {
                     "data": data if isinstance(data, list) else [data],
-                    "columns": list(data[0].keys()) if data and isinstance(data[0], dict) else [],
+                    "columns": (
+                        list(data[0].keys())
+                        if data and isinstance(data[0], dict)
+                        else []
+                    ),
                     "row_count": len(data) if isinstance(data, list) else 1,
                     "source_type": "graphql",
                 }
 
+        try:
+            result = _run_graphql()
         except Exception as e:
             logger.error(
                 f"GraphQL query execution failed: {e}",
@@ -3417,11 +3689,13 @@ class QueryServiceMixin:
                 exc_info=True,
             )
             raise ValidationError(
-                f"GraphQL query execution failed: {e!s}", code="GRAPHQL_EXECUTION_FAILED"
+                f"GraphQL query execution failed: {e!s}",
+                code="GRAPHQL_EXECUTION_FAILED",
             ) from e
+        return result
 
     def _aggregate_results(
-        self, results: list[dict[str, Any]], query_type: QueryType
+        self, results: list[dict[str, Any]], _query_type: QueryType
     ) -> list[dict[str, Any]]:
         """
         Aggregate results from multiple sources.
@@ -3464,7 +3738,9 @@ class QueryServiceMixin:
 
         return aggregated
 
-    def _publish_execution_completed(self, execution: QueryExecution, row_count: int) -> None:
+    def _publish_execution_completed(
+        self, execution: QueryExecution, row_count: int
+    ) -> None:
         """Publish query execution completed event"""
         try:
             self.publish_query_execution_completed(
@@ -3474,14 +3750,20 @@ class QueryServiceMixin:
                 duration_ms=execution.get_metric("duration_ms", 0),
                 rows_processed=row_count,
                 tenant_id=str(execution.virtual_dataset.tenant_id),
-                user_id=str(execution.virtual_dataset.created_by_id)
-                if execution.virtual_dataset.created_by_id
-                else None,
+                user_id=(
+                    str(execution.virtual_dataset.created_by_id)
+                    if execution.virtual_dataset.created_by_id
+                    else None
+                ),
             )
         except Exception as e:
-            logger.warning(f"Failed to publish query execution completed event: {e}", exc_info=True)
+            logger.warning(
+                f"Failed to publish query execution completed event: {e}", exc_info=True
+            )
 
-    def _publish_execution_failed(self, execution: QueryExecution, error_message: str) -> None:
+    def _publish_execution_failed(
+        self, execution: QueryExecution, error_message: str
+    ) -> None:
         """Publish query execution failed event"""
         try:
             self.publish_query_execution_failed(
@@ -3490,18 +3772,22 @@ class QueryServiceMixin:
                 error_message=error_message,
                 duration_ms=execution.get_metric("duration_ms", 0),
                 tenant_id=str(execution.virtual_dataset.tenant_id),
-                user_id=str(execution.virtual_dataset.created_by_id)
-                if execution.virtual_dataset.created_by_id
-                else None,
+                user_id=(
+                    str(execution.virtual_dataset.created_by_id)
+                    if execution.virtual_dataset.created_by_id
+                    else None
+                ),
             )
         except Exception as e:
-            logger.warning(f"Failed to publish query execution failed event: {e}", exc_info=True)
+            logger.warning(
+                f"Failed to publish query execution failed event: {e}", exc_info=True
+            )
 
     def _run_quality_check_on_results(
         self,
         results: list[dict[str, Any]],
         execution: QueryExecution,
-        virtual_dataset: VirtualDataset,
+        _virtual_dataset: VirtualDataset,
         quality_threshold: float = 0.7,
         profile_key: str = "intake_basic_gx",
     ) -> dict[str, Any] | None:
@@ -3538,7 +3824,9 @@ class QueryServiceMixin:
             is_healthy, _ = dq_client.health_check()
             if not is_healthy:
                 execution.add_log_entry(
-                    "WARNING", "DQ service unavailable, skipping quality check", save=False
+                    "WARNING",
+                    "DQ service unavailable, skipping quality check",
+                    save=False,
                 )
                 logger.warning(
                     f"DQ service unavailable for query execution {execution.id}, skipping quality check",
@@ -3547,7 +3835,9 @@ class QueryServiceMixin:
                 return None
 
             if not results or len(results) == 0:
-                execution.add_log_entry("INFO", "No results to run quality check on", save=False)
+                execution.add_log_entry(
+                    "INFO", "No results to run quality check on", save=False
+                )
                 return None
 
             # Convert results to CSV format for DQ service
@@ -3560,7 +3850,9 @@ class QueryServiceMixin:
                 fieldnames = list(results[0].keys())
             else:
                 execution.add_log_entry(
-                    "WARNING", "Results format not supported for quality check", save=False
+                    "WARNING",
+                    "Results format not supported for quality check",
+                    save=False,
                 )
                 return None
 
@@ -3586,7 +3878,10 @@ class QueryServiceMixin:
             )
 
             dq_result = dq_client.run_dq(
-                file_content=csv_content, file_format="csv", profile_key=profile_key, use_cache=True
+                file_content=csv_content,
+                file_format="csv",
+                profile_key=profile_key,
+                use_cache=True,
             )
 
             # Extract quality metrics
@@ -3596,7 +3891,9 @@ class QueryServiceMixin:
 
             # Count passed and failed checks
             checks_passed = sum(1 for check in checks if check.get("status") == "PASS")
-            checks_failed = sum(1 for check in checks if check.get("status") in ["FAIL", "ERROR"])
+            checks_failed = sum(
+                1 for check in checks if check.get("status") in ["FAIL", "ERROR"]
+            )
 
             # Validate quality threshold
             threshold_met = quality_score >= quality_threshold
@@ -3662,8 +3959,6 @@ class QueryServiceMixin:
                 },
             )
 
-            return quality_metrics
-
         except Exception as e:
             execution.add_log_entry("ERROR", f"Quality check failed: {e!s}", save=False)
             logger.error(
@@ -3672,6 +3967,8 @@ class QueryServiceMixin:
                 exc_info=True,
             )
             return None
+        else:
+            return quality_metrics
 
     def get_query_result(
         self,
@@ -3762,7 +4059,8 @@ class QueryServiceMixin:
         # Validate pagination parameters
         if page is not None and offset is not None:
             raise ValidationError(
-                "Cannot use both 'page' and 'offset' parameters", code="INVALID_PAGINATION"
+                "Cannot use both 'page' and 'offset' parameters",
+                code="INVALID_PAGINATION",
             )
 
         # Set default pagination values
@@ -3785,7 +4083,8 @@ class QueryServiceMixin:
             if cached_data:
                 results_data = cached_data.get("data", [])
                 total_count = cached_data.get(
-                    "row_count", len(results_data) if isinstance(results_data, list) else 0
+                    "row_count",
+                    len(results_data) if isinstance(results_data, list) else 0,
                 )
                 logger.debug(
                     f"Retrieved results from cache for execution {execution_id}",
@@ -3800,7 +4099,9 @@ class QueryServiceMixin:
         if results_data is None and execution.result_storage_path:
             try:
                 storage_client = S3StorageClient()
-                file_content = storage_client.get_file_content(execution.result_storage_path)
+                file_content = storage_client.get_file_content(
+                    execution.result_storage_path
+                )
 
                 # Determine file format from path
                 storage_path_lower = execution.result_storage_path.lower()
@@ -3808,7 +4109,9 @@ class QueryServiceMixin:
                     results_data = json.loads(file_content.decode("utf-8"))
                     if isinstance(results_data, dict) and "data" in results_data:
                         results_data = results_data["data"]
-                    total_count = len(results_data) if isinstance(results_data, list) else 0
+                    total_count = (
+                        len(results_data) if isinstance(results_data, list) else 0
+                    )
                 elif storage_path_lower.endswith(".csv"):
                     # Read CSV into list of dicts
                     df = pd.read_csv(io.BytesIO(file_content))
@@ -3825,12 +4128,14 @@ class QueryServiceMixin:
                         results_data = json.loads(file_content.decode("utf-8"))
                         if isinstance(results_data, dict) and "data" in results_data:
                             results_data = results_data["data"]
-                        total_count = len(results_data) if isinstance(results_data, list) else 0
+                        total_count = (
+                            len(results_data) if isinstance(results_data, list) else 0
+                        )
                     except json.JSONDecodeError:
                         raise ValidationError(
                             f"Unable to parse stored result file: {execution.result_storage_path}",
                             code="INVALID_STORAGE_FORMAT",
-                        )
+                        ) from None
 
                 logger.debug(
                     f"Retrieved results from storage for execution {execution_id}",
@@ -3853,20 +4158,18 @@ class QueryServiceMixin:
                 raise ValidationError(
                     f"Failed to retrieve results from storage: {e!s}",
                     code="STORAGE_RETRIEVAL_FAILED",
-                )
+                ) from e
 
         # If still no results, raise error
         if results_data is None:
             raise NotFoundError(
-                f"No results found for execution {execution_id}", code="RESULTS_NOT_FOUND"
+                f"No results found for execution {execution_id}",
+                code="RESULTS_NOT_FOUND",
             )
 
         # Ensure results_data is a list
         if not isinstance(results_data, list):
-            if isinstance(results_data, dict):
-                results_data = [results_data]
-            else:
-                results_data = []
+            results_data = [results_data] if isinstance(results_data, dict) else []
 
         # Apply pagination
         paginated_data = results_data
@@ -3879,7 +4182,9 @@ class QueryServiceMixin:
             end_idx = start_idx + page_size
             paginated_data = results_data[start_idx:end_idx]
 
-            total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+            total_pages = (
+                (total_count + page_size - 1) // page_size if total_count > 0 else 0
+            )
             pagination_metadata = {
                 "type": "page",
                 "page": page,
@@ -3930,11 +4235,8 @@ class QueryServiceMixin:
                 formatted_data = csv_buffer.getvalue()
             content_type = "text/csv"
         elif format == "parquet":
-            if not paginated_data:
-                # Return empty parquet file
-                df = pd.DataFrame()
-            else:
-                df = pd.DataFrame(paginated_data)
+            # Return empty parquet file
+            df = pd.DataFrame() if not paginated_data else pd.DataFrame(paginated_data)
             parquet_buffer = io.BytesIO()
             df.to_parquet(parquet_buffer, index=False)
             formatted_data = base64.b64encode(parquet_buffer.getvalue()).decode("utf-8")
@@ -4045,8 +4347,13 @@ class QueryServiceMixin:
             execution.job.mark_cancelled()
 
             # If job was running, release tenant concurrency slot
-            if job_previous_status == JobStatus.RUNNING and execution.virtual_dataset.tenant:
-                decrement_tenant_job_counter(str(execution.virtual_dataset.tenant.id), "running")
+            if (
+                job_previous_status == JobStatus.RUNNING
+                and execution.virtual_dataset.tenant
+            ):
+                decrement_tenant_job_counter(
+                    str(execution.virtual_dataset.tenant.id), "running"
+                )
 
             logger.info(
                 f"Cancelled job {execution.job.id} for query execution {execution_id}",
@@ -4185,9 +4492,15 @@ class QueryServiceMixin:
                 "status": dataset.status,
                 "query_type": dataset.query_type,
                 "version": dataset.version,
-                "created_by_id": str(dataset.created_by.id) if dataset.created_by else None,
-                "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
-                "updated_at": dataset.updated_at.isoformat() if dataset.updated_at else None,
+                "created_by_id": (
+                    str(dataset.created_by.id) if dataset.created_by else None
+                ),
+                "created_at": (
+                    dataset.created_at.isoformat() if dataset.created_at else None
+                ),
+                "updated_at": (
+                    dataset.updated_at.isoformat() if dataset.updated_at else None
+                ),
             }
 
             # Add health metrics if requested
@@ -4197,23 +4510,35 @@ class QueryServiceMixin:
                 total_executions = executions.count()
 
                 # Get execution counts by status
-                completed_count = executions.filter(status=QueryExecutionStatus.COMPLETED).count()
-                failed_count = executions.filter(status=QueryExecutionStatus.FAILED).count()
-                running_count = executions.filter(status=QueryExecutionStatus.RUNNING).count()
+                completed_count = executions.filter(
+                    status=QueryExecutionStatus.COMPLETED
+                ).count()
+                failed_count = executions.filter(
+                    status=QueryExecutionStatus.FAILED
+                ).count()
+                running_count = executions.filter(
+                    status=QueryExecutionStatus.RUNNING
+                ).count()
 
                 # Calculate success rate
                 success_rate = (
-                    (completed_count / total_executions * 100) if total_executions > 0 else None
+                    (completed_count / total_executions * 100)
+                    if total_executions > 0
+                    else None
                 )
 
                 # Get recent executions (last 24 hours)
                 recent_cutoff = timezone.now() - timedelta(hours=24)
                 recent_executions = executions.filter(created_at__gte=recent_cutoff)
-                recent_failed = recent_executions.filter(status=QueryExecutionStatus.FAILED).count()
+                recent_failed = recent_executions.filter(
+                    status=QueryExecutionStatus.FAILED
+                ).count()
                 recent_total = recent_executions.count()
                 recent_success_rate = (
                     (
-                        recent_executions.filter(status=QueryExecutionStatus.COMPLETED).count()
+                        recent_executions.filter(
+                            status=QueryExecutionStatus.COMPLETED
+                        ).count()
                         / recent_total
                         * 100
                     )
@@ -4294,7 +4619,14 @@ class QueryServiceMixin:
             for source in sources_list:
                 if isinstance(source, dict):
                     # Try common identifier fields
-                    for key in ["id", "source_id", "connection_id", "name", "url", "endpoint"]:
+                    for key in [
+                        "id",
+                        "source_id",
+                        "connection_id",
+                        "name",
+                        "url",
+                        "endpoint",
+                    ]:
                         if source.get(key):
                             source_ids.add(str(source[key]))
                 elif isinstance(source, str):
@@ -4347,12 +4679,12 @@ class QueryServiceMixin:
                 1 for n in nodes if n.get("status") == VirtualDatasetStatus.ACTIVE
             ),
             "total_relationships": len(edges),
-            "average_health_score": sum(
-                n.get("health_metrics", {}).get("health_score", 0) for n in nodes
-            )
-            / len(nodes)
-            if nodes and include_health_metrics
-            else None,
+            "average_health_score": (
+                sum(n.get("health_metrics", {}).get("health_score", 0) for n in nodes)
+                / len(nodes)
+                if nodes and include_health_metrics
+                else None
+            ),
         }
 
         topology["summary"] = summary

@@ -3,7 +3,19 @@
  * Aligned with backend GET /api/v1/search/search/ response and query params
  */
 
-export type SearchResultType = 'CONTRACT' | 'ASSET' | 'DATASET';
+export type SearchResultType =
+  | 'CONTRACT'
+  | 'ASSET'
+  | 'DATASET'
+  // Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — the legacy
+  // search path surfaces the mirrored UC objects under their raw
+  // SearchIndex resource types.
+  | 'DATABRICKS_UC_CATALOG'
+  | 'DATABRICKS_UC_SCHEMA'
+  | 'DATABRICKS_UC_TABLE'
+  | 'DATABRICKS_UC_VIEW'
+  | 'DATABRICKS_UC_VOLUME'
+  | 'DATABRICKS_UC_MODEL';
 
 export interface SearchResult {
   id: string;

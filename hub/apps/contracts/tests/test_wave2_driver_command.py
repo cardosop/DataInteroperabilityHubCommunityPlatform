@@ -144,9 +144,7 @@ class Wave2DriverScopeTests(TestCase):
         from hub.apps.contracts.models import Contract
 
         Contract.objects.all().delete()
-        AuditEvent.objects.filter(
-            action="SCHEMA_EDITOR_AVAILABLE_NOTIFIED"
-        ).delete()
+        AuditEvent.objects.filter(action="SCHEMA_EDITOR_AVAILABLE_NOTIFIED").delete()
 
     def test_default_scope_only_emails_structureless_tenants(self):
         from hub.apps.contracts.notifications import (

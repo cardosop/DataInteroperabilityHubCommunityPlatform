@@ -64,7 +64,7 @@ def _api_request(path: str, method: str = "GET") -> tuple[int, float, str]:
             body = resp.read().decode("utf-8", errors="replace")
             elapsed = time.monotonic() - start
             return resp.status, elapsed, body
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         elapsed = time.monotonic() - start
         return 0, elapsed, str(exc)
 
@@ -198,7 +198,7 @@ def check_db_connections() -> dict:
     """Check active PostgreSQL connections via the health endpoint."""
     failures: list[str] = []
 
-    status, elapsed, body = _api_request("/api/v1/health/database/")
+    status, _elapsed, body = _api_request("/api/v1/health/database/")
     if status != 200:
         # Try the generic health endpoint.
         status, _elapsed, body = _api_request("/health/")
@@ -238,7 +238,7 @@ def check_redis_memory() -> dict:
     """Check Redis memory usage via health endpoint or Redis metrics."""
     failures: list[str] = []
 
-    status, elapsed, body = _api_request("/api/v1/health/redis/")
+    status, _elapsed, body = _api_request("/api/v1/health/redis/")
     if status == 404:
         status, _elapsed, body = _api_request("/health/")
         if status not in (200, 503):
@@ -298,7 +298,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Performance baseline gate checks (312.17)")
     parser.add_argument(
         "--check",
-        choices=list(CHECKS) + ["all"],
+        choices=[*list(CHECKS), "all"],
         default="all",
         help="Which check to run (default: all)",
     )

@@ -57,12 +57,17 @@ def collect_node_ids(repo_root: Path, paths: list[str], env: dict) -> list[str]:
     # Parse: lines containing "::" and test-like names (test_ or Test)
     for line in (r.stdout or "").splitlines() + (r.stderr or "").splitlines():
         s = line.strip()
-        if "::" in s and re.search(r"(test_|Test)", s) and not s.startswith("<"):
-            if ".py" in s and s not in node_ids:
-                # Take first token if there's extra text (e.g. "path::test_foo PASSED")
-                node_id = s.split()[0] if s.split() else s
-                if node_id not in node_ids:
-                    node_ids.append(node_id)
+        if (
+            "::" in s
+            and re.search(r"(test_|Test)", s)
+            and not s.startswith("<")
+            and ".py" in s
+            and s not in node_ids
+        ):
+            # Take first token if there's extra text (e.g. "path::test_foo PASSED")
+            node_id = s.split()[0] if s.split() else s
+            if node_id not in node_ids:
+                node_ids.append(node_id)
 
     # Fallback: collect per path to avoid huge single run
     if not node_ids:

@@ -24,7 +24,7 @@ def setup_django():
     django.setup()
 
 
-def explain_query(query: str, params: tuple = None) -> dict:
+def explain_query(query: str, params: tuple | None = None) -> dict:
     """
     Execute EXPLAIN ANALYZE on a query and return results.
 
@@ -59,7 +59,7 @@ def check_index_usage(plan: dict, index_name: str) -> bool:
     return index_name.lower() in plan_str
 
 
-def test_contract_indexes(verbose: bool = False) -> list[tuple[str, bool, str]]:
+def test_contract_indexes(_verbose: bool) -> list[tuple[str, bool, str]]:  # noqa: PT019 — plain helper, not a pytest test
     """Test contract JSONB indexes."""
     results = []
 
@@ -116,7 +116,7 @@ def test_contract_indexes(verbose: bool = False) -> list[tuple[str, bool, str]]:
     return results
 
 
-def test_version_history_indexes(verbose: bool = False) -> list[tuple[str, bool, str]]:
+def test_version_history_indexes(_verbose: bool) -> list[tuple[str, bool, str]]:  # noqa: PT019 — plain helper, not a pytest test
     """Test version history indexes."""
     results = []
 
@@ -158,7 +158,7 @@ def test_version_history_indexes(verbose: bool = False) -> list[tuple[str, bool,
     return results
 
 
-def test_search_indexes(verbose: bool = False) -> list[tuple[str, bool, str]]:
+def test_search_indexes(_verbose: bool) -> list[tuple[str, bool, str]]:  # noqa: PT019 — plain helper, not a pytest test
     """Test search indexes."""
     results = []
 
@@ -185,7 +185,7 @@ def test_search_indexes(verbose: bool = False) -> list[tuple[str, bool, str]]:
     return results
 
 
-def test_observability_indexes(verbose: bool = False) -> list[tuple[str, bool, str]]:
+def test_observability_indexes(_verbose: bool) -> list[tuple[str, bool, str]]:  # noqa: PT019 — plain helper, not a pytest test
     """Test observability indexes."""
     results = []
 

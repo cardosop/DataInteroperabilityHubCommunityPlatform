@@ -190,7 +190,7 @@ class TestDLQRetryIdempotency(TestCase):
         self.assertIn(
             resp.status_code,
             [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN],
-            f"Non-admin DLQ retry should be 200 (gap) or 403 (fixed); got {resp.status_code}"
+            f"Non-admin DLQ retry should be 200 (gap) or 403 (fixed); got {resp.status_code}",
         )
 
 
@@ -265,8 +265,9 @@ class TestDataFirstIdempotency(TestCase):
         self.assertIn(
             resp.status_code,
             [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
-            f"Expected 400 or 403; got {resp.status_code}"
+            f"Expected 400 or 403; got {resp.status_code}",
         )
+
     def test_03_malformed_idempotency_key_is_rejected(self):
         """A key without the tenant prefix is rejected."""
         resp = self.client.post(
@@ -279,7 +280,7 @@ class TestDataFirstIdempotency(TestCase):
         self.assertIn(
             resp.status_code,
             [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
-            f"Expected 400 or 403 for malformed key; got {resp.status_code}"
+            f"Expected 400 or 403 for malformed key; got {resp.status_code}",
         )
 
 

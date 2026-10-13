@@ -25,15 +25,21 @@ def is_hard_copyleft(license_name: str) -> bool:
     lic = license_name.lower()
     if "lesser" in lic or "library" in lic:
         return False  # LGPL — acceptable
-    if "bsd" in lic or "public domain" in lic or "mit" in lic or "apache" in lic or "artistic" in lic:
+    if (
+        "bsd" in lic
+        or "public domain" in lic
+        or "mit" in lic
+        or "apache" in lic
+        or "artistic" in lic
+    ):
         return False  # dual-licensed with a permissive option
     return bool(re.search(r"\bgpl|\bagpl|\bsspl", lic))
 
 
 def requirement_names() -> set[str]:
     names: set[str] = set()
-    for line in Path("requirements.txt").read_text().splitlines():
-        line = line.split("#")[0].strip()
+    for raw_line in Path("requirements.txt").read_text().splitlines():
+        line = raw_line.split("#")[0].strip()
         m = re.match(r"^([A-Za-z0-9_.-]+)", line)
         if m:
             names.add(m.group(1).lower())
@@ -47,7 +53,9 @@ def main() -> int:
         pip_licenses = "pip-licenses"
     proc = subprocess.run(
         [str(pip_licenses), "--from", "mixed", "--format", "csv"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if proc.returncode != 0:
         print("pip-licenses unavailable — skipping copyleft audit (CI-gated)")
@@ -66,8 +74,10 @@ def main() -> int:
         for name, version, license_name in offenders:
             print(f"  {name} {version}: {license_name}")
         return 1
-    print("copyleft audit clean: no GPL/AGPL/SSPL in the requirements.txt closure "
-          "(LGPL + permissive dual-licenses accepted)")
+    print(
+        "copyleft audit clean: no GPL/AGPL/SSPL in the requirements.txt closure "
+        "(LGPL + permissive dual-licenses accepted)"
+    )
     return 0
 
 

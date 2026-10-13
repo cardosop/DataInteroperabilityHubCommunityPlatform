@@ -14,7 +14,7 @@ def _tenant(request):
 class IsTenantAdminProcessorAgreements(BasePermission):
     message = "Processor agreement management requires TENANT_ADMIN and tenant feature flag."
 
-    def has_permission(self, request, view) -> bool:
+    def has_permission(self, request, view) -> bool:  # DRF permission contract
         tenant = _tenant(request)
         if not tenant or not request.user or not request.user.is_authenticated:
             return False

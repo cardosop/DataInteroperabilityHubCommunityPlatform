@@ -35,7 +35,7 @@ export function PublicDsarSubmitPage() {
         .map((s) => s.trim().toUpperCase())
         .filter(Boolean);
       const body = {
-        tenant_id: tenantId.trim(),
+        tenant_slug: tenantId.trim(),
         request_type: requestType,
         subject_email: email.trim(),
         regimes: regimesList.length ? regimesList : ['GDPR'],

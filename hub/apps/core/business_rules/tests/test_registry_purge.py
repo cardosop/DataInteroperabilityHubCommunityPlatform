@@ -22,5 +22,15 @@ class TestRegistryPurge(TestCase):
 
     def test_register_still_works(self):
         """Existing registration decorator still functions."""
-        rule = self.registry.get_rule("marketplace_validation")
-        assert rule is not None, "marketplace_validation must still be registered"
+        # Phase 313 — marketplace is the paid layer; in core-only mode its
+        # rules are not registered. Assert a rule that exists in the
+        # running mode: marketplace_validation (full) / governance_validation
+        # (core).
+        import os
+
+        if os.environ.get("HUB_CORE_ONLY") == "1":
+            rule = self.registry.get_rule("governance_validation")
+            assert rule is not None, "governance_validation must still be registered"
+        else:
+            rule = self.registry.get_rule("marketplace_validation")
+            assert rule is not None, "marketplace_validation must still be registered"

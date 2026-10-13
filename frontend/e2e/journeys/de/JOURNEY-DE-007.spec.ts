@@ -43,7 +43,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline @critical', () => 
       });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session lost — token refresh likely failed under E2E load');
+        test.skip(page.url().includes('/login'), 'Auth session lost — token refresh likely failed under E2E load');
         return;
       }
 
@@ -57,7 +57,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline @critical', () => 
         page.url().includes('/transformation') &&
         (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -69,7 +69,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline @critical', () => 
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -108,7 +108,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline @critical', () => 
       );
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session lost — token refresh likely failed under E2E load');
+        test.skip(page.url().includes('/login'), 'Auth session lost — token refresh likely failed under E2E load');
         return;
       }
 
@@ -120,12 +120,12 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline @critical', () => 
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
       if (capabilityDisabled) {
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()).toBeVisible({ timeout: 5000 });
         return;
       }
 

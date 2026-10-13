@@ -86,7 +86,7 @@ test.describe('226.G2 — Access request deny state transition @critical @lifecy
     });
     if (!arRes.ok()) {
       test.skip(
-        true,
+        !arRes.ok(),
         `Could not create access request (status=${arRes.status()} body=${(await arRes.text()).slice(0, 200)})`,
       );
       return;

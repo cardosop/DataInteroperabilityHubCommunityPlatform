@@ -16,6 +16,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from hub.apps.dq.sql_safety import (
+    SQLSafetyError,
+    escape_regex_literal,
+    sql_number,
+    validate_sql_identifier,
+    validate_table_fqn,
+)
 from hub.apps.dq.warehouse_sql_compiler import CompiledCheck
 
 # ── Per-dialect regex function templates ──────────────────────────────
@@ -95,7 +102,15 @@ class ComplianceWarehouseSQLCompiler:
         Returns:
             List of ``CompiledCheck`` (unknown types skipped).
         """
+        if not isinstance(warehouse_type, str):
+            # W2.9 — found by the robustness property suite: a non-string
+            # warehouse type crashed on .upper() (AttributeError) instead
+            # of a typed rejection.
+            raise SQLSafetyError("invalid warehouse_type")
         wt = warehouse_type.upper()
+        # W1.11: identifiers are validated (not quoted) so a client-
+        # influenced column or FQN can never splice SQL.
+        table = validate_table_fqn(table_fqn)
         regs = applicable_regulations or []
         reg_suffix = "_" + "_".join(r.lower() for r in regs) if regs else ""
         compiled: list[CompiledCheck] = []
@@ -105,14 +120,14 @@ class ComplianceWarehouseSQLCompiler:
             if scan_type not in _SUPPORTED_CHECKS:
                 continue
 
-            column = scan.get("column", "")
+            column = validate_sql_identifier(scan.get("column", ""), "column")
 
             if scan_type.startswith("pii_"):
-                result = _compile_pii(scan, scan_type, column, wt, table_fqn, i, reg_suffix)
+                result = _compile_pii(scan, scan_type, column, wt, table, i, reg_suffix)
             elif scan_type == "retention_breach":
-                result = _compile_retention(scan, column, wt, table_fqn, i, reg_suffix)
+                result = _compile_retention(scan, column, wt, table, i, reg_suffix)
             elif scan_type == "classification_mismatch":
-                result = _compile_classification(column, wt, table_fqn, i, reg_suffix)
+                result = _compile_classification(column, wt, table, i, reg_suffix)
             else:
                 continue
 
@@ -126,7 +141,7 @@ class ComplianceWarehouseSQLCompiler:
 
 
 def _compile_pii(
-    scan: dict[str, Any],
+    _scan: dict[str, Any],
     scan_type: str,
     column: str,
     wt: str,
@@ -134,7 +149,7 @@ def _compile_pii(
     idx: int,
     reg_suffix: str,
 ) -> CompiledCheck:
-    pattern = _PII_PATTERNS.get(scan_type, ".*")
+    pattern = escape_regex_literal(_PII_PATTERNS.get(scan_type, ".*"), wt)
     regex_fn = _REGEX_FN.get(wt, _REGEX_FN["SNOWFLAKE"]).format(col=column, pattern=pattern)
     name = f"{scan_type}_{column}{reg_suffix}_{idx}"
     return CompiledCheck(
@@ -158,7 +173,7 @@ def _compile_retention(
     idx: int,
     reg_suffix: str,
 ) -> CompiledCheck:
-    days = scan.get("retention_days", 90)
+    days = sql_number(scan.get("retention_days", 90), "retention_days")
     date_fn = _DATE_SUB_FN.get(wt, _DATE_SUB_FN["SNOWFLAKE"]).format(days=days)
     name = f"retention_breach_{column}{reg_suffix}_{idx}"
     return CompiledCheck(

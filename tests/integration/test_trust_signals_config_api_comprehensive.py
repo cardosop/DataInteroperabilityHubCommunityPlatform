@@ -336,7 +336,9 @@ class TrustSignalsConfigAPIsComprehensiveTest(TestCase):
             f"Expected duplicate name rejection, got: {response.data}",
         )
         self.assertEqual(
-            TrustSignalConfig.objects.filter(tenant=self.tenant1, name=f"already_taken_{self._suffix}").count(),
+            TrustSignalConfig.objects.filter(
+                tenant=self.tenant1, name=f"already_taken_{self._suffix}"
+            ).count(),
             1,
         )
 

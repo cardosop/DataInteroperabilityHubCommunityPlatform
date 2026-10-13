@@ -13,7 +13,7 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 class Command(BaseCommand):
     help = "Downgrade expired KYC verifications to PENDING_REVIEW"
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         now = timezone.now()
 
         expired_tenants = Tenant.objects.filter(

@@ -28,6 +28,8 @@ Tests all dataset endpoints with 80+ test cases covering:
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
 
+import contextlib
+
 import pytest
 
 pytestmark = pytest.mark.slow
@@ -992,12 +994,10 @@ class TestDatasetDeleteAPI(TestCase):
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
 
         # Verify dataset is deleted (or soft-deleted)
-        try:
+        # Dataset may be soft-deleted (still exists but marked as deleted);
+        # hard-delete (Dataset.DoesNotExist) is also acceptable.
+        with contextlib.suppress(Dataset.DoesNotExist):
             self.dataset.refresh_from_db()
-            # Dataset may be soft-deleted (still exists but marked as deleted)
-        except Dataset.DoesNotExist:
-            # Dataset was hard-deleted - this is also acceptable
-            pass
 
     def test_delete_dataset_tenant_isolation(self):
         """Test tenant isolation - user can only delete their tenant's datasets"""

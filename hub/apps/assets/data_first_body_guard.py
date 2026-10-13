@@ -12,9 +12,10 @@ body — so chunked uploads cannot force buffering before rejection.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from django.http import HttpRequest
+if TYPE_CHECKING:
+    from django.http import HttpRequest
 
 DATA_FIRST_MAX_BODY_BYTES: int = 100 * 1024 * 1024
 

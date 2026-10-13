@@ -111,7 +111,7 @@ class PipelineIncidentPropagator:
                 },
             )
         except Exception as exc:
-            logger.error("incident_batch_audit_failed", error=str(exc))
+            logger.exception("incident_batch_audit_failed", error=str(exc))
 
         logger.warning(
             "pipeline_incident_propagated",

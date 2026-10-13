@@ -100,7 +100,11 @@ test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade @critical
     await loginUser(page, taUser);
     await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
 
-    const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+    const accessToken = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
     if (!accessToken) {
       throw new Error(
         'JOURNEY-TA-BILLING-UPGRADE: localStorage access_token null after loginUser.',
@@ -111,18 +115,23 @@ test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade @critical
     // Step 1 — Capture current subscription baseline.
     //
     // Staging seeds the TA tenant with "E2E Unlimited Plan" (tier
-    // ENTERPRISE, price 0). We read the current slug so we can (a)
-    // pick a DIFFERENT plan for the upgrade and (b) revert at the end
-    // so the test is idempotent.
+    // PRO, price 0 — the seed keeps the plan below the tier apex so
+    // this upgrade journey has a target). We read the current slug so
+    // we can (a) pick a DIFFERENT plan for the upgrade and (b) revert
+    // at the end so the test is idempotent.
     // ─────────────────────────────────────────────────────────────────
-    const subListRes = await page.request.get(`${API_BASE}/billing/subscription/`, {
+    // Baseline via the CURRENT endpoint — the change-plan action below
+    // also targets `current` (most-recent BASE subscription,
+    // hub/apps/billing/views.py:249-262). Basing the test on the list's
+    // subs[0] raced that definition: with multiple subscription rows in
+    // the tenant (post-re-seed residue) the list's first row is NOT the
+    // row change-plan updates, and `upgraded.id !== subscriptionId`
+    // failed with two different UUIDs.
+    const subRes = await page.request.get(`${API_BASE}/billing/subscription/current/`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    expect(subListRes.status(), 'GET /billing/subscription/ expected 200').toBe(200);
-    const subList = (await subListRes.json()) as { results?: Subscription[] } | Subscription[];
-    const subs = Array.isArray(subList) ? subList : subList.results ?? [];
-    expect(subs.length, 'TA tenant must have at least one subscription').toBeGreaterThan(0);
-    const originalSub = subs[0];
+    expect(subRes.status(), 'GET /billing/subscription/current/ expected 200').toBe(200);
+    const originalSub = (await subRes.json()) as Subscription;
     const originalPlanSlug = originalSub.plan_slug;
     const subscriptionId = originalSub.id;
 
@@ -149,12 +158,19 @@ test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade @critical
     const candidates = allPlans.filter(
       (p) => p.slug !== originalPlanSlug && p.is_active !== false && p.category === 'BASE',
     );
-    const targetPlan =
-      candidates.find((p) => p.tier !== 'FREE' && p.tier !== 'ENTERPRISE') ??
-      candidates[0];
+    // Upgrade-only selection, ranked by tier (FREE < PRO < ENTERPRISE).
+    // The old logic picked `candidates[0]` as a fallback — which could be
+    // a LOWER-tier plan (post-re-seed residue like `sandbox`) and the
+    // backend's downgrade-guard then 400'd "usage exceeds new plan
+    // limits" on a journey whose very name is Billing Upgrade.
+    const TIER_RANK: Record<string, number> = { FREE: 0, PRO: 1, ENTERPRISE: 2 };
+    const currentRank = TIER_RANK[originalSub.plan_tier] ?? -1;
+    const targetPlan = candidates
+      .filter((p) => (TIER_RANK[p.tier] ?? -1) > currentRank)
+      .sort((a, b) => (TIER_RANK[a.tier] ?? -1) - (TIER_RANK[b.tier] ?? -1))[0];
     test.skip(
       !targetPlan,
-      'No alternative active BASE plan available in this tenant — staging seeding needs >= 2 BASE plans for this test.',
+      `No higher-tier active BASE plan available (current: ${originalPlanSlug}/${originalSub.plan_tier}) — skipping the upgrade assertion.`,
     );
     if (!targetPlan) return;
 
@@ -258,6 +274,15 @@ test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade @critical
       console.log(
         `[TA-BILLING-UPGRADE] Stripe-wired: customer=${fresh.stripe_customer_id} ` +
           `subscription=${fresh.stripe_subscription_id}`,
+      );
+    } else if (process.env.E2E_STRIPE_ENABLED === '1') {
+      // Coverage-closure Phase 1.5: when the operator declares Stripe
+      // wired (E2E_STRIPE_ENABLED=1), a missing stripe_subscription_id is
+      // a REAL failure — the W16 pattern (local annotate, declared-wired
+      // raise).  See docs/runbooks/CREDENTIAL_PROVISIONING.md.
+      throw new Error(
+        'E2E_STRIPE_ENABLED=1 but stripe_subscription_id is null after plan change — ' +
+          'Stripe wiring is declared but not effective.',
       );
     } else {
       test.info().annotations.push({

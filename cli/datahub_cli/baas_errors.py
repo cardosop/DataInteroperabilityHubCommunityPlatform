@@ -122,6 +122,8 @@ def parse_baas_api_error_response(error_data: dict[str, Any]) -> BaaSCLIError | 
         context = context_raw
 
     # Map error codes to specific error types
+    error_cls: type[BaaSCLIError] | None = None
+    suggestion: str | None = None
     if error_code:
         error_code_upper = error_code.upper()
 
@@ -130,60 +132,38 @@ def parse_baas_api_error_response(error_data: dict[str, Any]) -> BaaSCLIError | 
             code in error_code_upper
             for code in ["VALIDATION", "INVALID", "REQUIRED", "BAD_REQUEST"]
         ):
+            error_cls = BaaSValidationError
             suggestion = _get_validation_suggestion(error_code, context)
-            return BaaSValidationError(
-                message=error_message, error_code=error_code, context=context, suggestion=suggestion
-            )
-
         # Authentication errors
-        if any(
+        elif any(
             code in error_code_upper
             for code in ["AUTHENTICATION", "UNAUTHORIZED", "INVALID_CREDENTIALS"]
         ):
-            return BaaSAuthenticationError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion="Run 'datahub login' to authenticate or check your API key",
-            )
-
+            error_cls = BaaSAuthenticationError
+            suggestion = "Run 'datahub login' to authenticate or check your API key"
         # Authorization errors
-        if any(
+        elif any(
             code in error_code_upper for code in ["AUTHORIZATION", "FORBIDDEN", "PERMISSION_DENIED"]
         ):
-            return BaaSAuthorizationError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion="You don't have permission to perform this operation",
-            )
-
+            error_cls = BaaSAuthorizationError
+            suggestion = "You don't have permission to perform this operation"
         # Quota errors
-        if any(code in error_code_upper for code in ["QUOTA", "LIMIT_EXCEEDED", "RATE_LIMIT"]):
-            return BaaSQuotaError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion="Quota or rate limit exceeded. Wait before retrying or upgrade your tier",
-            )
-
+        elif any(code in error_code_upper for code in ["QUOTA", "LIMIT_EXCEEDED", "RATE_LIMIT"]):
+            error_cls = BaaSQuotaError
+            suggestion = "Quota or rate limit exceeded. Wait before retrying or upgrade your tier"
         # Not found errors
-        if any(code in error_code_upper for code in ["NOT_FOUND", "RESOURCE_NOT_FOUND"]):
-            return BaaSNotFoundError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion="Check that the API key ID is correct",
-            )
-
+        elif any(code in error_code_upper for code in ["NOT_FOUND", "RESOURCE_NOT_FOUND"]):
+            error_cls = BaaSNotFoundError
+            suggestion = "Check that the API key ID is correct"
         # Conflict errors
-        if any(code in error_code_upper for code in ["CONFLICT", "ALREADY_EXISTS", "DUPLICATE"]):
-            return BaaSConflictError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion="A resource with this name may already exist. Use a different name",
-            )
+        elif any(code in error_code_upper for code in ["CONFLICT", "ALREADY_EXISTS", "DUPLICATE"]):
+            error_cls = BaaSConflictError
+            suggestion = "A resource with this name may already exist. Use a different name"
+
+    if error_cls is not None:
+        return error_cls(
+            message=error_message, error_code=error_code, context=context, suggestion=suggestion
+        )
 
     # Default to generic BaaS error
     return BaaSCLIError(
@@ -233,10 +213,7 @@ def handle_baas_api_error(
     error_message = error_info.get("message", response_text or "Unknown error")
     error_code_raw = error_info.get("code") or error_data.get("error_code") or f"HTTP_{status_code}"
     # Ensure error_code is a string (handle case where it might be a dict or other type)
-    if isinstance(error_code_raw, str):
-        error_code = error_code_raw
-    else:
-        error_code = f"HTTP_{status_code}"
+    error_code = error_code_raw if isinstance(error_code_raw, str) else f"HTTP_{status_code}"
 
     suggestion = _get_http_error_suggestion(status_code, endpoint)
 
@@ -275,24 +252,22 @@ def _get_validation_suggestion(error_code: str, context: dict[str, Any]) -> str:
     return "Check your input parameters and ensure they are valid"
 
 
+_HTTP_ERROR_SUGGESTIONS: dict[int, str] = {
+    400: "Check your request parameters and ensure they are valid",
+    401: "Authentication failed. Run 'datahub login' to authenticate",
+    403: "You don't have permission to perform this operation",
+    409: "Conflict: The resource may already exist or be in an invalid state",
+    422: "Validation failed. Check your input data",
+    429: "Rate limit exceeded. Wait before retrying",
+}
+
+
 def _get_http_error_suggestion(status_code: int, endpoint: str | None = None) -> str:
     """Get suggestion for HTTP errors"""
-    if status_code == 400:
-        return "Check your request parameters and ensure they are valid"
-    elif status_code == 401:
-        return "Authentication failed. Run 'datahub login' to authenticate"
-    elif status_code == 403:
-        return "You don't have permission to perform this operation"
-    elif status_code == 404:
+    if status_code == 404:
         if endpoint and "api-keys" in endpoint:
             return "API key not found. Check that the API key ID is correct"
         return "Resource not found. Check that the ID is correct"
-    elif status_code == 409:
-        return "Conflict: The resource may already exist or be in an invalid state"
-    elif status_code == 422:
-        return "Validation failed. Check your input data"
-    elif status_code == 429:
-        return "Rate limit exceeded. Wait before retrying"
-    elif status_code >= 500:
+    if status_code >= 500:
         return "Server error. Please try again later or contact support"
-    return "Check your request and try again"
+    return _HTTP_ERROR_SUGGESTIONS.get(status_code, "Check your request and try again")

@@ -159,3 +159,69 @@ class PropagationTests(TestCase):
         # 4. ETag changed (the next round-trip needs to re-read).
         after_etag = _contract_etag(c_tgt)
         self.assertNotEqual(before_etag, after_etag)
+
+    def test_subsequent_save_does_not_close_f2_edges(self):
+        """Regression (b6 lineage skips): the generic contract post_save
+        edge-sync reconstructed its desired set from the YAML ``contracts``
+        shape only. A contract patched through the F2 lineage-edit endpoint
+        carried the ``entries`` shape, so the next save (status flip,
+        rename) treated the freshly-written rows as unwanted and CLOSED
+        them (valid_to set) — every listing lineage graph went empty.
+
+        The reserialise now writes both shapes; a follow-up save must
+        leave the open rows untouched.
+        """
+        from hub.apps.contracts.models import LineageEdge
+        from hub.apps.contracts.views_crud import _contract_etag
+
+        tenant, user = _setup_tenant_with_admin()
+        c_src = _make_contract(tenant, name="src", field_name="x")
+        c_tgt = _make_contract(tenant, name="tgt", field_name="x")
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        url = f"/api/v1/contracts/{c_tgt.id}/lineage/"
+        etag = _contract_etag(c_tgt)
+
+        response = client.patch(
+            url,
+            data={
+                "edges": [
+                    {
+                        "source_contract": str(c_src.id),
+                        "source_field": "x",
+                        "target_contract": str(c_tgt.id),
+                        "target_field": "x",
+                        "edge_type": "transformation",
+                        "transformation_ref": "dbt_regression_v1",
+                    },
+                ],
+            },
+            format="json",
+            HTTP_IF_MATCH=etag,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        open_before = LineageEdge.objects.filter(
+            target_contract_id=c_tgt.id,
+            valid_to__isnull=True,
+        )
+        self.assertEqual(open_before.count(), 1)
+        edge_id = open_before.first().id
+        self.assertEqual(open_before.first().transformation_ref, "dbt_regression_v1")
+
+        # Follow-up save (status flip) — the sync must NOT tear the row down.
+        c_tgt.status = "ACTIVE"
+        c_tgt.save(update_fields=["status", "updated_at"])
+
+        open_after = LineageEdge.objects.filter(
+            target_contract_id=c_tgt.id,
+            valid_to__isnull=True,
+        )
+        self.assertEqual(open_after.count(), 1)
+        self.assertEqual(open_after.first().id, edge_id)
+        self.assertEqual(
+            open_after.first().transformation_ref,
+            "dbt_regression_v1",
+            "the sync closed/replaced the F2-written edge on a plain save",
+        )

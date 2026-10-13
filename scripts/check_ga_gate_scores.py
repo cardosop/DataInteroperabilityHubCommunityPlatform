@@ -156,7 +156,7 @@ def _format_human(rows: list[dict], mean: float) -> str:
     passes = [r for r in rows if r["classification"] == "PASS"]
 
     lines.append(f"  PASS (≥95):  {len(passes)}")
-    lines.append(f"  WARN (70–94): {len(warns)}")
+    lines.append(f"  WARN (70-94): {len(warns)}")
     lines.append(f"  FAIL (<70):  {len(fails)}")
     lines.append(f"  UNSCORED:    {len(unscored)}")
 

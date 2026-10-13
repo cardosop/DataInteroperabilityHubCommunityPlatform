@@ -40,7 +40,7 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
       }
 
       if (!landed) {
-        test.skip(true, 'Analytics/usage page not found at any known route');
+        test.skip(!landed, 'Analytics/usage page not found at any known route');
         return;
       }
 

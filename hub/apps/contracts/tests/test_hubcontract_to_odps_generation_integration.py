@@ -223,9 +223,18 @@ class HubContractToODPSGenerationIntegrationTest(TestCase):
         self.assertIn("status", odps_doc["product"]["details"]["en"])
         self.assertEqual(odps_doc["product"]["details"]["en"]["status"], "active")
 
-        # Note: Schema section mapping to product.dataSchema is not yet implemented
-        # This is expected behavior - schema mapping may be added in future tasks
-        # For now, we verify that the generation succeeds even with schema section present
+        # Verify schema.fields → product.dataSchema.fields (ODPS round-trip
+        # preservation — the E2E contract-round-trip spec asserts
+        # product.dataSchema.fields survive upload → export).
+        self.assertIn("dataSchema", odps_doc["product"])
+        data_schema = odps_doc["product"]["dataSchema"]
+        self.assertIn("fields", data_schema)
+        self.assertEqual(len(data_schema["fields"]), 3)
+        self.assertEqual(
+            [(f["name"], f["type"]) for f in data_schema["fields"]],
+            [("id", "string"), ("name", "string"), ("email", "string")],
+        )
+        self.assertEqual(data_schema["fields"][0]["description"], "Unique identifier")
 
     def test_generation_with_minimal_hub_contract(self):
         """
@@ -560,7 +569,12 @@ class HubContractToODPSGenerationIntegrationTest(TestCase):
         self.assertIn("marketplace", odps_doc["product"])
         self.assertIn("dataQuality", odps_doc["product"])
         self.assertIn("SLA", odps_doc["product"])  # From lifecycle section
-        # Note: dataSchema mapping not yet implemented
+        # schema.fields → product.dataSchema.fields (ODPS round-trip)
+        self.assertIn("dataSchema", odps_doc["product"])
+        self.assertEqual(
+            [(f["name"], f["type"]) for f in odps_doc["product"]["dataSchema"]["fields"]],
+            [("id", "string"), ("name", "string"), ("email", "string")],
+        )
         self.assertIn("contract", odps_doc["product"])
         self.assertIn("dataHolder", odps_doc)
         self.assertIn("license", odps_doc)

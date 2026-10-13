@@ -59,9 +59,10 @@ def _prefect_server_reachable(prefect_api_url: str, timeout_seconds: float = 5.0
         health = prefect_api_url.rstrip("/").replace("/api", "") + "/api/health"
         req = urllib.request.Request(health)
         urllib.request.urlopen(req, timeout=timeout_seconds)
-        return True
     except Exception:
         return False
+    else:
+        return True
 
 
 class _NoStaticFilesHandler:
@@ -194,12 +195,12 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
             raise unittest.SkipTest(
                 "prefect is not installed in the subprocess Python environment. "
                 "Ensure prefect>=3.6.15 is installed."
-            )
+            ) from None
         except subprocess.TimeoutExpired:
             raise unittest.SkipTest(
                 "prefect import timed out — Prefect server may be slow to initialise. "
                 "Ensure prefect>=3.6.15 is installed and PREFECT_API_URL is reachable."
-            )
+            ) from None
 
         env = {
             **os.environ,
@@ -239,7 +240,7 @@ scheduled_ingestion_full_flow(
                 "Ensure Prefect server is healthy and test-data endpoint is fast."
             )
         except FileNotFoundError:
-            raise unittest.SkipTest("Python executable not found for subprocess")
+            raise unittest.SkipTest("Python executable not found for subprocess") from None
 
         if proc.returncode != 0:
             stderr = proc.stderr or ""
@@ -262,28 +263,18 @@ scheduled_ingestion_full_flow(
                 scheduled_ingestion=self.scheduled_ingestion
             ).order_by("-started_at")[:1]
         )
-        self.assertGreaterEqual(len(runs), 1, "At least one run should exist")
+        assert len(runs) >= 1, "At least one run should exist"
         run = runs[0]
-        self.assertIn(
-            run.status,
-            (ScheduledIngestionRunStatus.COMPLETED, ScheduledIngestionRunStatus.FAILED),
-            f"Run should reach terminal status, got {run.status}",
-        )
-        self.assertGreaterEqual(
-            run.files_found,
-            0,
-            "files_found should be set",
-        )
+        assert run.status in (
+            ScheduledIngestionRunStatus.COMPLETED,
+            ScheduledIngestionRunStatus.FAILED,
+        ), f"Run should reach terminal status, got {run.status}"
+        assert run.files_found >= 0, "files_found should be set"
         if run.status == ScheduledIngestionRunStatus.COMPLETED:
-            self.assertGreaterEqual(
-                run.files_processed,
-                1,
-                "At least one file should be processed on success",
-            )
+            assert run.files_processed >= 1, "At least one file should be processed on success"
         else:
-            self.assertIsNotNone(
-                run.error_message or (run.result_json or {}).get("errors"),
-                "Failed run should have error info",
+            assert (run.error_message or (run.result_json or {}).get("errors")) is not None, (
+                "Failed run should have error info"
             )
-        self.assertIsNotNone(run.completed_at, "Run should have completed_at set")
-        self.assertIsNotNone(run.started_at, "Run should have started_at set")
+        assert run.completed_at is not None, "Run should have completed_at set"
+        assert run.started_at is not None, "Run should have started_at set"

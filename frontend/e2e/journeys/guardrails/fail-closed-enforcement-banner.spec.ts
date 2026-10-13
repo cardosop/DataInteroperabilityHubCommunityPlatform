@@ -122,6 +122,7 @@ test.describe('226.G4 — Fail-closed enforcement banner @critical @guardrail', 
     }
     // Button is present. Either it's disabled (preferred) OR clicking
     // it triggers a blocker.
+    // intentional: probe — failure reads as false and the assertion below adjudicates the real outcome
     const isDisabled = await activateBtn.isDisabled().catch(() => false);
     if (isDisabled) return;
 

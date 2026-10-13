@@ -51,7 +51,10 @@ class ClamAVScanner:
         Transport failures yield ``(SCAN_UNAVAILABLE, None)``.
         """
         try:
-            from pyclamd.pyclamd import BufferTooLongError, ClamdNetworkSocket
+            from pyclamd.pyclamd import (  # type: ignore[import-untyped]
+                BufferTooLongError,
+                ClamdNetworkSocket,
+            )
             from pyclamd.pyclamd import ConnectionError as ClamdConnectionError
         except ImportError:
             logger.warning("pyclamd_not_installed")

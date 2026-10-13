@@ -24,7 +24,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -35,14 +35,14 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
       const url = page.url();
       if (url.includes('/403') || url.includes('/unavailable')) {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 10000 });
         return;
       }
 
-      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0;
       if (isCapabilityGated) {
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -127,7 +127,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
       // /communities is in CAPABILITY_GATED_ROUTES — loginAndNavigateToRoute auto-accepts login redirect.
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -139,9 +139,9 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
       const capabilityEnabled =
         page.url().includes('/communities') &&
         (await page.locator('.communities-page, .communities-tab').count()) > 0 &&
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) === 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) === 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -149,7 +149,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
 
       if (capabilityDisabled) {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]').first()
         ).toBeVisible({ timeout: 10000 });
       } else {
         await expect(
@@ -164,7 +164,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -175,7 +175,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () 
 
       // Page must render something meaningful — not a blank screen or JS crash
       const hasPageContent =
-        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0 ||
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0 ||
         page.url().includes('/403');
       expect(hasPageContent).toBe(true) /* acceptable states */;
     });

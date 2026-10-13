@@ -14,6 +14,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from hub.apps.integrations.encryption import EncryptionError
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,7 +81,7 @@ class DeployImpactAnalyzer:
                 tenant_id=tenant_id,
             )
         except TransformationPipeline.DoesNotExist:
-            raise ValueError(f"Pipeline {pipeline_id} not found in tenant {tenant_id}")
+            raise ValueError(f"Pipeline {pipeline_id} not found in tenant {tenant_id}") from None
 
         report = ImpactReport(
             pipeline_id=str(pipeline.id),
@@ -130,7 +132,7 @@ class DeployImpactAnalyzer:
                 if hasattr(pipeline, "get_pipeline_definition")
                 else pipeline.pipeline_definition
             )
-        except Exception:
+        except EncryptionError:
             pdef = pipeline.pipeline_definition
 
         # Find pipelines that consume this pipeline's output datasets.
@@ -160,7 +162,7 @@ class DeployImpactAnalyzer:
                         if hasattr(candidate, "get_pipeline_definition")
                         else candidate.pipeline_definition
                     )
-                except Exception:
+                except EncryptionError:
                     cdef = candidate.pipeline_definition
                 input_ids = cdef.get("input_dataset_ids", []) if isinstance(cdef, dict) else []
                 if str(output_id) in [str(i) for i in input_ids]:
@@ -197,7 +199,7 @@ class DeployImpactAnalyzer:
                 if hasattr(downstream, "get_pipeline_definition")
                 else downstream.pipeline_definition
             )
-        except Exception:
+        except EncryptionError:
             pdef = downstream.pipeline_definition
 
         expected_input = pdef.get("expected_input_schema", {}) if isinstance(pdef, dict) else {}

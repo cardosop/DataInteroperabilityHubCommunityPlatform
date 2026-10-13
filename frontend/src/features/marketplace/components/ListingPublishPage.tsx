@@ -58,8 +58,14 @@ export function ListingPublishPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const createMutation = useCreateListing();
-  // Only ACTIVE assets can be listed (business rule); filter to avoid user selecting DRAFT
-  const { data: assetsData } = useAssets({ page_size: 100, ordering: 'name', status: 'ACTIVE' });
+  // Only ACTIVE assets can be listed (business rule); filter to avoid user selecting DRAFT.
+  // Newest first: the dropdown loads a single page (page_size 100) and
+  // has no pagination/search, so name-ordering silently hid the
+  // majority of ACTIVE assets once the shared tenant passed 100
+  // same-named rows (316 "E2E Publish Asset" ACTIVE assets — b6 skip:
+  // "ACTIVE asset not in dropdown after 40 s"). Recent-first is also the
+  // right UX for a publish flow.
+  const { data: assetsData } = useAssets({ page_size: 100, ordering: '-created_at', status: 'ACTIVE' });
   
   const [formData, setFormData] = useState({
     asset_id: '',

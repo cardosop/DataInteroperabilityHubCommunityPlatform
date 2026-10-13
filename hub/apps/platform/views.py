@@ -38,7 +38,7 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
-    permission_classes = [IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (IsAuthenticated, IsPlatformAdmin)
     lookup_field = "id"
 
     @extend_schema(
@@ -57,7 +57,7 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
 
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="suspend")
-    def suspend(self, request, id=None):
+    def suspend(self, request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Suspend a tenant (platform admin only).
 
@@ -83,7 +83,7 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
 
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="resume")
-    def resume(self, request, id=None):
+    def resume(self, request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Resume a suspended tenant (platform admin only).
 
@@ -242,12 +242,14 @@ class PlatformUserViewSet(viewsets.ReadOnlyModelViewSet):
     User = get_user_model()
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, IsPlatformAdmin]
+    permission_classes = (IsAuthenticated, IsPlatformAdmin)
     lookup_field = "id"
 
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="request-erasure")
-    def request_erasure(self, request, id=None):
+    def request_erasure(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Create erasure request for a user (platform admin only).
 
@@ -298,7 +300,9 @@ class PlatformUserViewSet(viewsets.ReadOnlyModelViewSet):
 
     @transaction.atomic
     @action(detail=True, methods=["get"], url_path="erasure-requests")
-    def erasure_requests(self, request, id=None):
+    def erasure_requests(
+        self, _request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """
         List erasure requests for a user (platform admin only).
 

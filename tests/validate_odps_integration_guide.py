@@ -17,6 +17,12 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+# W16 (Phase T.4) — environment failure must announce itself: the probe below
+# goes through the shared policy (envpolicy.api_available) — in CI an
+# unreachable API RAISES instead of returning False.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from envpolicy import api_available
+
 # Test configuration
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
 API_KEY = (
@@ -91,13 +97,11 @@ class ODPSIntegrationGuideValidator:
         self.log(f"  Error: {error!s}", Colors.RED)
 
     def check_api_available(self) -> bool:
-        """Check if API is available"""
-        try:
-            response = self.session.get(f"{self.api_base_url}/", timeout=5)
-            return response.status_code in [200, 401, 403]
-        except Exception as e:
-            self.log(f"API not available: {e!s}", Colors.RED)
-            return False
+        """Check if API is available (W16: raises in CI when unreachable)."""
+        if api_available(self.api_base_url, timeout=5):
+            return True
+        self.log(f"API not available at {self.api_base_url}", Colors.RED)
+        return False
 
     def create_test_tenant_and_user(self) -> tuple[str | None, str | None]:
         """Create test tenant and user for testing"""
@@ -186,7 +190,7 @@ class ODPSIntegrationGuideValidator:
                         error_details = error_json["details"]["error"]
                     elif "error" in error_json:
                         error_details = error_json["error"]
-                except:
+                except ValueError:
                     pass
                 self.test_fail(
                     test_name,
@@ -304,18 +308,26 @@ class ODPSIntegrationGuideValidator:
                     # If it's a string, try to parse it
                     elif isinstance(data, str):
                         parsed = json.loads(data)
-                        if isinstance(parsed, dict) and "schema" in parsed and "product" in parsed:
-                            if "opendataproducts.org" in str(parsed.get("schema", "")):
-                                self.test_pass(test_name)
-                                return parsed
+                        if (
+                            isinstance(parsed, dict)
+                            and "schema" in parsed
+                            and "product" in parsed
+                            and "opendataproducts.org" in str(parsed.get("schema", ""))
+                        ):
+                            self.test_pass(test_name)
+                            return parsed
                 except json.JSONDecodeError:
                     # Response might be a JSON string, try parsing the text
                     try:
                         data = json.loads(response.text)
-                        if isinstance(data, dict) and "schema" in data and "product" in data:
-                            if "opendataproducts.org" in str(data.get("schema", "")):
-                                self.test_pass(test_name)
-                                return data
+                        if (
+                            isinstance(data, dict)
+                            and "schema" in data
+                            and "product" in data
+                            and "opendataproducts.org" in str(data.get("schema", ""))
+                        ):
+                            self.test_pass(test_name)
+                            return data
                     except json.JSONDecodeError:
                         pass
 
@@ -412,10 +424,11 @@ class ODPSIntegrationGuideValidator:
                         try:
                             json.loads(response.content)
                             self.test_pass(test_name)
-                            return response.content
                         except json.JSONDecodeError:
                             self.test_fail(test_name, "Downloaded content is not valid JSON")
                             return None
+                        else:
+                            return response.content
                     else:
                         self.test_fail(test_name, "Missing Content-Disposition header")
                         return None

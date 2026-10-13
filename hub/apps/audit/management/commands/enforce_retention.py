@@ -94,7 +94,7 @@ try:
         "retention_enforcement_last_run_timestamp_seconds",
         "Unix timestamp of the last successful retention enforcement run",
     )
-except Exception:
+except (ImportError, RuntimeError):
     _retention_counter = None
     _retention_last_run = None
 

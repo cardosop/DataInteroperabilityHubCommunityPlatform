@@ -16,7 +16,7 @@ import pytest
 
 pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, Q
 from django.test import TestCase
 
@@ -128,13 +128,16 @@ class DatabaseTransactionsTest(TestCase):
         """Test transaction rollback"""
         initial_count = Asset.objects.count()
 
+        def _raise_test_rollback():
+            raise ValueError("Test rollback")
+
         try:
             with transaction.atomic():
                 Asset.objects.create(
                     tenant=self.tenant, key="rollback-asset", name="Rollback Asset", status="DRAFT"
                 )
                 # Force an error
-                raise ValueError("Test rollback")
+                _raise_test_rollback()
         except ValueError:
             pass
 
@@ -328,7 +331,7 @@ class DatabaseIndexesTest(TestCase):
         )
 
         # Try to create another with same slug (should fail)
-        with self.assertRaises(Exception):  # IntegrityError or ValidationError
+        with self.assertRaises(IntegrityError):  # Tenant.slug is unique=True
             Tenant.objects.create(
                 name=f"Duplicate Tenant {uuid.uuid4().hex}",
                 slug=slug,  # Same slug — should trigger unique constraint violation

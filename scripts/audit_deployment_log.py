@@ -15,7 +15,7 @@ def get_git_tags():
             ["git", "tag", "--sort=-creatordate"], check=False, capture_output=True, text=True
         )
         return [t.strip() for t in result.stdout.strip().split("\n") if t.strip()]
-    except:
+    except (OSError, subprocess.SubprocessError):
         return []
 
 
@@ -40,7 +40,7 @@ def get_deploy_history():
                         "message": parts[2],
                     }
                 )
-        except:
+        except (OSError, subprocess.SubprocessError):
             pass
     return log
 

@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import DatabaseError
 from django.utils import timezone
 
 SOAK_DAYS_REQUIRED = 7
@@ -83,14 +84,14 @@ class Command(BaseCommand):
     def _audit_rows_in_window(self, soak_start: _dt.datetime) -> int:
         try:
             from hub.apps.audit.models import AuditEvent
-        except Exception:
+        except ImportError:
             return 0
         try:
             return AuditEvent.objects.filter(
                 action="LINEAGE_SNAPSHOT_QUERIED",
                 timestamp__gte=soak_start,
             ).count()
-        except Exception:
+        except DatabaseError:
             return 0
 
     def _p1_list(self, options) -> list:

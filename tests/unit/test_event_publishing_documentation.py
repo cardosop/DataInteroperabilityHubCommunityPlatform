@@ -10,6 +10,7 @@ This test ensures that:
 import inspect
 import re
 from pathlib import Path
+from typing import ClassVar
 from unittest import TestCase
 
 from hub.apps.core.events.service_publishers import (
@@ -46,7 +47,7 @@ class EventPublishingDocumentationTest(TestCase):
     """Test event publishing documentation completeness."""
 
     # All event publisher classes (must match service_publishers.py)
-    EVENT_PUBLISHERS = [
+    EVENT_PUBLISHERS: ClassVar[list] = [
         ContractEventPublisher,
         AssetEventPublisher,
         DatasetEventPublisher,
@@ -88,10 +89,14 @@ class EventPublishingDocumentationTest(TestCase):
         content = self.event_bus_doc.read_text()
 
         # Check for required documentation sections
-        self.assertIn("Event Publisher Pattern", content,
-                      "EVENT_BUS.md should document the event publisher pattern")
-        self.assertIn("Publishers by service", content,
-                      "EVENT_BUS.md should list publishers by service")
+        self.assertIn(
+            "Event Publisher Pattern",
+            content,
+            "EVENT_BUS.md should document the event publisher pattern",
+        )
+        self.assertIn(
+            "Publishers by service", content, "EVENT_BUS.md should list publishers by service"
+        )
 
         # Current doc format lists services rather than individual publisher
         # classes.  Verify the api-service section exists and names the
@@ -105,8 +110,7 @@ class EventPublishingDocumentationTest(TestCase):
         ]
         for name in service_publishers:
             self.assertIn(
-                name, content,
-                f"EVENT_BUS.md should document {name} as a publisher service"
+                name, content, f"EVENT_BUS.md should document {name} as a publisher service"
             )
 
     def test_all_event_types_documented(self):
@@ -127,8 +131,9 @@ class EventPublishingDocumentationTest(TestCase):
 
         for category in event_categories:
             self.assertIn(
-                category, content,
-                f"{category} section should be present in EVENT_TYPES_REFERENCE.md"
+                category,
+                content,
+                f"{category} section should be present in EVENT_TYPES_REFERENCE.md",
             )
 
         # Check that key event types are documented
@@ -224,8 +229,9 @@ class EventPublishingDocumentationTest(TestCase):
         content = self.event_bus_doc.read_text()
 
         # Current doc lists services under "Publisher Services" section
-        self.assertIn("Publisher Services", content,
-                      "EVENT_BUS.md should have a 'Publisher Services' section")
+        self.assertIn(
+            "Publisher Services", content, "EVENT_BUS.md should have a 'Publisher Services' section"
+        )
         service_classes = [
             "ContractService",
             "AssetService",
@@ -235,8 +241,9 @@ class EventPublishingDocumentationTest(TestCase):
         ]
         for service_class in service_classes:
             self.assertIn(
-                service_class, content,
-                f"Service class '{service_class}' should be documented in EVENT_BUS.md"
+                service_class,
+                content,
+                f"Service class '{service_class}' should be documented in EVENT_BUS.md",
             )
 
     def test_event_publisher_usage_examples(self):
@@ -244,7 +251,9 @@ class EventPublishingDocumentationTest(TestCase):
         content = self.event_bus_doc.read_text()
 
         # Current doc includes a "Usage Example" code block with publish()
-        self.assertIn("event_bus.publish", content,
-                      "EVENT_BUS.md should show event_bus.publish() usage")
-        self.assertIn("Usage Example", content,
-                      "EVENT_BUS.md should have a 'Usage Example' section")
+        self.assertIn(
+            "event_bus.publish", content, "EVENT_BUS.md should show event_bus.publish() usage"
+        )
+        self.assertIn(
+            "Usage Example", content, "EVENT_BUS.md should have a 'Usage Example' section"
+        )

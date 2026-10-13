@@ -498,9 +498,7 @@ class TestAdditionalRetryableStatusCodes:
         from hub.apps.tenants.models import Tenant
 
         suffix = uuid.uuid4().hex[:8]
-        return Tenant.objects.create(
-            name=f"OL Retry Co {suffix}", slug=f"olrtry-{suffix}"
-        )
+        return Tenant.objects.create(name=f"OL Retry Co {suffix}", slug=f"olrtry-{suffix}")
 
     @pytest.mark.django_db(transaction=True)
     @pytest.mark.parametrize("status_code", [408, 425, 502, 504])

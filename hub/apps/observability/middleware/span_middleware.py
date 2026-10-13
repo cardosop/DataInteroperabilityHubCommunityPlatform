@@ -155,9 +155,7 @@ class SpanMiddleware(MiddlewareMixin):
                             path=request.path,
                         )
                     else:
-                        is_sampled = bool(
-                            span_context.trace_flags & trace.TraceFlags.SAMPLED
-                        )
+                        is_sampled = bool(span_context.trace_flags & trace.TraceFlags.SAMPLED)
 
                         span.set_attribute("error.sampled", is_sampled)
                         span.set_attribute("sampling.priority", "high")
@@ -171,9 +169,13 @@ class SpanMiddleware(MiddlewareMixin):
                             ) as error_span:
                                 if hasattr(error_span, "set_attribute"):
                                     error_span.set_attribute("http.method", request.method)
-                                    error_span.set_attribute("http.url", request.build_absolute_uri())
+                                    error_span.set_attribute(
+                                        "http.url", request.build_absolute_uri()
+                                    )
                                     error_span.set_attribute("http.route", request.path)
-                                    error_span.set_attribute("http.status_code", response.status_code)
+                                    error_span.set_attribute(
+                                        "http.status_code", response.status_code
+                                    )
                                     error_span.set_attribute("sampling.forced", True)
                                     error_span.set_attribute("sampling.reason", "http_error")
                                     error_span.set_status(

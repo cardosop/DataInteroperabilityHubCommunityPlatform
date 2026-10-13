@@ -6,10 +6,10 @@ These factories create actual model instances with realistic test data.
 """
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.notifications.models import EmailDelivery, EmailDeliveryStatus, EmailType
@@ -197,9 +197,9 @@ class EmailDeliveryFactory:
         error_message: str | None = None,
         retry_count: int = 0,
         max_retries: int = 3,
-        sent_at: timezone.datetime | None = None,
-        delivered_at: timezone.datetime | None = None,
-        failed_at: timezone.datetime | None = None,
+        sent_at: datetime | None = None,
+        delivered_at: datetime | None = None,
+        failed_at: datetime | None = None,
         metadata_json: dict[str, Any] | None = None,
         **kwargs,
     ) -> EmailDelivery:
@@ -295,8 +295,8 @@ class JobFactory:
         resource_type: str | None = None,
         resource_id: uuid.UUID | None = None,
         created_by: User | None = None,
-        started_at: timezone.datetime | None = None,
-        completed_at: timezone.datetime | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
         error_message: str | None = None,
         result_json: dict[str, Any] | None = None,
         details_json: dict[str, Any] | None = None,

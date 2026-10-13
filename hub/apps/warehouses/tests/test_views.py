@@ -292,14 +292,23 @@ class WarehouseConnectionViewSetTests(TestCase):
 
     def test_platform_admin_sees_all_connections(self):
         admin = _create_user(self.tenant, is_admin=True)
-        _create_connection(self.tenant)
-        _create_connection(self.other_tenant)
+        own_conn = _create_connection(self.tenant)
+        other_conn = _create_connection(self.other_tenant)
 
         self.client.force_authenticate(user=admin)
         url = reverse("warehouse-connection-list")
         resp = self.client.get(url)
         assert resp.status_code == status.HTTP_200_OK
-        assert len(resp.data["results"]) == 2
+
+        # Residue-proof (shared reuse-DB): assert BOTH test connections
+        # are visible to the platform admin across tenants, rather than
+        # an exact result count that breaks when prior runs leave rows.
+        results = resp.data["results"]
+        by_id = {str(item["id"]): item for item in results}
+        assert str(own_conn.id) in by_id
+        assert str(other_conn.id) in by_id
+        assert str(by_id[str(own_conn.id)]["tenant"]) == str(self.tenant.id)
+        assert str(by_id[str(other_conn.id)]["tenant"]) == str(self.other_tenant.id)
 
 
 # ── LiveQueryViewSet ─────────────────────────────────────────────────
@@ -333,31 +342,41 @@ class LiveQueryViewSetTests(TestCase):
         assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ── DeltaShareView ───────────────────────────────────────────────────
+# ── 5.5 — the fabricated DeltaShareView surface is removed ────────────
+#
+# The two former stub tests migrate to the native surface: the
+# SessionAuth stub with its hand-fabricated share/table descriptors is
+# GONE (design D6 — removed, not migrated). The equivalent guarantees
+# (401 without a bearer token, 404 for an unknown share/schema/table)
+# are pinned on the native protocol endpoints in
+# hub/apps/databricks_admin/tests/test_delta_sharing_endpoints.py.
 
 
-@pytest.mark.django_db(transaction=True)
-class DeltaShareViewTests(TestCase):
-    """Tests for DeltaShareView — Delta Sharing protocol endpoint."""
+class FabricatedShareRemovalTests(TestCase):
+    """5.5 — the two fabricated DeltaShareView URL routes no longer
+    resolve (pure URL resolution — no DB access needed)."""
 
-    def setUp(self):
-        self.tenant = _create_tenant()
-        self.user = _create_user(self.tenant)
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
+    def test_the_list_tables_route_no_longer_resolves(self):
+        from django.urls import Resolver404, resolve
 
-    def test_list_tables_asset_not_found(self):
-        url = reverse(
-            "deltashare-list-tables", kwargs={"asset_id": "00000000-0000-0000-0000-000000000000"}
-        )
-        resp = self.client.get(url)
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
+        with pytest.raises(Resolver404):
+            resolve(f"/api/v1/warehouses/share/{SAMPLE_UUID}/")
 
-    def test_unauthenticated_rejected(self):
-        client = APIClient()
-        url = reverse("deltashare-list-tables", kwargs={"asset_id": SAMPLE_UUID})
-        resp = client.get(url)
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+    def test_the_query_route_no_longer_resolves(self):
+        from django.urls import Resolver404, resolve
+
+        with pytest.raises(Resolver404):
+            resolve(f"/api/v1/warehouses/share/{SAMPLE_UUID}/query/")
+
+    def test_the_reverse_names_are_gone(self):
+        from django.urls import NoReverseMatch
+
+        for name, kwargs in (
+            ("deltashare-list-tables", {"asset_id": SAMPLE_UUID}),
+            ("deltashare-query-table", {"asset_id": SAMPLE_UUID}),
+        ):
+            with pytest.raises(NoReverseMatch):
+                reverse(name, kwargs=kwargs)
 
 
 # ── WarehouseConnectionACLViewSet ────────────────────────────────────

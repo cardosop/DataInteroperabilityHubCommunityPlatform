@@ -47,7 +47,7 @@ try:
         buckets=(1, 5, 10, 30, 60, 120, 300, 600),
     )
 
-except Exception:  # pragma: no cover
+except Exception:
     compliance_scan_total = _MetricStub()
     compliance_scan_completed_total = _MetricStub()
     compliance_scan_failed_total = _MetricStub()

@@ -15,7 +15,7 @@ The migration itself is verified to be applied correctly in the production datab
 import uuid
 
 from django.apps import apps
-from django.db import connection
+from django.db import OperationalError, connection
 
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
@@ -23,6 +23,28 @@ from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 class Migration0009Test(ContractsTestBase):
     """Test migration 0009_add_odps_to_original_spec_type"""
+
+    @staticmethod
+    def _execute_ddl_with_retry(cursor, sql: str, *, attempts: int = 3, delay: float = 2.0) -> None:
+        """Execute DDL, retrying on transient lock contention.
+
+        This suite runs against the SHARED test database (--reuse-db);
+        parallel sessions holding transactions on ``contracts`` make
+        ``DROP INDEX`` / ``CREATE INDEX`` (ACCESS EXCLUSIVE) fail with
+        ``OperationalError: canceling statement due to lock timeout``.
+        A bounded retry lets the competing transaction commit or roll
+        back; anything that is NOT a lock timeout re-raises immediately.
+        """
+        import time
+
+        for attempt in range(attempts):
+            try:
+                cursor.execute(sql)
+                return
+            except OperationalError as exc:
+                if "lock timeout" not in str(exc) or attempt == attempts - 1:
+                    raise
+                time.sleep(delay)  # noqa: sleep-needed  # let the competing transaction finish
 
     def setUp(self):
         """Set up test data"""
@@ -153,9 +175,14 @@ class Migration0009Test(ContractsTestBase):
             result = cursor.fetchone()
             self.assertIsNotNone(result, "Index should exist before rollback test")
 
-        # Execute reverse SQL (drop index)
+        # Execute reverse SQL (drop index). DDL takes ACCESS EXCLUSIVE
+        # on the shared test DB; a parallel session's transactions can
+        # hold locks on `contracts` long enough to exceed the session
+        # lock_timeout — retry bounded times before giving up.
         with connection.cursor() as cursor:
-            cursor.execute("DROP INDEX IF EXISTS idx_contracts_extensions_odps_link;")
+            self._execute_ddl_with_retry(
+                cursor, "DROP INDEX IF EXISTS idx_contracts_extensions_odps_link;"
+            )
 
         # Verify index is dropped
         with connection.cursor() as cursor:
@@ -170,14 +197,17 @@ class Migration0009Test(ContractsTestBase):
             result = cursor.fetchone()
             self.assertIsNone(result, "Index should be dropped")
 
-        # Recreate index (restore state for other tests)
+        # Recreate index (restore state for other tests). Retried like
+        # the drop — a failure between drop and recreate must never
+        # leave the shared DB without the index.
         with connection.cursor() as cursor:
-            cursor.execute(
+            self._execute_ddl_with_retry(
+                cursor,
                 """
                 CREATE INDEX IF NOT EXISTS idx_contracts_extensions_odps_link
                 ON contracts
                 USING GIN ((hub_contract_json -> 'extensions' -> 'x_odps_link'));
-            """
+            """,
             )
 
     def test_contract_with_odps_and_resolved_content(self):

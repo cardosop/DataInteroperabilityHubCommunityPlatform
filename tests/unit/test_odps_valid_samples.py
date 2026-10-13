@@ -21,9 +21,10 @@ from pathlib import Path
 
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
+
 try:
-    import jsonschema
-    from jsonschema import Draft202012Validator, ValidationError, validate
+    from jsonschema import ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
@@ -72,7 +73,7 @@ class ODPSValidSamplesTest(TestCase):
     def test_v4_1_valid_sample_passes_schema_validation(self):
         """Test that v4.1 valid sample passes schema validation"""
         if not JSONSCHEMA_AVAILABLE:
-            self.skipTest("jsonschema library not available")
+            skip_or_fail("jsonschema library not available")
 
         sample_path = self.fixtures_dir / "v4.1" / "valid" / "sample-valid-v4.1.json"
         schema = self.load_odps_schema("4.1")
@@ -116,7 +117,7 @@ class ODPSValidSamplesTest(TestCase):
     def test_v4_0_valid_sample_passes_schema_validation(self):
         """Test that v4.0 valid sample passes schema validation"""
         if not JSONSCHEMA_AVAILABLE:
-            self.skipTest("jsonschema library not available")
+            skip_or_fail("jsonschema library not available")
 
         sample_path = self.fixtures_dir / "v4.0" / "valid" / "sample-valid-v4.0.json"
         schema = self.load_odps_schema("4.0")
@@ -160,7 +161,7 @@ class ODPSValidSamplesTest(TestCase):
     def test_v3_x_valid_sample_passes_schema_validation(self):
         """Test that v3.x valid sample passes schema validation"""
         if not JSONSCHEMA_AVAILABLE:
-            self.skipTest("jsonschema library not available")
+            skip_or_fail("jsonschema library not available")
 
         sample_path = self.fixtures_dir / "v3.x" / "valid" / "sample-valid-v3.9.json"
         schema = self.load_odps_schema("3.x")
@@ -204,7 +205,7 @@ class ODPSValidSamplesTest(TestCase):
     def test_v2_x_valid_sample_passes_schema_validation(self):
         """Test that v2.x valid sample passes schema validation"""
         if not JSONSCHEMA_AVAILABLE:
-            self.skipTest("jsonschema library not available")
+            skip_or_fail("jsonschema library not available")
 
         sample_path = self.fixtures_dir / "v2.x" / "valid" / "sample-valid-v2.9.json"
         schema = self.load_odps_schema("2.x")
@@ -248,7 +249,7 @@ class ODPSValidSamplesTest(TestCase):
     def test_v1_x_valid_sample_passes_schema_validation(self):
         """Test that v1.x valid sample passes schema validation"""
         if not JSONSCHEMA_AVAILABLE:
-            self.skipTest("jsonschema library not available")
+            skip_or_fail("jsonschema library not available")
 
         sample_path = self.fixtures_dir / "v1.x" / "valid" / "sample-valid-v1.9.json"
         schema = self.load_odps_schema("1.x")
@@ -338,7 +339,7 @@ class ODPSValidSamplesTest(TestCase):
     def test_all_valid_samples_pass_schema_validation(self):
         """Test that all valid samples pass schema validation (comprehensive test)"""
         if not JSONSCHEMA_AVAILABLE:
-            self.skipTest("jsonschema library not available")
+            skip_or_fail("jsonschema library not available")
 
         version_samples = {
             "4.1": ("v4.1", "sample-valid-v4.1.json"),

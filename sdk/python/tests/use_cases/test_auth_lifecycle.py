@@ -163,8 +163,10 @@ def test_login_returns_tokens(persona_role: str):
         f"Response for {persona_role} missing refresh_token. Keys: {list(body.keys())}"
     )
     # Tokens must be non-empty strings
-    assert isinstance(body["access_token"], str) and len(body["access_token"]) > 10
-    assert isinstance(body["refresh_token"], str) and len(body["refresh_token"]) > 10
+    assert isinstance(body["access_token"], str)
+    assert len(body["access_token"]) > 10
+    assert isinstance(body["refresh_token"], str)
+    assert len(body["refresh_token"]) > 10
 
 
 @pytest.mark.parametrize("persona_role", AUTHENTICATED_PERSONAS)

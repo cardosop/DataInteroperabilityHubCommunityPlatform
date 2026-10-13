@@ -16,6 +16,7 @@ import httpx
 import pytest
 from django.test import TestCase
 
+from hub.apps.core.services.base import ConnectionError as HubConnectionError
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
@@ -63,7 +64,9 @@ class TestCKANConnectorPullOperations(TestCase):
             cls.connector.test_connection()
         except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError) as e:
             cls._rollback_atomics(cls.cls_atomics)
-            raise unittest.SkipTest(f"Cannot connect to CKAN instance at {cls.ckan_url}: {e}")
+            raise unittest.SkipTest(
+                f"Cannot connect to CKAN instance at {cls.ckan_url}: {e}"
+            ) from e
 
         # Find a test resource with a downloadable URL
         # Try multiple resources until we find one that's actually downloadable
@@ -112,13 +115,28 @@ class TestCKANConnectorPullOperations(TestCase):
                                         cls.test_resource_id = resource.resource_id
                                         cls.test_resource_url = resource.url
                                         break
-                                except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                                except (
+                                    httpx.HTTPStatusError,
+                                    httpx.RequestError,
+                                    HubConnectionError,
+                                ):
                                     continue
-                            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                            except (httpx.RequestError, HubConnectionError):
+                                # HTTPStatusError is handled by the narrow
+                                # clause above — listing it here was a dead
+                                # duplicate.
                                 continue
                     if cls.test_resource_id:
                         break
-                except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                except (
+                    httpx.HTTPStatusError,
+                    httpx.RequestError,
+                    HubConnectionError,
+                    NotFoundError,
+                ):
+                    # NotFoundError: the listing exists in the Solr search
+                    # index but its package was deleted after seeding — a
+                    # phantom entry. Skip it and try the next listing.
                     continue
         except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
             pass
@@ -253,10 +271,12 @@ class TestCKANConnectorPullOperations(TestCase):
         resource_id: str = self.test_resource_id
 
         # Create a directory
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with (
+            tempfile.TemporaryDirectory() as tmp_dir,
+            self.assertRaises(IOError),
+        ):
             # Try to download to directory path
-            with self.assertRaises(IOError):
-                self.connector.download_resource(resource_id, tmp_dir)
+            self.connector.download_resource(resource_id, tmp_dir)
 
     def test_download_resource_preserves_file_extension(self):
         """Test that downloaded file preserves original extension or uses provided one."""
@@ -428,11 +448,19 @@ class TestCKANConnectorPullOperations(TestCase):
                                 if e.response.status_code == 404:
                                     broken_resource = resource
                                     break
-                            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                            except (httpx.RequestError, HubConnectionError):
+                                # HTTPStatusError is handled by the narrow
+                                # clause above — a dead duplicate here.
                                 continue
                     if broken_resource:
                         break
-                except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                except (
+                    httpx.HTTPStatusError,
+                    httpx.RequestError,
+                    HubConnectionError,
+                    NotFoundError,
+                ):
+                    # Phantom entry (deleted package still in Solr) — skip.
                     continue
 
             if broken_resource:
@@ -461,7 +489,9 @@ class TestCKANConnectorPullOperations(TestCase):
 
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                self.connector.download_resource(None, destination_path)  # type: ignore[arg-type]  # test: edge-case type exercise
+                self.connector.download_resource(
+                    None, destination_path
+                )  # test: edge-case type exercise
         finally:
             if os.path.exists(destination_path):
                 os.unlink(destination_path)
@@ -475,7 +505,7 @@ class TestCKANConnectorPullOperations(TestCase):
         resource_id: str = self.test_resource_id
 
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.download_resource(resource_id, None)  # type: ignore[arg-type]  # test: edge-case type exercise
+            self.connector.download_resource(resource_id, None)  # test: edge-case type exercise
 
     def test_download_resource_with_invalid_resource_id_format(self):
         """Test downloading resource with invalid resource_id format"""
@@ -529,7 +559,9 @@ class TestCKANConnectorPullOperations(TestCase):
             destination_path = tmp_file.name
 
         try:
-            with self.assertRaises(Exception):  # ConnectionError or NotFoundError
+            with self.assertRaises(
+                (HubConnectionError, NotFoundError)
+            ):  # ConnectionError or NotFoundError
                 invalid_connector.download_resource("test-resource", destination_path)
         finally:
             if os.path.exists(destination_path):
@@ -592,12 +624,20 @@ class TestCKANConnectorPullOperations(TestCase):
                                     break
                             except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                                 continue
-                        except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                        except (httpx.RequestError, HubConnectionError):
+                            # HTTPStatusError is handled by the narrow clause
+                            # above — a dead duplicate here.
                             continue
 
                 if downloadable_resource:
                     break
-            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+            except (
+                httpx.HTTPStatusError,
+                httpx.RequestError,
+                HubConnectionError,
+                NotFoundError,
+            ):
+                # Phantom entry (deleted package still in Solr) — skip.
                 continue
 
         if downloadable_resource and downloadable_resource.url:

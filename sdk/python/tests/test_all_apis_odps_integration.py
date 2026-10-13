@@ -23,14 +23,17 @@ To run these tests:
 3. Run: pytest tests/test_all_apis_odps_integration.py -v
 """
 
+import hashlib
 import json
 import os
 import uuid
-from typing import Optional
+from contextlib import suppress
+from types import SimpleNamespace
 
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
+from datahub_interoperability.errors import DataHubError
 
 
 async def check_endpoint_exists(
@@ -66,12 +69,13 @@ async def check_endpoint_exists(
             # For other methods, try HEAD first
             try:
                 response = await client.request("HEAD", test_path)
-                return response.status_code != 404
-            except Exception:
+            except DataHubError:
                 # If HEAD fails, try GET
                 response = await client.request("GET", test_path)
                 return response.status_code != 404
-    except Exception as e:
+            else:
+                return response.status_code != 404
+    except DataHubError as e:
         error_str = str(e).lower()
         # 404 means endpoint doesn't exist
         if "404" in error_str or "not found" in error_str:
@@ -80,12 +84,10 @@ async def check_endpoint_exists(
         # Check the actual exception type
         from datahub_interoperability.errors import NotFoundError
 
-        if isinstance(e, NotFoundError):
-            return False
-        return True
+        return not isinstance(e, NotFoundError)
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -109,18 +111,44 @@ def real_api_config():
             "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
         )
 
-    # Use longer timeout for comprehensive tests (60 seconds) to handle slow operations
+    # Use longer timeout for comprehensive tests — the workflow-backed
+    # product creation takes 60-120s; a 60s read-timeout expires before
+    # the server responds under load.
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=60.0,  # 60 seconds for comprehensive tests
+        timeout=120.0,
     )
 
 
 @pytest.fixture
-async def odps_contract(real_api_config):
-    """Fixture to create an ODPS contract for testing"""
+async def odps_env(real_api_config):
+    """Fixture to create an ODPS contract plus asset/dataset for testing.
+
+    The ODPS contract is linked to a REAL asset (passed via
+    ``asset_id=`` to ``create_odps``) so downstream APIs that derive
+    ``asset_id``/``dataset_id`` from the contract actually run instead of
+    skipping.  A tiny CSV dataset is created best-effort (file init +
+    complete, which test/dev mode allows without an S3 PUT).
+
+    Yields a SimpleNamespace with ``odps_id``, ``asset_id`` and
+    ``dataset_id`` (dataset_id is None when creation failed).
+    """
     client = DataHubClient(real_api_config)
+
+    # Create the asset first so the ODPS contract is linked to it.
+    asset_id = None
+    asset = await client.post(
+        "/assets/",
+        {
+            "name": f"Test ODPS Asset {uuid.uuid4().hex[:8]}",
+            "key": f"test-odps-asset-{uuid.uuid4().hex[:8]}",
+            "status": "DRAFT",
+            "domain": "test",
+            "visibility": "INTERNAL",
+        },
+    )
+    asset_id = asset.get("id")
 
     odps_content = json.dumps(
         {
@@ -176,7 +204,10 @@ async def odps_contract(real_api_config):
     for attempt in range(max_retries):
         try:
             result = await client.contracts.create_odps(
-                original_raw=odps_content, extract_odcs=True, original_format="JSON"
+                original_raw=odps_content,
+                extract_odcs=True,
+                original_format="JSON",
+                asset_id=asset_id,
             )
 
             # Handle async workflow if needed - import helper from comprehensive tests
@@ -184,16 +215,46 @@ async def odps_contract(real_api_config):
 
             result = await handle_async_workflow_response(client, result, timeout=300)
 
-            if isinstance(result, dict) and "error" in result:
-                if "workflow" in str(result.get("error", "")).lower():
-                    pytest.skip(f"Workflow execution failed: {result.get('error')}")
+            if (
+                isinstance(result, dict)
+                and "error" in result
+                and "workflow" in str(result.get("error", "")).lower()
+            ):
+                pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             odps_id = result.get("odps_contract", {}).get("id") or result.get("id")
             if not odps_id:
                 pytest.skip("Could not create ODPS contract for API integration tests")
 
-            yield odps_id
-            return
+            # Best-effort tiny dataset so versioning/schema-evolution tests
+            # have a real dataset_id.  complete_upload is allowed without an
+            # actual S3 PUT in test/dev mode.
+            dataset_id = None
+            try:
+                content = b"id,name\n1,alpha\n"
+                digest = hashlib.sha256(content).hexdigest()
+                file_result = await client.files.init_upload(
+                    name=f"test-odps-{uuid.uuid4().hex[:8]}.csv",
+                    content_type="text/csv",
+                    size=len(content),
+                )
+                # The init response uses ``file_id`` (not ``id``).
+                file_id = file_result.get("file_id")
+                if file_id:
+                    await client.files.complete_upload(file_id, content_sha256=digest)
+                    dataset_result = await client.datasets.create_dataset(
+                        file_id=file_id, asset_id=asset_id
+                    )
+                    dataset_id = dataset_result.get("id")
+            except (DataHubError, ValueError, AttributeError):
+                pass  # dataset-dependent tests skip with a precise reason
+
+            yield SimpleNamespace(odps_id=odps_id, asset_id=asset_id, dataset_id=dataset_id)
+
+            # Cleanup
+            with suppress(Exception):
+                if asset_id:
+                    await client.delete(f"/assets/{asset_id}/")
         except NetworkError as e:
             error_str = str(e).lower()
 
@@ -208,6 +269,14 @@ async def odps_contract(real_api_config):
         except Exception:
             # Re-raise unexpected errors immediately — they are real bugs.
             raise
+        else:
+            return
+
+
+@pytest.fixture
+async def odps_contract(odps_env):
+    """Thin compat alias — yield just the ODPS contract id."""
+    yield odps_env.odps_id
 
 
 class TestLineageAPIWithODPS:
@@ -298,9 +367,14 @@ class TestScheduledIngestionAPIWithODPS:
                 ingestion = await client.scheduled_ingestion.create(
                     name=f"test-ingestion-{uuid.uuid4().hex[:8]}",
                     source_type="http",
-                    source_config={"url": "https://example.com/data"},
+                    # The HTTP source's field validation requires base_url.
+                    source_config={"base_url": "https://example.com/data"},
                     schedule="0 0 * * *",  # Daily at midnight
                     asset_id=asset_id,
+                    # This test verifies CREATION, not source connectivity —
+                    # the server's default test_connection=True would fail
+                    # against the placeholder host.
+                    test_connection=False,
                 )
                 assert ingestion is not None
                 assert isinstance(ingestion, dict)
@@ -318,23 +392,20 @@ class TestVersioningAPIWithODPS:
     """Tests for VersioningAPI with ODPS contracts"""
 
     @pytest.mark.asyncio
-    async def test_get_version_history_with_odps_contract(self, real_api_config, odps_contract):
+    async def test_get_version_history_with_odps_contract(self, real_api_config, odps_env):
         """Test get_version_history() with ODPS contract"""
         client = DataHubClient(real_api_config)
 
         try:
-            # Get contract to extract dataset_id
-            contract = await client.contracts.get(odps_contract)
-            dataset_id = contract.get("dataset_id")
-
+            dataset_id = odps_env.dataset_id
             if not dataset_id:
-                pytest.skip("ODPS contract has no associated dataset_id for version history")
+                pytest.skip("Could not create a dataset for version history")
 
             # Try to get version history - endpoint exists
             version_history = await client.versioning.get_version_history(dataset_id)
             assert version_history is not None
-            assert isinstance(version_history, dict)
-            # Version history may be empty for new datasets
+            # The endpoint returns a LIST of version snapshots.
+            assert isinstance(version_history, list)
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "404" in error_str:
@@ -342,20 +413,28 @@ class TestVersioningAPIWithODPS:
             raise
 
     @pytest.mark.asyncio
-    async def test_get_schema_evolution_with_odps_contract(self, real_api_config, odps_contract):
+    async def test_get_schema_evolution_with_odps_contract(self, real_api_config, odps_env):
         """Test get_schema_evolution() with ODPS contract"""
         client = DataHubClient(real_api_config)
 
         try:
-            # Get contract to extract dataset_id
-            contract = await client.contracts.get(odps_contract)
-            dataset_id = contract.get("dataset_id")
-
+            dataset_id = odps_env.dataset_id
             if not dataset_id:
-                pytest.skip("ODPS contract has no associated dataset_id for schema evolution")
+                pytest.skip("Could not create a dataset for schema evolution")
 
-            # Try to get schema evolution - endpoint exists
-            schema_evolution = await client.versioning.get_schema_evolution(dataset_id)
+            # A freshly created dataset has exactly one version and no
+            # parent — the endpoint needs an explicit from_version_id.
+            versions = await client.versioning.get_version_history(dataset_id)
+            if not versions:
+                pytest.skip("Dataset has no versions for schema evolution")
+            current_id = versions[0].get("id")
+            if not current_id:
+                pytest.skip("Dataset version has no id for schema evolution")
+
+            # Compare the current version against itself: valid no-op diff.
+            schema_evolution = await client.versioning.get_schema_evolution(
+                dataset_id, from_version_id=current_id, to_version_id=current_id
+            )
             assert schema_evolution is not None
             assert isinstance(schema_evolution, dict)
         except Exception as e:
@@ -387,6 +466,28 @@ class TestGovernanceAPIWithODPS:
             assert isinstance(classification, dict)
         except Exception as e:
             error_str = str(e).lower()
+            if "invalidated" in error_str:
+                # A concurrent batch's logout tests bump token_version
+                # for the shared persona mid-test.  get_api_key()
+                # re-provisions when its cached token no longer
+                # validates, so re-provision and retry the flow once.
+                from datahub_interoperability.errors import UnauthorizedError
+
+                if not isinstance(e, UnauthorizedError):
+                    raise
+                api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
+                fresh = setup_authentication_for_sdk_tests(api_base_url)
+                if not fresh:
+                    raise
+                client.set_api_token(fresh)
+                contract = await client.contracts.get(odps_contract)
+                asset_id = contract.get("asset_id")
+                if not asset_id:
+                    pytest.skip("ODPS contract has no associated asset_id for classification")
+                classification = await client.governance.get_classification(asset_id)
+                assert classification is not None
+                assert isinstance(classification, dict)
+                return
             if "not found" in error_str or "404" in error_str:
                 pytest.skip(f"Governance endpoint not available: {error_str}")
             raise
@@ -424,7 +525,7 @@ class TestGovernanceAPIWithODPS:
                 regime="GDPR", asset_ids=[asset_id]
             )
 
-            if not report or "report_id" not in report and "id" not in report:
+            if not report or ("report_id" not in report and "id" not in report):
                 pytest.skip("Could not generate compliance report for testing")
 
             report_id = report.get("report_id") or report.get("id")
@@ -605,10 +706,9 @@ class TestWebhooksAPIWithODPS:
             # Cleanup
             webhook_id = webhook.get("id")
             if webhook_id:
-                try:
+                # Ignore cleanup errors
+                with suppress(DataHubError, ValueError):
                     await client.webhooks.delete(webhook_id)
-                except Exception:
-                    pass  # Ignore cleanup errors
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "404" in error_str:
@@ -637,11 +737,9 @@ class TestWebhooksAPIWithODPS:
                 await client.contracts.get(odps_contract)
                 # Note: Actual webhook triggering depends on backend implementation
 
-                # Cleanup
-                try:
+                # Cleanup — ignore cleanup errors
+                with suppress(DataHubError, ValueError):
                     await client.webhooks.delete(webhook_id)
-                except Exception:
-                    pass  # Ignore cleanup errors
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "404" in error_str:

@@ -9,7 +9,7 @@ import os
 import sys
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -89,7 +89,7 @@ def setup_minio_bucket():
                 print(f"❌ Error checking bucket: {e}")
                 return False
 
-    except Exception as e:
+    except (OSError, ClientError, BotoCoreError) as e:
         print(f"❌ Failed to connect to MinIO: {e}")
         print(f"   Make sure MinIO is running at {endpoint_url}")
         return False

@@ -112,7 +112,7 @@ def test_k6_script_drives_multipart_endpoints():
     """Phase 260.7.I — the test MUST exercise all three multipart
     API endpoints (init / chunks-init / complete). A test that only
     hit `/files/init/` would miss the chunks-init memory load
-    (which is the heaviest path: ~100 chunks per VU × 100 VUs =
+    (which is the heaviest path: ~100 chunks per VU x 100 VUs =
     ~10k concurrent chunks-init requests in flight at peak).
     """
     src = _read(K6_SCRIPT_PATH)
@@ -258,7 +258,7 @@ def test_workflow_extracts_access_token_field():
 def test_workflow_cleans_up_test_files():
     """Phase 260.7.I.R1 GAP-E — the workflow MUST clean up File
     rows the k6 script created. Without cleanup, the staging tenant
-    accumulates ~100 UPLOADING File rows per nightly × ~365 nights
+    accumulates ~100 UPLOADING File rows per nightly x ~365 nights
     = ~36k orphan rows/year. The cleanup step issues
     ``DELETE /api/v1/files/{id}/`` for files matching the
     ``k6-mem-*`` name prefix; the existing ``purge_deleted_files``

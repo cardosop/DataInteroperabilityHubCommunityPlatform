@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { environmentSkipGuard } from '../../fixtures/envPolicy.cjs';
 import { getConsumerTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -48,6 +49,19 @@ test.describe('UC-MKT-002: Browse Marketplace Listings', () => {
         timeout: 90000,
         contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
+      // Gate-off terminal state: /marketplace is CapabilityRoute-gated; a
+      // /unavailable bounce under batch churn is a transient snapshot-fetch
+      // failure, not a disabled feature (MP-001 convention). W16-guarded:
+      // raises in CI, skips locally.
+      if (page.url().includes('/unavailable')) {
+        environmentSkipGuard(
+          'marketplace gate bounced to /unavailable — capabilities/OpenAPI snapshot fetch failed under parallel load'
+        );
+      }
+      test.skip(
+        page.url().includes('/unavailable'),
+        'marketplace gate bounced to /unavailable — transient snapshot failure'
+      );
       expect(page.url()).toContain('/marketplace');
     });
   });

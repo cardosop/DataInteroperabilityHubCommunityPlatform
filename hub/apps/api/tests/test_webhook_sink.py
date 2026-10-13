@@ -26,7 +26,7 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache_between_tests():  # type: ignore[no-untyped-def]  # test: edge-case type exercise
+def _clear_cache_between_tests():  # test: edge-case type exercise
     cache.clear()
     yield
     cache.clear()
@@ -42,7 +42,7 @@ def client() -> APIClient:
     return APIClient()
 
 
-_E2E_SETTINGS = dict(ENVIRONMENT="test", E2E_TEST_SECRET="e2e-secret")
+_E2E_SETTINGS = {"ENVIRONMENT": "test", "E2E_TEST_SECRET": "e2e-secret"}
 
 
 class TestWebhookSinkRecord:

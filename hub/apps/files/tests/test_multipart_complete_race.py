@@ -536,11 +536,18 @@ class MultipartListFailedTest(_MultipartCompleteRaceTestMixin, TransactionTestCa
         # creates a fresh S3StorageClient() inside the request
         # handler; we patch the class so the request gets our
         # subclass.
+        from botocore.exceptions import EndpointConnectionError
+
         from hub.apps.files.storage import S3StorageClient
 
         class TransientListFailureClient(S3StorageClient):
             def list_multipart_parts(self, key, upload_id):
-                raise RuntimeError("simulated transient S3 error (proxy 503)")
+                # A transient proxy 503 from S3 surfaces as botocore's
+                # EndpointConnectionError (a BotoCoreError) — the view's
+                # narrowed handler maps it to 502 MULTIPART_LIST_FAILED.
+                raise EndpointConnectionError(
+                    endpoint_url="https://s3.proxy.test", error="simulated transient S3 error (proxy 503)"
+                )
 
         from unittest.mock import patch
 

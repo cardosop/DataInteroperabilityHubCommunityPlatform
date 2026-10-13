@@ -186,9 +186,7 @@ class CostsViewSetTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-        tenant_admin_role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant
-        )
+        tenant_admin_role, _ = Role.objects.get_or_create(name="TENANT_ADMIN", tenant=self.tenant)
         UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
 
     # ── Cost Summary (list) ──────────────────────────────────────────
@@ -230,18 +228,14 @@ class CostsViewSetTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
-        admin_role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=role_tenant
-        )
+        admin_role, _ = Role.objects.get_or_create(name="TENANT_ADMIN", tenant=role_tenant)
         user_no_tenant = User.objects.create_user(
             email=f"cview-nb-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
         )
-        UserRole.objects.get_or_create(
-            user=user_no_tenant, role=admin_role, tenant=role_tenant
-        )
+        UserRole.objects.get_or_create(user=user_no_tenant, role=admin_role, tenant=role_tenant)
         client = APIClient()
         client.force_authenticate(user=user_no_tenant)
 
@@ -379,18 +373,14 @@ class CostsViewSetTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
-        admin_role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=role_tenant
-        )
+        admin_role, _ = Role.objects.get_or_create(name="TENANT_ADMIN", tenant=role_tenant)
         user_no_tenant = User.objects.create_user(
             email=f"cview-bd-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
         )
-        UserRole.objects.get_or_create(
-            user=user_no_tenant, role=admin_role, tenant=role_tenant
-        )
+        UserRole.objects.get_or_create(user=user_no_tenant, role=admin_role, tenant=role_tenant)
         client = APIClient()
         client.force_authenticate(user=user_no_tenant)
 

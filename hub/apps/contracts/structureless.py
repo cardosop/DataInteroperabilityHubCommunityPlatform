@@ -41,7 +41,7 @@ Public API
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Protocol
 
 from django.db.models import Q
@@ -61,7 +61,7 @@ class _ContractLike(Protocol):
     original_raw: Any
 
 
-class StructurelessClassification(str, Enum):
+class StructurelessClassification(StrEnum):
     """Triage taxonomy for the Wave 0 dry-run report.
 
     Values are chosen for stable JSONL emission (lower-case, snake_case)

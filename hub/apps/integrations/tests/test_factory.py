@@ -671,7 +671,7 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
         except ImportError:
             raise unittest.SkipTest(
                 "GCP Marketplace connector not available (google-cloud-bigquery not installed)"
-            )
+            ) from None
 
         # Ensure connector is registered
         if (
@@ -697,9 +697,14 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
             },
             "location": "US",
         }
-        connector = MarketplaceConnectorFactory.create_connector(
-            MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, config=config
-        )
+        try:
+            connector = MarketplaceConnectorFactory.create_connector(
+                MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, config=config
+            )
+        except ValueError as e:
+            if "not installed" in str(e):
+                raise unittest.SkipTest(str(e)) from None
+            raise
 
         # Verify connector is created correctly
         assert isinstance(connector, GCPMarketplaceConnector)
@@ -717,7 +722,7 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
         except ImportError:
             raise unittest.SkipTest(
                 "GCP Marketplace connector not available (google-cloud-bigquery not installed)"
-            )
+            ) from None
 
         # Ensure connector is registered
         if (
@@ -728,11 +733,19 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
                 MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, GCPMarketplaceConnector
             )
 
-        # Create connector with ADC enabled
+        # Create connector with ADC enabled. The factory translates a
+        # missing GCP SDK into ValueError — skip when the optional
+        # dependency is absent (same contract as the ImportError guard
+        # above).
         config = {"project_id": "test-project-id", "use_adc": True, "location": "EU"}
-        connector = MarketplaceConnectorFactory.create_connector(
-            MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, config=config
-        )
+        try:
+            connector = MarketplaceConnectorFactory.create_connector(
+                MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, config=config
+            )
+        except ValueError as e:
+            if "not installed" in str(e):
+                raise unittest.SkipTest(str(e)) from None
+            raise
 
         # Verify connector is created correctly
         assert isinstance(connector, GCPMarketplaceConnector)
@@ -750,7 +763,7 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
         except ImportError:
             raise unittest.SkipTest(
                 "GCP Marketplace connector not available (google-cloud-bigquery not installed)"
-            )
+            ) from None
 
         # Ensure connector is registered (should be registered in apps.py ready())
         # If not registered, register it for this test
@@ -764,9 +777,14 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
 
         # Create connector with config (GCP Marketplace connector requires authentication)
         config = {"project_id": "test-project-id", "use_adc": True}
-        connector = MarketplaceConnectorFactory.create_connector(
-            MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, config=config
-        )
+        try:
+            connector = MarketplaceConnectorFactory.create_connector(
+                MarketplaceType.GOOGLE_CLOUD_MARKETPLACE, config=config
+            )
+        except ValueError as e:
+            if "not installed" in str(e):
+                raise unittest.SkipTest(str(e)) from None
+            raise
 
         # Verify it's the correct connector type
         assert isinstance(connector, GCPMarketplaceConnector)
@@ -783,7 +801,7 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
         except ImportError:
             raise unittest.SkipTest(
                 "GCP Marketplace connector not available (google-cloud-bigquery not installed)"
-            )
+            ) from None
 
         # Ensure connector is registered
         if (
@@ -809,7 +827,7 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
         except ImportError:
             raise unittest.SkipTest(
                 "GCP Marketplace connector not available (google-cloud-bigquery not installed)"
-            )
+            ) from None
 
         # Ensure connector is registered
         if (

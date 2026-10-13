@@ -67,9 +67,12 @@ from __future__ import annotations
 
 import ast
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # ---------------------------------------------------------------------------
 # Source of truth: the keys we forbid as raw extras.
@@ -200,9 +203,7 @@ def _extra_is_redacted(extra_node: ast.AST) -> bool:
     func = extra_node.func
     if isinstance(func, ast.Name) and func.id == "_redact":
         return True
-    if isinstance(func, ast.Attribute) and func.attr == "_redact":
-        return True
-    return False
+    return bool(isinstance(func, ast.Attribute) and func.attr == "_redact")
 
 
 def _dict_has_forbidden_key(node: ast.AST) -> tuple[str, ...]:
@@ -215,9 +216,8 @@ def _dict_has_forbidden_key(node: ast.AST) -> tuple[str, ...]:
         # Only literal-string keys are checkable; dynamic keys like
         # ``"d_" + suffix`` are ignored (we can't statically resolve
         # them, and forbidding them outright would be too noisy).
-        if isinstance(k, ast.Constant) and isinstance(k.value, str):
-            if k.value in _FORBIDDEN_KEYS:
-                found.append(k.value)
+        if isinstance(k, ast.Constant) and isinstance(k.value, str) and k.value in _FORBIDDEN_KEYS:
+            found.append(k.value)
     return tuple(sorted(found))
 
 

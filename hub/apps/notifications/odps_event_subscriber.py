@@ -7,7 +7,7 @@ Includes retry logic and dead letter queue handling.
 
 import time
 import traceback
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
 from django.contrib.auth import get_user_model
@@ -32,11 +32,15 @@ class ODPSNotificationSubscriber(EventSubscriber):
     """
 
     # ODPS event types that trigger notifications
-    LIFECYCLE_EVENTS = ["odps.created", "odps.updated", "odps.deleted"]
+    LIFECYCLE_EVENTS: ClassVar[list[str]] = ["odps.created", "odps.updated", "odps.deleted"]
 
-    WORKFLOW_EVENTS = ["odps.workflow.started", "odps.workflow.completed", "odps.workflow.failed"]
+    WORKFLOW_EVENTS: ClassVar[list[str]] = [
+        "odps.workflow.started",
+        "odps.workflow.completed",
+        "odps.workflow.failed",
+    ]
 
-    NORMALIZATION_EVENTS = [
+    NORMALIZATION_EVENTS: ClassVar[list[str]] = [
         "odps.normalized",
         "odps.ref.failed",  # Can indicate normalization issues
     ]
@@ -268,7 +272,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
 
                 if not is_transient:
                     # Non-transient error - don't retry, send to DLQ
-                    logger.error(
+                    logger.exception(
                         "odps_notification_non_transient_error",
                         event_type=event_type,
                         event_id=event.get("event_id"),
@@ -282,7 +286,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                 # Transient error - check if we should retry
                 if retry_count >= max_retries:
                     # Max retries exceeded - send to DLQ
-                    logger.error(
+                    logger.exception(
                         "odps_notification_retry_exhausted",
                         event_type=event_type,
                         event_id=event.get("event_id"),

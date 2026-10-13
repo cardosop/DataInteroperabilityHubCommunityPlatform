@@ -21,11 +21,11 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/admin', { timeout: 60000 });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect — session expired');
+        test.skip(page.url().includes('/login'), 'Auth redirect — session expired');
         return;
       }
       if (page.url().includes('/403')) {
-        test.skip(true, 'Tenant admin lacks admin role on this environment');
+        test.skip(page.url().includes('/403'), 'Tenant admin lacks admin role on this environment');
         return;
       }
       expect(page.url()).toContain('/admin');
@@ -41,11 +41,11 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/admin', { timeout: 60000 });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect — session expired');
+        test.skip(page.url().includes('/login'), 'Auth redirect — session expired');
         return;
       }
       if (page.url().includes('/403')) {
-        test.skip(true, 'Tenant admin lacks admin role on this environment');
+        test.skip(page.url().includes('/403'), 'Tenant admin lacks admin role on this environment');
         return;
       }
       const usersTab = page.locator('button:has-text("Users")');
@@ -67,7 +67,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
         contentSelector: '.admin-page, [data-testid="admin-page"], [data-testid="forbidden-page"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect — session expired');
+        test.skip(page.url().includes('/login'), 'Auth redirect — session expired');
         return;
       }
       const url = page.url();

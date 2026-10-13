@@ -136,19 +136,18 @@ def check_django6_compatibility(
                 django6_supported = True
 
     # Special handling for known packages
-    if package_name == "djangorestframework":
+    if package_name == "djangorestframework" and latest_version:
         # DRF 3.15+ is required for Django 6
-        if latest_version:
-            try:
-                from packaging import version
+        try:
+            from packaging import version
 
-                if version.parse(latest_version) >= version.parse("3.15.0"):
-                    django6_supported = True
-                    min_version = "3.15.0"
-            except:
-                if latest_version >= "3.15.0":
-                    django6_supported = True
-                    min_version = "3.15.0"
+            if version.parse(latest_version) >= version.parse("3.15.0"):
+                django6_supported = True
+                min_version = "3.15.0"
+        except (ImportError, ValueError):
+            if latest_version >= "3.15.0":
+                django6_supported = True
+                min_version = "3.15.0"
 
     # Determine if update is required
     requires_update = False
@@ -166,7 +165,7 @@ def check_django6_compatibility(
                     if version.parse(current_ver) < version.parse(min_version):
                         requires_update = True
                         notes.append(f"Requires update to {min_version}+ for Django 6")
-            except:
+            except (ImportError, ValueError):
                 pass
         print(f"{GREEN}✅{RESET}")
     else:
@@ -195,8 +194,8 @@ def parse_requirements_file(filepath: Path) -> list[tuple[str, str]]:
         return dependencies
 
     with open(filepath) as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
             if line.startswith("-r"):

@@ -18,6 +18,7 @@ import uuid
 from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.events.models import Event
+from hub.apps.core.services.base import ValidationError
 
 
 @override_settings(
@@ -203,7 +204,7 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
         failed_count_before = Event.objects.filter(event_type="normalization.failed").count()
 
         # Normalize contract (should fail)
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             self.service.normalize_contract(
                 raw_contract=raw_contract,
                 format="json",

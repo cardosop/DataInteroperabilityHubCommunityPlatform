@@ -14,7 +14,7 @@ Asserts the two-flag conjunctive contract:
   gate is conjunctive ``data_quality_enabled AND
   data_quality_advanced_enabled``.
 
-Test matrix (4 cells × N endpoint families):
+Test matrix (4 cells x N endpoint families):
 
   | base | advanced | basic endpoints | advanced endpoints |
   |------|----------|-----------------|--------------------|
@@ -33,7 +33,9 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework import status
-from rest_framework.test import APIClient
+from rest_framework.test import (
+    APIClient,
+)
 
 from hub.apps.dq.tests.test_base import DQAPITestBase
 from hub.apps.tenants.models import Tenant

@@ -1,0 +1,16 @@
+[info] [2026-05-18 10:30:01] Running with dbt=1.9.0
+[info] [2026-05-18 10:30:01] Registered adapter: snowflake=1.9.0
+[info] [2026-05-18 10:30:01] Found 2 models, 0 tests, 0 snapshots, 0 analyses
+[info] [2026-05-18 10:30:02]
+[info] [2026-05-18 10:30:02] Running 2 models
+[info] [2026-05-18 10:30:02] Concurrency: 4 threads (target='prod')
+[info] [2026-05-18 10:30:02]
+[ok] [2026-05-18 10:30:05] 1 of 2 OK created sql table model analytics.customers ..... [SUCCESS 150 in 3.30s]
+[error] [2026-05-18 10:30:10] 2 of 2 ERROR creating sql table model analytics.orders .... [ERROR in 3.70s]
+[error] [2026-05-18 10:30:10] Database Error in model orders (models/orders.sql)
+[error] [2026-05-18 10:30:10]   column 'customer_status' does not exist in source
+[error] [2026-05-18 10:30:10]   compiled SQL at target/compiled/sample_dbt/models/orders.sql
+[info] [2026-05-18 10:30:10]
+[info] [2026-05-18 10:30:10] Finished running 2 models in 0 hours 0 minutes and 9.0 seconds
+[error] [2026-05-18 10:30:10] Completed with 1 error and 0 warnings
+[info] [2026-05-18 10:30:10] Done. PASS=1 WARN=0 ERROR=1 SKIP=0 TOTAL=2

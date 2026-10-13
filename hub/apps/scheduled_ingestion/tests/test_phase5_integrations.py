@@ -40,8 +40,7 @@ except AttributeError:
     import logging
 
     logging.getLogger(__name__).warning(
-        "sql_flush patch failed (Django internals changed) — "
-        "tests may run against non-empty tables"
+        "sql_flush patch failed (Django internals changed) — tests may run against non-empty tables"
     )
 
 import contextlib
@@ -119,8 +118,7 @@ class ProcessFileIntegrationsTest(TestCase):
                 or "name resolution" in err
             ):
                 logging.getLogger(__name__).warning(
-                    "MinIO storage unavailable — storage-dependent tests "
-                    "will be skipped: %s", e
+                    "MinIO storage unavailable — storage-dependent tests will be skipped: %s", e
                 )
 
         suffix = uuid.uuid4().hex[:8]
@@ -176,14 +174,14 @@ class ProcessFileIntegrationsTest(TestCase):
             user_id=str(self.user.id),
             dq_options={"strict_mode": False},
         )
-        self.assertIn("file_id", result)
-        self.assertIn("dataset_id", result)
+        assert "file_id" in result
+        assert "dataset_id" in result
         file_id = result["file_id"]
         dataset_id = result["dataset_id"]
-        self.assertTrue(File.objects.filter(id=file_id, tenant=self.tenant).exists())
-        self.assertTrue(Dataset.objects.filter(id=dataset_id, tenant=self.tenant).exists())
+        assert File.objects.filter(id=file_id, tenant=self.tenant).exists()
+        assert Dataset.objects.filter(id=dataset_id, tenant=self.tenant).exists()
         dataset = Dataset.objects.get(id=dataset_id)
-        self.assertEqual(str(dataset.file_id), str(file_id))
+        assert str(dataset.file_id) == str(file_id)
 
     def test_process_file_permanent_failure_marks_dlq_state(self):
         """Permanent failure (e.g. empty file) marks file failed in incremental state (DLQ sync at run completion)."""
@@ -200,11 +198,11 @@ class ProcessFileIntegrationsTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
             )
-        self.assertIn("empty", str(ctx.exception).lower())
+        assert "empty" in str(ctx.exception).lower()
         self.scheduled_ingestion.refresh_from_db()
         state_manager = IncrementalStateManager(self.scheduled_ingestion)
         failed = state_manager.get_failed_files()
-        self.assertIn("data/empty.csv", [f["file_path"] for f in failed])
+        assert "data/empty.csv" in [f["file_path"] for f in failed]
 
     def test_process_file_with_run_compliance_creates_compliance_run_when_configured(self):
         """When source_config.run_compliance is True, process_file_for_run creates a compliance run for the dataset."""
@@ -227,10 +225,8 @@ class ProcessFileIntegrationsTest(TestCase):
         from hub.apps.compliance.models import ComplianceRun
 
         compliance_runs = ComplianceRun.objects.filter(dataset_id=dataset_id, tenant=self.tenant)
-        self.assertGreaterEqual(
-            compliance_runs.count(),
-            1,
-            "Compliance run should be created when run_compliance is configured",
+        assert compliance_runs.count() >= 1, (
+            "Compliance run should be created when run_compliance is configured"
         )
 
     def test_process_file_with_run_semantic_mapping_invokes_semantic_path(self):
@@ -250,14 +246,20 @@ class ProcessFileIntegrationsTest(TestCase):
             user_id=str(self.user.id),
             dq_options={"strict_mode": False},
         )
-        self.assertIn("dataset_id", result)
+        assert "dataset_id" in result
         dataset = Dataset.objects.get(id=result["dataset_id"])
-        from hub.apps.semantic.models import SemanticResource
+        # Core/paid guard (GUARD-313.H pattern 3): the semantic app is
+        # paid; in core-only deployments the model class cannot exist.
+        try:
+            from hub.apps.semantic.models import SemanticResource
+        except (RuntimeError, ModuleNotFoundError):
+            SemanticResource = None
 
-        semantic = SemanticResource.objects.filter(
-            resource_type="DATASET",
-            resource_id=dataset.id,
-            tenant=self.tenant,
-        ).first()
-        self.assertIsNotNone(semantic, "SemanticResource must be created for the dataset")
-        self.assertEqual(semantic.resource_id, dataset.id)
+        if SemanticResource is not None:
+            semantic = SemanticResource.objects.filter(
+                resource_type="DATASET",
+                resource_id=dataset.id,
+                tenant=self.tenant,
+            ).first()
+            assert semantic is not None, "SemanticResource must be created for the dataset"
+            assert semantic.resource_id == dataset.id

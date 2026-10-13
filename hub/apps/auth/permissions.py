@@ -5,114 +5,44 @@ Custom permission classes for role-based access control.
 """
 
 from django.conf import settings
+from django.db import DatabaseError, InterfaceError, OperationalError
 from rest_framework import permissions
 
-# ── Role → Scope mapping ────────────────────────────────────────────────
-# Each role grants a set of scopes. PLATFORM_ADMIN gets wildcard ("*").
-# Use frozensets so callers can do subset checks (e.g. dp.issubset(ta)).
-ROLE_SCOPE_MAP: dict[str, frozenset[str]] = {
-    "PLATFORM_ADMIN": frozenset({"*"}),
-    "TENANT_ADMIN": frozenset(
-        {
-            "assets:read",
-            "assets:write",
-            "contracts:read",
-            "contracts:write",
-            "datasets:read",
-            "datasets:write",
-            "compliance:read",
-            "compliance:write",
-            "governance:read",
-            "governance:write",
-            "users:read",
-            "users:write",
-            "billing:read",
-            "billing:write",
-            "audit:read",
-            "files:read",
-            "files:write",
-            "jobs:read",
-            "jobs:write",
-            "marketplace:read",
-            "marketplace:write",
-            "mesh:read",
-            "mesh:write",
-            "integrations:read",
-            "integrations:write",
-            "ml:read",
-            "ml:write",
-            "transformation:read",
-            "transformation:write",
-        }
-    ),
-    "DATA_PROVIDER": frozenset(
-        {
-            "assets:read",
-            "assets:write",
-            "contracts:read",
-            "contracts:write",
-            "datasets:read",
-            "datasets:write",
-            "files:read",
-            "files:write",
-            "jobs:read",
-            "jobs:write",
-            "marketplace:read",
-            "marketplace:write",
-            "mesh:read",
-            "mesh:write",
-            "integrations:read",
-            "integrations:write",
-            "ml:read",
-            "ml:write",
-            "transformation:read",
-            "transformation:write",
-        }
-    ),
-    "DATA_CONSUMER": frozenset(
-        {
-            "assets:read",
-            "contracts:read",
-            "datasets:read",
-            "files:read",
-            "marketplace:read",
-            "mesh:read",
-            "ml:read",
-            "transformation:read",
-        }
-    ),
-    "DATA_VIEWER": frozenset(
-        {
-            "assets:read",
-            "contracts:read",
-            "datasets:read",
-        }
-    ),
-    "PII_VIEWER": frozenset(
-        {
-            "assets:read",
-            "contracts:read",
-            "datasets:read",
-            "datasets:view_pii",
-        }
-    ),
-    "AUDITOR": frozenset(
-        {
-            "audit:read",
-            "compliance:read",
-            "governance:read",
-        }
-    ),
-    "COMPLIANCE_OFFICER": frozenset(
-        {
-            "compliance:read",
-            "compliance:write",
-            "governance:read",
-            "governance:write",
-            "audit:read",
-        }
-    ),
-}
+# W6.5 (S1) — the scope vocabulary moved to hub/apps/auth/scopes.py, a
+# Django-free single source the SDK/CLI/JS contract test imports
+# directly.  Re-exported here so every existing importer
+# (``from hub.apps.auth.permissions import ROLE_SCOPE_MAP``, the
+# scheduled_ingestion internal scope) keeps working unchanged.
+from hub.apps.auth.scopes import (
+    ROLE_SCOPE_MAP,
+    SCOPE_SCHEDULED_INGESTION_INTERNAL,
+    WILDCARD_SCOPE,
+)
+
+
+def disallowed_mint_scopes(requested: list, allowed: frozenset[str]) -> list[str]:
+    """R2-B2 (W1.3a) — the scopes from ``requested`` the requester may NOT
+    mint an API key with, given their role allowlist ``allowed``.
+
+    Rules:
+    * ``scheduled_ingestion:internal`` is never mintable via the public
+      API — no role grants it and no wildcard covers it (the internal
+      provisioning path is separate).
+    * ``"*"`` requires the PLATFORM_ADMIN allowlist (the only role whose
+      ``ROLE_SCOPE_MAP`` entry contains it).
+    * every other scope must be in ``allowed``; ``"*"`` in ``allowed``
+      covers everything EXCEPT the internal scope.
+    """
+    disallowed: list[str] = []
+    for scope in requested:
+        if scope == SCOPE_SCHEDULED_INGESTION_INTERNAL:
+            disallowed.append(scope)
+        elif scope == WILDCARD_SCOPE:
+            if WILDCARD_SCOPE not in allowed:
+                disallowed.append(scope)
+        elif WILDCARD_SCOPE not in allowed and scope not in allowed:
+            disallowed.append(scope)
+    return disallowed
 
 
 def _get_user_scopes(request) -> frozenset[str]:
@@ -132,7 +62,7 @@ def _get_user_scopes(request) -> frozenset[str]:
         return frozenset()
 
     if hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin:
-        return frozenset({"*"})
+        return frozenset({WILDCARD_SCOPE})
 
     # Collect scopes from user roles
     role_names = set()
@@ -148,7 +78,7 @@ def _get_user_scopes(request) -> frozenset[str]:
                     "role__name", flat=True
                 )
             )
-        except Exception:
+        except (DatabaseError, InterfaceError, OperationalError):
             # Never silently swallow — a transient DB error (e.g. connection
             # closed after a long-running request) would strip all scopes and
             # cause spurious 403s.  Log the failure and close the stale
@@ -165,7 +95,7 @@ def _get_user_scopes(request) -> frozenset[str]:
 
                 for conn in connections.all():
                     conn.close_if_unusable_or_obsolete()
-            except Exception:
+            except (DatabaseError, InterfaceError, OperationalError):
                 pass
 
     scopes: set[str] = set()
@@ -297,14 +227,14 @@ class HasScope(permissions.BasePermission):
         # API keys are always scope-checked (no enforcement flag bypass).
         # Use getattr(..., None) — MagicMock-safe alternative to hasattr.
         if getattr(request, "api_key_scopes", None) is not None:
-            return "*" in request.api_key_scopes or self.required_scope in request.api_key_scopes
+            return WILDCARD_SCOPE in request.api_key_scopes or self.required_scope in request.api_key_scopes
 
         # When ENFORCE_JWT_SCOPES is off, allow all authenticated users (backwards compat)
         if not getattr(settings, "ENFORCE_JWT_SCOPES", False):
             return True
 
         scopes = _get_user_scopes(request)
-        return "*" in scopes or self.required_scope in scopes
+        return WILDCARD_SCOPE in scopes or self.required_scope in scopes
 
 
 class HasAnyScope(permissions.BasePermission):
@@ -331,4 +261,4 @@ class HasAnyScope(permissions.BasePermission):
             return True
 
         scopes = _get_user_scopes(request)
-        return "*" in scopes or any(s in scopes for s in self.required_scopes)
+        return WILDCARD_SCOPE in scopes or any(s in scopes for s in self.required_scopes)

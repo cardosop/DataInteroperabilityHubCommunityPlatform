@@ -21,6 +21,22 @@ from hub.apps.contracts.odcs_errors import ODCSExportError
 
 logger = structlog.get_logger(__name__)
 
+
+def _raise_odcs_export_error(
+    message: str,
+    error_code: str,
+    context: dict[str, Any] | None = None,
+    cause: Exception | None = None,
+) -> None:
+    """
+    Raise an ODCSExportError with the given details.
+
+    Helper indirection so call sites inside try blocks do not couple
+    the raise to the block's own handlers.
+    """
+    raise ODCSExportError(message=message, error_code=error_code, context=context, cause=cause)
+
+
 # Try to import yaml, but make it optional
 try:
     import yaml
@@ -96,7 +112,7 @@ def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool 
 
         # Validate that parsed data is a dictionary (ODCS documents are objects)
         if not isinstance(yaml_data, dict):
-            raise ODCSExportError(
+            _raise_odcs_export_error(
                 message=f"YAML content must represent a dictionary/object, got {type(yaml_data).__name__}",
                 error_code=ODCSExportError.ERROR_CODE_EXPORT_FAILED,
                 context={
@@ -115,9 +131,6 @@ def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool 
             content_length=len(yaml_content),
             json_length=len(json_result),
         )
-
-        return json_result
-
     except yaml.YAMLError as e:
         # Handle YAML parsing errors
         raise ODCSExportError(
@@ -163,6 +176,8 @@ def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool 
             },
             cause=e,
         ) from e
+    else:
+        return json_result
 
 
 def convert_json_to_yaml(
@@ -236,7 +251,7 @@ def convert_json_to_yaml(
 
         # Validate that parsed data is a dictionary (ODCS documents are objects)
         if not isinstance(json_data, dict):
-            raise ODCSExportError(
+            _raise_odcs_export_error(
                 message=f"JSON content must represent a dictionary/object, got {type(json_data).__name__}",
                 error_code=ODCSExportError.ERROR_CODE_EXPORT_FAILED,
                 context={
@@ -260,9 +275,6 @@ def convert_json_to_yaml(
             content_length=len(json_content),
             yaml_length=len(yaml_result),
         )
-
-        return yaml_result
-
     except json.JSONDecodeError as e:
         # Handle JSON parsing errors
         raise ODCSExportError(
@@ -310,6 +322,8 @@ def convert_json_to_yaml(
             },
             cause=e,
         ) from e
+    else:
+        return yaml_result
 
 
 def format_odcs_as_json(
@@ -352,7 +366,7 @@ def format_odcs_as_json(
     """
     try:
         if not isinstance(odcs_doc, dict):
-            raise ODCSExportError(
+            _raise_odcs_export_error(
                 message=f"ODCS document must be a dictionary, got {type(odcs_doc).__name__}",
                 error_code=ODCSExportError.ERROR_CODE_EXPORT_FAILED,
                 context={
@@ -388,9 +402,6 @@ def format_odcs_as_json(
             json_length=len(json_result),
             indent=indent,
         )
-
-        return json_result
-
     except ODCSExportError:
         # Re-raise ODCSExportError as-is
         raise
@@ -426,6 +437,8 @@ def format_odcs_as_json(
             },
             cause=e,
         ) from e
+    else:
+        return json_result
 
 
 def format_odcs_as_yaml(
@@ -482,7 +495,7 @@ def format_odcs_as_yaml(
 
     try:
         if not isinstance(odcs_doc, dict):
-            raise ODCSExportError(
+            _raise_odcs_export_error(
                 message=f"ODCS document must be a dictionary, got {type(odcs_doc).__name__}",
                 error_code=ODCSExportError.ERROR_CODE_EXPORT_FAILED,
                 context={
@@ -523,9 +536,6 @@ def format_odcs_as_yaml(
             yaml_length=len(yaml_result),
             default_flow_style=default_flow_style,
         )
-
-        return yaml_result
-
     except ODCSExportError:
         # Re-raise ODCSExportError as-is
         raise
@@ -561,3 +571,5 @@ def format_odcs_as_yaml(
             },
             cause=e,
         ) from e
+    else:
+        return yaml_result

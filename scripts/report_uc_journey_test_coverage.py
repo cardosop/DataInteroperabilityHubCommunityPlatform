@@ -3,7 +3,7 @@
 Report which use cases (USE_CASES.md) and user journeys (USER_JOURNEYS.md)
 have at least one test, and scenario coverage (Success/Failure/Edge) per UC/journey.
 Output: Markdown or JSON with UC→test mapping and scenario coverage column.
-Integrates with Traceability CI Gate (openspec/changes/testsfix1 T.1–T.4): --ci-mode
+Integrates with Traceability CI Gate (openspec/changes/testsfix1 T.1-T.4): --ci-mode
 exits 0 only when no critical gaps and coverage >= threshold; JSON artifact includes
 scenario_coverage_use_cases and scenario_coverage_user_journeys for gate/PR use.
 
@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -173,6 +174,50 @@ def strip_gap_blocks(content: str) -> str:
     return "".join(out)
 
 
+def strip_skipped_ts_blocks(content: str) -> str:
+    """Remove ``test.skip(...)`` / ``test.fixme(...)`` CALL blocks from TS
+    spec content before substring matching (Phase T.3 / W15).
+
+    A skipped test does not run — its UC references must not count as
+    coverage. The scanner tracks paren depth from each ``test.skip(`` /
+    ``test.fixme(`` opening to its closing ``)``; strings are NOT parsed
+    (documented limitation: a ``)`` inside a skipped test's string literal
+    truncates the strip early, which only UNDER-strips — the conservative
+    direction never over-strips real tests).
+
+    The block ends at the FIRST ``);``, ``)},`` or ``});``-terminated call
+    boundary: the skip call itself is removed, leaving the rest of the
+    enclosing test body intact (a real test whose name references the ID
+    still counts — see the TDD fixtures).
+    """
+    out: list[str] = []
+    i = 0
+    n = len(content)
+    while i < n:
+        m = re.search(r"test\.(skip|fixme)\s*\(", content[i:])
+        if m is None:
+            out.append(content[i:])
+            break
+        start = i + m.start()
+        out.append(content[i:start])
+        depth = 1  # the opening paren is already consumed (j starts after it)
+        j = i + m.end()
+        while j < n:
+            ch = content[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    # consume a trailing semicolon
+                    if j + 1 < n and content[j + 1] == ";":
+                        j += 1
+                    break
+            j += 1
+        i = j + 1
+    return "".join(out)
+
+
 def find_references_in_file(file_path: Path, ids: list[str]) -> list[str]:
     """
     Return which of the given IDs appear in the file content (docstring, name).
@@ -182,14 +227,97 @@ def find_references_in_file(file_path: Path, ids: list[str]) -> list[str]:
     """
     try:
         content = file_path.read_text()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return []
     scanned = strip_gap_blocks(content)
+    if str(file_path).endswith((".spec.ts", ".test.ts", ".test.tsx")):
+        scanned = strip_skipped_ts_blocks(scanned)
+    else:
+        # Python: marker DECORATOR lines are judged behavior-aware by
+        # find_effective_markers_in_file — leave them out of the prose
+        # (reference) scan so a vacuous marker cannot attribute via the
+        # substring path.
+        scanned = re.sub(
+            r'^\s*@pytest\.mark\.(uc|journey)\s*\(\s*["\'][^"\']+["\']\s*\)\s*$',
+            "",
+            scanned,
+            flags=re.M,
+        )
     found: list[str] = []
     for id_ in ids:
         if id_ in scanned:
             found.append(id_)
     return found
+
+
+def find_effective_markers_in_file(file_path: Path) -> tuple[list[str], list[str]]:
+    """Behavior-aware marker extraction (Phase T.3 / W15).
+
+    Only markers on NON-SKIPPED, ASSERTION-CARRYING test functions count:
+    a ``@pytest.mark.uc(...)`` on a ``@pytest.mark.skip``-decorated or
+    assertion-free function is vacuous prose and must not be reported as
+    coverage. Assertion-freeness reuses T.1's AST predicate
+    (``check_zero_assertion_tests.function_has_assertion``).
+    """
+    try:
+        source = file_path.read_text()
+        tree = ast.parse(source)
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return [], []
+
+    # Reuse the T.1 predicate — one implementation, two callers. Both
+    # modules live in scripts/; the gate is always executed with the repo
+    # as cwd (scripts/ on sys.path via the runner or the package layout).
+    try:
+        from check_zero_assertion_tests import function_has_assertion as has_assertion
+    except ImportError:
+
+        def has_assertion(_node):
+            return True
+
+    uc_ids: list[str] = []
+    journey_ids: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        decorated_uc: list[str] = []
+        decorated_journey: list[str] = []
+        skipped = False
+        for dec in node.decorator_list:
+            name = ""
+            if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+                name = dec.func.attr
+            elif isinstance(dec, ast.Name):
+                name = dec.id
+            if name == "uc" and dec.args:
+                arg = dec.args[0]
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    decorated_uc.append(arg.value)
+            elif name == "journey" and dec.args:
+                arg = dec.args[0]
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    decorated_journey.append(arg.value)
+            elif name == "skip":
+                skipped = True
+            elif name == "skipif":
+                skipped = bool(
+                    dec.args and isinstance(dec.args[0], ast.Constant) and dec.args[0].value is True
+                )
+        if not skipped and node.body:
+            first = node.body[0]
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Call)
+                and isinstance(first.value.func, ast.Attribute)
+                and first.value.func.attr == "skip"
+            ):
+                skipped = True
+        if skipped:
+            continue
+        if has_assertion(node):
+            uc_ids.extend(decorated_uc)
+            journey_ids.extend(decorated_journey)
+    return sorted(set(uc_ids)), sorted(set(journey_ids))
 
 
 def find_markers_in_file(file_path: Path) -> tuple[list[str], list[str]]:
@@ -201,7 +329,7 @@ def find_markers_in_file(file_path: Path) -> tuple[list[str], list[str]]:
     """
     try:
         content = file_path.read_text()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return [], []
     uc_ids: list[str] = []
     journey_ids: list[str] = []
@@ -224,7 +352,7 @@ def infer_scenario_coverage_from_file(file_path: Path) -> dict[str, bool]:
     """
     try:
         content = file_path.read_text()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return {"success": False, "failure": False, "edge": False}
     content_lower = content.lower()
     success = (
@@ -314,7 +442,7 @@ def build_coverage(
                 uc_to_files.setdefault(id_, []).append(rel)
             else:
                 journey_to_files.setdefault(id_, []).append(rel)
-        marker_ucs, marker_journeys = find_markers_in_file(f)
+        marker_ucs, marker_journeys = find_effective_markers_in_file(f)
         for id_ in marker_ucs:
             if id_ in uc_ids:
                 uc_to_files.setdefault(id_, []).append(rel)
@@ -618,15 +746,18 @@ def main() -> int:
     uc_scenario, journey_scenario = build_scenario_coverage(root, uc_to_files, journey_to_files)
 
     broken_links: list[str] = []
-    if args.audit_traceability or args.ci_mode:
-        # Phase 226 E4 — `traceability_path` is `Path | None` after the
-        # tiered resolver: None means TEST_TRACEABILITY.md was not found
-        # in any candidate location (canonical or deprecated-doc). The
-        # broken-links check is auxiliary, so silently skip the check
-        # when the doc is missing — do not fail the gate over an
-        # optional auxiliary input.
-        if traceability_path is not None and traceability_path.is_file():
-            broken_links = audit_traceability(root, traceability_path)
+    # Phase 226 E4 — `traceability_path` is `Path | None` after the
+    # tiered resolver: None means TEST_TRACEABILITY.md was not found
+    # in any candidate location (canonical or deprecated-doc). The
+    # broken-links check is auxiliary, so silently skip the check
+    # when the doc is missing — do not fail the gate over an
+    # optional auxiliary input.
+    if (
+        (args.audit_traceability or args.ci_mode)
+        and traceability_path is not None
+        and traceability_path.is_file()
+    ):
+        broken_links = audit_traceability(root, traceability_path)
 
     if args.ci_mode:
         critical_list_path = (

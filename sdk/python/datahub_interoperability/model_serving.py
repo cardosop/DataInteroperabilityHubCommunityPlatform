@@ -8,7 +8,7 @@ managing deployments, and conducting A/B tests with contract validation support.
 import asyncio
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 from .errors import (
@@ -84,7 +84,7 @@ class ModelServingAPI:
                     "expected": "valid UUID format (e.g., '123e4567-e89b-12d3-a456-426614174000')",
                     "actual": model_id[:50] if len(model_id) > 50 else model_id,
                 },
-            )
+            ) from None
 
     def _validate_serving_id(self, serving_id: str, param_name: str = "serving_id") -> None:
         """
@@ -192,9 +192,9 @@ class ModelServingAPI:
                         "expected": "integers",
                         "actual": traffic_split,
                     },
-                )
+                ) from None
 
-    def _validate_input_data(self, input_data: Dict[str, Any]) -> None:
+    def _validate_input_data(self, input_data: dict[str, Any]) -> None:
         """
         Validate input data for predictions.
 
@@ -226,7 +226,7 @@ class ModelServingAPI:
                 },
             )
 
-    async def _validate_contract_for_model(self, model_id: str) -> Optional[Dict[str, Any]]:
+    async def _validate_contract_for_model(self, _model_id: str) -> dict[str, Any] | None:
         """
         Validate model contract if available.
 
@@ -245,14 +245,15 @@ class ModelServingAPI:
             ContractsAPI(self.client)
             # Search for contracts with model_name matching
             # This is a placeholder - actual implementation depends on contract-model linking
-            return None
-        except Exception:
+        except ImportError:
             # If contract validation fails, return None (non-blocking)
+            return None
+        else:
             return None
 
     async def deploy_model_as_api(
-        self, model_id: str, endpoint: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, model_id: str, endpoint: str | None = None
+    ) -> dict[str, Any]:
         """
         Deploy a model as an API endpoint.
 
@@ -284,29 +285,17 @@ class ModelServingAPI:
         await self._validate_contract_for_model(model_id)
 
         # Prepare deployment data
-        data: Dict[str, Any] = {"model_id": model_id}
+        data: dict[str, Any] = {"model_id": model_id}
         if endpoint:
             data["endpoint"] = endpoint
 
         try:
             # Deploy via inference API endpoint
             response = await self.client.post("ml/inference/deployments/", data=data)
-            if isinstance(response, dict):
-                # Map response to serving details format
-                return {
-                    "serving_id": response.get("deployment_id", ""),
-                    "model_id": response.get("model_id", model_id),
-                    "endpoint": response.get("endpoint", ""),
-                    "status": response.get("status", "DEPLOYING"),
-                    "created_at": response.get("created_at", ""),
-                    "updated_at": response.get("updated_at"),
-                }
-            else:
-                raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} not found")
+            raise NotFoundError(f"Model with id {model_id} not found") from None
         except ConflictError:
-            raise ConflictError(f"Model {model_id} is already deployed")
+            raise ConflictError(f"Model {model_id} is already deployed") from None
         except Exception as e:
             if isinstance(
                 e,
@@ -320,9 +309,21 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to deploy model: {str(e)}", "DEPLOYMENT_ERROR", 500)
+            raise ServerError(f"Failed to deploy model: {str(e)}", "DEPLOYMENT_ERROR", 500) from e
 
-    async def predict_via_api(self, model_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        if isinstance(response, dict):
+            # Map response to serving details format
+            return {
+                "serving_id": response.get("deployment_id", ""),
+                "model_id": response.get("model_id", model_id),
+                "endpoint": response.get("endpoint", ""),
+                "status": response.get("status", "DEPLOYING"),
+                "created_at": response.get("created_at", ""),
+                "updated_at": response.get("updated_at"),
+            }
+        raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
+
+    async def predict_via_api(self, model_id: str, input_data: dict[str, Any]) -> dict[str, Any]:
         """
         Run prediction via API using model ID.
 
@@ -358,11 +359,8 @@ class ModelServingAPI:
             # This would validate input_data against contract schema
             pass
 
-        try:
-            # Wait for a READY deployment. Deployments are async — a freshly-
-            # deployed model may still be in DEPLOYING state.  Poll up to 10s
-            # (5 attempts × 2s interval) before giving up.
-            serving_id = None
+        async def _resolve_serving_id() -> str:
+            # Poll up to 10s (5 attempts x 2s interval) before giving up.
             max_attempts = 5
             for attempt in range(max_attempts):
                 deployments = await self.list_deployed_models(model_id=model_id, status="READY")
@@ -370,41 +368,27 @@ class ModelServingAPI:
                     serving_id = deployments[0].get("serving_id") or deployments[0].get(
                         "deployment_id"
                     )
-                    break
+                    if not serving_id:
+                        raise NotFoundError(f"No active deployment found for model {model_id}")
+                    return serving_id
                 if attempt < max_attempts - 1:
                     # Check if any deployment exists at all before waiting
                     all_deployments = await self.list_deployed_models(model_id=model_id)
                     if not all_deployments:
                         raise NotFoundError(f"No deployment found for model {model_id}")
                     await asyncio.sleep(2)
+            raise NotFoundError(f"No active deployment found for model {model_id}")
 
-            if not serving_id:
-                raise NotFoundError(f"No active deployment found for model {model_id}")
+        try:
+            # Wait for a READY deployment. Deployments are async — a freshly-
+            # deployed model may still be in DEPLOYING state.
+            serving_id = await _resolve_serving_id()
 
             # Run prediction
             prediction_data = {"deployment_id": serving_id, "input": input_data}
             response = await self.client.post(
                 "ml/inference/deployments/predict/", data=prediction_data
             )
-
-            if isinstance(response, dict):
-                # Map response to prediction results format
-                result = {
-                    "output": response.get("output", response),
-                    "model_id": model_id,
-                    "serving_id": serving_id,
-                    "status": response.get("status", "success"),
-                }
-
-                # Validate contract outputs if available (non-blocking)
-                if contract:
-                    # TODO: Add contract output validation logic here
-                    # This would validate result against contract schema
-                    pass
-
-                return result
-            else:
-                raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
         except NotFoundError:
             raise
         except Exception as e:
@@ -420,15 +404,33 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to run prediction: {str(e)}", "PREDICTION_ERROR", 500)
+            raise ServerError(f"Failed to run prediction: {str(e)}", "PREDICTION_ERROR", 500) from e
+
+        if isinstance(response, dict):
+            # Map response to prediction results format
+            result = {
+                "output": response.get("output", response),
+                "model_id": model_id,
+                "serving_id": serving_id,
+                "status": response.get("status", "success"),
+            }
+
+            # Validate contract outputs if available (non-blocking)
+            if contract:
+                # TODO: Add contract output validation logic here
+                # This would validate result against contract schema
+                pass
+
+            return result
+        raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
 
     async def list_deployed_models(
         self,
-        model_id: Optional[str] = None,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        model_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List deployed models with optional filters.
 
@@ -473,7 +475,7 @@ class ModelServingAPI:
             )
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if model_id:
             params["model_id"] = model_id
         if status:
@@ -505,8 +507,6 @@ class ModelServingAPI:
                         "updated_at": deployment.get("updated_at"),
                     }
                 )
-
-            return result
         except Exception as e:
             if isinstance(
                 e,
@@ -520,9 +520,11 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to list deployed models: {str(e)}", "LIST_ERROR", 500)
+            raise ServerError(f"Failed to list deployed models: {str(e)}", "LIST_ERROR", 500) from e
+        else:
+            return result
 
-    async def get_model_serving_details(self, serving_id: str) -> Dict[str, Any]:
+    async def get_model_serving_details(self, serving_id: str) -> dict[str, Any]:
         """
         Get detailed information about a model serving deployment.
 
@@ -553,22 +555,8 @@ class ModelServingAPI:
 
         try:
             response = await self.client.get(f"ml/inference/deployments/{serving_id}/")
-            if isinstance(response, dict):
-                # Map to serving details format
-                return {
-                    "serving_id": response.get("deployment_id", serving_id),
-                    "model_id": response.get("model_id", ""),
-                    "status": response.get("status", "UNKNOWN"),
-                    "endpoint": response.get("endpoint", ""),
-                    "created_at": response.get("created_at", ""),
-                    "updated_at": response.get("updated_at"),
-                    "replicas": response.get("replicas", 0),
-                    "metrics": response.get("metrics", {}),
-                }
-            else:
-                raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
         except NotFoundError:
-            raise NotFoundError(f"Serving with id {serving_id} not found")
+            raise NotFoundError(f"Serving with id {serving_id} not found") from None
         except Exception as e:
             if isinstance(
                 e,
@@ -582,7 +570,21 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to get serving details: {str(e)}", "GET_ERROR", 500)
+            raise ServerError(f"Failed to get serving details: {str(e)}", "GET_ERROR", 500) from e
+
+        if isinstance(response, dict):
+            # Map to serving details format
+            return {
+                "serving_id": response.get("deployment_id", serving_id),
+                "model_id": response.get("model_id", ""),
+                "status": response.get("status", "UNKNOWN"),
+                "endpoint": response.get("endpoint", ""),
+                "created_at": response.get("created_at", ""),
+                "updated_at": response.get("updated_at"),
+                "replicas": response.get("replicas", 0),
+                "metrics": response.get("metrics", {}),
+            }
+        raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
 
     async def undeploy_model(self, serving_id: str) -> None:
         """
@@ -602,7 +604,7 @@ class ModelServingAPI:
         try:
             await self.client.delete(f"ml/inference/deployments/{serving_id}/")
         except NotFoundError:
-            raise NotFoundError(f"Serving with id {serving_id} not found")
+            raise NotFoundError(f"Serving with id {serving_id} not found") from None
         except Exception as e:
             if isinstance(
                 e,
@@ -616,9 +618,9 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to undeploy model: {str(e)}", "UNDEPLOY_ERROR", 500)
+            raise ServerError(f"Failed to undeploy model: {str(e)}", "UNDEPLOY_ERROR", 500) from e
 
-    async def get_model_quality_metrics(self, serving_id: str) -> Dict[str, Any]:
+    async def get_model_quality_metrics(self, serving_id: str) -> dict[str, Any]:
         """
         Get quality metrics for a model serving deployment.
 
@@ -650,24 +652,8 @@ class ModelServingAPI:
 
         try:
             response = await self.client.get(f"ml/inference/deployments/{serving_id}/metrics/")
-            if isinstance(response, dict):
-                # Map to quality metrics format
-                metrics = response.get("metrics", {})
-                return {
-                    "serving_id": serving_id,
-                    "total_requests": metrics.get("total_requests", 0),
-                    "successful_requests": metrics.get("successful_requests", 0),
-                    "failed_requests": metrics.get("failed_requests", 0),
-                    "avg_latency_ms": metrics.get("avg_latency_ms", 0.0),
-                    "accuracy": metrics.get("accuracy"),
-                    "precision": metrics.get("precision"),
-                    "recall": metrics.get("recall"),
-                    "f1_score": metrics.get("f1_score"),
-                }
-            else:
-                raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
         except NotFoundError:
-            raise NotFoundError(f"Serving with id {serving_id} not found")
+            raise NotFoundError(f"Serving with id {serving_id} not found") from None
         except Exception as e:
             if isinstance(
                 e,
@@ -681,11 +667,29 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to get quality metrics: {str(e)}", "METRICS_ERROR", 500)
+            raise ServerError(
+                f"Failed to get quality metrics: {str(e)}", "METRICS_ERROR", 500
+            ) from e
+
+        if isinstance(response, dict):
+            # Map to quality metrics format
+            metrics = response.get("metrics", {})
+            return {
+                "serving_id": serving_id,
+                "total_requests": metrics.get("total_requests", 0),
+                "successful_requests": metrics.get("successful_requests", 0),
+                "failed_requests": metrics.get("failed_requests", 0),
+                "avg_latency_ms": metrics.get("avg_latency_ms", 0.0),
+                "accuracy": metrics.get("accuracy"),
+                "precision": metrics.get("precision"),
+                "recall": metrics.get("recall"),
+                "f1_score": metrics.get("f1_score"),
+            }
+        raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
 
     async def create_ab_test(
         self, model_id: str, variant_id: str, traffic_split: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create an A/B test for model variants.
 
@@ -718,7 +722,7 @@ class ModelServingAPI:
         self._validate_traffic_split(traffic_split)
 
         # Prepare A/B test data
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "model_id": model_id,
             "variant_id": variant_id,
             "traffic_split": traffic_split,
@@ -728,21 +732,10 @@ class ModelServingAPI:
             # Note: A/B testing endpoint may not exist yet - this is a placeholder
             # In a real implementation, this would call /ml/inference/ab-tests/ or similar
             response = await self.client.post("ml/inference/ab-tests/", data=data)
-            if isinstance(response, dict):
-                return {
-                    "ab_test_id": response.get("ab_test_id", response.get("id", "")),
-                    "model_id": response.get("model_id", model_id),
-                    "variant_id": response.get("variant_id", variant_id),
-                    "traffic_split": response.get("traffic_split", traffic_split),
-                    "status": response.get("status", "ACTIVE"),
-                    "created_at": response.get("created_at", ""),
-                }
-            else:
-                raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
         except NotFoundError:
-            raise NotFoundError(f"Model {model_id} or variant {variant_id} not found")
+            raise NotFoundError(f"Model {model_id} or variant {variant_id} not found") from None
         except ConflictError:
-            raise ConflictError(f"A/B test already exists for model {model_id}")
+            raise ConflictError(f"A/B test already exists for model {model_id}") from None
         except Exception as e:
             if isinstance(
                 e,
@@ -756,14 +749,25 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to create A/B test: {str(e)}", "AB_TEST_ERROR", 500)
+            raise ServerError(f"Failed to create A/B test: {str(e)}", "AB_TEST_ERROR", 500) from e
+
+        if isinstance(response, dict):
+            return {
+                "ab_test_id": response.get("ab_test_id", response.get("id", "")),
+                "model_id": response.get("model_id", model_id),
+                "variant_id": response.get("variant_id", variant_id),
+                "traffic_split": response.get("traffic_split", traffic_split),
+                "status": response.get("status", "ACTIVE"),
+                "created_at": response.get("created_at", ""),
+            }
+        raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
 
     async def list_ab_tests(
         self,
-        model_id: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        model_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List A/B tests with optional filters.
 
@@ -808,7 +812,7 @@ class ModelServingAPI:
             )
 
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if model_id:
             params["model_id"] = model_id
         if limit is not None:
@@ -839,8 +843,6 @@ class ModelServingAPI:
                         "created_at": ab_test.get("created_at", ""),
                     }
                 )
-
-            return result
         except Exception as e:
             if isinstance(
                 e,
@@ -854,9 +856,11 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to list A/B tests: {str(e)}", "LIST_ERROR", 500)
+            raise ServerError(f"Failed to list A/B tests: {str(e)}", "LIST_ERROR", 500) from e
+        else:
+            return result
 
-    async def get_ab_test_details(self, ab_test_id: str) -> Dict[str, Any]:
+    async def get_ab_test_details(self, ab_test_id: str) -> dict[str, Any]:
         """
         Get detailed information about an A/B test including metrics for each variant.
 
@@ -902,24 +906,8 @@ class ModelServingAPI:
         try:
             # Note: A/B testing endpoint may not exist yet - this is a placeholder
             response = await self.client.get(f"ml/inference/ab-tests/{ab_test_id}/")
-            if isinstance(response, dict):
-                # Map to A/B test details format with metrics
-                return {
-                    "ab_test_id": response.get("ab_test_id", response.get("id", ab_test_id)),
-                    "model_id": response.get("model_id", ""),
-                    "variant_id": response.get("variant_id", ""),
-                    "traffic_split": response.get("traffic_split", ""),
-                    "status": response.get("status", "UNKNOWN"),
-                    "created_at": response.get("created_at", ""),
-                    "metrics": {
-                        "model": response.get("model_metrics", {}),
-                        "variant": response.get("variant_metrics", {}),
-                    },
-                }
-            else:
-                raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)
         except NotFoundError:
-            raise NotFoundError(f"A/B test with id {ab_test_id} not found")
+            raise NotFoundError(f"A/B test with id {ab_test_id} not found") from None
         except Exception as e:
             if isinstance(
                 e,
@@ -933,4 +921,20 @@ class ModelServingAPI:
                 ),
             ):
                 raise
-            raise ServerError(f"Failed to get A/B test details: {str(e)}", "GET_ERROR", 500)
+            raise ServerError(f"Failed to get A/B test details: {str(e)}", "GET_ERROR", 500) from e
+
+        if isinstance(response, dict):
+            # Map to A/B test details format with metrics
+            return {
+                "ab_test_id": response.get("ab_test_id", response.get("id", ab_test_id)),
+                "model_id": response.get("model_id", ""),
+                "variant_id": response.get("variant_id", ""),
+                "traffic_split": response.get("traffic_split", ""),
+                "status": response.get("status", "UNKNOWN"),
+                "created_at": response.get("created_at", ""),
+                "metrics": {
+                    "model": response.get("model_metrics", {}),
+                    "variant": response.get("variant_metrics", {}),
+                },
+            }
+        raise ServerError("Invalid response format from API", "INVALID_RESPONSE", 500)

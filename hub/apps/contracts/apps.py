@@ -19,7 +19,7 @@ class ContractsConfig(AppConfig):
         - Initialize cache warming on startup (deferred during tests)
         """
         # Always register signals so cache invalidation fires in all environments
-        import hub.apps.contracts.signals  # noqa: F401 — registers @receiver decorators
+        import hub.apps.contracts.signals
 
         # Phase 228 (REQ-LIN-002, 228.0.9) — register the lineage-sync
         # post_save handler that maintains the derived ``LineageEdge``

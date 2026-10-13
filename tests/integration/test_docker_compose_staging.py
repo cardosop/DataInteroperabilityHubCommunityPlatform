@@ -176,7 +176,7 @@ class TestDockerComposeStaging:
         services = staging_compose_config.get("services", {})
         for service_name, service_config in services.items():
             networks = service_config.get("networks", [])
-            if isinstance(networks, list) or isinstance(networks, dict):
+            if isinstance(networks, (list, dict)):
                 assert "hub-net-staging" in networks, (
                     f"Service {service_name} must be connected to hub-net-staging network"
                 )
@@ -252,14 +252,14 @@ class TestDockerComposeStaging:
             )
             service_config = services[service_name]
             if "deploy" in service_config:
-                    deploy = service_config["deploy"]
-                    assert "restart_policy" in deploy, (
-                        f"Service {service_name} should have restart policy configured"
-                    )
-                    restart_policy = deploy["restart_policy"]
-                    assert "condition" in restart_policy, (
-                        f"Service {service_name} restart policy should specify condition"
-                    )
+                deploy = service_config["deploy"]
+                assert "restart_policy" in deploy, (
+                    f"Service {service_name} should have restart policy configured"
+                )
+                restart_policy = deploy["restart_policy"]
+                assert "condition" in restart_policy, (
+                    f"Service {service_name} restart policy should specify condition"
+                )
 
     def test_staging_all_services_have_build_or_image(self, staging_compose_config):
         """Test that all services have either build or image specified."""

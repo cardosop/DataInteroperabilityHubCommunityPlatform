@@ -18,6 +18,7 @@ Cleanup is hooked into ``pytest_sessionfinish`` via
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -149,10 +150,11 @@ def _read_cache(key: str) -> PersonaCredentials | None:
             path.unlink(missing_ok=True)
             logger.info("Cached token for %s is invalid, evicting", creds.role)
             return None
-        return creds
     except (json.JSONDecodeError, KeyError):
         path.unlink(missing_ok=True)
         return None
+    else:
+        return creds
 
 
 def _token_is_valid(creds: PersonaCredentials, max_validation_retries: int = 1) -> bool:
@@ -183,16 +185,45 @@ def _token_is_valid(creds: PersonaCredentials, max_validation_retries: int = 1) 
                 headers={"Authorization": f"Bearer {creds.api_key}"},
                 timeout=5,
             )
-            return resp.status_code == 200
         except requests.RequestException:
             if attempt < max_validation_retries:
-                _time.sleep(0.5)
+                _time.sleep(0.5)  # INTENTIONAL: rate-limit backoff between API attempts
                 continue
             # Both attempts failed — evict to force fresh login.
             # A stale token causes E2E-helper skips; a fresh login
             # costs ~1 s.
             return False
+        else:
+            return resp.status_code == 200
     return False  # unreachable; satisfies static analysis
+
+
+def _cached_email_matches(
+    cached: PersonaCredentials,
+    role: str,
+    tenant_slug: str | None,
+) -> bool:
+    """Cached-token email check for the provision fast path.
+
+    A cached token can belong to a DELETED incarnation of the persona:
+    GDPR erasure scrubs the email to ``deleted-<id>@deleted.local`` but
+    the row still authenticates (``/auth/me/`` returns 200), so the
+    plain validity check cannot catch it — and the E2E endpoints 404 on
+    the scrubbed email (``ensure-e2e-*`` allowlist).  Compare the
+    ``/auth/me/`` email against the seeded address for this role;
+    on any lookup failure, evict (safer to re-login than serve a stale
+    token that causes downstream E2E-helper skips).
+    """
+    if tenant_slug and tenant_slug in _TENANT_SLUG_TO_SEEDED_EMAIL:
+        expected = _TENANT_SLUG_TO_SEEDED_EMAIL[tenant_slug]
+    else:
+        expected = _ROLE_TO_SEEDED_EMAIL.get(role, "")
+    if not expected:
+        return True  # no seeded address to compare — keep the cache
+    me = _auth_me(cached.api_key)
+    if not me:
+        return False
+    return (me.get("email") or "").lower() == expected.lower()
 
 
 def _write_cache(key: str, creds: PersonaCredentials) -> None:
@@ -260,7 +291,9 @@ def _login_with_retry(email: str, password: str, max_retries: int = 5) -> reques
                 wait,
             )
             if attempt < max_retries:
-                time.sleep(wait)
+                time.sleep(
+                    wait
+                )  # INTENTIONAL: exponential rate-limit backoff  # INTENTIONAL: exponential rate-limit backoff  # INTENTIONAL: exponential rate-limit backoff  # INTENTIONAL: rate-limit backoff wait  # INTENTIONAL: exponential rate-limit backoff
                 continue
             # Final attempt exhausted — raise so callers can skip/diagnose
             raise _PersonaInfrastructureError(
@@ -342,6 +375,40 @@ def _e2e_token() -> str:
     return os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
 
 
+def _auth_me(access_token: str) -> dict:
+    """GET /auth/me/ with the given token; {} on any failure."""
+    try:
+        resp = requests.get(
+            f"{_api_base_url()}/auth/me/",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    except (requests.ConnectionError, requests.Timeout):
+        pass
+    return {}
+
+
+def _prime_subscription(access_token: str) -> None:
+    """Best-effort POST /test/ensure-e2e-subscription/ for the persona's tenant.
+
+    Idempotent; secondary-tenant personas (tenant-b, tenant-iso) depend
+    on it because nothing else primes those tenants and the billing
+    middleware 403s all writes without an active subscription.  Never
+    raises — provisioning must not fail on an absent endpoint.
+    """
+    with contextlib.suppress(requests.ConnectionError, requests.Timeout):
+        requests.post(
+            f"{_api_base_url()}/test/ensure-e2e-subscription/",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "X-E2E-Token": _e2e_token(),
+            },
+            timeout=30,
+        )
+
+
 def _ensure_e2e_user(email: str, max_retries: int = 3) -> bool:
     """Call POST /test/ensure-e2e-users/ to create or reset an E2E user.
 
@@ -416,7 +483,6 @@ def _ensure_e2e_user(email: str, max_retries: int = 3) -> bool:
                 resp.status_code,
                 resp.text[:200],
             )
-            return False
 
         except (requests.ConnectionError, requests.Timeout) as exc:
             wait = min(2**attempt, 15)
@@ -437,6 +503,8 @@ def _ensure_e2e_user(email: str, max_retries: int = 3) -> bool:
                 max_retries + 1,
                 exc,
             )
+            return False
+        else:
             return False
 
     return False
@@ -560,10 +628,24 @@ def _provision_via_login(role: str, tenant_slug: str | None) -> PersonaCredentia
         )
 
     data = login_resp.json()
+    access = data.get("access_token", "")
+    user_id, tenant_id = "", ""
+    if access:
+        # The login payload does not carry user_id/tenant_id — enrich
+        # from /auth/me/ (the canonical identity endpoint) so
+        # cross-tenant assertions on creds.tenant_id are meaningful.
+        me = _auth_me(access)
+        user_id = me.get("user_id") or me.get("id") or me.get("sub") or ""
+        tenant_id = me.get("tenant_id") or ""
+        # Prime the persona's tenant subscription (idempotent) so the
+        # billing middleware allows writes — secondary-tenant personas
+        # (tenant-b, tenant-iso) have no other priming path.
+        _prime_subscription(access)
+
     return PersonaCredentials(
-        api_key=data.get("access_token", ""),
-        user_id=data.get("user_id", data.get("sub", "")),
-        tenant_id=data.get("tenant_id", ""),
+        api_key=access,
+        user_id=user_id,
+        tenant_id=tenant_id,
         refresh_token=data.get("refresh_token", ""),
         role=role,
     )
@@ -595,8 +677,16 @@ def provision_persona(
 
     # Fast path: read from cache
     cached = _read_cache(key)
-    if cached is not None:
+    if cached is not None and _cached_email_matches(cached, role, tenant_slug):
         return cached
+    if cached is not None:
+        # The cached token belongs to a DELETED incarnation of the
+        # persona: GDPR erasure scrubs the email to
+        # ``deleted-<id>@deleted.local`` but the row still
+        # authenticates (``/auth/me/`` returns 200), so the plain
+        # validity check cannot catch it.  The E2E endpoints then 404
+        # on the scrubbed email.  Drop the entry and re-provision.
+        _cache_path(key).unlink(missing_ok=True)
 
     # Slow path: login with file-lock
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)

@@ -23,7 +23,8 @@ import {
   useValidateDraft,
 } from '../hooks/useContracts';
 import { ValidationResultPanel } from './ValidationResultPanel';
-import { ODPSProductForm, makeEmptyODPSFormData } from './ODPSProductForm';
+import { ODPSProductForm, } from './ODPSProductForm';
+import { makeEmptyODPSFormData } from './odpsProductFormFactories';
 import {
   buildODPSDocument,
   validateODPSFormData,
@@ -74,22 +75,38 @@ export function ContractCreatePage() {
   // Pre-submit validation: debounce content changes (1.5s) then validate
   const debouncedContent = useDebouncedValue(content, 1500);
   const [validationResult, setValidationResult] = useState<DraftValidationResult | null>(null);
+  // Failed-REQUEST terminal (distinct from an invalid payload): the panel
+  // renders a "Validation unavailable" retry state instead of silently
+  // showing nothing (b7: NETWORK_ERROR left the create page blank).
+  const [validationError, setValidationError] = useState(false);
+
+  const runValidation = useCallback((raw: string, contractFormat: string) => {
+    validateDraft.mutate(
+      { original_raw: raw, original_format: contractFormat },
+      {
+        onSuccess: (data) => {
+          setValidationResult(data);
+          setValidationError(false);
+        },
+        onError: () => {
+          setValidationResult(null);
+          setValidationError(true);
+        },
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setter pair only
+  }, []);
 
   useEffect(() => {
     if (!debouncedContent.trim()) {
       setValidationResult(null);
+      setValidationError(false);
       return;
     }
     const contractFormat = format === 'json' ? 'JSON' : 'YAML';
-    validateDraft.mutate(
-      { original_raw: debouncedContent, original_format: contractFormat },
-      {
-        onSuccess: (data) => setValidationResult(data),
-        onError: () => setValidationResult(null),
-      },
-    );
+    runValidation(debouncedContent, contractFormat);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on debounced content/format changes
-  }, [debouncedContent, format]);
+  }, [debouncedContent, format, runValidation]);
 
   // ODPS workflow polling — only active when workflowId is set
   const workflowStatus = useContractWorkflowStatus(workflowId);
@@ -130,7 +147,10 @@ export function ContractCreatePage() {
   const isODPS = detected?.type === 'ODPS';
   const isPending = createContract.isPending || createODPS.isPending || !!workflowId;
   const hasContent = content.trim().length > 0;
-  const validationBlocks = validationResult !== null && !validationResult.valid;
+  // Blocks submit on an invalid payload OR an unreachable validation
+  // service — creating a contract that was never validated is not allowed.
+  const validationBlocks =
+    (validationResult !== null && !validationResult.valid) || validationError;
 
   const odpsFormErrors = mode === 'odps-form' ? validateODPSFormData(odpsForm) : [];
   const odpsFormValid = odpsFormErrors.length === 0;
@@ -179,7 +199,7 @@ export function ContractCreatePage() {
         });
         navigate(`/contracts/${contract.id}`);
       }
-    } catch (err) {
+    } catch {
       // Mutations show toast automatically via useMutationWithNotification
       // but catch here to prevent unhandled rejection
     }
@@ -314,6 +334,10 @@ export function ContractCreatePage() {
         <ValidationResultPanel
           result={validationResult}
           isLoading={validateDraft.isPending}
+          isError={validationError}
+          onRetry={() =>
+            runValidation(debouncedContent, format === 'json' ? 'JSON' : 'YAML')
+          }
         />
 
         {workflowId && (

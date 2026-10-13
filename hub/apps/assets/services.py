@@ -4,7 +4,8 @@ Asset Service
 Business logic for asset operations.
 """
 
-from typing import Any, Dict, List, Optional
+import contextlib
+from typing import TYPE_CHECKING, Any
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import DatabaseError, IntegrityError, transaction
@@ -15,7 +16,9 @@ from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.events.publisher import EventBusError
 from hub.apps.core.events.service_publishers import AssetEventPublisher
 from hub.apps.core.services.base import BaseService, ConflictError, NotFoundError, ValidationError
-from hub.apps.core.transaction_safe import run_side_effect
+
+if TYPE_CHECKING:
+    from hub.apps.contracts.models import Contract
 
 
 class AssetService(BaseService, AssetEventPublisher):
@@ -27,7 +30,7 @@ class AssetService(BaseService, AssetEventPublisher):
 
     service_name = "asset_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize AssetService.
 
@@ -41,7 +44,7 @@ class AssetService(BaseService, AssetEventPublisher):
         # Initialize event publisher
         AssetEventPublisher.__init__(self)
 
-    def get_asset(self, asset_id: str, tenant_id: Optional[str] = None) -> Asset:
+    def get_asset(self, asset_id: str, tenant_id: str | None = None) -> Asset:
         """
         Get asset by ID.
 
@@ -61,19 +64,24 @@ class AssetService(BaseService, AssetEventPublisher):
 
         # Normalize to str so both UUID and str inputs work (e.g. from serializer validated_data)
         asset_id_str = str(asset_id) if not isinstance(asset_id, str) else asset_id
-        tenant_id_str = str(effective_tenant_id) if not isinstance(effective_tenant_id, str) else effective_tenant_id
+        tenant_id_str = (
+            str(effective_tenant_id)
+            if not isinstance(effective_tenant_id, str)
+            else effective_tenant_id
+        )
 
         # Validate UUID format before querying
         try:
             import uuid
+
             uuid.UUID(asset_id_str)
             uuid.UUID(tenant_id_str)
         except (ValueError, TypeError) as e:
             raise NotFoundError(
-                f"Invalid UUID format: {str(e)}",
+                f"Invalid UUID format: {e!s}",
                 code="NOT_FOUND",
-                details={"asset_id": asset_id_str, "tenant_id": tenant_id_str}
-            )
+                details={"asset_id": asset_id_str, "tenant_id": tenant_id_str},
+            ) from e
 
         return self.execute_with_metrics(
             operation="get_asset",
@@ -82,8 +90,8 @@ class AssetService(BaseService, AssetEventPublisher):
         )
 
     def get_assets_by_status(
-        self, status: AssetStatus, tenant_id: Optional[str] = None, limit: Optional[int] = None
-    ) -> List[Asset]:
+        self, status: AssetStatus, tenant_id: str | None = None, limit: int | None = None
+    ) -> list[Asset]:
         """
         Get assets by status.
 
@@ -109,7 +117,7 @@ class AssetService(BaseService, AssetEventPublisher):
             operation="get_assets_by_status", tenant_id=effective_tenant_id, func=_get_assets
         )
 
-    def is_asset_active(self, asset_id: str, tenant_id: Optional[str] = None) -> bool:
+    def is_asset_active(self, asset_id: str, tenant_id: str | None = None) -> bool:
         """
         Check if asset is active.
 
@@ -136,8 +144,8 @@ class AssetService(BaseService, AssetEventPublisher):
         )
 
     def validate_asset_eligibility(
-        self, asset_id: str, tenant_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, asset_id: str, tenant_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Validate asset eligibility for operations (e.g., marketplace publication).
 
@@ -199,12 +207,13 @@ class AssetService(BaseService, AssetEventPublisher):
         *,
         key: str,
         name: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        description: Optional[str] = None,
-        domain: Optional[str] = None,
-        visibility: Optional[str] = None,
-        created_by: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        description: str | None = None,
+        domain: str | None = None,
+        visibility: str | None = None,
+        created_by: Any | None = None,
+        emit_audit: bool = True,
     ) -> Asset:
         """
         Create a new asset.
@@ -283,10 +292,8 @@ class AssetService(BaseService, AssetEventPublisher):
                 # ``details_json["tenant_id"]`` copy still carries the
                 # raw UUID for warehouse-side analytics.
                 _tenant_obj = None
-                try:
+                with contextlib.suppress(_Tenant.DoesNotExist):
                     _tenant_obj = _Tenant.objects.get(id=effective_tenant_id)
-                except _Tenant.DoesNotExist:
-                    pass
 
                 _create_audit_event(
                     resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
@@ -296,9 +303,7 @@ class AssetService(BaseService, AssetEventPublisher):
                     resource_id=None,  # asset_id not yet assigned
                     result="WARNING",
                     details={
-                        "tenant_id": str(effective_tenant_id)
-                        if effective_tenant_id
-                        else None,
+                        "tenant_id": str(effective_tenant_id) if effective_tenant_id else None,
                         "asset_id": None,
                         "attempted_value": str(visibility),
                         "call_site": "service.create_asset",
@@ -374,7 +379,7 @@ class AssetService(BaseService, AssetEventPublisher):
                 with transaction.atomic():
                     # Phase 250.3.B.1 — no ``visibility`` in the
                     # persistence kwargs; derived from status.
-                    asset_kwargs: Dict[str, Any] = {
+                    asset_kwargs: dict[str, Any] = {
                         "tenant_id": effective_tenant_id,
                         "key": key,
                         "name": name,
@@ -392,19 +397,23 @@ class AssetService(BaseService, AssetEventPublisher):
                     f"Asset with key '{key}' already exists",
                     code="ASSET_KEY_EXISTS",
                     details={"key": key, "tenant_id": str(effective_tenant_id)},
-                )
+                ) from None
             except DjangoValidationError as e:
                 if "already exists" in str(e):
                     raise ConflictError(
                         f"Asset with key '{key}' already exists",
                         code="ASSET_KEY_EXISTS",
                         details={"key": key, "tenant_id": str(effective_tenant_id)},
-                    )
+                    ) from None
                 raise ValidationError(
                     str(e),
                     code="VALIDATION_ERROR",
-                    details={"errors": e.message_dict if hasattr(e, "message_dict") else {"__all__": e.messages}},
-                )
+                    details={
+                        "errors": e.message_dict
+                        if hasattr(e, "message_dict")
+                        else {"__all__": e.messages}
+                    },
+                ) from e
 
             # Phase 250.1.G review-pass — fire ``asset.created``
             # webhook event on commit. Without this the simple
@@ -425,6 +434,41 @@ class AssetService(BaseService, AssetEventPublisher):
                 },
             )
 
+            # Phase 250.2.C.1 contract — the SERVICE is the canonical
+            # ASSET_CREATED audit emitter so every create path (API,
+            # data-first workflow step, direct/idempotent service call)
+            # records exactly one row. Callers that emit their own
+            # enriched audit (the API views, incl. the request context)
+            # pass ``emit_audit=False`` to avoid doubling. Best-effort —
+            # an audit-DB outage must never block asset creation.
+            if emit_audit:
+                try:
+                    from hub.apps.audit.utils import create_audit_event as _create_audit_event
+
+                    _create_audit_event(
+                        resource_type="ASSET",
+                        action="ASSET_CREATED",
+                        actor_user=created_by,
+                        tenant=asset.tenant,
+                        resource_id=str(asset.id),
+                        details={
+                            "key": asset.key,
+                            "name": asset.name,
+                            "domain": asset.domain,
+                            "status": asset.status,
+                        },
+                    )
+                except (ConnectionError, TimeoutError, OSError, DatabaseError):
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "asset_create_audit_event_failed",
+                        extra={
+                            "asset_id": str(asset.id),
+                            "tenant_id": str(effective_tenant_id),
+                        },
+                    )
+
             return asset
 
         return self.execute_with_metrics(
@@ -440,12 +484,12 @@ class AssetService(BaseService, AssetEventPublisher):
         *,
         key: str,
         name: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        description: Optional[str] = None,
-        domain: Optional[str] = None,
-        visibility: Optional[str] = None,
-        created_by: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        description: str | None = None,
+        domain: str | None = None,
+        visibility: str | None = None,
+        created_by: Any | None = None,
     ) -> Asset:
         """Phase 250.2.C.1 — canonical idempotent get-or-create entry.
 
@@ -563,7 +607,7 @@ class AssetService(BaseService, AssetEventPublisher):
         *,
         tenant_id: str,
         key: str,
-    ) -> Optional[Asset]:
+    ) -> Asset | None:
         """Internal helper for :meth:`create_or_get_idempotent`.
 
         Returns the matching Asset row when status is non-RETIRED,
@@ -602,7 +646,7 @@ class AssetService(BaseService, AssetEventPublisher):
         *,
         event_type: str,
         asset: Asset,
-        data_extra: Optional[Dict[str, Any]] = None,
+        data_extra: dict[str, Any] | None = None,
     ) -> None:
         """Defer an ``asset.*`` event publish to the next outer commit.
 
@@ -626,12 +670,13 @@ class AssetService(BaseService, AssetEventPublisher):
             tenant_id=str(asset.tenant_id) if asset.tenant_id else None,
             user_id=self.user_id,
         )
-        payload: Dict[str, Any] = {"asset_id": str(asset.id)}
+        payload: dict[str, Any] = {"asset_id": str(asset.id)}
         if data_extra:
             payload.update({k: v for k, v in data_extra.items() if v is not None})
 
         def _publish() -> None:
             import logging as _logging
+
             try:
                 publisher.publish(event_type=event_type, data=payload)
             except EventBusError as exc:  # event-bus failure — best-effort
@@ -644,16 +689,40 @@ class AssetService(BaseService, AssetEventPublisher):
                     },
                 )
 
-        transaction.on_commit(_publish)
+            # In-process webhook delivery for asset.* events (Phase 226 G11).
+            # The bus-based AssetEventSubscriber only fires when a process
+            # runs EventBus.start_listening() — no process in the stack
+            # does — so delivery rows never appeared (webhook-delivery E2E
+            # "Last: null"). Trigger deliveries directly, mirroring the
+            # mesh pattern; the helper is fail-open so a webhook outage
+            # can't fail the asset operation that published the event.
+            from hub.apps.webhooks.asset_event_subscriber import trigger_asset_webhook_event
+
+            trigger_asset_webhook_event(
+                event_type=event_type,
+                asset_id=str(asset.id),
+                tenant_id=str(asset.tenant_id) if asset.tenant_id else str(self.tenant_id),
+                data_extra=payload,
+            )
+
+        # Test-mode-safe deferral: run_after_commit publishes synchronously
+        # under pytest/TESTING (the TestCase wrapper's outer transaction
+        # never commits during the test body) and defers to on_commit in
+        # production (exactly one event per actual state change).
+        from hub.apps.core.after_commit import run_after_commit
+
+        run_after_commit(_publish)
 
     @transaction.atomic
     def update_asset(
         self,
         asset_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        version: Optional[int] = None,
-        status: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        version: int | None = None,
+        status: str | None = None,
+        *,
+        emit_audit: bool = True,
         **kwargs,
     ) -> Asset:
         """
@@ -665,6 +734,12 @@ class AssetService(BaseService, AssetEventPublisher):
             user_id: User ID
             version: Expected version (for optimistic locking)
             status: Updated status (optional)
+            emit_audit: Emit the canonical ``ASSET_UPDATED`` audit row
+                (Phase 250.2.C.1 contract, extended to update). Callers
+                that emit their own enriched audit (the API views, incl.
+                the request context) pass ``emit_audit=False`` to avoid
+                doubling. Keyword-only so it can never collide with an
+                asset field carried by ``**kwargs``.
             **kwargs: Additional fields to update
 
         Returns:
@@ -692,7 +767,7 @@ class AssetService(BaseService, AssetEventPublisher):
                 raise NotFoundError(
                     f"Asset with id {asset_id} not found",
                     details={"resource_type": "Asset", "resource_id": asset_id},
-                )
+                ) from None
 
             # Capture pre-update status snapshot so the post-commit
             # ``asset.updated`` event can carry the lifecycle
@@ -745,8 +820,12 @@ class AssetService(BaseService, AssetEventPublisher):
                 raise ValidationError(
                     str(e),
                     code="VALIDATION_ERROR",
-                    details={"errors": e.message_dict if hasattr(e, "message_dict") else {"__all__": e.messages}},
-                )
+                    details={
+                        "errors": e.message_dict
+                        if hasattr(e, "message_dict")
+                        else {"__all__": e.messages}
+                    },
+                ) from e
             asset.save()
 
             # Phase 250.1.G review-pass — fire ``asset.updated``
@@ -764,9 +843,7 @@ class AssetService(BaseService, AssetEventPublisher):
                         "fields": list(kwargs.keys()),
                         "version": asset.version,
                     },
-                    "previous_status": (
-                        previous_status if previous_status else None
-                    ),
+                    "previous_status": (previous_status if previous_status else None),
                     "new_status": asset.status,
                 },
             )
@@ -788,11 +865,52 @@ class AssetService(BaseService, AssetEventPublisher):
                     data_extra={
                         "activation_reason": "explicit_api_update",
                         "dq_status": getattr(asset, "dq_status", None),
-                        "compliance_status": getattr(
-                            asset, "compliance_status", None
-                        ),
+                        "compliance_status": getattr(asset, "compliance_status", None),
                     },
                 )
+
+            # Phase 250.2.C.1 contract, extended to update — the SERVICE
+            # is the canonical ``ASSET_UPDATED`` audit emitter so every
+            # update path (API, workflow step, direct service call)
+            # records exactly one row. Callers that emit their own
+            # enriched audit (the API views, incl. the request context)
+            # pass ``emit_audit=False`` to avoid doubling. Best-effort —
+            # an audit-DB outage must never block the update.
+            if emit_audit:
+                try:
+                    from hub.apps.users.models import User as _User
+
+                    _actor_user = None
+                    _actor_id = user_id or self.user_id
+                    if _actor_id:
+                        try:
+                            _actor_user = _User.objects.get(id=_actor_id)
+                        except _User.DoesNotExist:
+                            _actor_user = None
+                    create_audit_event(
+                        resource_type="ASSET",
+                        action="ASSET_UPDATED",
+                        actor_user=_actor_user,
+                        tenant=asset.tenant,
+                        resource_id=str(asset.id),
+                        details={
+                            "key": asset.key,
+                            "name": asset.name,
+                            "domain": asset.domain,
+                            "status": asset.status,
+                            "previous_status": previous_status,
+                        },
+                    )
+                except (ConnectionError, TimeoutError, OSError, DatabaseError):
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "asset_update_audit_event_failed",
+                        extra={
+                            "asset_id": str(asset.id),
+                            "tenant_id": str(effective_tenant_id),
+                        },
+                    )
 
             return asset
 
@@ -802,7 +920,12 @@ class AssetService(BaseService, AssetEventPublisher):
 
     @transaction.atomic
     def delete_asset(
-        self, asset_id: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None
+        self,
+        asset_id: str,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        *,
+        emit_audit: bool = True,
     ) -> None:
         """
         Delete an asset (soft delete: set status to RETIRED).
@@ -811,6 +934,11 @@ class AssetService(BaseService, AssetEventPublisher):
             asset_id: Asset ID
             tenant_id: Tenant ID
             user_id: User ID
+            emit_audit: Emit the canonical ``ASSET_DELETED`` audit row
+                (Phase 250.2.C.1 contract, extended to delete). Callers
+                that emit their own enriched audit (the API views, incl.
+                the request context) pass ``emit_audit=False`` to avoid
+                doubling.
 
         Raises:
             NotFoundError: If asset not found
@@ -831,11 +959,16 @@ class AssetService(BaseService, AssetEventPublisher):
             # Unpublish any marketplace listings BEFORE retirement validation.
             # Retirement validation blocks if there are active listings; unpublishing first
             # allows retirement to proceed and matches expected behavior (retire unpublishes).
-            from hub.apps.marketplace.models import Listing, ListingStatus
+            # Phase 313 — marketplace is the paid layer; in core-only mode no
+            # listings exist, so the unpublish step is a no-op there.
+            try:
+                from hub.apps.marketplace.models import Listing, ListingStatus
 
-            Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED).update(
-                status=ListingStatus.UNLISTED
-            )
+                Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED).update(
+                    status=ListingStatus.UNLISTED
+                )
+            except (RuntimeError, ModuleNotFoundError):
+                pass
 
             # Run business rules for deletion (retirement requirements)
             rules = AssetsBusinessRules(
@@ -871,12 +1004,51 @@ class AssetService(BaseService, AssetEventPublisher):
                 data_extra={
                     "retirement_reason": "explicit_api_delete",
                     "retired_at": (
-                        asset.updated_at.isoformat()
-                        if getattr(asset, "updated_at", None)
-                        else None
+                        asset.updated_at.isoformat() if getattr(asset, "updated_at", None) else None
                     ),
                 },
             )
+
+            # Phase 250.2.C.1 contract, extended to delete — the SERVICE
+            # is the canonical ``ASSET_DELETED`` audit emitter so every
+            # delete path (API, workflow step, direct service call)
+            # records exactly one row. Callers that emit their own
+            # enriched audit (the API views, incl. the request context)
+            # pass ``emit_audit=False`` to avoid doubling. Best-effort —
+            # an audit-DB outage must never block the deletion.
+            if emit_audit:
+                try:
+                    from hub.apps.users.models import User as _User
+
+                    _actor_user = None
+                    _actor_id = user_id or self.user_id
+                    if _actor_id:
+                        try:
+                            _actor_user = _User.objects.get(id=_actor_id)
+                        except _User.DoesNotExist:
+                            _actor_user = None
+                    create_audit_event(
+                        resource_type="ASSET",
+                        action="ASSET_DELETED",
+                        actor_user=_actor_user,
+                        tenant=asset.tenant,
+                        resource_id=str(asset.id),
+                        details={
+                            "key": asset.key,
+                            "name": asset.name,
+                            "status": AssetStatus.RETIRED,
+                        },
+                    )
+                except (ConnectionError, TimeoutError, OSError, DatabaseError):
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "asset_delete_audit_event_failed",
+                        extra={
+                            "asset_id": str(asset.id),
+                            "tenant_id": str(effective_tenant_id),
+                        },
+                    )
 
         return self.execute_with_metrics(
             operation="delete_asset", tenant_id=effective_tenant_id, func=_delete
@@ -886,11 +1058,11 @@ class AssetService(BaseService, AssetEventPublisher):
     def link_odps_contract_to_asset(
         self,
         asset_id: str,
-        odps_contract_id: Optional[str] = None,
-        odps_raw: Optional[str] = None,
-        odps_format: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        odps_contract_id: str | None = None,
+        odps_raw: str | None = None,
+        odps_format: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ) -> "Contract":
         """
         Link ODPS contract to asset (Task 8.1.2).
@@ -971,15 +1143,14 @@ class AssetService(BaseService, AssetEventPublisher):
                     asset_id=asset_id,
                 )
                 # Phase 70.1: Audit event for ODPS contract link
-                try:
+                # best-effort audit — DB outage must not block ODPS linking
+                with contextlib.suppress(DatabaseError):
                     create_audit_event(
                         resource_type="ASSET",
                         action="ASSET_ODPS_LINKED",
                         resource_id=str(asset_id),
                         details={"odps_contract_id": str(odps_contract.id)},
                     )
-                except DatabaseError:
-                    pass  # best-effort audit — DB outage must not block ODPS linking
                 return odps_contract
             else:
                 raise ValidationError(
@@ -992,8 +1163,8 @@ class AssetService(BaseService, AssetEventPublisher):
         )
 
     def get_odps_contracts_for_asset(
-        self, asset_id: str, tenant_id: Optional[str] = None
-    ) -> List["Contract"]:
+        self, asset_id: str, tenant_id: str | None = None
+    ) -> list["Contract"]:
         """
         Get all ODPS contracts linked to an asset (Task 8.1.2).
 

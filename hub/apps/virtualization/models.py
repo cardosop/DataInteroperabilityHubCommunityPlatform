@@ -47,26 +47,6 @@ class VirtualDatasetStatus(models.TextChoices):
     ARCHIVED = "ARCHIVED", "Archived"
 
 
-class QueryExecutionStatus(models.TextChoices):
-    """Query execution status enumeration"""
-
-    PENDING = "PENDING", "Pending"
-    RUNNING = "RUNNING", "Running"
-    COMPLETED = "COMPLETED", "Completed"
-    FAILED = "FAILED", "Failed"
-    CANCELLED = "CANCELLED", "Cancelled"
-
-
-class QueryExecutionMode(models.TextChoices):
-    """Query execution mode enumeration"""
-
-    SYNC = "SYNC", "Synchronous"
-    ASYNC = "ASYNC", "Asynchronous"
-    SCHEDULED = "SCHEDULED", "Scheduled"
-    MANUAL = "MANUAL", "Manual"
-    AUTOMATED = "AUTOMATED", "Automated"
-
-
 class VirtualDataset(models.Model):
     """
     Virtual Dataset model representing a federated query across multiple data sources.
@@ -170,7 +150,7 @@ class VirtualDataset(models.Model):
             models.UniqueConstraint(
                 fields=["tenant", "name", "version"],
                 name="unique_virtual_dataset_name_version_per_tenant",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -218,7 +198,9 @@ class VirtualDataset(models.Model):
                 int(version_parts[1])  # minor
                 int(version_parts[2])  # patch
             except ValueError:
-                raise ValidationError({"version": "Version parts must be numeric (e.g., '1.0.0')"})
+                raise ValidationError(
+                    {"version": "Version parts must be numeric (e.g., '1.0.0')"}
+                ) from None
 
         # Validate query type matches query content (basic validation)
         if self.query_type == QueryType.SQL:
@@ -507,14 +489,17 @@ class QueryExecution(models.Model):
                 raise ValidationError(
                     {"completed_at": "Failed executions must have a completed_at timestamp"}
                 )
-        elif self.status == QueryExecutionStatus.RUNNING:
+        elif (
+            self.status == QueryExecutionStatus.RUNNING
+            and self.completed_at is not None
+            and self.started_at is None
+        ):
             # Allow RUNNING without started_at during creation, but if completed_at is set, started_at must be set too
-            if self.completed_at is not None and self.started_at is None:
-                raise ValidationError(
-                    {
-                        "started_at": "Running executions with completed_at must have a started_at timestamp"
-                    }
-                )
+            raise ValidationError(
+                {
+                    "started_at": "Running executions with completed_at must have a started_at timestamp"
+                }
+            )
 
     def save(self, *args, **kwargs):
         """
@@ -780,16 +765,17 @@ class QueryExecution(models.Model):
                 error_msg = self.job.error_message or "Job execution failed"
                 self.add_log_entry("ERROR", f"Job failed: {error_msg}", save=False)
                 updated = True
-        elif job_status == JobStatus.CANCELLED and self.status != QueryExecutionStatus.CANCELLED:
+        elif (
+            job_status == JobStatus.CANCELLED
+            and self.status != QueryExecutionStatus.CANCELLED
+            and self.status in [QueryExecutionStatus.PENDING, QueryExecutionStatus.RUNNING]
+        ):
             # Job cancelled, execution should be cancelled
-            if self.status in [QueryExecutionStatus.PENDING, QueryExecutionStatus.RUNNING]:
-                self.status = QueryExecutionStatus.CANCELLED
-                if not self.completed_at:
-                    self.completed_at = timezone.now()
-                self.add_log_entry(
-                    "WARNING", "Execution cancelled via job cancellation", save=False
-                )
-                updated = True
+            self.status = QueryExecutionStatus.CANCELLED
+            if not self.completed_at:
+                self.completed_at = timezone.now()
+            self.add_log_entry("WARNING", "Execution cancelled via job cancellation", save=False)
+            updated = True
 
         if updated:
             update_fields = ["status", "updated_at"]

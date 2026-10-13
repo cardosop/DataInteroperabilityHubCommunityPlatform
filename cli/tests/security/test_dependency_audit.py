@@ -47,7 +47,7 @@ def _ensure_pip_audit() -> Path | None:
     Uses a module-level cache so the venv is created once per test
     session and reused across all three parametrized tests.
     """
-    global _pip_audit_venv, _pip_audit_install_attempted
+    global _pip_audit_venv, _pip_audit_install_attempted  # session cache: module globals are deliberately mutated once per session
 
     # If we already have a working venv, reuse it
     if _pip_audit_install_attempted and _pip_audit_venv is not None:
@@ -74,9 +74,10 @@ def _ensure_pip_audit() -> Path | None:
             check=True,
         )
         _pip_audit_venv = Path(sys.executable).parent.parent  # venv root
-        return _pip_audit_venv
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         pass
+    else:
+        return _pip_audit_venv
 
     # Slow path: create a temporary venv and install pip-audit into it
     venv_dir = Path(tempfile.mkdtemp(prefix="pip-audit-venv-"))
@@ -99,11 +100,12 @@ def _ensure_pip_audit() -> Path | None:
             check=True,
         )
         _pip_audit_venv = venv_dir
-        return venv_dir
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         # Clean up the failed venv
         shutil.rmtree(venv_dir, ignore_errors=True)
         return None
+    else:
+        return venv_dir
 
 
 def _run_pip_audit(target_dir: Path) -> tuple[int, str]:
@@ -201,7 +203,10 @@ def _check_pip_audit_result(rc: int, output: str, label: str) -> None:
     if rc != 0 and ("MEDIUM" in output_upper or "LOW" in output_upper):
         import warnings
 
-        warnings.warn(f"{label}: pip-audit found MEDIUM/LOW vulnerabilities:\n{output[:1000]}")
+        warnings.warn(
+            f"{label}: pip-audit found MEDIUM/LOW vulnerabilities:\n{output[:1000]}",
+            stacklevel=2,
+        )
 
     # HIGH / CRITICAL findings — hard failure
     if rc != 0 and ("HIGH" in output_upper or "CRITICAL" in output_upper):
@@ -213,11 +218,14 @@ def _check_pip_audit_result(rc: int, output: str, label: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def pytest_sessionfinish(session):  # noqa: ARG001
+def pytest_sessionfinish(session):
     """Clean up any pip-audit temp venvs left behind by this module."""
     import shutil as _shutil
 
-    if _pip_audit_venv is not None and _pip_audit_venv.exists():
+    if (
+        _pip_audit_venv is not None
+        and _pip_audit_venv.exists()
+        and "pip-audit-venv-" in str(_pip_audit_venv)
+    ):
         # Only clean up venvs in temp directories (safety check)
-        if "pip-audit-venv-" in str(_pip_audit_venv):
-            _shutil.rmtree(_pip_audit_venv, ignore_errors=True)
+        _shutil.rmtree(_pip_audit_venv, ignore_errors=True)

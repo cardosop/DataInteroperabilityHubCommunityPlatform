@@ -16,6 +16,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class VirtualizationInjectionAPITest(InjectionTestBase):
     """Test that Virtualization API inputs are sanitized against injection."""
 
+    def setUp(self):
+        super().setUp()
+        # The virtualization endpoints are feature-gated per tenant; enable
+        # the flag so injection-safety (not feature gating) is under test.
+        self.tenant.virtualization_enabled = True
+        self.tenant.save(update_fields=["virtualization_enabled"])
+
     def test_virtual_datasets_list_with_sql_like_search(self):
         """Virtual datasets list with search param that looks like SQL is safely handled."""
         payloads = [

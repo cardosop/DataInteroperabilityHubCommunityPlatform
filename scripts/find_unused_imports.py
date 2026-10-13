@@ -45,10 +45,9 @@ class ImportVisitor(ast.NodeVisitor):
             self.used_names.add(node.id)
 
     def visit_Attribute(self, node):
-        if isinstance(node.ctx, ast.Load):
+        if isinstance(node.ctx, ast.Load) and isinstance(node.value, ast.Name):
             # For "module.attr", we use the module name
-            if isinstance(node.value, ast.Name):
-                self.used_names.add(node.value.id)
+            self.used_names.add(node.value.id)
 
 
 def analyze_file(file_path: Path) -> list[tuple[int, str, str]]:
@@ -56,7 +55,7 @@ def analyze_file(file_path: Path) -> list[tuple[int, str, str]]:
     try:
         with open(file_path, encoding="utf-8") as f:
             content = f.read()
-    except Exception as e:
+    except (OSError, ValueError) as e:
         return [(0, str(e), "")]
 
     try:
@@ -81,10 +80,7 @@ def analyze_file(file_path: Path) -> list[tuple[int, str, str]]:
 
 def main():
     """Main function to scan for unused imports."""
-    if len(sys.argv) > 1:
-        target = Path(sys.argv[1])
-    else:
-        target = Path("hub/apps/contracts")
+    target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("hub/apps/contracts")
 
     if not target.exists():
         print(f"Error: {target} does not exist", file=sys.stderr)

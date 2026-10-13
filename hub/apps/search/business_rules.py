@@ -21,6 +21,8 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.postgres.search import SearchQuery
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -95,7 +97,7 @@ class SearchBusinessRules(BusinessRules):
     """
 
     def validate(
-        self, context: SearchRuleExecutionContext | None = None, *args, **kwargs
+        self, context: SearchRuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Validate search business rules.
@@ -549,8 +551,21 @@ class SearchBusinessRules(BusinessRules):
             result.is_valid = False
             result.errors.append("Search index must have a resource_type")
         else:
-            # Validate resource_type is one of the allowed values
-            valid_resource_types = ["CONTRACT", "ASSET", "DATASET", "VIRTUAL_DATASET"]
+            # Validate resource_type is one of the allowed values.
+            # Phase 1 UC mirror feed (add-databricks-uc-read 1.4) — the
+            # databricks_admin feed writes the DATABRICKS_UC_* rows.
+            valid_resource_types = [
+                "CONTRACT",
+                "ASSET",
+                "DATASET",
+                "VIRTUAL_DATASET",
+                "DATABRICKS_UC_CATALOG",
+                "DATABRICKS_UC_SCHEMA",
+                "DATABRICKS_UC_TABLE",
+                "DATABRICKS_UC_VIEW",
+                "DATABRICKS_UC_VOLUME",
+                "DATABRICKS_UC_MODEL",
+            ]
             if index.resource_type not in valid_resource_types:
                 result.is_valid = False
                 result.errors.append(
@@ -574,10 +589,9 @@ class SearchBusinessRules(BusinessRules):
                     if not isinstance(field, dict):
                         result.warnings.append(f"Schema field at index {i} is not a dictionary")
 
-        if index.lineage_metadata is not None:
-            if not isinstance(index.lineage_metadata, dict):
-                result.is_valid = False
-                result.errors.append("Search index lineage_metadata must be a dictionary")
+        if index.lineage_metadata is not None and not isinstance(index.lineage_metadata, dict):
+            result.is_valid = False
+            result.errors.append("Search index lineage_metadata must be a dictionary")
 
         if index.tags is not None:
             if not isinstance(index.tags, list):
@@ -660,7 +674,7 @@ class SearchBusinessRules(BusinessRules):
         return result
 
     def _validate_index_consistency(
-        self, index: SearchIndex, context: SearchRuleExecutionContext
+        self, index: SearchIndex, _context: SearchRuleExecutionContext
     ) -> ValidationResult:
         """
         Validate index consistency (index consistent with data).
@@ -758,15 +772,19 @@ class SearchBusinessRules(BusinessRules):
                     result.details["index_tenant_id"] = index_tenant_id
 
                 # Check if resource was updated after index was last updated
-                if hasattr(resource, "updated_at") and resource.updated_at:
-                    if index.indexed_at and resource.updated_at > index.indexed_at:
-                        result.warnings.append(
-                            f"Resource was updated ({resource.updated_at}) after index was last updated ({index.indexed_at}). "
-                            f"Index may be stale and should be re-indexed."
-                        )
-                        result.details["stale_index"] = True
-                        result.details["resource_updated_at"] = resource.updated_at.isoformat()
-                        result.details["index_updated_at"] = index.indexed_at.isoformat()
+                if (
+                    hasattr(resource, "updated_at")
+                    and resource.updated_at
+                    and index.indexed_at
+                    and resource.updated_at > index.indexed_at
+                ):
+                    result.warnings.append(
+                        f"Resource was updated ({resource.updated_at}) after index was last updated ({index.indexed_at}). "
+                        f"Index may be stale and should be re-indexed."
+                    )
+                    result.details["stale_index"] = True
+                    result.details["resource_updated_at"] = resource.updated_at.isoformat()
+                    result.details["index_updated_at"] = index.indexed_at.isoformat()
 
         except Exception as e:
             # Log error but don't fail validation - might be a transient issue
@@ -1001,7 +1019,7 @@ class SearchBusinessRules(BusinessRules):
                     result.details["security_violation"] = "invalid_owner_id"
                     result.details["owner_id"] = owner_id
                     result.details["tenant_id"] = context.tenant_id
-                except Exception as e:
+                except (ValidationError, DatabaseError) as e:
                     # Log unexpected errors but don't fail validation
                     logger.warning(
                         f"Error validating owner_id filter: {e}",

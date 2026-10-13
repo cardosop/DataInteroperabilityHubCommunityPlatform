@@ -462,9 +462,7 @@ class DatasetVersioningTest(DatasetsAPITestBase):
             tenant_id=str(self.tenant.id),
             reason="test deletion",
         )
-        self.assertFalse(
-            Dataset.objects.filter(id=new_version.id).exists()
-        )
+        self.assertFalse(Dataset.objects.filter(id=new_version.id).exists())
 
     def test_delete_version_not_found(self):
         """VersioningService.delete_version() raises NotFoundError for unknown ID."""

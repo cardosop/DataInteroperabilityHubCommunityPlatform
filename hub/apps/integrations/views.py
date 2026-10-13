@@ -5,6 +5,7 @@ REST API views for marketplace connection management.
 """
 
 import time
+from typing import ClassVar
 
 import structlog
 from django.db import transaction
@@ -24,8 +25,8 @@ from rest_framework.response import Response
 
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.auth.permissions import HasAnyRole, HasScope
-from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
+from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 
 from .base import MarketplaceType, SyncDirection
 from .factory import MarketplaceConnectorFactory
@@ -35,7 +36,9 @@ from .serializers import (
     MarketplaceConnectionSerializer,
     MarketplaceConnectionTestResponseSerializer,
     MarketplaceConnectionUpdateSerializer,
+    MarketplaceMappingCreateSerializer,
     MarketplaceMappingSerializer,
+    MarketplaceMappingUpdateSerializer,
     MarketplaceSyncJobCancelSerializer,
     MarketplaceSyncJobSerializer,
     MarketplaceSyncRequestSerializer,
@@ -43,6 +46,41 @@ from .serializers import (
 from .services import MarketplaceIntegrationService
 
 logger = structlog.get_logger(__name__)
+
+
+class MarketplaceIntegrationPagination(StandardPageNumberPagination):
+    """Standard page pagination that also honours the SDK's ``limit``/``offset``.
+
+    The SDK marketplace API documents ``limit``/``offset`` list params;
+    the platform paginator reads ``page``/``page_size``.  Accept both
+    dialects (page_size = limit, page = offset // limit + 1) so SDK
+    callers are honoured without changing the envelope for page-based
+    consumers.
+    """
+
+    def get_page_size(self, request):
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                limit_int = int(limit)
+                if limit_int >= 1:
+                    return limit_int
+            except ValueError:
+                pass
+        return super().get_page_size(request)
+
+    def get_page_number(self, request, paginator):
+        offset = request.query_params.get("offset")
+        limit = request.query_params.get("limit")
+        if offset and limit:
+            try:
+                offset_int = int(offset)
+                limit_int = int(limit)
+                if limit_int >= 1 and offset_int >= 0:
+                    return offset_int // limit_int + 1
+            except ValueError:
+                pass
+        return super().get_page_number(request, paginator)
 
 
 class MarketplaceIntegrationMixin:
@@ -254,11 +292,11 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
         if isinstance(result, Response):
             raise PermissionDenied(detail=result.data)
 
-    filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ["name", "marketplace_type", "is_active", "created_at", "updated_at"]
-    ordering = ["-created_at"]  # Default ordering
-    search_fields = ["name"]
-    pagination_class = StandardPageNumberPagination
+    filter_backends = (OrderingFilter, SearchFilter)
+    ordering_fields = ("name", "marketplace_type", "is_active", "created_at", "updated_at")
+    ordering = "-created_at"  # Default ordering
+    search_fields = "name"
+    pagination_class = MarketplaceIntegrationPagination
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
@@ -300,7 +338,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
         return queryset
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new marketplace connection.
 
@@ -415,7 +453,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "tenant_id": str(tenant_id),
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
         except Exception as e:
             logger.error(
                 "marketplace_connection_create_error",
@@ -426,9 +464,9 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "tenant_id": str(tenant_id),
                 },
             )
-            raise DRFValidationError(f"Failed to create marketplace connection: {e!s}")
+            raise DRFValidationError(f"Failed to create marketplace connection: {e!s}") from e
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *_args, **_kwargs):
         """
         Retrieve a marketplace connection.
 
@@ -438,15 +476,18 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
 
         # Verify tenant isolation
         tenant_id = self._get_tenant_id(request)
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot access connection from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot access connection from different tenant")
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """
         Update a marketplace connection.
 
@@ -487,9 +528,12 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
 
         # Verify tenant isolation
         tenant_id = self._get_tenant_id(request)
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot update connection from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot update connection from different tenant")
 
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -540,7 +584,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "user_id": user_id,
                 },
             )
-            raise DRFValidationError({"error": str(e), "details": getattr(e, "details", {})})
+            raise DRFValidationError({"error": str(e), "details": getattr(e, "details", {})}) from e
         except NotFoundError as e:
             logger.warning(
                 "marketplace_connection_update_not_found",
@@ -550,7 +594,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "user_id": user_id,
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
         except ConflictError as e:
             logger.warning(
                 "marketplace_connection_update_conflict",
@@ -575,7 +619,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "user_id": user_id,
                 },
             )
-            raise DRFValidationError(f"Failed to update marketplace connection: {e!s}")
+            raise DRFValidationError(f"Failed to update marketplace connection: {e!s}") from e
 
     def partial_update(self, request, *args, **kwargs):
         """
@@ -587,7 +631,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
         return self.update(request, *args, **kwargs)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete a marketplace connection.
 
@@ -628,9 +672,12 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
 
         # Verify tenant isolation
         tenant_id = self._get_tenant_id(request)
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot delete connection from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot delete connection from different tenant")
 
         user_id = self._get_user_id(request)
         if not user_id:
@@ -665,7 +712,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "user_id": user_id,
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
         except Exception as e:
             logger.error(
                 "marketplace_connection_delete_error",
@@ -676,7 +723,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "user_id": user_id,
                 },
             )
-            raise DRFValidationError(f"Failed to delete marketplace connection: {e!s}")
+            raise DRFValidationError(f"Failed to delete marketplace connection: {e!s}") from e
 
     @extend_schema(
         summary="Test marketplace connection",
@@ -733,9 +780,12 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
 
         # Verify tenant isolation
         tenant_id = self._get_tenant_id(request)
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot test connection from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot test connection from different tenant")
 
         user_id = self._get_user_id(request)
         if not user_id:
@@ -780,7 +830,7 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
                     "user_id": user_id,
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
         except ValidationError as e:
             logger.warning(
                 "marketplace_connection_test_validation_error",
@@ -885,10 +935,10 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
     serializer_class = MarketplaceSyncJobSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter]
-    ordering_fields = ["created_at", "updated_at", "completed_at", "status", "direction"]
-    ordering = ["-created_at"]  # Default ordering
-    pagination_class = StandardPageNumberPagination
+    filter_backends = (OrderingFilter,)
+    ordering_fields = ("created_at", "updated_at", "completed_at", "status", "direction")
+    ordering = "-created_at"  # Default ordering
+    pagination_class = MarketplaceIntegrationPagination
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
@@ -947,7 +997,7 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
         return queryset
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new marketplace sync job.
 
@@ -1041,10 +1091,25 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     request=request,
                 )
             else:
-                # BIDIRECTIONAL: not yet supported via API
-                return Response(
-                    {"error": "BIDIRECTIONAL sync is not yet supported via API"},
-                    status=status.HTTP_400_BAD_REQUEST,
+                # BIDIRECTIONAL: PUSH hub assets, then PULL marketplace listings
+                if not asset_ids:
+                    return Response(
+                        {"error": "asset_ids is required for BIDIRECTIONAL direction"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if not listing_ids:
+                    return Response(
+                        {"error": "listing_ids is required for BIDIRECTIONAL direction"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                sync_job = service.sync_bidirectional(
+                    connection_id=connection_id,
+                    tenant_id=str(tenant_id),
+                    user_id=user_id,
+                    asset_ids=[str(aid) for aid in asset_ids],
+                    listing_ids=[str(lid) for lid in listing_ids],
+                    options=options,
+                    request=request,
                 )
 
             # Return serialized sync job
@@ -1061,7 +1126,7 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     "tenant_id": str(tenant_id),
                 },
             )
-            raise DRFValidationError({"error": str(e), "details": getattr(e, "details", {})})
+            raise DRFValidationError({"error": str(e), "details": getattr(e, "details", {})}) from e
         except NotFoundError as e:
             logger.warning(
                 "marketplace_sync_not_found",
@@ -1071,7 +1136,7 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     "tenant_id": str(tenant_id),
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
         except Exception as e:
             logger.error(
                 "marketplace_sync_create_error",
@@ -1082,9 +1147,9 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     "tenant_id": str(tenant_id),
                 },
             )
-            raise DRFValidationError(f"Failed to create marketplace sync job: {e!s}")
+            raise DRFValidationError(f"Failed to create marketplace sync job: {e!s}") from e
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *_args, **_kwargs):
         """
         Retrieve a marketplace sync job.
 
@@ -1094,9 +1159,12 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
 
         # Verify tenant isolation
         tenant_id = self._get_tenant_id(request)
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot access sync job from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot access sync job from different tenant")
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
@@ -1156,9 +1224,12 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
 
         # Verify tenant isolation
         tenant_id = self._get_tenant_id(request)
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot cancel sync job from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot cancel sync job from different tenant")
 
         serializer = MarketplaceSyncJobCancelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1199,7 +1270,7 @@ class MarketplaceSyncJobViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     "user_id": user_id,
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
         except ValidationError as e:
             logger.warning(
                 "marketplace_sync_cancel_validation_error",
@@ -1299,24 +1370,33 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
     Supports RBAC (role-based) and ABAC (attribute-based) authorization.
     Includes rate limiting, comprehensive filtering, pagination, and audit logging.
 
-    Only GET (list/retrieve) and DELETE operations are supported.
-    Mappings are created automatically during sync operations.
+    Mappings are normally created during sync operations; POST/PATCH are
+    also exposed (backing the SDK ``create_mapping`` / ``update_mapping``)
+    through the same service layer the sync flow uses.
     """
 
     queryset = MarketplaceMapping.objects.all()
     serializer_class = MarketplaceMappingSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [OrderingFilter]
-    ordering_fields = ["created_at", "updated_at", "last_synced_at", "external_listing_id"]
-    ordering = ["-created_at"]  # Default ordering
-    pagination_class = StandardPageNumberPagination
-    http_method_names = ["get", "delete", "head", "options"]  # Only GET and DELETE
+    filter_backends = (OrderingFilter,)
+    ordering_fields = ("created_at", "updated_at", "last_synced_at", "external_listing_id")
+    ordering = "-created_at"  # Default ordering
+    pagination_class = MarketplaceIntegrationPagination
+    http_method_names: ClassVar[list[str]] = [
+        "get",
+        "post",
+        "patch",
+        "delete",
+        "head",
+        "options",
+    ]
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
-        if self.action == "destroy":
-            # Delete operations require DATA_PROVIDER or TENANT_ADMIN role and integrations:write scope
+        if self.action in ("create", "partial_update", "update", "destroy"):
+            # Write operations require DATA_PROVIDER or TENANT_ADMIN role
+            # and integrations:write scope.
             return [
                 permissions.IsAuthenticated(),
                 HasAnyRole(["DATA_PROVIDER", "TENANT_ADMIN"]),
@@ -1324,6 +1404,66 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
             ]
         # Read operations only require authentication
         return [permissions.IsAuthenticated()]
+
+    def create(self, request):
+        """POST /integrations/marketplace/mappings/ — create a mapping."""
+        serializer = MarketplaceMappingCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        tenant_id = self._get_tenant_id(request)
+        user_id = self._get_user_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "User must belong to a tenant"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            service = MarketplaceIntegrationService(
+                tenant_id=str(tenant_id), user_id=user_id, request_id=getattr(request, "id", None)
+            )
+            mapping = service.create_mapping(
+                connection_id=str(serializer.validated_data["connection_id"]),
+                hub_asset_id=str(serializer.validated_data["hub_asset_id"]),
+                external_listing_id=serializer.validated_data["external_listing_id"],
+                external_resource_ids=serializer.validated_data.get("external_resource_ids"),
+                sync_metadata=serializer.validated_data.get("sync_metadata"),
+                request=request,
+            )
+        except NotFoundError as e:
+            raise NotFound(str(e)) from e
+        except (ValidationError, ConflictError) as e:
+            raise DRFValidationError({"error": str(e), "details": getattr(e, "details", {})}) from e
+
+        response_serializer = MarketplaceMappingSerializer(mapping)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, id=None):
+        """PATCH /integrations/marketplace/mappings/{id}/ — update a mapping."""
+        self.get_object()  # tenant-scoped existence check
+        serializer = MarketplaceMappingUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        tenant_id = self._get_tenant_id(request)
+        user_id = self._get_user_id(request)
+
+        try:
+            service = MarketplaceIntegrationService(
+                tenant_id=str(tenant_id), user_id=user_id, request_id=getattr(request, "id", None)
+            )
+            mapping = service.update_mapping(
+                mapping_id=str(id),
+                external_listing_id=serializer.validated_data.get("external_listing_id"),
+                external_resource_ids=serializer.validated_data.get("external_resource_ids"),
+                sync_metadata=serializer.validated_data.get("sync_metadata"),
+                request=request,
+            )
+        except NotFoundError as e:
+            raise NotFound(str(e)) from e
+        except (ValidationError, ConflictError) as e:
+            raise DRFValidationError({"error": str(e), "details": getattr(e, "details", {})}) from e
+
+        response_serializer = MarketplaceMappingSerializer(mapping)
+        return Response(response_serializer.data)
 
     def get_queryset(self):
         """Filter queryset based on user permissions and tenant isolation"""
@@ -1357,7 +1497,7 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
         return queryset
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete a marketplace mapping.
 
@@ -1399,9 +1539,12 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
         tenant_id = self._get_tenant_id(request)
 
         # Verify tenant isolation
-        if tenant_id and str(instance.tenant_id) != str(tenant_id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot delete mapping from different tenant")
+        if (
+            tenant_id
+            and str(instance.tenant_id) != str(tenant_id)
+            and not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin)
+        ):
+            raise PermissionDenied("Cannot delete mapping from different tenant")
 
         if not user_id:
             return Response(
@@ -1447,7 +1590,7 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     "tenant_id": str(tenant_id) if tenant_id else None,
                 },
             )
-            raise NotFound(str(e))
+            raise NotFound(str(e)) from e
 
         except Exception as e:
             logger.error(
@@ -1460,7 +1603,7 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
                     "tenant_id": str(tenant_id) if tenant_id else None,
                 },
             )
-            raise DRFValidationError(f"Failed to delete marketplace mapping: {e!s}")
+            raise DRFValidationError(f"Failed to delete marketplace mapping: {e!s}") from e
 
 
 @extend_schema(
@@ -1490,7 +1633,7 @@ class MarketplaceMappingViewSet(MarketplaceIntegrationMixin, viewsets.ModelViewS
 )
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
-def list_connectors(request):
+def list_connectors(_request):
     """
     List all available marketplace connector types.
 
@@ -1604,7 +1747,7 @@ def list_connectors(request):
 )
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
-def get_connector_info(request, connector_type: str):
+def get_connector_info(_request, connector_type: str):
     """
     Get detailed information about a specific marketplace connector type.
 
@@ -1674,7 +1817,7 @@ def get_connector_info(request, connector_type: str):
                         config_requirements["required"].append(param_name)
                     else:
                         config_requirements["optional"].append(param_name)
-            except Exception:
+            except (TypeError, ValueError):
                 # If we can't inspect signature, leave empty
                 pass
 

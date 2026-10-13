@@ -234,7 +234,7 @@ class InfrastructureImpactReporter:
                 print(
                     f"  Loaded CI/CD review: {len(reports['cicd'].get('workflows', []))} workflows"
                 )
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"  Warning: Could not load CI/CD review: {e}")
 
         # Load monitoring review
@@ -245,7 +245,7 @@ class InfrastructureImpactReporter:
                 print(
                     f"  Loaded monitoring review: {reports['monitoring'].get('summary', {}).get('endpoints_found', 0)} endpoints"
                 )
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"  Warning: Could not load monitoring review: {e}")
 
         # Load rate limiting review
@@ -256,7 +256,7 @@ class InfrastructureImpactReporter:
                 print(
                     f"  Loaded rate limiting review: {reports['rate_limiting'].get('summary', {}).get('total_categories', 0)} categories"
                 )
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"  Warning: Could not load rate limiting review: {e}")
 
         # Load gateway review
@@ -267,7 +267,7 @@ class InfrastructureImpactReporter:
                 print(
                     f"  Loaded gateway review: {reports['gateway'].get('summary', {}).get('routing_rules', 0)} routing rules"
                 )
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"  Warning: Could not load gateway review: {e}")
 
         self.infrastructure_components["cicd"] = reports["cicd"]

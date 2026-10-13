@@ -11,6 +11,7 @@ Tests cover:
 All tests use real implementations (no mocks/stubs) per requirements.
 """
 
+import contextlib
 import time
 import uuid
 from unittest.mock import patch
@@ -308,10 +309,11 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             patch("time.sleep", side_effect=mock_sleep),
             patch.object(self.event_bus, "publish", side_effect=mock_event_bus_publish_always_fail),
         ):
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # any post-retry-exhaustion failure type is expected here
+                # Expected to fail after retries
                 self.publisher.publish_odps_created(contract_id=contract_id)
-            except Exception:
-                pass  # Expected to fail after retries
 
             # Verify exponential backoff was used
             if len(delays) >= 2:
@@ -339,10 +341,9 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
         with patch.object(
             self.event_bus, "publish", side_effect=mock_event_bus_publish_validation_error
         ):
-            try:
+            with contextlib.suppress(Exception):  # any non-transient failure type is expected here
+                # Expected
                 self.publisher.publish_odps_created(contract_id=contract_id)
-            except Exception:
-                pass  # Expected
 
             # Should not retry on non-transient errors
             self.assertEqual(call_count[0], 1, "Should not retry on non-transient errors")

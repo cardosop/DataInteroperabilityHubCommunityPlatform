@@ -7,6 +7,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import TestCase
 
 from hub.apps.orchestration.models import (
@@ -61,7 +62,7 @@ class WorkflowDefinitionTest(TestCase):
             name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl
         )
 
-        with self.assertRaises(Exception):  # IntegrityError or ValidationError
+        with self.assertRaises(IntegrityError):  # UniqueConstraint(name, version)
             WorkflowDefinition.objects.create(
                 name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl
             )

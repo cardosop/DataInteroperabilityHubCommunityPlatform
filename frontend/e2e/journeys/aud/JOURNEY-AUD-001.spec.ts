@@ -41,9 +41,23 @@ test.describe('JOURNEY-AUD-001: Query Audit Events / Review Audit Logs', () => {
 
   test.describe('Failure', () => {
     test('audit event detail with non-existent id shows error', async ({ page }) => {
-      await loginAsPersona(page, getAuditorUser);
-      await page.goto('/audit/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      // Use loginAndNavigateToRoute (same as AUD-003's passing detail
+      // test): its API-login fast path injects its OWN tokens and avoids
+      // the reload-proactive-refresh race — loginAsPersona + bare
+      // page.goto reloads the SPA without a persisted access_token and
+      // the boot refresh can lose a token-rotation race under parallel
+      // workers, surfacing AUTH_UNAUTHORIZED instead of the 404.
+      const auditorUser = await getAuditorUser();
+      await loginAndNavigateToRoute(
+        page,
+        auditorUser,
+        '/audit/00000000-0000-0000-0000-000000000000',
+        {
+          timeout: 60000,
+          contentSelector:
+            '.error-display, [data-testid="error-display"], [data-testid="audit-event-detail-page"], h1',
+        }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '[data-testid="audit-event-detail-page"]',
         waitAfterLoad: 8000,

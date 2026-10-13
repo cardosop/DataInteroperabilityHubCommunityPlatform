@@ -243,7 +243,8 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
             action="ERASURE_COMPLETED",
         ).count()
         self.assertEqual(
-            completed_after, completed_before + 1,
+            completed_after,
+            completed_before + 1,
             "ERASURE_COMPLETED must fire exactly once; "
             "re-execution of a COMPLETED request must not emit duplicates",
         )
@@ -282,7 +283,7 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
         audit_event = AuditEvent.objects.filter(resource_id=test_resource_id).first()
         self.assertIsNotNone(
             audit_event,
-            "Test audit event should still exist after erasure; resource_id=%s" % test_resource_id,
+            f"Test audit event should still exist after erasure; resource_id={test_resource_id}",
         )
         self.assertIsInstance(audit_event.details_json, dict)
         # redact_pii preserves keys but redacts email values; erasure then
@@ -409,7 +410,8 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
         # Verify no duplicate request was created in DB
         final_count = ErasureRequest.objects.filter(user=self.user).count()
         self.assertEqual(
-            final_count, initial_count + 1,
+            final_count,
+            initial_count + 1,
             "Only the pre-existing PENDING request should exist; no duplicate created",
         )
 

@@ -82,7 +82,7 @@ class OpenAPISpecReviewer:
             "version": self.spec.get("info", {}).get("version", "N/A"),
             "total_paths": len(paths),
             "total_operations": sum(
-                len([m for m in path_item.keys() if m in ["get", "post", "put", "patch", "delete"]])
+                len([m for m in path_item if m in ["get", "post", "put", "patch", "delete"]])
                 for path_item in paths.values()
                 if isinstance(path_item, dict)
             ),

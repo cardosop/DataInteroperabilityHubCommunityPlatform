@@ -5,7 +5,7 @@
 Audits every Python SDK method against the backend API surface and
 reports which API endpoints are NOT yet exposed in the SDK.
 
-Produces a per-module gap report feeding Phase 3–5 work assignments.
+Produces a per-module gap report feeding Phase 3-5 work assignments.
 
 Usage:
   python scripts/audit_sdk_vs_api.py                 # human-readable
@@ -42,9 +42,10 @@ def extract_sdk_methods() -> dict[str, set[str]]:
             continue
 
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if not node.name.startswith("_"):
-                    methods[module].add(node.name)
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ) and not node.name.startswith("_"):
+                methods[module].add(node.name)
     return dict(methods)
 
 
@@ -61,7 +62,7 @@ def extract_api_endpoints() -> dict[str, set[str]]:
 
         try:
             content = url_file.read_text()
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         # Extract path patterns from urlpatterns
@@ -76,7 +77,7 @@ def extract_api_endpoints() -> dict[str, set[str]]:
             # Determine prefix from the app structure
             rel = str(url_file.relative_to(PROJECT_ROOT))
             if "hub/apps/" in rel:
-                app = rel.split("hub/apps/")[1].split("/")[0]
+                app = rel.split("hub/apps/")[1].split("/", maxsplit=1)[0]
                 endpoints[app].add(pattern)
 
     return dict(endpoints)

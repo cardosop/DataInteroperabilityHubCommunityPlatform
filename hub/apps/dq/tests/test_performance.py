@@ -160,17 +160,13 @@ class DQPerformanceTest(DQAPITestBase):
 
         # First (cold) request — establishes baseline query count.
         reset_queries()
-        response1 = self.client.get(
-            f"/api/v1/dq/runs/{dq_run.id}/results/", format="json"
-        )
+        response1 = self.client.get(f"/api/v1/dq/runs/{dq_run.id}/results/", format="json")
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
         cold_queries = len(connection.queries)
 
         # Second (warm) request — must not exceed the cold count.
         reset_queries()
-        response2 = self.client.get(
-            f"/api/v1/dq/runs/{dq_run.id}/results/", format="json"
-        )
+        response2 = self.client.get(f"/api/v1/dq/runs/{dq_run.id}/results/", format="json")
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         warm_queries = len(connection.queries)
 
@@ -219,8 +215,7 @@ class DQPerformanceTest(DQAPITestBase):
         self.assertLess(
             execution_time,
             5000,
-            f"Cached DQ results request too slow: {execution_time:.2f}ms "
-            f"(smoke threshold: 5000ms)",
+            f"Cached DQ results request too slow: {execution_time:.2f}ms (smoke threshold: 5000ms)",
         )
         # Warm path should be lightweight — fewer queries than a full
         # cold-path fetch.  20 is deliberately generous; the real

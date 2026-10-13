@@ -278,7 +278,7 @@ class DQServiceClient:
                 return cached_result
 
         # Define fallback response
-        def fallback_response(*args, **kwargs) -> dict[str, Any]:
+        def fallback_response(*_args, **_kwargs) -> dict[str, Any]:
             """Fallback response when circuit breaker is open or service fails."""
             return {
                 "overall_status": "UNKNOWN",
@@ -368,6 +368,17 @@ class DQServiceClient:
         try:
             result = self._circuit_breaker.call(execute_dq_check, fallback=fallback_response)
             return result
+        except (httpx.RequestError, httpx.TimeoutException) as e:
+            # P.4 degradation contract: a TRANSPORT failure (service down /
+            # unreachable) soft-fails to ``overall_status: UNKNOWN``
+            # immediately — the caller degrades instead of erroring.  The
+            # circuit breaker's fallback only fires once the circuit OPENS
+            # (threshold reached); below-threshold transport failures used
+            # to propagate, which broke the soft-fail contract on the very
+            # first outage.  HTTP *status* errors still propagate so real
+            # 4xx/5xx responses surface to callers.
+            logger.warning("dq_service_transport_soft_fail", error=str(e))
+            return fallback_response()
         except Exception as e:
             # The circuit breaker re-raised after the fallback (or the fallback
             # was bypassed).  This is an *operational* event — the caller is

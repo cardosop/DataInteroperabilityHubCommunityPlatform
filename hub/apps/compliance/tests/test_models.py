@@ -8,7 +8,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskLevel
@@ -26,11 +25,15 @@ class ComplianceRunModelTest(TestCase):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset",
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
         )
         self.job = Job.objects.create(
-            tenant=self.tenant, type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING, resource_type="ASSET",
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="ASSET",
             resource_id=self.asset.id,
         )
 
@@ -38,7 +41,9 @@ class ComplianceRunModelTest(TestCase):
 
     def test_create_compliance_run(self):
         compliance_run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
             status=ComplianceRunStatus.PENDING,
         )
         compliance_run.refresh_from_db()
@@ -51,25 +56,33 @@ class ComplianceRunModelTest(TestCase):
 
     def test_default_status_is_pending(self):
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         self.assertEqual(run.status, ComplianceRunStatus.PENDING)
 
     def test_default_scan_mode_is_file_scan(self):
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         self.assertEqual(run.scan_mode, "FILE_SCAN")
 
     def test_default_warehouse_config_is_empty_dict(self):
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         self.assertEqual(run.warehouse_config, {})
 
     def test_id_is_auto_generated_uuid(self):
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         self.assertIsNotNone(run.id)
         self.assertIsInstance(run.id, uuid.UUID)
@@ -78,7 +91,9 @@ class ComplianceRunModelTest(TestCase):
 
     def test_str_representation(self):
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         self.assertEqual(str(run), f"Compliance Run {run.id}")
 
@@ -91,20 +106,26 @@ class ComplianceRunModelTest(TestCase):
             run.clean()
 
     def test_clean_accepts_asset_only(self):
-        run = ComplianceRun(tenant=self.tenant, asset=self.asset, status=ComplianceRunStatus.PENDING)
+        run = ComplianceRun(
+            tenant=self.tenant, asset=self.asset, status=ComplianceRunStatus.PENDING
+        )
         # should not raise
         run.clean()
 
     def test_clean_accepts_dataset_only(self):
         from hub.apps.datasets.models import Dataset
+
         ds = Dataset.objects.create(tenant=self.tenant, format="CSV")
         run = ComplianceRun(tenant=self.tenant, dataset=ds, status=ComplianceRunStatus.PENDING)
         run.clean()
 
     def test_clean_accepts_file_only(self):
         from hub.apps.files.models import File
+
         f = File.objects.create(
-            tenant=self.tenant, name="f.csv", size=10,
+            tenant=self.tenant,
+            name="f.csv",
+            size=10,
             storage_path=f"tests/{uuid.uuid4().hex}.csv",
         )
         run = ComplianceRun(tenant=self.tenant, file=f, status=ComplianceRunStatus.PENDING)
@@ -121,15 +142,21 @@ class ComplianceRunModelTest(TestCase):
 
     def test_meta_ordering_by_created_at_desc(self):
         run_a = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         job2 = Job.objects.create(
-            tenant=self.tenant, type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING, resource_type="ASSET",
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="ASSET",
             resource_id=self.asset.id,
         )
         run_b = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=job2,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=job2,
         )
         runs = list(ComplianceRun.objects.all())
         # Newest first
@@ -140,7 +167,9 @@ class ComplianceRunModelTest(TestCase):
 
     def test_cascade_deletes_runs_when_tenant_deleted(self):
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset, job=self.job,
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
         )
         run_id = run.id
         self.tenant.delete()

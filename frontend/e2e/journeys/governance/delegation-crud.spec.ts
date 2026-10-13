@@ -49,6 +49,8 @@ async function createDelegationViaApi(
   });
 
   if (!resp.ok()) {
+    // intentional: diagnostic-only body read — the throw below carries the status;
+    // an unreadable body just yields an empty message.
     const body = await resp.text().catch(() => '');
     throw new Error(`createDelegationViaApi failed: ${resp.status()} ${body}`);
   }
@@ -63,7 +65,7 @@ test.describe('Approval Delegation CRUD @critical @quarantine', () => {
       const admin = await getTestUser();
 
       await loginUser(page, admin);
-      await page.goto('/governance/delegation');
+      await page.goto('/settings/delegation');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
 
@@ -149,7 +151,7 @@ test.describe('Approval Delegation CRUD @critical @quarantine', () => {
       );
 
       await loginUser(page, admin);
-      await page.goto('/governance/delegation');
+      await page.goto('/settings/delegation');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
 
@@ -190,7 +192,7 @@ test.describe('Approval Delegation CRUD @critical @quarantine', () => {
       const admin = await getTestUser();
 
       await loginUser(page, admin);
-      await page.goto('/governance/delegation');
+      await page.goto('/settings/delegation');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
 
@@ -243,6 +245,8 @@ test.describe('Approval Delegation CRUD @critical @quarantine', () => {
         await page.waitForTimeout(500);
 
         const dateError = page.locator('.delegation-form-error');
+        // intentional: the form error is genuinely optional — some invalid
+        // inputs surface browser-native validation without the custom node.
         if ((await dateError.count()) > 0) {
           const errorText = await dateError.textContent();
           expect(errorText).toMatch(/end|after|start/i);
@@ -270,7 +274,7 @@ test.describe('Approval Delegation CRUD @critical @quarantine', () => {
       );
 
       await loginUser(page, admin);
-      await page.goto('/governance/delegation');
+      await page.goto('/settings/delegation');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
 
@@ -291,6 +295,9 @@ test.describe('Approval Delegation CRUD @critical @quarantine', () => {
 
       // It should show "Inactive" status (expired)
       const statusBadge = row.locator('.delegation-status-inactive');
+      // intentional: the badge class is genuinely optional across list renderings
+      // (status is also carried in the row text); when present it must read
+      // "Inactive".
       if ((await statusBadge.count()) > 0) {
         await expect(statusBadge).toContainText('Inactive');
       }

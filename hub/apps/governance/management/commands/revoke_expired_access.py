@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = "Revoke expired APPROVED access requests and expire stale PENDING requests by SLA"
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         now = timezone.now()
         revoked = 0
         total_expired = 0
@@ -43,9 +43,9 @@ class Command(BaseCommand):
         approved_count = expired_requests.count()
         if approved_count > 0:
             with transaction.atomic():
-                # Note: we do NOT select_related("order") here because
-                # "order" is a nullable FK and Postgres forbids FOR UPDATE
-                # on the nullable side of an outer join.
+                # Phase 313 paid-ward FK — the order link resolves through
+                # the commercial hook, so no select_related("order") here
+                # (the attribute no longer exists on the core model).
                 for request in expired_requests.select_for_update().select_related(
                     "tenant", "requested_by"
                 ):
@@ -53,24 +53,24 @@ class Command(BaseCommand):
                     request.save(update_fields=["status", "updated_at"])
 
                     # Cascade to marketplace entitlement
-                    if request.order:
-                        try:
-                            # Phase 313.1 — marketplace cascade via the
-                            # commercial hook (no-op in core-only mode:
-                            # governance still revokes the access request,
-                            # but no marketplace entitlement exists).
-                            from hub.apps.core.commercial_hooks import (
-                                revoke_order_entitlement,
-                            )
+                    try:
+                        # Phase 313.1 — marketplace cascade via the
+                        # commercial hook (no-op in core-only mode:
+                        # governance still revokes the access request,
+                        # but no marketplace entitlement exists).
+                        from hub.apps.core.commercial_hooks import (
+                            get_access_request_order,
+                            revoke_order_entitlement,
+                        )
 
-                            revoke_order_entitlement(
-                                request.order, reason="Governance access expired"
-                            )
-                        except Exception:
-                            logger.warning(
-                                "Failed to revoke entitlement for order %s",
-                                request.order_id,
-                            )
+                        order = get_access_request_order(request)
+                        if order is not None:
+                            revoke_order_entitlement(order, reason="Governance access expired")
+                    except Exception:
+                        logger.warning(
+                            "Failed to revoke entitlement for access request %s",
+                            request.id,
+                        )
 
                     create_audit_event(
                         resource_type="ACCESS_REQUEST",
@@ -102,53 +102,46 @@ class Command(BaseCommand):
             sla_days = tenant.access_request_pending_sla_days
             cutoff = now - timedelta(days=sla_days)
 
-            with tenant_context(tenant.id):
-                with transaction.atomic():
-                    # Explicit tenant= filter is load-bearing: in test
-                    # environments RLS policies may not be active, so
-                    # the query would otherwise sweep PENDING requests
-                    # from ALL tenants on every iteration, causing
-                    # cross-tenant data leakage and wrong audit payloads.
-                    stale = AccessRequest.objects.filter(
+            with tenant_context(tenant.id), transaction.atomic():
+                # Explicit tenant= filter is load-bearing: in test
+                # environments RLS policies may not be active, so
+                # the query would otherwise sweep PENDING requests
+                # from ALL tenants on every iteration, causing
+                # cross-tenant data leakage and wrong audit payloads.
+                stale = AccessRequest.objects.filter(
+                    tenant=tenant,
+                    status=AccessRequestStatus.PENDING,
+                    created_at__lt=cutoff,
+                ).select_for_update()
+
+                for ar in stale:
+                    age_days = (now - ar.created_at).total_seconds() / 86400
+
+                    ar.status = AccessRequestStatus.EXPIRED
+                    ar.save(update_fields=["status", "updated_at"])
+
+                    create_audit_event(
+                        resource_type="ACCESS_REQUEST",
+                        action="ACCESS_REQUEST_EXPIRED_BY_SLA",
                         tenant=tenant,
-                        status=AccessRequestStatus.PENDING,
-                        created_at__lt=cutoff,
-                    ).select_for_update()
-
-                    for ar in stale:
-                        age_days = (now - ar.created_at).total_seconds() / 86400
-
-                        ar.status = AccessRequestStatus.EXPIRED
-                        ar.save(update_fields=["status", "updated_at"])
-
-                        create_audit_event(
-                            resource_type="ACCESS_REQUEST",
-                            action="ACCESS_REQUEST_EXPIRED_BY_SLA",
-                            tenant=tenant,
-                            resource_id=str(ar.id),
-                            details={
-                                "previous_status": AccessRequestStatus.PENDING,
-                                "sla_days": sla_days,
-                                "age_days": round(age_days, 2),
-                                "access_request_id": str(ar.id),
-                                "tenant_id": str(tenant.id),
-                            },
-                        )
-                        total_expired += 1
+                        resource_id=str(ar.id),
+                        details={
+                            "previous_status": AccessRequestStatus.PENDING,
+                            "sla_days": sla_days,
+                            "age_days": round(age_days, 2),
+                            "access_request_id": str(ar.id),
+                            "tenant_id": str(tenant.id),
+                        },
+                    )
+                    total_expired += 1
 
         if revoked == 0 and total_expired == 0:
             self.stdout.write("No expired access requests found.")
             return
 
         if revoked > 0:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Revoked {revoked} expired access request(s)."
-                )
-            )
+            self.stdout.write(self.style.SUCCESS(f"Revoked {revoked} expired access request(s)."))
         if total_expired > 0:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Expired {total_expired} pending access request(s) by SLA."
-                )
+                self.style.SUCCESS(f"Expired {total_expired} pending access request(s) by SLA.")
             )

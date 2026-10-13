@@ -52,6 +52,34 @@ class WebhookEventType(models.TextChoices):
     revisiting D273.8.
     """
 
+    # Phase 2 (add-databricks-uc-write 2.8) — UC change-request lifecycle
+    # (the U4 approval UX emits these on every transition; subscribers
+    # route on the stable names below).
+    DATABRICKS_UC_CHANGE_SUBMITTED = (
+        "databricks.uc_change.submitted",
+        "Databricks UC Change Submitted",
+    )
+    DATABRICKS_UC_CHANGE_APPROVED = (
+        "databricks.uc_change.approved",
+        "Databricks UC Change Approved",
+    )
+    DATABRICKS_UC_CHANGE_REJECTED = (
+        "databricks.uc_change.rejected",
+        "Databricks UC Change Rejected",
+    )
+    DATABRICKS_UC_CHANGE_EXECUTED = (
+        "databricks.uc_change.executed",
+        "Databricks UC Change Executed",
+    )
+    DATABRICKS_UC_CHANGE_FAILED = (
+        "databricks.uc_change.failed",
+        "Databricks UC Change Failed",
+    )
+    DATABRICKS_UC_CHANGE_ROLLED_BACK = (
+        "databricks.uc_change.rolled_back",
+        "Databricks UC Change Rolled Back",
+    )
+
     # Contract events
     CONTRACT_CREATED = "contract.created", "Contract Created"
     CONTRACT_UPDATED = "contract.updated", "Contract Updated"
@@ -122,6 +150,33 @@ class WebhookEventType(models.TextChoices):
     VIRTUALIZATION_QUERY_EXECUTION_FAILED = (
         "virtualization.query.execution.failed",
         "Query Execution Failed",
+    )
+
+    # Databricks events (openspec add-databricks-jobs task 4.5) — the
+    # job fleet webhook surface. Fired on a terminal run failure by the
+    # 4.4 poller through the best-effort `notify_job_run_failed` seam
+    # (hub/apps/databricks_admin/job_webhooks.py).
+    DATABRICKS_JOB_RUN_FAILED = (
+        "databricks.job.run.failed",
+        "Databricks Job Run Failed",
+    )
+    # Databricks DLT pipelines (openspec add-databricks-dlt-pipelines
+    # task 10.6) — fired on a terminal FAILED update by the 10.6
+    # terminal transition through the best-effort
+    # `notify_dlt_update_failed` seam
+    # (hub/apps/databricks_admin/dlt_webhooks.py).
+    DATABRICKS_DLT_UPDATE_FAILED = (
+        "databricks.dlt.update.failed",
+        "Databricks DLT Update Failed",
+    )
+    # Databricks cost guardrails (openspec add-databricks-cost-guardrails
+    # task 7.6) — fired ONCE per rolling-window budget crossing (the
+    # Redis-crossing sentinel dedupes; a drop below 90% re-arms) by the
+    # enforcement observation
+    # (hub/apps/databricks_admin/budget_crossing.py).
+    DATABRICKS_BUDGET_EXCEEDED = (
+        "databricks.budget.exceeded",
+        "Databricks Budget Exceeded",
     )
 
     # File events (Phase 260.7.G — closes pass-3 B3-14)
@@ -369,6 +424,19 @@ class WebhookEventType(models.TextChoices):
             str(cls.VIRTUALIZATION_QUERY_EXECUTION_PROGRESS),
             str(cls.VIRTUALIZATION_QUERY_EXECUTION_COMPLETED),
             str(cls.VIRTUALIZATION_QUERY_EXECUTION_FAILED),
+        ]
+
+    @classmethod
+    def get_databricks_event_types(cls) -> list[str]:
+        """
+        Get all Databricks event type values.
+
+        Returns:
+            List of Databricks event type string values
+        """
+        return [
+            str(cls.DATABRICKS_JOB_RUN_FAILED),
+            str(cls.DATABRICKS_DLT_UPDATE_FAILED),
         ]
 
     @classmethod

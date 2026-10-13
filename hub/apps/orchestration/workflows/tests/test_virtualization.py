@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from hub.apps.orchestration.models import StepStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowStepValueError
 from hub.apps.orchestration.workflows.virtualization import VirtualizationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
@@ -131,7 +131,9 @@ class VirtualizationWorkflowUnitTest(TestCase):
         )
 
         # Validation should fail
-        with self.assertRaises(Exception):
+        with self.assertRaises(
+            WorkflowStepValueError
+        ):  # validate_query_syntax ValidationError wrapped by the task
             VirtualizationWorkflow._validate_query_task(input_data, instance, step)
 
     def test_validate_sources_task(self):

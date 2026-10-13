@@ -5,6 +5,7 @@ Tests use real dados.gov.br API endpoints - no mocks or stubs.
 Uses JWT Bearer token authentication.
 """
 
+import logging
 import os
 import unittest
 
@@ -12,12 +13,15 @@ import httpx
 import pytest
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.core.services.base import ConnectionError as HubConnectionError
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.connectors.dados_gov_br_client import DadosGovBrAPIClient
 from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
+
+logger = logging.getLogger(__name__)
 
 
 def handle_auth_failure(e: Exception) -> None:
@@ -36,7 +40,7 @@ def handle_auth_failure(e: Exception) -> None:
     """
     # Never skip on assertion failures — those are real test bugs.
     if isinstance(e, (AssertionError, unittest.SkipTest)):
-        raise
+        raise e
 
     error_str = str(e).lower()
     if (
@@ -70,13 +74,14 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         # connection is not left in a stale transaction for the next class.
         cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
-            raise unittest.SkipTest(
-                "CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests"
+            skip_or_fail(
+                "DADOS_GOV_BR_API_KEY / CKAN_DADOS_GOV_BR_API_KEY not set "
+                "(W16: CI raises, local skips)"
             )
 
         cls.instance_config = get_marketplace_instance_config("dados.gov.br")
         if not cls.instance_config:
-            raise unittest.SkipTest("dados.gov.br instance configuration not found")
+            skip_or_fail("dados.gov.br instance configuration not found (W16)")
 
         super().setUpClass()
 
@@ -173,8 +178,8 @@ class TestDadosGovBrConnectorIntegration(TestCase):
 
             # If we have results, they should be different
             if page1 and page2:
-                ids1 = {l.marketplace_id for l in page1}
-                ids2 = {l.marketplace_id for l in page2}
+                ids1 = {page1.marketplace_id for page1 in page1}
+                ids2 = {page2.marketplace_id for page2 in page2}
                 # Results may overlap, but not necessarily all the same
                 assert isinstance(ids1, set)
                 assert isinstance(ids2, set)
@@ -187,7 +192,8 @@ class TestDadosGovBrConnectorIntegration(TestCase):
 
     def test_get_listing_by_id(self):
         """Test getting a specific dataset by ID."""
-        try:
+
+        def _run() -> None:
             # First, get a listing ID from search
             listings = self.connector.list_listings(limit=1)
             if not listings:
@@ -203,8 +209,11 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             assert listing.marketplace_id is not None
             assert listing.title is not None
             assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
+
+        try:
+            _run()
         except NotFoundError:
-            raise unittest.SkipTest("Dataset not found - may have been deleted")
+            raise unittest.SkipTest("Dataset not found - may have been deleted") from None
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"get_listing failed: {e}")
@@ -227,7 +236,8 @@ class TestDadosGovBrConnectorIntegration(TestCase):
 
     def test_list_resources(self):
         """Test listing resources for a dataset."""
-        try:
+
+        def _run() -> None:
             # First, get a listing with resources
             listings = self.connector.list_listings(limit=10)
             if not listings:
@@ -260,8 +270,11 @@ class TestDadosGovBrConnectorIntegration(TestCase):
                 resource = resources[0]
                 assert resource.resource_id is not None
                 assert resource.name is not None
+
+        try:
+            _run()
         except NotFoundError:
-            raise unittest.SkipTest("Dataset not found - may have been deleted")
+            raise unittest.SkipTest("Dataset not found - may have been deleted") from None
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"list_resources failed: {e}")
@@ -271,7 +284,8 @@ class TestDadosGovBrConnectorIntegration(TestCase):
 
     def test_swagger_dataset_to_listing_mapping(self):
         """Test mapping Swagger dataset response to MarketplaceListing."""
-        try:
+
+        def _run() -> None:
             listings = self.connector.list_listings(limit=1)
             if not listings:
                 raise unittest.SkipTest("No datasets available for testing")
@@ -283,6 +297,9 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             assert listing.title is not None
             assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
             assert "swagger_dataset" in listing.metadata
+
+        try:
+            _run()
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"Dataset mapping failed: {e}")
@@ -292,7 +309,8 @@ class TestDadosGovBrConnectorIntegration(TestCase):
 
     def test_swagger_resource_to_marketplace_resource_mapping(self):
         """Test mapping Swagger resource response to MarketplaceResource."""
-        try:
+
+        def _run() -> None:
             # Get a listing with resources
             listings = self.connector.list_listings(limit=10)
             if not listings:
@@ -328,6 +346,9 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             assert resource.name is not None
             assert resource.resource_type in ["FILE", "API"]
             assert "swagger_resource" in resource.metadata
+
+        try:
+            _run()
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"Resource mapping failed: {e}")
@@ -387,8 +408,9 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
         # connection is not left in a stale transaction for the next class.
         cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
-            raise unittest.SkipTest(
-                "DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests"
+            skip_or_fail(
+                "DADOS_GOV_BR_API_KEY / CKAN_DADOS_GOV_BR_API_KEY not set "
+                "(W16: CI raises, local skips)"
             )
 
         super().setUpClass()
@@ -412,7 +434,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             # Network/API errors are expected when the external service is
             # unavailable — skip gracefully.
-            raise unittest.SkipTest(f"Swagger spec endpoint unavailable: {e}")
+            raise unittest.SkipTest(f"Swagger spec endpoint unavailable: {e}") from e
         # Spec may be None if endpoint returns HTML instead of JSON.
         # This is acceptable — we have fallback endpoints.
         if spec is not None:
@@ -447,7 +469,8 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
 
     def test_get_dataset(self):
         """Test getting dataset by ID."""
-        try:
+
+        def _run() -> None:
             # First, search for a dataset (API requires pagina parameter)
             search_response = self.api_client.search_datasets(page=1)
 
@@ -461,10 +484,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
                     results = search_response.get("results", [])
                 elif "result" in search_response:
                     result = search_response.get("result", {})
-                    if isinstance(result, list):
-                        results = result
-                    else:
-                        results = result.get("results", [])
+                    results = result if isinstance(result, list) else result.get("results", [])
 
             if not results:
                 raise unittest.SkipTest("No datasets available for testing")
@@ -484,6 +504,9 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             assert isinstance(response, dict)
             # Response may be direct object or wrapped in success/result
             assert isinstance(response, dict)
+
+        try:
+            _run()
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"get_dataset failed: {e}")
@@ -503,7 +526,9 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
         except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             # If we get authentication failure, token wasn't sent or was invalid
             handle_auth_failure(e)
-            raise unittest.SkipTest("Bearer token authentication failed - cannot test headers")
+            raise unittest.SkipTest(
+                "Bearer token authentication failed - cannot test headers"
+            ) from e
         except Exception as e:
             # If we get 401, token wasn't sent or was invalid
             if (
@@ -512,7 +537,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
                 or "authentication failed" in str(e).lower()
             ):
                 handle_auth_failure(e)
-                raise unittest.SkipTest("Bearer token not included in headers or invalid")
+                raise unittest.SkipTest("Bearer token not included in headers or invalid") from None
             raise
 
 
@@ -563,7 +588,7 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
         except (ValueError, ConnectionError, httpx.RequestError, httpx.HTTPStatusError) as e:
             raise unittest.SkipTest(
                 f"CKANConnector not registered or demo.ckan.org unavailable: {e}"
-            )
+            ) from e
 
     def test_data_gov_uses_ckan_connector(self):
         """Test that data.gov uses standard CKANConnector."""
@@ -580,7 +605,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance("data.gov")
             assert isinstance(connector, CKANConnector)
         except Exception as e:
-            raise unittest.SkipTest(f"CKANConnector not registered or data.gov unavailable: {e}")
+            raise unittest.SkipTest(
+                f"CKANConnector not registered or data.gov unavailable: {e}"
+            ) from e
 
     def test_dados_gov_br_uses_swagger_connector(self):
         """Test that dados.gov.br uses DadosGovBrConnector."""
@@ -600,7 +627,7 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             )
             assert isinstance(connector, DadosGovBrConnector)
         except Exception as e:
-            raise unittest.SkipTest(f"DadosGovBrConnector creation failed: {e}")
+            raise unittest.SkipTest(f"DadosGovBrConnector creation failed: {e}") from e
 
     def test_list_listings_with_zero_limit(self):
         """Test list_listings() edge case with zero limit"""
@@ -623,7 +650,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
                 "dados.gov.br connector not available (config or API key missing)"
             )
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: None limit for unbounded list exercise
+            listings = self.connector.list_listings(
+                limit=None
+            )  # test: None limit for unbounded list exercise
             self.assertIsInstance(listings, list)
         except Exception as e:
             handle_auth_failure(e)
@@ -694,5 +723,5 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
         with self.assertRaises((ValueError, TypeError)):
             DadosGovBrConnector(
                 base_url=self.instance_config.base_url,
-                jwt_token=None,  # type: ignore[arg-type]  # test: edge-case type exercise
+                jwt_token=None,  # test: edge-case type exercise
             )

@@ -104,7 +104,7 @@ if rate_limiting_config_file.exists():
                     dict_str = dict_str.replace("TimeWindow.DAILY", str(TimeWindow.DAILY))
                     with contextlib.suppress(builtins.BaseException):
                         PLATFORM_DEFAULT_LIMITS = ast.literal_eval(dict_str)
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"   ⚠ Warning: Could not parse PLATFORM_DEFAULT_LIMITS: {e}", file=sys.stderr)
 
     # Extract PLATFORM_MAXIMUM_LIMITS similarly
@@ -139,7 +139,7 @@ if rate_limiting_config_file.exists():
                     dict_str = dict_str.replace("TimeWindow.DAILY", str(TimeWindow.DAILY))
                     with contextlib.suppress(builtins.BaseException):
                         PLATFORM_MAXIMUM_LIMITS = ast.literal_eval(dict_str)
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"   ⚠ Warning: Could not parse PLATFORM_MAXIMUM_LIMITS: {e}", file=sys.stderr)
 
 # If parsing failed, read the actual values from the file
@@ -419,7 +419,7 @@ class RateLimitingConfigReviewer:
 
     def verify_all_rate_limiting_configs_reviewed(self) -> dict[str, Any]:
         """Verify that all rate limiting configs were reviewed"""
-        categories_reviewed = len(set(rule.category for rule in self.rate_limit_rules))
+        categories_reviewed = len({rule.category for rule in self.rate_limit_rules})
         total_categories = len(
             set(PLATFORM_DEFAULT_LIMITS.keys()) | set(PLATFORM_MAXIMUM_LIMITS.keys())
         )
@@ -441,7 +441,7 @@ class RateLimitingConfigReviewer:
     def verify_rate_limiting_mapping(self) -> dict[str, Any]:
         """Verify rate limiting mapping completeness"""
         endpoints_mapped = len(self.endpoint_mappings)
-        categories_with_endpoints = len(set(m.category for m in self.endpoint_mappings))
+        categories_with_endpoints = len({m.category for m in self.endpoint_mappings})
 
         # Check coverage by category
         category_coverage = {}

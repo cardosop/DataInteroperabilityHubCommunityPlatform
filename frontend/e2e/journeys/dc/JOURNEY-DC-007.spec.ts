@@ -41,7 +41,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data @critical
       });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session lost — token refresh likely failed under E2E load');
+        test.skip(page.url().includes('/login'), 'Auth session lost — token refresh likely failed under E2E load');
         return;
       }
 
@@ -55,7 +55,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data @critical
         page.url().includes('/transformation') &&
         (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -67,7 +67,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data @critical
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -107,21 +107,21 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data @critical
       });
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .app-main, [data-testid="app-main"]')
+        .locator('.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .app-main, [data-testid="app-main"], .disabled-capability-page, [data-testid="disabled-capability-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 10000 })
         .catch(() => null);
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
+        test.skip(page.url().includes('/login'), 'Auth session lost during navigation — token refresh likely failed under E2E load');
         return;
       }
 
       const capabilityEnabled =
         (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -134,7 +134,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data @critical
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });

@@ -56,7 +56,7 @@ class Command(BaseCommand):
             help="Force migration even if contract is already at target version",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run = options["dry_run"]
         batch_size = options["batch_size"]
         target_version = options["target_version"] or get_current_hubcontract_version()

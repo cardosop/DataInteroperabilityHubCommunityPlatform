@@ -144,7 +144,7 @@ class ODPSExportFormatGenerationTest(ContractsTestBase):
                     and not line.strip().startswith("}")
                 ):
                     # Check if indentation is present (at least some spaces)
-                    self.assertTrue(line.startswith(" ") or line.startswith("\t"))
+                    self.assertTrue(line.startswith((" ", "\t")))
 
         # Verify structure is preserved
         self.assertIn("schema", parsed)
@@ -160,22 +160,28 @@ class ODPSExportFormatGenerationTest(ContractsTestBase):
         """
         # Create ODPS doc with non-ASCII characters
         odps_with_unicode = self.odps_doc.copy()
-        if "product" in odps_with_unicode and "details" in odps_with_unicode["product"]:
-            if "en" in odps_with_unicode["product"]["details"]:
-                odps_with_unicode["product"]["details"]["en"]["description"] = (
-                    "Test with émojis 🎉 and ñoño"
-                )
+        if (
+            "product" in odps_with_unicode
+            and "details" in odps_with_unicode["product"]
+            and "en" in odps_with_unicode["product"]["details"]
+        ):
+            odps_with_unicode["product"]["details"]["en"]["description"] = (
+                "Test with émojis 🎉 and ñoño"
+            )
 
         # Generate JSON with ensure_ascii=False (default)
         json_output = format_odps_as_json(odps_with_unicode, ensure_ascii=False)
         parsed = json.loads(json_output)
 
         # Verify unicode is preserved
-        if "product" in parsed and "details" in parsed["product"]:
-            if "en" in parsed["product"]["details"]:
-                desc = parsed["product"]["details"]["en"].get("description", "")
-                if "émojis" in desc or "🎉" in desc:
-                    self.assertIn("émojis", desc or "")
+        if (
+            "product" in parsed
+            and "details" in parsed["product"]
+            and "en" in parsed["product"]["details"]
+        ):
+            desc = parsed["product"]["details"]["en"].get("description", "")
+            if "émojis" in desc or "🎉" in desc:
+                self.assertIn("émojis", desc or "")
 
     def test_format_odps_as_yaml_success(self):
         """

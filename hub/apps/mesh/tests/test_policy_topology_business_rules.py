@@ -18,7 +18,6 @@ All tests use real implementations (no mocks/stubs) to ensure integration.
 
 import uuid
 
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
@@ -37,7 +36,6 @@ from hub.apps.mesh.models import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
-
 
 
 class PolicyBusinessRulesTest(TestCase):

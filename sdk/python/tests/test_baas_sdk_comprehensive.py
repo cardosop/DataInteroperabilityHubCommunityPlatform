@@ -29,7 +29,6 @@ import os
 import subprocess
 import sys
 import uuid
-from typing import Optional
 
 import pytest
 
@@ -42,7 +41,7 @@ from datahub_interoperability.errors import (
 )
 
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
+def setup_authentication_for_sdk_tests(_api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
@@ -57,7 +56,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         key = _create_baas_comprehensive_tenant_and_key()
         if key:
             return key
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
 
     # Method 2: Use canonical conftest helper
@@ -67,7 +66,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         canonical = get_api_key()
         if canonical:
             return canonical
-    except Exception:
+    except (OSError, ValueError, AttributeError, RuntimeError):
         pass
 
     # Method 3: Environment variables (last resort)
@@ -78,7 +77,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     return None
 
 
-def _create_baas_comprehensive_tenant_and_key() -> Optional[str]:
+def _create_baas_comprehensive_tenant_and_key() -> str | None:
     """Create a dedicated tenant with ``baas_enabled=True`` and return an API key."""
     try:
         unique_id = uuid.uuid4().hex[:8]
@@ -161,8 +160,8 @@ try:
     from hub.apps.tenants.models import TenantPlan
     plan = TenantPlan.objects.first()
     if plan:
-        Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
-        Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
+        Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={{'plan': plan, 'status': SubscriptionStatus.ACTIVE}})
+        Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={{'plan': plan, 'status': SubscriptionStatus.ACTIVE}})
 
     print('API_KEY_START', file=sys.stdout, flush=True)
     print(api_key_value, file=sys.stdout, flush=True)
@@ -201,8 +200,8 @@ except Exception as e:
 
             in_api_key = False
             api_key = None
-            for line in output_lines:
-                line = line.strip()
+            for raw_line in output_lines:
+                line = raw_line.strip()
                 if line == "API_KEY_START":
                     in_api_key = True
                     continue
@@ -225,7 +224,7 @@ except Exception as e:
             print(f"Django shell failed with return code {result.returncode}", file=sys.stderr)
             print(f"STDOUT: {result.stdout[:500]}", file=sys.stderr)
             print(f"STDERR: {result.stderr[:500]}", file=sys.stderr)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"Error creating API key: {e}", file=sys.stderr)
         import traceback
 
@@ -290,9 +289,9 @@ class TestBaaSSDKComprehensive:
         """Test creating API key with expiration date"""
         unique_id = uuid.uuid4().hex[:8]
         # Use a date in the future (1 year from now)
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
-        future_date = (datetime.utcnow() + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        future_date = (datetime.now(UTC) + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
         result = await baas_api.create_api_key(
             name=f"SDK Expiring Key {unique_id}", tier="FREE", expires_at=future_date
         )

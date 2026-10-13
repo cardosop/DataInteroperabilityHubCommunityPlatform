@@ -416,9 +416,11 @@ class TestMaxNestingDepthSettingOverride:
         from hub.apps.contracts.normalization_engine import _map_fields
 
         schema = _build_chain_via_properties(depth=3)
-        with override_settings(CONTRACTS_MAX_NESTING_DEPTH=2):
-            with pytest.raises(ValidationError) as exc:
-                _map_fields(schema, [], [], [])
+        with (
+            override_settings(CONTRACTS_MAX_NESTING_DEPTH=2),
+            pytest.raises(ValidationError) as exc,
+        ):
+            _map_fields(schema, [], [], [])
         assert exc.value.code == "SCHEMA_TOO_DEEP"
         assert "limit 2" in str(exc.value), (
             f"Override-bound message should reference the new limit; got {str(exc.value)!r}"
@@ -534,7 +536,7 @@ class TestPropertiesFieldsEquivalence:
 
 
 @pytest.mark.parametrize(
-    "version_module,version_class,spec_version,api_version",
+    ("version_module", "version_class", "spec_version", "api_version"),
     [
         (
             "hub.apps.contracts.normalization.odcs_normalizer_v2_2_2",
@@ -717,7 +719,6 @@ class TestHubContractFieldRecursive:
 # ---------------------------------------------------------------------------
 
 try:
-    import hypothesis  # noqa: F401
     from hypothesis import given
     from hypothesis import settings as hyp_settings
     from hypothesis import strategies as st

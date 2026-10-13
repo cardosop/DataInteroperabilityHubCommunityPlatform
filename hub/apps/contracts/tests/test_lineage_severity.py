@@ -93,9 +93,7 @@ class TestCritical:
         result = classify(diff, contract_diff)
         # Field removed with no downstream dependents + derivation ADDED
         # → HIGH (not CRITICAL — no one depends on the removed field).
-        assert result == Severity.HIGH, (
-            f"Expected HIGH, got {result}"
-        )
+        assert result == Severity.HIGH, f"Expected HIGH, got {result}"
 
     # REQ-LIN-F3-004 spec scenario "Removed derivation edge classified
     # CRITICAL" — pinned exactly per spec.

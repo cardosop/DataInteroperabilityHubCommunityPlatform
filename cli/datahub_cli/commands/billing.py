@@ -46,7 +46,7 @@ def get_subscription(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get subscription: {e}")
+        raise click.ClickException(f"Failed to get subscription: {e}") from e
 
 
 @billing.command("invoices")
@@ -99,7 +99,7 @@ def list_invoices(limit: int, offset: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list invoices: {e}")
+        raise click.ClickException(f"Failed to list invoices: {e}") from e
 
 
 @billing.command("plan-limits")
@@ -130,7 +130,7 @@ def plan_limits(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get plan limits: {e}")
+        raise click.ClickException(f"Failed to get plan limits: {e}") from e
 
 
 @billing.command("usage")
@@ -190,7 +190,7 @@ def get_usage(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get usage: {e}")
+        raise click.ClickException(f"Failed to get usage: {e}") from e
 
 
 @billing.command("refund")
@@ -247,7 +247,7 @@ def process_refund(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to process refund: {e}")
+        raise click.ClickException(f"Failed to process refund: {e}") from e
 
 
 @billing.command("reconcile")
@@ -278,7 +278,7 @@ def reconcile(dry_run: bool, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to reconcile: {e}")
+        raise click.ClickException(f"Failed to reconcile: {e}") from e
 
 
 @billing.command("invoice")
@@ -313,4 +313,4 @@ def get_invoice(invoice_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get invoice: {e}")
+        raise click.ClickException(f"Failed to get invoice: {e}") from e

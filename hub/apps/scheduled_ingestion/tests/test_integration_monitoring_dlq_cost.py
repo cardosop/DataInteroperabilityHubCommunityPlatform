@@ -119,13 +119,13 @@ class MonitoringDLQCostIntegrationTest(TestCase):
         )
 
         # Verify monitoring dashboard
-        self.assertEqual(dashboard["summary"]["total_runs"], 2)
-        self.assertEqual(dashboard["summary"]["completed_runs"], 2)
+        assert dashboard["summary"]["total_runs"] == 2
+        assert dashboard["summary"]["completed_runs"] == 2
 
         # Verify DLQ dashboard
-        self.assertEqual(dlq_dashboard["summary"]["total_items"], 1)
-        self.assertEqual(dlq_dashboard["summary"]["pending_items"], 1)
+        assert dlq_dashboard["summary"]["total_items"] == 1
+        assert dlq_dashboard["summary"]["pending_items"] == 1
 
         # Verify cost report
-        self.assertGreater(cost_report["summary"]["total_cost_usd"], 0.0)
-        self.assertEqual(cost_report["summary"]["total_runs"], 2)
+        assert cost_report["summary"]["total_cost_usd"] > 0.0
+        assert cost_report["summary"]["total_runs"] == 2

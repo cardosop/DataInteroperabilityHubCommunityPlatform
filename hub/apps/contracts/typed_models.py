@@ -569,7 +569,6 @@ def validate_hub_contract_dict(
     """
     try:
         model = HubContractModel.model_validate(hub_contract)
-        return model, []
     except ValidationError as exc:
         errors: list[str] = []
         for error in exc.errors():
@@ -577,6 +576,8 @@ def validate_hub_contract_dict(
             message = error.get("msg", "Invalid value")
             errors.append(f"{location}: {message}" if location else message)
         return None, errors
+    else:
+        return model, []
 
 
 # Phase 227 Wave 1 (227.L2.2) — resolve forward refs.

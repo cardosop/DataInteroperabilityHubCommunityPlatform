@@ -75,7 +75,7 @@ class WebhookReceiver:
             with self._lock:
                 if self._received:
                     return True
-            time.sleep(0.5)
+            time.sleep(0.5)  # INTENTIONAL: webhook delivery wait
         return False
 
 

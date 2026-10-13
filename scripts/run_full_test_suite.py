@@ -84,7 +84,7 @@ def check_services() -> bool:
             else:
                 print(f"⚠️  {service_name} is not available on {host}:{port}")
                 all_available = False
-        except Exception as e:
+        except OSError as e:
             print(f"⚠️  Could not check {service_name}: {e}")
             all_available = False
 
@@ -108,9 +108,10 @@ def find_test_files(category: str) -> list[str]:
                 continue
 
             # For unit tests, exclude integration and e2e files
-            if category == "unit":
-                if "integration" in str(test_file).lower() or "e2e" in str(test_file).lower():
-                    continue
+            if category == "unit" and (
+                "integration" in str(test_file).lower() or "e2e" in str(test_file).lower()
+            ):
+                continue
 
             # Convert to relative path
             rel_path = test_file.relative_to(PROJECT_ROOT)
@@ -237,7 +238,7 @@ def run_tests_by_directory(category: str, verbose: bool = True) -> tuple[int, st
     except subprocess.TimeoutExpired:
         duration = time.time() - start_time
         return 1, f"Test execution timed out after {config['timeout'] // 60} minutes", duration
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         duration = time.time() - start_time
         return 1, f"Error running tests: {e!s}", duration
 
@@ -265,7 +266,8 @@ def run_pytest_tests(
         "-v" if verbose else "",
         "--tb=short",
         "--no-header",
-    ] + test_paths
+        *test_paths,
+    ]
 
     # Remove empty strings
     cmd = [c for c in cmd if c]
@@ -290,7 +292,7 @@ def run_pytest_tests(
     except subprocess.TimeoutExpired:
         duration = time.time() - start_time
         return 1, f"Test execution timed out after {config['timeout'] // 60} minutes", duration
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         duration = time.time() - start_time
         return 1, f"Error running tests: {e!s}", duration
 

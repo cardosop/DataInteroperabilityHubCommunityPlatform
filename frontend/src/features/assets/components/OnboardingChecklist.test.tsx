@@ -6,11 +6,23 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Contract } from '../../../shared/types/contracts';
 import type { Dataset } from '../../../shared/types/datasets';
 import { OnboardingChecklist, type OnboardingChecklistProps } from './OnboardingChecklist';
+
+// The checklist derives step state from useAssetWorkflowStatus (react-query
+// against the workflow-status endpoint). Component tests mock THAT data
+// boundary — the module-boundary pattern, not a stub of the unit under test.
+vi.mock('../hooks/useAssetWorkflowStatus', () => ({
+  useAssetWorkflowStatus: () => ({
+    data: { dq_status: 'PENDING', compliance_status: 'PENDING' },
+    isLoading: false,
+    error: null,
+  }),
+}));
 
 /** Shown when navigation targets /contracts/:id */
 function ContractNavMarker() {
@@ -25,16 +37,18 @@ function renderChecklist(overrides: Partial<OnboardingChecklistProps> = {}) {
     complianceStatus: 'PENDING',
     ...overrides,
   };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <MemoryRouter initialEntries={['/assets/checklist-asset']}>
-      <Routes>
-        <Route
-          path="/assets/:assetId"
-          element={<OnboardingChecklist {...defaultProps} />}
-        />
-        <Route path="/contracts/:id" element={<ContractNavMarker />} />
-      </Routes>
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/assets/checklist-asset']}>
+        <Routes>
+          <Route path="/assets/:assetId" element={<OnboardingChecklist {...defaultProps} />} />
+          <Route path="/contracts/:id" element={<ContractNavMarker />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 
@@ -90,7 +104,9 @@ describe('OnboardingChecklist', () => {
 
   it('should mark step 3 (Validate & Normalize) as completed with valid, normalized contract', () => {
     renderChecklist({
-      contracts: [makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' })],
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
     });
     const step = screen.getByTestId('onboarding-step-validate-contract');
     expect(step).toHaveClass('completed');
@@ -98,7 +114,9 @@ describe('OnboardingChecklist', () => {
 
   it('should mark step 3 as pending with contract that has NOT_NORMALIZED status', () => {
     renderChecklist({
-      contracts: [makeContract({ normalization_status: 'NOT_NORMALIZED', validation_status: 'VALID' })],
+      contracts: [
+        makeContract({ normalization_status: 'NOT_NORMALIZED', validation_status: 'VALID' }),
+      ],
     });
     const step = screen.getByTestId('onboarding-step-validate-contract');
     expect(step).toHaveClass('pending');
@@ -107,7 +125,13 @@ describe('OnboardingChecklist', () => {
   it('should navigate to contract detail when "View Contract" action is clicked', async () => {
     const user = userEvent.setup();
     renderChecklist({
-      contracts: [makeContract({ id: 'c-123', normalization_status: 'NOT_NORMALIZED', validation_status: 'INVALID' })],
+      contracts: [
+        makeContract({
+          id: 'c-123',
+          normalization_status: 'NOT_NORMALIZED',
+          validation_status: 'INVALID',
+        }),
+      ],
     });
     const action = screen.getByTestId('onboarding-action-validate-contract');
     await user.click(action);
@@ -146,7 +170,9 @@ describe('OnboardingChecklist', () => {
 
   it('should show progress 6/6 when all steps are completed', () => {
     renderChecklist({
-      contracts: [makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' })],
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
       datasets: [makeDataset()],
       dqStatus: 'PASS',
       complianceStatus: 'COMPLIANT',
@@ -156,7 +182,9 @@ describe('OnboardingChecklist', () => {
 
   it('should show correct progress for contract-only path (DQ/Compliance skipped as satisfied)', () => {
     renderChecklist({
-      contracts: [makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' })],
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
       datasets: [],
       dqStatus: 'PENDING',
       complianceStatus: 'PENDING',
@@ -166,7 +194,9 @@ describe('OnboardingChecklist', () => {
 
   it('should render progress bar with correct width percentage', () => {
     renderChecklist({
-      contracts: [makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' })],
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
       datasets: [makeDataset()],
       dqStatus: 'PENDING',
       complianceStatus: 'PENDING',
@@ -187,25 +217,28 @@ describe('OnboardingChecklist', () => {
 
   it('marks required steps with data-required="true" and optional steps with "false"', () => {
     renderChecklist({ assetId: 'asset-req' });
-    expect(
-      screen.getByTestId('onboarding-step-create-asset'),
-    ).toHaveAttribute('data-required', 'true');
-    expect(
-      screen.getByTestId('onboarding-step-attach-contract'),
-    ).toHaveAttribute('data-required', 'true');
-    expect(
-      screen.getByTestId('onboarding-step-validate-contract'),
-    ).toHaveAttribute('data-required', 'true');
+    expect(screen.getByTestId('onboarding-step-create-asset')).toHaveAttribute(
+      'data-required',
+      'true'
+    );
+    expect(screen.getByTestId('onboarding-step-attach-contract')).toHaveAttribute(
+      'data-required',
+      'true'
+    );
+    expect(screen.getByTestId('onboarding-step-validate-contract')).toHaveAttribute(
+      'data-required',
+      'true'
+    );
     // Dataset and downstream DQ/Compliance are optional for contract-only assets.
-    expect(
-      screen.getByTestId('onboarding-step-upload-dataset'),
-    ).toHaveAttribute('data-required', 'false');
-    expect(
-      screen.getByTestId('onboarding-step-run-dq'),
-    ).toHaveAttribute('data-required', 'false');
-    expect(
-      screen.getByTestId('onboarding-step-run-compliance'),
-    ).toHaveAttribute('data-required', 'false');
+    expect(screen.getByTestId('onboarding-step-upload-dataset')).toHaveAttribute(
+      'data-required',
+      'false'
+    );
+    expect(screen.getByTestId('onboarding-step-run-dq')).toHaveAttribute('data-required', 'false');
+    expect(screen.getByTestId('onboarding-step-run-compliance')).toHaveAttribute(
+      'data-required',
+      'false'
+    );
   });
 
   it('labels optional steps with an "(optional)" tag in the DOM', () => {
@@ -218,10 +251,7 @@ describe('OnboardingChecklist', () => {
     renderChecklist({ assetId: 'asset-abc', contracts: [] });
     const action = screen.getByTestId('onboarding-action-attach-contract');
     expect(action.tagName).toBe('A');
-    expect(action).toHaveAttribute(
-      'href',
-      '/contracts/create?asset_id=asset-abc',
-    );
+    expect(action).toHaveAttribute('href', '/contracts/create?asset_id=asset-abc');
   });
 
   it('renders Activate step and invokes onActivate when clicked (ready to activate)', async () => {

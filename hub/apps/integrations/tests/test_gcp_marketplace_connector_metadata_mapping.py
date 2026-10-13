@@ -29,7 +29,28 @@ from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarket
 
 
 class TestGCPMarketplaceConnectorMetadataMapping(TestCase):
-    """Test metadata mapping operations"""
+    """Test metadata mapping operations.
+
+    The GCP connector requires the optional Google Cloud SDK; the whole
+    class skips when it is absent.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest as _unittest
+
+        try:
+            from hub.apps.integrations.connectors.gcp_marketplace_connector import (
+                GCPMarketplaceConnector as _GCP,
+            )
+
+            # Construction is where the optional SDK gets imported.
+            _GCP(project_id="probe", use_adc=True)
+        except (ImportError, ValueError):
+            raise _unittest.SkipTest(
+                "Google Cloud SDK not installed (google-cloud-bigquery etc.)"
+            ) from None
+        super().setUpClass()
 
     def setUp(self):
         """Set up test fixtures"""
@@ -406,7 +427,7 @@ class TestGCPMarketplaceConnectorMetadataMapping(TestCase):
     def test_create_listing_with_none(self):
         """Test create_listing() error handling with None"""
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.create_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+            self.connector.create_listing(None)  # test: edge-case type exercise
 
     def test_update_listing_with_invalid_id(self):
         """Test update_listing() error handling with invalid ID"""

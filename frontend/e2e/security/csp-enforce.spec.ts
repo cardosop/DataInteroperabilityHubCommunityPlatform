@@ -1,12 +1,16 @@
 /**
  * E2E Security: CSP Enforce Mode (Phase 14 / task 7.7)
  *
- * Verifies that the nginx frontend sends `Content-Security-Policy` (enforce mode)
+ * Verifies that the frontend sends `Content-Security-Policy` (enforce mode)
  * and NOT `Content-Security-Policy-Report-Only` on HTML responses.
  *
- * Tests use Playwright's `request` API so they hit the real nginx container
- * rather than the browser's network stack — this gives us the raw response
- * headers without any browser preprocessing.
+ * Tests use Playwright's `request` API for raw response headers without any
+ * browser preprocessing. They run against BOTH servers that serve the SPA:
+ * nginx (test/prod config) and the Vite dev server — the dev server's
+ * securityHeadersPlugin (vite.config.ts) keeps the header set at nginx
+ * parity, so the positive baseline is asserted in every environment; the
+ * one genuine dev-only deviation ('unsafe-inline' for HMR) is scoped in the
+ * directives test.
  *
  * These tests do NOT require authentication: the root path `/` returns the
  * SPA shell with security headers before any auth check is performed.
@@ -47,18 +51,33 @@ const EXPECTED_DIRECTIVE_PATTERNS: { name: string; pattern: RegExp }[] = [
 ];
 
 // Sources that MUST NEVER appear in script-src (security regression guards)
-const FORBIDDEN_SCRIPT_SRC = ["'unsafe-eval'", "'unsafe-inline'"] as const;
+const FORBIDDEN_SCRIPT_SRC = ["'unsafe-eval'"] as const;
+// 'unsafe-inline' in script-src is an XSS escape hatch BEHIND NGINX — but the
+// Vite dev server legitimately allows it for HMR client injection
+// (securityHeadersPlugin in vite.config.ts). Enforce the prohibition only
+// where the production CSP baseline applies.
+const NGINX_ONLY_FORBIDDEN_SCRIPT_SRC = ["'unsafe-inline'"] as const;
+
+/** Detect which server served the probe: nginx sends `Server: nginx/...`;
+ * the Vite dev server sends no Server header. CSP presence alone no longer
+ * discriminates — Vite serves a CSP too (securityHeadersPlugin), it just
+ * differs in the script-src escape hatch above. */
+async function probeServingServer(request: import('@playwright/test').APIRequestContext): Promise<'nginx' | 'dev'> {
+  const probe = await request.get('/');
+  const server = probe.headers()['server'] ?? '';
+  return /^nginx/i.test(server) ? 'nginx' : 'dev';
+}
 
 test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
-  // CSP headers are served by Nginx, not Vite dev server.
-  // Skip the entire suite when running against Vite (dev mode).
+  // Run against BOTH servers: nginx (test/prod config) and the Vite dev
+  // server (securityHeadersPlugin keeps the header set at parity so the
+  // positive baseline is asserted in every environment). The one genuine
+  // deviation — dev-only 'unsafe-inline' for HMR — is scoped in the
+  // directives test below.
+  let servingServer: 'nginx' | 'dev' = 'dev';
+
   test.beforeEach(async ({ request }) => {
-    const probe = await request.get('/');
-    const server = probe.headers()['server'] ?? '';
-    const hasCSP = !!probe.headers()[CSP_ENFORCE_HEADER];
-    // Vite dev server identifies as empty or 'vite'; Nginx identifies as 'nginx/...'
-    const isNginx = /nginx/i.test(server) || hasCSP;
-    test.skip(!isNginx, 'CSP headers only present behind Nginx — Vite dev server does not serve them');
+    servingServer = await probeServingServer(request);
   });
 
   test('/ returns Content-Security-Policy (enforce), not Report-Only', async ({ request }) => {
@@ -80,7 +99,7 @@ test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
     ).toBeFalsy();
   });
 
-  test('CSP enforce header contains all required directives (env-agnostic)', async ({ request }) => {
+  test('CSP enforce header contains all required directives (env-aware)', async ({ request }) => {
     const response = await request.get('/');
     expect(response.ok()).toBeTruthy();
 
@@ -97,18 +116,25 @@ test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
       ).toMatch(pattern);
     }
 
-    // Negative assertions: script-src must NEVER allow unsafe-eval or unsafe-inline.
-    // These are XSS escape hatches and were the cause of the staging regression
-    // we hit during Phase 213.A (Playwright's `page.waitForFunction` with a
-    // string argument triggers eval()).
+    // Negative assertions on script-src. 'unsafe-eval' is forbidden
+    // EVERYWHERE — it was the cause of the staging regression during
+    // Phase 213.A (Playwright's `page.waitForFunction` with a string
+    // argument triggers eval()). 'unsafe-inline' is forbidden behind
+    // nginx only: the dev server needs it for Vite's HMR client
+    // injection (vite.config.ts securityHeadersPlugin) and the
+    // production build uses CSP hashes instead.
     const scriptSrcMatch = csp!.match(/script-src\s+([^;]+)/);
     expect(scriptSrcMatch, 'script-src directive must be present').toBeTruthy();
     const scriptSrcValue = scriptSrcMatch![1];
-    for (const forbidden of FORBIDDEN_SCRIPT_SRC) {
+    const forbidden =
+      servingServer === 'nginx'
+        ? [...FORBIDDEN_SCRIPT_SRC, ...NGINX_ONLY_FORBIDDEN_SCRIPT_SRC]
+        : FORBIDDEN_SCRIPT_SRC;
+    for (const source of forbidden) {
       expect(
         scriptSrcValue,
-        `script-src must NOT contain ${forbidden} (XSS escape hatch)`,
-      ).not.toContain(forbidden);
+        `script-src must NOT contain ${source} (XSS escape hatch${servingServer === 'dev' ? '; dev-server exception only applies to \'unsafe-inline\' for HMR' : ''})`,
+      ).not.toContain(source);
     }
   });
 
@@ -196,14 +222,13 @@ test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
     // is invisible to / but breaks every internal nav. Probe a known
     // route — /login is universally available and unauthenticated.
     const response = await request.get('/login');
-    if (!response.ok() && response.status() !== 200) {
-      // If the host doesn't serve /login as HTML (e.g. Vite returns 200 but
-      // not nginx-headers in some configurations), skip rather than fail.
-      test.skip(
-        true,
-        `/login returned ${response.status()} — not a valid HTML SPA shell on this host`,
-      );
-    }
+    // If the host doesn't serve /login as HTML (e.g. Vite returns 200 but
+    // not nginx-headers in some configurations), skip rather than fail.
+    const notSpaShell = !response.ok() && response.status() !== 200;
+    test.skip(
+      notSpaShell,
+      `/login returned ${response.status()} — not a valid HTML SPA shell on this host`,
+    );
     const headers = response.headers();
     // CSP must be present on SPA route shells too.
     expect(headers['content-security-policy']).toBeTruthy();

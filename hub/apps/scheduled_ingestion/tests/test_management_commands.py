@@ -126,7 +126,7 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         err = StringIO()
         call_command("detect_and_remediate_stuck_runs", stdout=out, stderr=err)
         output = out.getvalue()
-        self.assertIn("No stuck runs found", output)
+        assert "No stuck runs found" in output
 
     def test_detect_stuck_run_no_prefect_flow_id(self):
         """Test detection of stuck run without Prefect flow_run_id."""
@@ -142,13 +142,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         out = StringIO()
         call_command("detect_and_remediate_stuck_runs", stdout=out, dry_run=True)
         output = out.getvalue()
-        self.assertIn("Found 1 stuck run(s)", output)
-        self.assertIn(str(run.id), output)
-        self.assertIn("[DRY RUN]", output)
+        assert "Found 1 stuck run(s)" in output
+        assert str(run.id) in output
+        assert "[DRY RUN]" in output
 
         # Verify run not updated in dry-run mode
         run.refresh_from_db()
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.RUNNING)
+        assert run.status == ScheduledIngestionRunStatus.RUNNING
 
     def test_remediate_stuck_run_no_prefect_flow_id(self):
         """Test remediation of stuck run without Prefect flow_run_id."""
@@ -164,14 +164,14 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         out = StringIO()
         call_command("detect_and_remediate_stuck_runs", stdout=out)
         output = out.getvalue()
-        self.assertIn("Found 1 stuck run(s)", output)
-        self.assertIn("Marked hub run as FAILED", output)
+        assert "Found 1 stuck run(s)" in output
+        assert "Marked hub run as FAILED" in output
 
         # Verify run updated
         run.refresh_from_db()
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.FAILED)
-        self.assertIsNotNone(run.completed_at)
-        self.assertIn("Prefect flow run not found", run.error_message)
+        assert run.status == ScheduledIngestionRunStatus.FAILED
+        assert run.completed_at is not None
+        assert "Prefect flow run not found" in run.error_message
 
     def test_remediate_stuck_run_prefect_flow_failed(self):
         """Test remediation when Prefect flow run is FAILED (real HTTP server)."""
@@ -191,13 +191,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
             out = StringIO()
             call_command("detect_and_remediate_stuck_runs", stdout=out)
             output = out.getvalue()
-            self.assertIn("Found 1 stuck run(s)", output)
-            self.assertIn("Updated hub run to FAILED", output)
+            assert "Found 1 stuck run(s)" in output
+            assert "Updated hub run to FAILED" in output
             run.refresh_from_db()
-            self.assertEqual(run.status, ScheduledIngestionRunStatus.FAILED)
-            self.assertIsNotNone(run.completed_at)
-            self.assertIn("prefect flow run failed", run.error_message.lower())
-            self.assertIn("hub run status updated", run.error_message.lower())
+            assert run.status == ScheduledIngestionRunStatus.FAILED
+            assert run.completed_at is not None
+            assert "prefect flow run failed" in run.error_message.lower()
+            assert "hub run status updated" in run.error_message.lower()
         finally:
             server.shutdown()
             if prev is not None:
@@ -223,13 +223,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
             out = StringIO()
             call_command("detect_and_remediate_stuck_runs", stdout=out)
             output = out.getvalue()
-            self.assertIn("Found 1 stuck run(s)", output)
-            self.assertIn("Updated hub run to CANCELLED", output)
+            assert "Found 1 stuck run(s)" in output
+            assert "Updated hub run to CANCELLED" in output
             run.refresh_from_db()
-            self.assertEqual(run.status, ScheduledIngestionRunStatus.CANCELLED)
-            self.assertIsNotNone(run.completed_at)
-            self.assertIn("prefect flow run cancelled", run.error_message.lower())
-            self.assertIn("hub run status updated", run.error_message.lower())
+            assert run.status == ScheduledIngestionRunStatus.CANCELLED
+            assert run.completed_at is not None
+            assert "prefect flow run cancelled" in run.error_message.lower()
+            assert "hub run status updated" in run.error_message.lower()
         finally:
             server.shutdown()
             if prev is not None:
@@ -255,13 +255,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
             out = StringIO()
             call_command("detect_and_remediate_stuck_runs", stdout=out)
             output = out.getvalue()
-            self.assertIn("Found 1 stuck run(s)", output)
-            self.assertIn("Marked hub run as FAILED (stuck)", output)
+            assert "Found 1 stuck run(s)" in output
+            assert "Marked hub run as FAILED (stuck)" in output
             run.refresh_from_db()
-            self.assertEqual(run.status, ScheduledIngestionRunStatus.FAILED)
-            self.assertIsNotNone(run.completed_at)
-            self.assertIn("stuck run detected", run.error_message.lower())
-            self.assertIn("prefect flow still running", run.error_message.lower())
+            assert run.status == ScheduledIngestionRunStatus.FAILED
+            assert run.completed_at is not None
+            assert "stuck run detected" in run.error_message.lower()
+            assert "prefect flow still running" in run.error_message.lower()
         finally:
             server.shutdown()
             if prev is not None:
@@ -286,13 +286,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
             out = StringIO()
             call_command("detect_and_remediate_stuck_runs", stdout=out)
             output = out.getvalue()
-            self.assertIn("Found 1 stuck run(s)", output)
-            self.assertIn("Marked hub run as FAILED", output)
+            assert "Found 1 stuck run(s)" in output
+            assert "Marked hub run as FAILED" in output
             run.refresh_from_db()
-            self.assertEqual(run.status, ScheduledIngestionRunStatus.FAILED)
-            self.assertIsNotNone(run.completed_at)
-            self.assertIn("prefect flow run not found", run.error_message.lower())
-            self.assertIn("stuck run detected", run.error_message.lower())
+            assert run.status == ScheduledIngestionRunStatus.FAILED
+            assert run.completed_at is not None
+            assert "prefect flow run not found" in run.error_message.lower()
+            assert "stuck run detected" in run.error_message.lower()
         finally:
             if prev is not None:
                 os.environ["PREFECT_API_URL"] = prev
@@ -313,13 +313,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         out = StringIO()
         call_command("detect_and_remediate_stuck_runs", stdout=out)
         output = out.getvalue()
-        self.assertIn("No stuck runs found", output)
+        assert "No stuck runs found" in output
 
         # With custom threshold (0.5h), should detect
         out = StringIO()
         call_command("detect_and_remediate_stuck_runs", threshold_hours=0.5, stdout=out)
         output = out.getvalue()
-        self.assertIn("Found 1 stuck run(s)", output)
+        assert "Found 1 stuck run(s)" in output
 
     def test_multiple_stuck_runs(self):
         """Test command with multiple stuck runs."""
@@ -335,13 +335,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         out = StringIO()
         call_command("detect_and_remediate_stuck_runs", stdout=out, dry_run=True)
         output = out.getvalue()
-        self.assertIn("Found 3 stuck run(s)", output)
+        assert "Found 3 stuck run(s)" in output
 
         # Verify runs not updated in dry-run mode
         stuck_runs = ScheduledIngestionRun.objects.filter(
             status=ScheduledIngestionRunStatus.RUNNING
         )
-        self.assertEqual(stuck_runs.count(), 3)
+        assert stuck_runs.count() == 3
 
     def test_non_stuck_runs_not_affected(self):
         """Test that non-stuck runs are not affected."""
@@ -372,13 +372,13 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         out = StringIO()
         call_command("detect_and_remediate_stuck_runs", stdout=out)
         output = out.getvalue()
-        self.assertIn("Found 1 stuck run(s)", output)
+        assert "Found 1 stuck run(s)" in output
 
         # Verify only stuck run was updated
         recent_run.refresh_from_db()
         completed_run.refresh_from_db()
         stuck_run.refresh_from_db()
 
-        self.assertEqual(recent_run.status, ScheduledIngestionRunStatus.RUNNING)
-        self.assertEqual(completed_run.status, ScheduledIngestionRunStatus.COMPLETED)
-        self.assertEqual(stuck_run.status, ScheduledIngestionRunStatus.FAILED)
+        assert recent_run.status == ScheduledIngestionRunStatus.RUNNING
+        assert completed_run.status == ScheduledIngestionRunStatus.COMPLETED
+        assert stuck_run.status == ScheduledIngestionRunStatus.FAILED

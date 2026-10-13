@@ -139,7 +139,7 @@ class VersionImpactAnalyzer:
                 resource_id=str(dataset.asset.id),
                 resource_name=dataset.asset.name,
                 depth=depth + 1,
-                path=node.path + [f"asset:{dataset.asset.id}"],
+                path=[*node.path, f"asset:{dataset.asset.id}"],
             )
             node.children.append(asset_node)
 
@@ -161,7 +161,7 @@ class VersionImpactAnalyzer:
                         if isinstance(contract.hub_contract_json, dict)
                         else "Unnamed Contract",
                         depth=depth + 2,
-                        path=asset_node.path + [f"contract:{contract.id}"],
+                        path=[*asset_node.path, f"contract:{contract.id}"],
                     )
                     asset_node.children.append(contract_node)
 
@@ -185,7 +185,7 @@ class VersionImpactAnalyzer:
                             resource_id=str(other_dataset.id),
                             resource_name=f"{other_dataset.asset.name if other_dataset.asset else 'No Asset'} - Dataset v{other_dataset.version}",
                             depth=depth + 1,
-                            path=node.path + [f"dataset:{other_dataset.id}"],
+                            path=[*node.path, f"dataset:{other_dataset.id}"],
                         )
                         node.children.append(dataset_node)
 

@@ -151,7 +151,7 @@ class Command(BaseCommand):
         # tables that match any active pipeline's name prefix.
         # This is conservative: it's better to leave a table than to
         # drop a live one.
-        pipeline_name = table_name.split("_dlt_")[0] if "_dlt_" in table_name else ""
+        pipeline_name = table_name.split("_dlt_", maxsplit=1)[0] if "_dlt_" in table_name else ""
         if not pipeline_name:
             return True  # can't determine — keep it
 

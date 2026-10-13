@@ -8,4 +8,4 @@ class FilesConfig(AppConfig):
     def ready(self):
         """Import business rules and signals to register them."""
         import hub.apps.files.business_rules
-        import hub.apps.files.signals  # noqa: F401 - Register signal handlers
+        import hub.apps.files.signals  # side-effect import: registers pre_delete receiver

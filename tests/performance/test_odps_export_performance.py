@@ -16,12 +16,13 @@ Targets (CI-adjusted for shared DB, cold start, batch load):
 - Memory usage reasonable
 """
 
+import contextlib
 import json
 import os
 import time
 
 try:
-    import psutil
+    import psutil  # type: ignore[import-untyped]
 
     PSUTIL_AVAILABLE = True
 except ImportError:
@@ -39,7 +40,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
 
-def create_odps_document(product_id: str = None, size_kb: float = 1.0) -> dict:
+def create_odps_document(product_id: str | None = None, size_kb: float = 1.0) -> dict:
     """Create ODPS document of approximately specified size"""
     if not product_id:
         product_id = f"export-perf-{int(time.time() * 1000)}"
@@ -126,10 +127,8 @@ class ODPSExportPerformanceTestBase(TransactionTestCase):
     def tearDown(self):
         """Clean up test data"""
         if hasattr(self, "tenant"):
-            try:
+            with contextlib.suppress(Exception):  # teardown cleanup must not fail the test
                 Contract.objects.filter(tenant=self.tenant).delete()
-            except Exception:
-                pass  # Ignore cleanup errors
 
     @classmethod
     def _fixture_teardown(cls):

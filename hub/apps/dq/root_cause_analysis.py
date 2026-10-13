@@ -91,7 +91,7 @@ class RootCauseAnalyzer:
         }
 
     @staticmethod
-    def _check_schema_changes(dq_run: DQRun, historical_runs: Any) -> dict[str, Any] | None:
+    def _check_schema_changes(dq_run: DQRun, _historical_runs: Any) -> dict[str, Any] | None:
         """Check for schema changes as root cause"""
         if not dq_run.dataset:
             return None
@@ -214,7 +214,7 @@ class RootCauseAnalyzer:
         return root_causes
 
     @staticmethod
-    def _check_anomaly_correlation(dq_run: DQRun, historical_runs: Any) -> dict[str, Any] | None:
+    def _check_anomaly_correlation(dq_run: DQRun, _historical_runs: Any) -> dict[str, Any] | None:
         """Check for correlation with anomalies"""
         # Get recent anomalies
         start_date = timezone.now() - timedelta(days=7)
@@ -289,7 +289,7 @@ class RootCauseAnalyzer:
         }
 
     @staticmethod
-    def _calculate_confidence(cause: dict[str, Any], historical_runs: Any) -> float:
+    def _calculate_confidence(cause: dict[str, Any], _historical_runs: Any) -> float:
         """Calculate confidence score for a root cause"""
         base_confidence = cause.get("confidence", 0.5)
 

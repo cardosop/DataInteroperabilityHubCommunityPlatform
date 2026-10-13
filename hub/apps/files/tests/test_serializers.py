@@ -299,9 +299,11 @@ class ChecksumMismatchSerializerTest(TestCase):
     """Unit tests for ChecksumMismatchSerializer."""
 
     def test_valid_sha256_passes(self):
-        serializer = ChecksumMismatchSerializer(data={
-            "actual_sha256": "a" * 64,
-        })
+        serializer = ChecksumMismatchSerializer(
+            data={
+                "actual_sha256": "a" * 64,
+            }
+        )
         self.assertTrue(serializer.is_valid(), f"Errors: {serializer.errors}")
 
     def test_missing_actual_sha256_is_invalid(self):
@@ -310,16 +312,20 @@ class ChecksumMismatchSerializerTest(TestCase):
         self.assertIn("actual_sha256", serializer.errors)
 
     def test_sha256_too_short_is_invalid(self):
-        serializer = ChecksumMismatchSerializer(data={
-            "actual_sha256": "a" * 32,
-        })
+        serializer = ChecksumMismatchSerializer(
+            data={
+                "actual_sha256": "a" * 32,
+            }
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("actual_sha256", serializer.errors)
 
     def test_sha256_too_long_is_invalid(self):
-        serializer = ChecksumMismatchSerializer(data={
-            "actual_sha256": "a" * 65,
-        })
+        serializer = ChecksumMismatchSerializer(
+            data={
+                "actual_sha256": "a" * 65,
+            }
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("actual_sha256", serializer.errors)
 

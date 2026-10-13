@@ -38,13 +38,13 @@ class ArchiveOldAuditEventsTest(TestCase):
 
     def _create_event(self, age_days=0, **kwargs):
         """Create an audit event and backdate its timestamp."""
-        defaults = dict(
-            tenant=self.tenant,
-            actor_user=self.user,
-            resource_type="TEST",
-            action="CREATED",
-            result="SUCCESS",
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "actor_user": self.user,
+            "resource_type": "TEST",
+            "action": "CREATED",
+            "result": "SUCCESS",
+        }
         defaults.update(kwargs)
         event = AuditEvent.all_objects.create(**defaults)
         if age_days:

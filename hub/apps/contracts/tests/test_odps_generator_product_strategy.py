@@ -676,6 +676,4 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
         alignment = strategy["strategicAlignment"][0]
         self.assertIsInstance(alignment, dict)
         self.assertIn("nested", alignment)
-        self.assertIn(
-            "level1", alignment["nested"], "Nested structures should be preserved"
-        )
+        self.assertIn("level1", alignment["nested"], "Nested structures should be preserved")

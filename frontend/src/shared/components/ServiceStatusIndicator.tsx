@@ -42,7 +42,7 @@ export const ServiceStatusIndicator: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    let interval: ReturnType<typeof setInterval>;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     async function check() {
       try {

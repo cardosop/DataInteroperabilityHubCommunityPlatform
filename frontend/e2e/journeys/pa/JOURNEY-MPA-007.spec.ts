@@ -11,24 +11,27 @@
 
 import { expect, test } from '@playwright/test';
 import { getPlatformAdminUser, loginAsPersona } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MPA-007: Monitor Data Mesh Topology', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('mesh topology page loads', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/mesh/topology');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onTopology = page.url().includes('/mesh/topology');
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
-      if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
-        return;
-      }
-      expect(onTopology).toBe(true);
+      // Terminal-state navigation — the fixed 3s wait raced the route
+      // mount / capability fetch (batch b5 pattern).
+      await loginAndNavigateToRoute(page, await getPlatformAdminUser(), '/mesh/topology', {
+        timeout: 65000,
+        contentSelector:
+          '.topology-visualization, .app-main, [data-testid="app-main"], .mesh-domain-list-page, .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
+      });
+      const gated =
+        page.url().includes('/login') ||
+        page.url().includes('/403') ||
+        page.url().includes('/unavailable');
+      test.skip(gated, 'Auth/role/capability gated — skipping success assertion');
+      if (gated) return;
+      expect(page.url()).toContain('/mesh/topology');
       const hasContent =
         (await page.locator('.topology-visualization, .app-main, [data-testid="app-main"], .mesh-domain-list-page').count()) > 0;
       expect(hasContent).toBe(true);

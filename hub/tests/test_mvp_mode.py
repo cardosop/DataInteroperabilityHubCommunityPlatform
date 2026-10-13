@@ -36,18 +36,28 @@ class TestMvpModeMiddlewareAndOpenAPI:
             "/api/v1/social/communities/",
             "/api/v1/scheduled-ingestions/",
             "/api/v1/scheduled-exports/",
+            "/api/v1/databricks/workspaces/",
         ):
             r = api_client.get(path)
             assert r.status_code == status.HTTP_404_NOT_FOUND, path
 
     @override_settings(MVP_MODE=True)
     def test_mvp_core_paths_not_404(self, api_client: Client) -> None:
-        for path in (
+        paths = [
             "/api/v1/contracts/",
             "/api/v1/assets/",
             "/api/v1/marketplace/",
             "/api/v1/webhooks/",
-        ):
+        ]
+        # Phase 313 — the paid prefixes are not mounted in core-only mode.
+        import os
+
+        from hub.apps.manifest import _PAID_MODULES
+
+        if os.environ.get("HUB_CORE_ONLY") == "1":
+            paid_prefixes = {f"/api/v1/{module.split('.')[-1]}/" for module in _PAID_MODULES}
+            paths = [p for p in paths if p not in paid_prefixes]
+        for path in paths:
             r = api_client.get(path)
             assert r.status_code not in (
                 status.HTTP_404_NOT_FOUND,
@@ -68,6 +78,7 @@ class TestMvpModeMiddlewareAndOpenAPI:
         assert "social" not in keys.lower()
         assert "scheduled-ingestion" not in keys.lower()
         assert "scheduled-export" not in keys.lower()
+        assert "databricks" not in keys.lower()
 
     @override_settings(MVP_MODE=False)
     def test_mesh_reachable_when_mvp_off(self, api_client: Client) -> None:

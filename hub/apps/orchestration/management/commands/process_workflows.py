@@ -39,7 +39,7 @@ class Command(BaseCommand):
             "--once", action="store_true", help="Process one batch and exit (for testing)"
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         poll_interval = options["poll_interval"]
         batch_size = options["batch_size"]
         run_once = options["once"]
@@ -143,7 +143,7 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error processing workflows: {e}"))
             logger.error(f"Workflow processing error: {e}", exc_info=True)
-            raise CommandError(f"Workflow processing failed: {e}")
+            raise CommandError(f"Workflow processing failed: {e}") from e
 
     def _process_batch(self, workflow_engine: WorkflowEngine, batch_size: int) -> int:
         """

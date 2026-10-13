@@ -21,15 +21,15 @@ Exit 0 if under the allowed maximum, 1 if exceeded.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import re
 import sys
+import tokenize
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Match ``time.sleep(...)`` — capture the surrounding line for context.
-_SLEEP_RE = re.compile(r"time\.sleep\s*\(")
 # Allow line:  # noqa: sleep-needed
 _NOQA_RE = re.compile(r"#\s*noqa:\s*sleep-needed")
 
@@ -55,22 +55,62 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
 
 
 def check_file(file_path: str) -> tuple[int, int]:
-    """Return (total_sleep_calls, unannotated_sleep_calls)."""
+    """Return (total_sleep_calls, unannotated_sleep_calls).
+
+    Token-based scan: only REAL ``time.sleep(...)`` call sites count.
+    Comment / docstring / string-literal mentions are not calls (the
+    pre-8.2 line-regex counted docstring mentions as calls — three false
+    positives pushed the tree over the max). A syntax-error file counts
+    nothing (a broken test file cannot be collected anyway).
+    """
     total = 0
     unannotated = 0
     try:
         with open(file_path, encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except Exception:
+            source = fh.read()
+            lines = source.splitlines(keepends=True)
+    except OSError:
         return 0, 0
 
-    for i, line in enumerate(lines):
-        if _SLEEP_RE.search(line):
-            total += 1
-            # Check this line AND the previous line for noqa annotation.
-            prev_line = lines[i - 1] if i > 0 else ""
-            if not (_NOQA_RE.search(line) or _NOQA_RE.search(prev_line)):
-                unannotated += 1
+    _artifacts = {
+        tokenize.NL,
+        tokenize.NEWLINE,
+        tokenize.INDENT,
+        tokenize.DEDENT,
+        tokenize.COMMENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+    }
+    try:
+        raw_tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        # TokenError raises at ITERATION time, not at the call — the
+        # comprehension must live inside the try.
+        tokens = [t for t in raw_tokens if t.type not in _artifacts]
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return 0, 0
+
+    for idx, tok in enumerate(tokens[:-3]):
+        if tok.type != tokenize.NAME or tok.string != "time":
+            continue
+        nxt, nxt2, nxt3 = tokens[idx + 1], tokens[idx + 2], tokens[idx + 3]
+        if not (
+            nxt.type == tokenize.OP
+            and nxt.string == "."
+            and nxt2.type == tokenize.NAME
+            and nxt2.string == "sleep"
+            and nxt3.type == tokenize.OP
+            and nxt3.string == "("
+        ):
+            continue
+        if nxt.start[0] != tok.start[0] or nxt2.start[0] != tok.start[0]:
+            continue  # the call spans lines — not a plain call site
+        total += 1
+        lineno = tok.start[0]
+        line = lines[lineno - 1] if lineno - 1 < len(lines) else ""
+        prev_line = lines[lineno - 2] if lineno - 2 >= 0 else ""
+        # Check this line AND the previous line for the noqa annotation.
+        if not (_NOQA_RE.search(line) or _NOQA_RE.search(prev_line)):
+            unannotated += 1
 
     return total, unannotated
 

@@ -22,7 +22,6 @@ Total: 150+ test cases
 """
 
 import time
-import unittest
 import uuid
 
 import pytest
@@ -167,11 +166,8 @@ class AssetListAPITest(TestCase):
             )
         results = response.data["results"]
         # Count should always be present in paginated responses
-        if "count" not in response.data:
-            # Fallback: use length of results if count not present
-            count = len(results)
-        else:
-            count = response.data["count"]
+        # Fallback: use length of results if count not present
+        count = len(results) if "count" not in response.data else response.data["count"]
         self.assertEqual(count, 2)  # asset1 and asset3
         for asset in results:
             self.assertEqual(asset["domain"], "sales")
@@ -912,7 +908,7 @@ class AssetUpdateAPITest(TestCase):
         # May require activation workflow, so check response
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
-    def test_update_asset_patch_domain(self):
+    def test_update_asset_patch_domain_with_visibility_derivation(self):
         """Test PATCH update asset domain field."""
         self.client.force_authenticate(user=self.user1)
         data = {"domain": "engineering", "version": self.asset.version}

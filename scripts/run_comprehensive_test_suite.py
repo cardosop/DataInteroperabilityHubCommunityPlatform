@@ -63,7 +63,7 @@ def load_coverage_data(report_dir: Path, test_type: str) -> dict[str, Any] | Non
         try:
             with open(coverage_file) as f:
                 return json.load(f)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"Warning: Could not load coverage data from {coverage_file}: {e}")
     return None
 
@@ -110,8 +110,7 @@ def aggregate_coverage_data(report_dir: Path, test_types: list) -> dict[str, Any
         if total_statements > 0:
             # Calculate coverage percentage (float value in dict with mixed types)
             percent_covered = covered_statements / total_statements * 100
-            all_coverage["totals"]["percent_covered"] = percent_covered  # type: ignore[assignment]
-
+            all_coverage["totals"]["percent_covered"] = percent_covered
     return all_coverage if all_coverage else None
 
 

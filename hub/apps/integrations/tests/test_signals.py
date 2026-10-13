@@ -19,7 +19,7 @@ class IntegrationsSignalTest(TestCase):
 
     def test_signal_connected_to_post_save(self):
         """Signal handler is connected to WorkflowInstance post_save."""
-        import hub.apps.integrations.signals  # noqa: F401 — ensures signal module is loaded
+        import hub.apps.integrations.signals
         from hub.apps.orchestration.models import WorkflowInstance
 
         # Use Django's has_listeners to verify signal is connected for WorkflowInstance
@@ -36,10 +36,7 @@ class IntegrationsSignalTest(TestCase):
             # Django stores receivers as (dispatch_uid_key, weakref_or_func)
             ref = receiver_entry[1]
             # Only dereference actual weakrefs; regular functions must not be called
-            if isinstance(ref, weakref.ReferenceType):
-                handler = ref()
-            else:
-                handler = ref
+            handler = ref() if isinstance(ref, weakref.ReferenceType) else ref
             if handler is not None:
                 name = getattr(handler, "__name__", "") or getattr(handler, "__qualname__", "")
                 if name:

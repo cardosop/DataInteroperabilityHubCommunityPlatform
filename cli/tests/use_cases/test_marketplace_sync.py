@@ -16,8 +16,19 @@ import pytest
 # Skip the entire module gracefully when those packages are unavailable
 # instead of crashing pytest collection.
 django = pytest.importorskip("django")
+
+
 hub = pytest.importorskip("hub")
+# Phase U / U.3 — marketplace is paid/excluded from the public
+# tree; the integrations guards were no-ops (integrations is core).
+_marketplace = pytest.importorskip("hub.apps.marketplace")
+# In the PUBLIC tree the core hub package still imports, but the paid
+# apps above are excluded from publish_paths_exclude.txt — guarding the
+# paid module itself (not just ``hub``) is what makes this file skip
+# cleanly there instead of collection-erroring in the sdk-cli.yml
+# ``cli`` job (D1-class).
 import json
+import uuid
 
 import requests
 from click.testing import CliRunner
@@ -31,7 +42,6 @@ from hub.apps.integrations.models import MarketplaceType
 
 # Import Django models
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -46,50 +56,65 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # The CLI's get_api_key() prefers env tokens over the config-file
+        # key (DATAHUB_API_TOKEN etc.), and the batch runner exports one
+        # bound to the DEFAULT tenant — the in-process CLI would auth as
+        # that tenant and see none of this test's tenant-scoped rows.
+        # Neutralize the env fallback for the duration of the test and
+        # restore it in tearDown so other suites keep their batch token.
+        import os as _os
+
+        self._saved_env_token = _os.environ.pop("DATAHUB_API_TOKEN", None)
         super().setUp()
         self.runner = CliRunner()
 
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="CLI Marketplace E2E Test Tenant", slug="cli-marketplace-e2e-test-tenant"
+        # Seed the WHOLE fixture set (tenant + subscription + user + role +
+        # key) through the stack's container: in-process ORM rows live
+        # inside this TransactionTestCase's transaction while the live
+        # server's request threads use separate connections that cannot
+        # see uncommitted rows (intermittent 401 / "No active
+        # subscription" 403 flakes).  The container commit makes every
+        # row visible to every connection; re-read them here (READ
+        # COMMITTED).
+        from tests.use_cases.conftest import seed_marketplace_e2e_tenant_in_container
+
+        _email = f"cli-marketplace-e2e-{uuid.uuid4().hex[:8]}@example.com"
+        seeded = seed_marketplace_e2e_tenant_in_container(
+            slug=f"cli-marketplace-e2e-test-tenant-{uuid.uuid4().hex[:8]}",
+            name=f"CLI Marketplace E2E Test Tenant {uuid.uuid4().hex[:8]}",
+            email=_email,
+            key_name="CLI Marketplace E2E Test Key",
         )
+        self.tenant = Tenant.objects.get(pk=seeded["tenant_id"])
+        self.user = User.objects.get(email=_email)
 
-        # Create user with ACTIVE status
-        self.user = User.objects.create_user(
-            email="cli-marketplace-e2e@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-
-        # Create DATA_PROVIDER role and assign to user
-        from hub.apps.users.models import Role, UserRole
-
-        data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider Role"}
-        )
-        UserRole.objects.create(user=self.user, role=data_provider_role)
-
+        # Clear any auth left on the GLOBAL config by other tests (the
+        # CLI prefers an access token over the API key — a stale JWT from
+        # authenticated_config would make every call here "Invalid API key").
+        config.clear_auth()
         # Set API base URL to live test server
         self.api_base_url = f"{self.live_server_url}/api/v1"
         config.set_api_base_url(self.api_base_url)
+        config.set_api_key(seeded["api_key"])
+        self.api_key = seeded["api_key"]
 
-        # Create API key for testing with required scopes
-        from hub.apps.auth.models import APIKey
-
-        plaintext_key = APIKey.generate_key()
-        key_hash = APIKey.hash_key(plaintext_key)
-        APIKey.objects.create(
-            user=self.user,
-            tenant=self.tenant,
-            name="CLI Marketplace E2E Test Key",
-            key_hash=key_hash,
-            scopes=["integrations:write", "integrations:read"],
-        )
-        config.set_api_key(plaintext_key)
-        self.api_key = plaintext_key
+    @classmethod
+    def _fixture_teardown(cls):
+        """Never flush — the default TransactionTestCase flush TRUNCATEs
+        tables in dependency order against the SHARED test DB
+        (TEST_DB_SUFFIX=shared) until it raises NotSupportedError,
+        wiping plans, seeded users and subscriptions along the way (the
+        recurring seed-erasure mystery).  Fixture rows use per-run uuid
+        suffixes, so skipping the flush is safe; manual cleanup lives in
+        tearDown where needed.
+        """
 
     def tearDown(self):
+        """Restore the batch env token neutralized in setUp."""
+        if getattr(self, "_saved_env_token", None) is not None:
+            import os as _os
+
+            _os.environ["DATAHUB_API_TOKEN"] = self._saved_env_token
         """Clean up after tests"""
         super().tearDown()
         config.clear_auth()
@@ -115,7 +140,10 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         }
 
         response = requests.post(url, json=data, headers=self._get_auth_headers())
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise AssertionError(
+                f"Connection create failed: {response.status_code}: {response.text[:400]}"
+            )
         return response.json()
 
     def test_complete_sync_workflow_start_list_get(self):
@@ -185,7 +213,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         # Create sync job via API (to ensure we have data)
         from django.urls import reverse
 
-        sync_url = reverse("marketplace-sync-list")
+        sync_url = reverse("marketplace-sync-job-list")
         if sync_url.startswith("/api/v1"):
             sync_url = sync_url[len("/api/v1") :]
         url = f"{self.api_base_url}{sync_url}"
@@ -238,7 +266,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         # Create sync job via API
         from django.urls import reverse
 
-        sync_url = reverse("marketplace-sync-list")
+        sync_url = reverse("marketplace-sync-job-list")
         if sync_url.startswith("/api/v1"):
             sync_url = sync_url[len("/api/v1") :]
         url = f"{self.api_base_url}{sync_url}"
@@ -281,7 +309,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         # Create multiple sync jobs via API
         from django.urls import reverse
 
-        sync_url = reverse("marketplace-sync-list")
+        sync_url = reverse("marketplace-sync-job-list")
         if sync_url.startswith("/api/v1"):
             sync_url = sync_url[len("/api/v1") :]
         url = f"{self.api_base_url}{sync_url}"
@@ -386,7 +414,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         # Create sync job via API
         from django.urls import reverse
 
-        sync_url = reverse("marketplace-sync-list")
+        sync_url = reverse("marketplace-sync-job-list")
         if sync_url.startswith("/api/v1"):
             sync_url = sync_url[len("/api/v1") :]
         url = f"{self.api_base_url}{sync_url}"

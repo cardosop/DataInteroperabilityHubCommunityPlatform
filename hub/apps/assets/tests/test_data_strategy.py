@@ -44,7 +44,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             created_by=self.user,
         )
         self.assertEqual(asset.data_strategy, DataStrategy.METADATA_ONLY)
@@ -56,7 +55,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Federated Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             created_by=self.user,
         )
@@ -69,7 +67,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -83,7 +80,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -97,7 +93,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-metadata-{uuid.uuid4().hex[:8]}",
             name="Metadata Only Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.METADATA_ONLY,
             created_by=self.user,
@@ -112,7 +107,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-download-{uuid.uuid4().hex[:8]}",
             name="Download Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -127,7 +121,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.METADATA_ONLY,
             created_by=self.user,
@@ -142,7 +135,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -157,7 +149,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -172,7 +163,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -213,7 +203,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -236,7 +225,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy="INVALID_STRATEGY",
             created_by=self.user,
@@ -252,7 +240,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy="INVALID_STRATEGY",
             created_by=self.user,
@@ -267,7 +254,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -285,7 +271,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.HUB_NATIVE,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -302,7 +287,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -343,7 +327,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -385,7 +368,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.METADATA_ONLY,
             created_by=self.user,
@@ -400,7 +382,6 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,

@@ -10,6 +10,7 @@ Tests end-to-end cache size monitoring:
 All tests use real implementations (no mocks/stubs).
 """
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -56,10 +57,10 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
 
         # Update cache size gauge (should set limit metric)
         if self.resolver._redis_client:
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # gauge update is best-effort; Redis may not be available
                 self.resolver._update_cache_size_gauge(self.tenant_id)
-            except Exception:
-                pass  # Redis may not be available
 
         # Verify metrics exist
         self.assertIsNotNone(odps_ref_cache_size_limit)
@@ -113,12 +114,11 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         with open(dashboard_file) as f:
             dashboard = json.load(f)
 
-        # Verify dashboard structure
-        self.assertIn("dashboard", dashboard)
-        self.assertIn("panels", dashboard["dashboard"])
+        # Verify dashboard structure (provisioning format — no {"dashboard": ...} wrapper)
+        self.assertIn("panels", dashboard)
 
         # Find cache size panels
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard["panels"]
         panel_titles = [panel.get("title", "") for panel in panels]
 
         # Verify cache size panels exist
@@ -145,7 +145,7 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         with open(dashboard_file) as f:
             dashboard = json.load(f)
 
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard["panels"]
 
         # Find cache size panels
         cache_size_panel = next(
@@ -203,7 +203,7 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         with open(dashboard_file) as f:
             dashboard = json.load(f)
 
-        panels = dashboard["dashboard"]["panels"]
+        panels = dashboard["panels"]
 
         # Find cache size panels
         cache_size_panels = [p for p in panels if "Cache Size" in p.get("title", "")]

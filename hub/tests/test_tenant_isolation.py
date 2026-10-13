@@ -1,5 +1,5 @@
 """
-Phase 14 – Tenant Isolation Tests (14.8)
+Phase 14 - Tenant Isolation Tests (14.8)
 
 Uses *real* JWT tokens (no force_authenticate) to prove that tenant isolation
 is enforced at the authentication/authorisation layer, not just at the ORM

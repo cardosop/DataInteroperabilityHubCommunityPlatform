@@ -42,7 +42,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         // Exclude  from stop condition — CapabilityRoute shows a
         // spinner while capabilities are fetched; stopping there leads to false assertion
         contentSelector:
-          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
 
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
 
       // Wait past the CapabilityRoute loading spinner to the final state
       await page.waitForSelector(
-        '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
+        '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
         { timeout: 30000 }
       );
 
@@ -60,7 +60,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         page.url().includes('/transformation') &&
         (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -72,7 +72,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -85,7 +85,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
       await loginAndNavigateToRoute(page, testUser, '/transformation/create', {
         timeout: 60000,
         contentSelector:
-          '.transformation-create-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          '.transformation-create-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -98,7 +98,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         page.url().includes('/transformation') &&
         (await page.locator('.transformation-create-page').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -110,7 +110,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -148,7 +148,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         '/transformation/pipelines/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.transformation-detail-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
+          contentSelector: '.transformation-detail-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .error-display, [data-testid="error-display"]',
           acceptRedirectToLogin: false,
         }
       );
@@ -159,13 +159,13 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
       }
 
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
       if (capabilityDisabled) {
         // Capability off — 404 test not meaningful; verify unavailable page renders
-        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -185,7 +185,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -197,7 +197,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
       const capabilityEnabled =
         (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -210,7 +210,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset @critic
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]').first().first()
         ).toBeVisible({ timeout: 5000 });
       }
     });

@@ -255,7 +255,7 @@ class Command(BaseCommand):
             help="Delete the two seeded contracts (if any) and recreate fresh.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         dry_run: bool = options["dry_run"]
         cleanup: bool = options["cleanup"]
         force_recreate: bool = options["force_recreate"]

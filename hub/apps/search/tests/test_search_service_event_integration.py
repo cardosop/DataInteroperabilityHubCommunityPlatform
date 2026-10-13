@@ -15,6 +15,7 @@ Following TDD approach and engineering best practices:
 
 import uuid
 
+import redis
 from django.test import TestCase, override_settings
 
 from hub.apps.assets.models import Asset
@@ -52,15 +53,14 @@ class SearchServiceEventIntegrationTest(TestCase):
         # Flush Redis dedup keys so events are persisted fresh each run
         try:
             from hub.apps.core.events.deduplication import (
-                DEDUPLICATION_KEY_PREFIX,
+                clear_all_dedup_namespaces,
                 get_redis_client,
             )
 
             redis_client = get_redis_client()
             if redis_client:
-                for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
-                    redis_client.delete(key)
-        except Exception:
+                clear_all_dedup_namespaces(redis_client)
+        except (ImportError, redis.RedisError):
             pass
 
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
@@ -73,7 +73,9 @@ class SearchServiceEventIntegrationTest(TestCase):
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError, RuntimeError):
+            # RuntimeError covers the private-repo core-mode absence
+            # form (semantic uninstalled) — W7.1.
             pass
 
         self.tenant = Tenant.objects.create(
@@ -567,7 +569,13 @@ class SearchServiceEventIntegrationTest(TestCase):
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
 
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
+            # Default weak=True: the semantic handlers take no arguments,
+            # and weak=False would pass (sender, **kwargs) → TypeError that
+            # aborts post_save dispatch for every receiver after them
+            # (including the search-vector enqueue).
+            post_save.connect(contract_saved, sender=Contract)
+            post_save.connect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError, RuntimeError):
+            # RuntimeError covers the private-repo core-mode absence
+            # form (semantic uninstalled) — W7.1.
             pass

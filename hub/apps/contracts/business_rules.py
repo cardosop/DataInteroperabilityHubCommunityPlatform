@@ -16,10 +16,17 @@ All validation methods follow engineering best practices:
 - Follow DRY, SOLID, and clean code principles
 """
 
+import json
+from collections.abc import (
+    Iterable,
+)
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
+import yaml
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 
 from hub.apps.contracts.linking_validation import (
     LinkingValidationError,
@@ -50,7 +57,7 @@ from hub.apps.core.business_rules.registry import register_rule
 
 logger = structlog.get_logger(__name__)
 
-# Pre-Bitol ODPS (Niilahti et al.): 1.x–4.x; Bitol/LF ODPS: bitol-0.9.0, bitol-1.0.0
+# Pre-Bitol ODPS (Niilahti et al.): 1.x-4.x; Bitol/LF ODPS: bitol-0.9.0, bitol-1.0.0
 SUPPORTED_ODPS_VERSIONS = [
     "bitol-1.0.0",
     "bitol-0.9.0",
@@ -130,7 +137,7 @@ class ODPSBusinessRules(BusinessRules):
         return "ODPSBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -169,9 +176,13 @@ class ODPSBusinessRules(BusinessRules):
                 odps_doc = odps_doc or context.metadata.get("odps_doc")
 
             # Also check context.resource
-            if not contract and context and hasattr(context, "resource"):
-                if isinstance(context.resource, Contract):
-                    contract = context.resource
+            if (
+                not contract
+                and context
+                and hasattr(context, "resource")
+                and isinstance(context.resource, Contract)
+            ):
+                contract = context.resource
 
         # Determine what to validate
         validation_type = kwargs.get("validation_type", "all")
@@ -409,12 +420,11 @@ class ODPSBusinessRules(BusinessRules):
             if not isinstance(marketplace, dict):
                 errors.append("ODPS 'product.marketplace' must be an object")
             # Validate marketplace structure if strict mode
-            elif strict:
+            elif strict and "pricingPlans" in marketplace:
                 # In strict mode, validate marketplace fields
-                if "pricingPlans" in marketplace:
-                    pricing_plans = marketplace["pricingPlans"]
-                    if not isinstance(pricing_plans, list):
-                        errors.append("ODPS 'product.marketplace.pricingPlans' must be an array")
+                pricing_plans = marketplace["pricingPlans"]
+                if not isinstance(pricing_plans, list):
+                    errors.append("ODPS 'product.marketplace.pricingPlans' must be an array")
 
         is_valid = len(errors) == 0
 
@@ -454,7 +464,7 @@ class ODPSBusinessRules(BusinessRules):
         # Detect version
         try:
             detected_version = detect_odps_version(odps_doc)
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError) as e:
             errors.append(f"Failed to detect ODPS version: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -507,14 +517,13 @@ class ODPSBusinessRules(BusinessRules):
                 return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         # Check if required version matches
-        if required_version:
-            if detected_version != required_version:
-                # Check if versions are compatible (e.g., "4.1" vs "4.0")
-                # For now, require exact match
-                errors.append(
-                    f"ODPS version mismatch: detected '{detected_version}', required '{required_version}'"
-                )
-                return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+        if required_version and detected_version != required_version:
+            # Check if versions are compatible (e.g., "4.1" vs "4.0")
+            # For now, require exact match
+            errors.append(
+                f"ODPS version mismatch: detected '{detected_version}', required '{required_version}'"
+            )
+            return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         # Check if version is deprecated
         if detected_version in ["1.x", "2.x", "3.x"]:
@@ -610,8 +619,9 @@ class ODPSBusinessRules(BusinessRules):
             # Convert LinkingValidationError to ValidationResult
             errors.append(e.message)
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
-        except Exception as e:
-            # Unexpected error
+        except (DatabaseError, ValidationError, AttributeError) as e:
+            # Unexpected error — includes Django ORM ValidationError, which
+            # malformed IDs (non-UUID strings) raise from field conversion.
             logger.warning(f"Validation error during ODPS linking: {e}")
             errors.append(f"Unexpected error during linking validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
@@ -659,7 +669,6 @@ class ODPSBusinessRules(BusinessRules):
         # Try to get from original_raw first
         if contract.original_raw:
             try:
-                import json
 
                 odps_doc = json.loads(contract.original_raw)
             except (json.JSONDecodeError, ValueError):
@@ -737,7 +746,7 @@ class ODPSLinkingRules(BusinessRules):
         return "ODPSLinkingRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -774,9 +783,13 @@ class ODPSLinkingRules(BusinessRules):
                 odcs_contract = odcs_contract or context.metadata.get("odcs_contract")
 
             # Also check context.resource
-            if not odps_contract and context and hasattr(context, "resource"):
-                if isinstance(context.resource, Contract):
-                    odps_contract = context.resource
+            if (
+                not odps_contract
+                and context
+                and hasattr(context, "resource")
+                and isinstance(context.resource, Contract)
+            ):
+                odps_contract = context.resource
 
         # Determine what to validate
         validation_type = kwargs.get("validation_type", "all")
@@ -872,13 +885,12 @@ class ODPSLinkingRules(BusinessRules):
 
         except LinkingValidationError as e:
             errors.append(e.message)
-            if e.context:
+            if e.context and "description" in e.context:
                 # Add context details to errors for better debugging
-                if "description" in e.context:
-                    errors.append(e.context["description"])
+                errors.append(e.context["description"])
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
-        except Exception as e:
+        except (DatabaseError, ValidationError, AttributeError) as e:
             # Edge-case inputs (malformed UUIDs, excessively long strings)
             # can cause Django ORM ValidationErrors that are the caller's
             # fault, not a system fault.  Log at WARNING.
@@ -941,13 +953,12 @@ class ODPSLinkingRules(BusinessRules):
 
         except LinkingValidationError as e:
             errors.append(e.message)
-            if e.context:
+            if e.context and "description" in e.context:
                 # Add context details to errors for better debugging
-                if "description" in e.context:
-                    errors.append(e.context["description"])
+                errors.append(e.context["description"])
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
-        except Exception as e:
+        except (DatabaseError, ValidationError, AttributeError) as e:
             logger.warning(f"Validation error in circular references: {e}")
             errors.append(f"Unexpected error during validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
@@ -1000,7 +1011,7 @@ class ODPSLinkingRules(BusinessRules):
                 errors.extend(e.context["errors"])
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
-        except Exception as e:
+        except (DatabaseError, ValidationError, AttributeError) as e:
             logger.warning(f"Validation error in referential integrity: {e}")
             errors.append(f"Unexpected error during validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
@@ -1070,7 +1081,7 @@ class ODPSExportRules(BusinessRules):
         return "ODPSExportRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -1114,9 +1125,13 @@ class ODPSExportRules(BusinessRules):
                 output_format = output_format or context.metadata.get("output_format")
 
             # Also check context.resource
-            if not contract and context and hasattr(context, "resource"):
-                if isinstance(context.resource, Contract):
-                    contract = context.resource
+            if (
+                not contract
+                and context
+                and hasattr(context, "resource")
+                and isinstance(context.resource, Contract)
+            ):
+                contract = context.resource
 
         # Determine what to validate
         validation_type = kwargs.get("validation_type", "all")
@@ -1447,7 +1462,7 @@ class ContractsBusinessRules(BusinessRules):
         return "ContractsBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -1470,9 +1485,8 @@ class ContractsBusinessRules(BusinessRules):
         operation = kwargs.get("operation", "all")
         contract_data = kwargs.get("contract_data")
 
-        if context and hasattr(context, "resource"):
-            if isinstance(context.resource, Contract):
-                contract = contract or context.resource
+        if context and hasattr(context, "resource") and isinstance(context.resource, Contract):
+            contract = contract or context.resource
 
         # Initialize result
         result = ValidationResult(is_valid=True)
@@ -1585,7 +1599,7 @@ class ContractsBusinessRules(BusinessRules):
             except Tenant.DoesNotExist:
                 errors.append(f"Tenant with ID '{tenant_id}' does not exist")
                 details["tenant_exists"] = False
-            except Exception as e:
+            except (ValidationError, DatabaseError) as e:
                 errors.append(f"Error validating tenant: {e!s}")
                 details["tenant_exists"] = False
 
@@ -1601,7 +1615,7 @@ class ContractsBusinessRules(BusinessRules):
             except Asset.DoesNotExist:
                 errors.append(f"Asset with ID '{asset_id}' does not exist for tenant '{tenant_id}'")
                 details["asset_exists"] = False
-            except Exception as e:
+            except (ValidationError, DatabaseError) as e:
                 errors.append(f"Error validating asset: {e!s}")
                 details["asset_exists"] = False
         else:
@@ -1645,16 +1659,14 @@ class ContractsBusinessRules(BusinessRules):
                 # Try to parse JSON/YAML to validate structure
                 try:
                     if original_format == "JSON":
-                        import json
 
                         json.loads(original_raw)
                         details["original_raw_parseable"] = True
                     elif original_format == "YAML":
-                        import yaml
 
                         yaml.safe_load(original_raw)
                         details["original_raw_parseable"] = True
-                except Exception as e:
+                except (json.JSONDecodeError, TypeError, yaml.YAMLError) as e:
                     warnings.append(f"Could not parse original_raw: {e!s}")
                     details["original_raw_parseable"] = False
         else:
@@ -1841,14 +1853,12 @@ class ContractsBusinessRules(BusinessRules):
                     # Try to parse JSON/YAML
                     try:
                         if original_format == "JSON":
-                            import json
 
                             json.loads(original_raw)
                         elif original_format == "YAML":
-                            import yaml
 
                             yaml.safe_load(original_raw)
-                    except Exception as e:
+                    except (json.JSONDecodeError, TypeError, yaml.YAMLError) as e:
                         warnings.append(f"Could not parse original_raw: {e!s}")
 
         details["is_valid"] = len(errors) == 0
@@ -1922,7 +1932,7 @@ class ContractsBusinessRules(BusinessRules):
             else:
                 details["referenced_by_scheduled_ingestions"] = False
                 details["scheduled_ingestion_count"] = 0
-        except Exception as e:
+        except DatabaseError as e:
             warnings.append(f"Could not check scheduled ingestion references: {e!s}")
             details["referenced_by_scheduled_ingestions"] = None
 
@@ -1968,7 +1978,7 @@ class ContractsBusinessRules(BusinessRules):
                         )
                         details["links_to_contract"] = str(odcs_link)
                         details["linked_contract_exists"] = False
-        except Exception as e:
+        except (DatabaseError, ValidationError, AttributeError) as e:
             warnings.append(f"Could not check contract references: {e!s}")
             details["referenced_by_odps_contracts"] = None
 
@@ -2072,7 +2082,7 @@ class ContractsBusinessRules(BusinessRules):
                         details["version_gap_detected"] = True
                     else:
                         details["version_gap_detected"] = False
-            except Exception as e:
+            except (DatabaseError, TypeError) as e:
                 warnings.append(f"Could not check version conflicts: {e!s}")
                 details["version_conflict"] = None
         else:
@@ -2278,7 +2288,7 @@ class ODPSNormalizationRules(BusinessRules):
                     details["normalizer_exists"] = True
                     details["spec_version"] = spec_version
                     details["normalizer_type"] = type(normalizer).__name__
-            except Exception as e:
+            except (ValueError, TypeError, AttributeError) as e:
                 errors.append(
                     f"Error checking normalizer availability: {e!s}. "
                     "Contract eligibility cannot be determined."
@@ -2480,7 +2490,7 @@ class ODPSNormalizationRules(BusinessRules):
         # Parse original contract
         try:
             original_data = parse_contract(contract.original_raw, contract.original_format)
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
             errors.append(f"Failed to parse original contract: {e!s}")
             details["fidelity_check"] = "failed_parse_original"
             return ValidationResult(

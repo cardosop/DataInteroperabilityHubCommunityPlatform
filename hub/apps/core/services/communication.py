@@ -89,7 +89,7 @@ class ServiceClient:
                     "method": method_name,
                     "error_type": type(e).__name__,
                 },
-            )
+            ) from e
 
 
 def service_call(

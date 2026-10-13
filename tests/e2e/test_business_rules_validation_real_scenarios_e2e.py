@@ -13,6 +13,7 @@ No mocks/stubs: uses real DB models, real cache backend, real event bus/persiste
 import json
 import time
 import uuid
+from typing import ClassVar
 
 import pytest
 
@@ -21,10 +22,10 @@ pytestmark = pytest.mark.slow
 from django.test.utils import override_settings
 
 from hub.apps.core.events.models import Event
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 from tests.factories import TenantFactory, UserFactory
 
@@ -92,7 +93,7 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
     We assert that specific validation categories surface as distinct failures in real workflow runs.
     """
 
-    workflow_classes = [ProductCreationWorkflow, ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ProductCreationWorkflow, ContractCreationWorkflow]
 
     def test_odps_business_rules_document_structure_validation_surfaces_in_workflow(self):
         # Missing 'product' triggers ODPS structure validation failure in ProductCreationWorkflow._parse_odps_task()
@@ -195,7 +196,7 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
     real WorkflowEngine + WorkflowDefinition DSL (no synthetic stand-ins).
     """
 
-    workflow_classes = [ProductCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ProductCreationWorkflow]
 
     def _create_instance_and_first_step(self):
         instance = self.create_workflow_instance(
@@ -259,7 +260,7 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         # Structure validation
         result = br.validate_step_input(
             instance, step, ["not", "a", "dict"], tenant=self.tenant, user=self.user
-        )  # type: ignore[arg-type]
+        )
         self.assertFalse(result.is_valid)
         self.assertTrue(any("must be a dictionary" in e for e in result.errors))
 
@@ -279,7 +280,7 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
 
         result = br.validate_step_output(
             instance, step, "not-a-dict", tenant=self.tenant, user=self.user
-        )  # type: ignore[arg-type]
+        )
         self.assertFalse(result.is_valid)
         self.assertTrue(any("must be a dictionary" in e for e in result.errors))
 
@@ -320,7 +321,7 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
     6.3.3 + 6.3.4 — Error propagation, warnings behavior, caching + metrics.
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_errors_propagate_to_workflowexecutionerror_with_context(self):
         """
@@ -474,7 +475,7 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
 
             def _run_cached_workflow_state_validation():
                 start = time.time()
-                result, cached_flag = self.workflow_engine._cached_orchestration_validation(  # type: ignore[attr-defined]
+                result, cached_flag = self.workflow_engine._cached_orchestration_validation(
                     validation_type="workflow_state",
                     instance=instance,
                     step=step,

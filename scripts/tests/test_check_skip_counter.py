@@ -127,23 +127,23 @@ class TestCheckThresholds:
     def test_rejects_zero_total_tests(self):
         from collections import Counter
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="total_tests must be > 0"):
             check_thresholds(Counter(), total_tests=0, threshold=0.05)
 
     def test_rejects_negative_total_tests(self):
         from collections import Counter
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="total_tests must be > 0"):
             check_thresholds(Counter(), total_tests=-1, threshold=0.05)
 
     def test_rejects_threshold_not_between_0_and_1(self):
         from collections import Counter
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="threshold must be strictly between 0 and 1"):
             check_thresholds(Counter(), total_tests=100, threshold=0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="threshold must be strictly between 0 and 1"):
             check_thresholds(Counter(), total_tests=100, threshold=1)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="threshold must be strictly between 0 and 1"):
             check_thresholds(Counter(), total_tests=100, threshold=-0.1)
 
 

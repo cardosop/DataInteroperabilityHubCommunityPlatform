@@ -15,7 +15,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from django.conf import settings
 from django.core.cache import cache
@@ -81,10 +81,10 @@ class PipelineCompatibilityValidator:
     """
 
     # Valid node types
-    VALID_NODE_TYPES = {choice[0] for choice in NodeType.choices}
+    VALID_NODE_TYPES: ClassVar[set[str]] = {choice[0] for choice in NodeType.choices}
 
     # Node execution order constraints
-    NODE_DEPENDENCIES = {
+    NODE_DEPENDENCIES: ClassVar[dict[NodeType, set[NodeType]]] = {
         NodeType.FILTER: set(),  # Filter can be first
         NodeType.JOIN: {NodeType.FILTER},  # Join should come after filter
         NodeType.AGGREGATE: {
@@ -105,7 +105,7 @@ class PipelineCompatibilityValidator:
     }
 
     # Required fields per node type
-    NODE_REQUIRED_FIELDS = {
+    NODE_REQUIRED_FIELDS: ClassVar[dict[NodeType, set[str]]] = {
         NodeType.FILTER: {"filter_expression"},
         NodeType.JOIN: {"join_keys", "join_type"},
         NodeType.AGGREGATE: {"group_by", "aggregation_functions"},
@@ -115,7 +115,7 @@ class PipelineCompatibilityValidator:
 
     # Data type compatibility matrix
     # Maps source types to compatible target types
-    TYPE_COMPATIBILITY = {
+    TYPE_COMPATIBILITY: ClassVar[dict[str, set[str]]] = {
         "string": {"string", "text"},
         "integer": {"integer", "number", "float", "long"},
         "float": {"float", "number", "double"},
@@ -681,7 +681,7 @@ class PipelineCompatibilityValidator:
         return errors
 
     def _validate_node_config(
-        self, node_type: str, node_config: dict[str, Any], step_name: str, step_index: int
+        self, node_type: str, node_config: dict[str, Any], step_name: str, _step_index: int
     ) -> list[str]:
         """Validate node-specific configuration."""
         errors = []

@@ -13,7 +13,7 @@ import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, between, events, task
+    from locust import between, events, task
     from locust.contrib.fasthttp import FastHttpUser
 
     LOCUST_AVAILABLE = True
@@ -87,23 +87,25 @@ if LOCUST_AVAILABLE:
                     status = data.get("status")
 
                     # Track job completion
-                    if status in ["COMPLETED", "FAILED", "CANCELLED"]:
-                        if job_id in self.job_start_times:
-                            end_time = time.time()
-                            duration = (end_time - self.job_start_times[job_id]) / 60  # minutes
+                    if (
+                        status in ["COMPLETED", "FAILED", "CANCELLED"]
+                        and job_id in self.job_start_times
+                    ):
+                        end_time = time.time()
+                        duration = (end_time - self.job_start_times[job_id]) / 60  # minutes
 
-                            # Track metrics
-                            events.request.fire(
-                                request_type="job_completion",
-                                name=f"job_{status.lower()}_duration",
-                                response_time=duration * 60 * 1000,  # Convert to ms
-                                response_length=0,
-                                exception=None,
-                            )
+                        # Track metrics
+                        events.request.fire(
+                            request_type="job_completion",
+                            name=f"job_{status.lower()}_duration",
+                            response_time=duration * 60 * 1000,  # Convert to ms
+                            response_length=0,
+                            exception=None,
+                        )
 
-                            # Remove completed job
-                            self.created_jobs.remove(job)
-                            del self.job_start_times[job_id]
+                        # Remove completed job
+                        self.created_jobs.remove(job)
+                        del self.job_start_times[job_id]
 
                     response.success()
                 elif response.status_code == 404:

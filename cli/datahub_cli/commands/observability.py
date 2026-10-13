@@ -54,7 +54,7 @@ def freshness(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get freshness: {e}")
+        raise click.ClickException(f"Failed to get freshness: {e}") from e
 
 
 @observability.command("sla")
@@ -103,7 +103,7 @@ def sla(sla_type: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get SLA data: {e}")
+        raise click.ClickException(f"Failed to get SLA data: {e}") from e
 
 
 @observability.group()
@@ -149,7 +149,7 @@ def list_incidents(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list incidents: {e}")
+        raise click.ClickException(f"Failed to list incidents: {e}") from e
 
 
 @incidents.command("get")
@@ -164,4 +164,4 @@ def get_incident(dataset_id: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get incident: {e}")
+        raise click.ClickException(f"Failed to get incident: {e}") from e

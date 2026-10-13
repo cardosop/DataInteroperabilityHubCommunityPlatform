@@ -6,7 +6,7 @@ Compares schemas over time to detect new fields, removed fields, type changes, a
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
 from django.db import transaction
@@ -24,7 +24,7 @@ class SchemaDriftDetector:
     Detects schema drift by comparing current schema with previous schema.
     """
 
-    DEFAULT_TOLERANCE = {
+    DEFAULT_TOLERANCE: ClassVar[dict] = {
         "allow_new_fields": True,
         "allow_removed_fields": False,  # Breaking change
         "allow_type_changes": False,  # Breaking change

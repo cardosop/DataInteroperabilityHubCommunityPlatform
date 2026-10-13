@@ -1,0 +1,20 @@
+{
+  "_comment": "Pilot Week-1 scale definition (pilot-readiness 4.4 load test). Scale numbers are the PILOT expectation recorded with U per PILOT_READINESS_PLAN 1.7 ('Scale definition (U): company's expected users, concurrent sessions, data volumes — recorded for the Week-4 load test'). Until U confirms the company numbers, `confirmed` stays false: run_week1_load_test.py runs at this rehearsal scale with a WARN banner and `--strict` refuses (the go/no-go gate must not silently bless unconfirmed scale).",
+  "version": "1.0",
+  "confirmed": false,
+  "rehearsal_scale": true,
+  "pilot": "first-company pilot (AWS + Databricks)",
+  "defined_by": "U — pending confirmation",
+  "users": 20,
+  "concurrent_sessions": 5,
+  "data_assets": 2000,
+  "data_volume_gb": 10,
+  "k6": {
+    "start_rate": 1,
+    "steady_rate": 20,
+    "peak_rate": 50,
+    "cooldown_rate": 10,
+    "steady_minutes": 10,
+    "max_vus": 200
+  }
+}

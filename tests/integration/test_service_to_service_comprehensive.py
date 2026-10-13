@@ -28,9 +28,13 @@ logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def check_service_available(base_url: str, timeout: int = 2) -> bool:
+def check_service_available(base_url: str, timeout: int = 20) -> bool:
     """
     Check if a service is available by attempting a health check.
+
+    The semantic service's /health pings Fuseki synchronously; a cold ping
+    takes ~8s on a loaded host, so a short timeout races it (false
+    negatives → wrong DEGRADED assertions downstream).
 
     Returns:
         True if service responds, False otherwise
@@ -38,9 +42,10 @@ def check_service_available(base_url: str, timeout: int = 2) -> bool:
     try:
         health_url = f"{base_url.rstrip('/')}/health"
         response = httpx.get(health_url, timeout=timeout)
-        return response.status_code == 200
-    except (httpx.RequestError, httpx.TimeoutException, Exception):
+    except Exception:
         return False
+    else:
+        return response.status_code == 200
 
 
 class ServiceToServiceCommunicationTest(TestCase):
@@ -147,7 +152,9 @@ class ServiceToServiceCommunicationTest(TestCase):
         # Verify circuit breaker configuration
         self.assertEqual(self.dq_client._circuit_breaker.service_name, "dq-service")
         self.assertEqual(self.compliance_client._circuit_breaker.service_name, "compliance-service")
-        self.assertEqual(self.semantic_client._circuit_breaker.service_name, "semantic-service-read")
+        self.assertEqual(
+            self.semantic_client._circuit_breaker.service_name, "semantic-service-read"
+        )
 
     def test_service_clients_retry_configuration(self):
         """Test retry configuration for all service clients"""

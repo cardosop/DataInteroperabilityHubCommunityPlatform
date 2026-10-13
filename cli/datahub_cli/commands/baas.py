@@ -87,7 +87,7 @@ def create_api_key(name: str, tier: str, expires_at: str | None, output_format: 
                 context={"expires_at": expires_at},
                 suggestion="Use ISO format (e.g., 2025-12-31T23:59:59Z)",
                 original_error=e,
-            )
+            ) from e
 
     # Prepare request data
     data = {"name": name.strip(), "tier": tier.upper()}
@@ -129,13 +129,15 @@ def create_api_key(name: str, tier: str, expires_at: str | None, output_format: 
             and hasattr(e.response, "text")
             and hasattr(e.response, "status_code")
         ):
-            raise handle_baas_api_error(e.response.text, e.response.status_code, "baas/api-keys/")
+            raise handle_baas_api_error(
+                e.response.text, e.response.status_code, "baas/api-keys/"
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to create API key: {e!s}",
             error_code="API_KEY_CREATE_FAILED",
             context={"name": name, "tier": tier},
             original_error=e,
-        )
+        ) from e
 
 
 @api_keys.command("list")
@@ -221,14 +223,19 @@ def list_api_keys(tier: str | None, limit: int, offset: int, output_format: str)
             and hasattr(e.response, "text")
             and hasattr(e.response, "status_code")
         ):
-            raise handle_baas_api_error(e.response.text, e.response.status_code, "baas/api-keys/")
+            raise handle_baas_api_error(
+                e.response.text, e.response.status_code, "baas/api-keys/"
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to list API keys: {e!s}",
             error_code="API_KEY_LIST_FAILED",
             original_error=e,
-        )
+        ) from e
 
 
+def _raise_unexpected_api_response_type(data: object) -> None:
+    """Raise the CLI error for a non-dict API response (TRY301 helper)."""
+    raise click.ClickException(f"Unexpected API response type: {type(data).__name__}")
 @api_keys.command("get")
 @click.argument("api_key_id")
 @click.option(
@@ -238,6 +245,8 @@ def list_api_keys(tier: str | None, limit: int, offset: int, output_format: str)
     default="table",
     help="Output format",
 )
+
+
 def get_api_key(api_key_id: str, output_format: str):
     """
     Get API key details.
@@ -257,7 +266,7 @@ def get_api_key(api_key_id: str, output_format: str):
         # API endpoint: GET /api/v1/baas/api-keys/{id}/
         data = api_client.get(f"baas/api-keys/{api_key_id.strip()}/")
         if not isinstance(data, dict):
-            raise click.ClickException(f"Unexpected API response type: {type(data).__name__}")
+            _raise_unexpected_api_response_type(data)
 
         # Security: Ensure API key value is not in response
         if "api_key" in data:
@@ -297,7 +306,7 @@ def get_api_key(api_key_id: str, output_format: str):
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, f"baas/api-keys/{api_key_id}/"
-            )
+            ) from None
         # Check for 404 specifically
         if "404" in str(e) or "not found" in str(e).lower():
             raise BaaSNotFoundError(
@@ -305,13 +314,13 @@ def get_api_key(api_key_id: str, output_format: str):
                 error_code="API_KEY_NOT_FOUND",
                 context={"api_key_id": api_key_id},
                 suggestion="Check that the API key ID is correct",
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get API key: {e!s}",
             error_code="API_KEY_GET_FAILED",
             context={"api_key_id": api_key_id},
             original_error=e,
-        )
+        ) from e
 
 
 @api_keys.command("update")
@@ -388,7 +397,7 @@ def update_api_key(
                 context={"expires_at": expires_at},
                 suggestion="Use ISO format (e.g., 2025-12-31T23:59:59Z)",
                 original_error=e,
-            )
+            ) from e
 
     try:
         # API endpoint: PATCH /api/v1/baas/api-keys/{id}/
@@ -421,7 +430,7 @@ def update_api_key(
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, f"baas/api-keys/{api_key_id}/"
-            )
+            ) from None
         # Check for 404 specifically
         if "404" in str(e) or "not found" in str(e).lower():
             raise BaaSNotFoundError(
@@ -429,13 +438,13 @@ def update_api_key(
                 error_code="API_KEY_NOT_FOUND",
                 context={"api_key_id": api_key_id},
                 suggestion="Check that the API key ID is correct",
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to update API key: {e!s}",
             error_code="API_KEY_UPDATE_FAILED",
             context={"api_key_id": api_key_id},
             original_error=e,
-        )
+        ) from e
 
 
 @api_keys.command("revoke")
@@ -483,7 +492,7 @@ def revoke_api_key(api_key_id: str, output_format: str):
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, f"baas/api-keys/{api_key_id}/"
-            )
+            ) from None
         # Check for 404 specifically
         if "404" in str(e) or "not found" in str(e).lower():
             raise BaaSNotFoundError(
@@ -491,13 +500,13 @@ def revoke_api_key(api_key_id: str, output_format: str):
                 error_code="API_KEY_NOT_FOUND",
                 context={"api_key_id": api_key_id},
                 suggestion="Check that the API key ID is correct",
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to revoke API key: {e!s}",
             error_code="API_KEY_REVOKE_FAILED",
             context={"api_key_id": api_key_id},
             original_error=e,
-        )
+        ) from e
 
 
 def _validate_date_format(date_str: str, param_name: str) -> datetime:
@@ -525,7 +534,6 @@ def _validate_date_format(date_str: str, param_name: str) -> datetime:
     try:
         # Try to parse ISO format
         parsed_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return parsed_date
     except ValueError as e:
         raise BaaSValidationError(
             message=f"Invalid {param_name} format: {date_str}",
@@ -533,7 +541,9 @@ def _validate_date_format(date_str: str, param_name: str) -> datetime:
             context={param_name: date_str},
             suggestion="Use ISO format (e.g., 2025-12-31T23:59:59Z)",
             original_error=e,
-        )
+        ) from e
+    else:
+        return parsed_date
 
 
 def _validate_api_key_id(api_key_id: str | None) -> str | None:
@@ -664,13 +674,13 @@ def usage_stats(
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, "baas/usage/stats/"
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get usage statistics: {e!s}",
             error_code="USAGE_STATS_FAILED",
             context={"api_key_id": api_key_id, "start_date": start_date, "end_date": end_date},
             original_error=e,
-        )
+        ) from e
 
 
 @usage.command("by-endpoint")
@@ -777,13 +787,13 @@ def usage_by_endpoint(
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, "baas/usage/by-endpoint/"
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get usage by endpoint: {e!s}",
             error_code="USAGE_BY_ENDPOINT_FAILED",
             context={"api_key_id": api_key_id, "start_date": start_date, "end_date": end_date},
             original_error=e,
-        )
+        ) from e
 
 
 @usage.command("by-tenant")
@@ -882,13 +892,13 @@ def usage_by_tenant(start_date: str | None, end_date: str | None, output_format:
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, "baas/usage/by-tenant/"
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get usage by tenant: {e!s}",
             error_code="USAGE_BY_TENANT_FAILED",
             context={"start_date": start_date, "end_date": end_date},
             original_error=e,
-        )
+        ) from e
 
 
 @baas.group("docs")
@@ -1030,12 +1040,14 @@ def show_docs(output_format: str):
             and hasattr(e.response, "text")
             and hasattr(e.response, "status_code")
         ):
-            raise handle_baas_api_error(e.response.text, e.response.status_code, "baas/docs/")
+            raise handle_baas_api_error(
+                e.response.text, e.response.status_code, "baas/docs/"
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get API documentation: {e!s}",
             error_code="DOCS_GET_FAILED",
             original_error=e,
-        )
+        ) from e
 
 
 @docs.command("openapi")
@@ -1076,7 +1088,7 @@ def show_openapi(output_format: str):
                             message="YAML format requires PyYAML. Please install it with: pip install pyyaml",
                             error_code="YAML_FORMAT_UNAVAILABLE",
                             suggestion="Install PyYAML or use JSON format",
-                        )
+                        ) from None
             except (click.ClickException, BaaSCLIError):
                 # API request failed, try to convert JSON to YAML as fallback
                 try:
@@ -1089,13 +1101,13 @@ def show_openapi(output_format: str):
                         message="YAML format requires PyYAML. Please install it with: pip install pyyaml",
                         error_code="YAML_FORMAT_UNAVAILABLE",
                         suggestion="Install PyYAML or use JSON format",
-                    )
+                    ) from None
                 except Exception as conv_error:
                     raise BaaSCLIError(
                         message=f"Failed to convert OpenAPI schema to YAML: {conv_error!s}",
                         error_code="YAML_CONVERSION_FAILED",
                         original_error=conv_error,
-                    )
+                    ) from conv_error
             except Exception:
                 # YAML endpoint request failed for another reason; fall back to JSON→YAML
                 try:
@@ -1108,13 +1120,13 @@ def show_openapi(output_format: str):
                         message="YAML format requires PyYAML. Please install it with: pip install pyyaml",
                         error_code="YAML_FORMAT_UNAVAILABLE",
                         suggestion="Install PyYAML or use JSON format",
-                    )
+                    ) from None
                 except Exception as conv_error:
                     raise BaaSCLIError(
                         message=f"Failed to convert OpenAPI schema to YAML: {conv_error!s}",
                         error_code="YAML_CONVERSION_FAILED",
                         original_error=conv_error,
-                    )
+                    ) from conv_error
 
     except click.ClickException:
         raise
@@ -1130,12 +1142,12 @@ def show_openapi(output_format: str):
         ):
             raise handle_baas_api_error(
                 e.response.text, e.response.status_code, "baas/docs/openapi.json/"
-            )
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get OpenAPI schema: {e!s}",
             error_code="OPENAPI_GET_FAILED",
             original_error=e,
-        )
+        ) from e
 
 
 @docs.command("sdks")
@@ -1204,12 +1216,14 @@ def show_sdks(output_format: str):
             and hasattr(e.response, "text")
             and hasattr(e.response, "status_code")
         ):
-            raise handle_baas_api_error(e.response.text, e.response.status_code, "baas/docs/sdks/")
+            raise handle_baas_api_error(
+                e.response.text, e.response.status_code, "baas/docs/sdks/"
+            ) from None
         raise BaaSCLIError(
             message=f"Failed to get SDK links: {e!s}",
             error_code="SDKS_GET_FAILED",
             original_error=e,
-        )
+        ) from e
 
 
 # ── 118E.5: Customers + Billing Reports ─────────────────
@@ -1267,7 +1281,7 @@ def list_customers(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list customers: {e}")
+        raise click.ClickException(f"Failed to list customers: {e}") from e
 
 
 @customers.command("usage")
@@ -1309,7 +1323,7 @@ def customer_usage(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get customer usage: {e}")
+        raise click.ClickException(f"Failed to get customer usage: {e}") from e
 
 
 @baas.group("billing-reports")
@@ -1365,7 +1379,7 @@ def list_billing_reports(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list billing reports: {e}")
+        raise click.ClickException(f"Failed to list billing reports: {e}") from e
 
 
 @billing_reports.command("get")
@@ -1396,7 +1410,7 @@ def get_billing_report(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get billing report: {e}")
+        raise click.ClickException(f"Failed to get billing report: {e}") from e
 
 
 @billing_reports.command("generate")
@@ -1430,7 +1444,7 @@ def generate_billing_report(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to generate report: {e}")
+        raise click.ClickException(f"Failed to generate report: {e}") from e
 
 
 @billing_reports.command("finalize")
@@ -1445,7 +1459,7 @@ def finalize_billing_report(report_id: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to finalize report: {e}")
+        raise click.ClickException(f"Failed to finalize report: {e}") from e
 
 
 @billing_reports.command("export")
@@ -1477,7 +1491,7 @@ def export_billing_report(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to export report: {e}")
+        raise click.ClickException(f"Failed to export report: {e}") from e
 
 
 @billing_reports.command("send")
@@ -1501,7 +1515,7 @@ def send_billing_report(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to send report: {e}")
+        raise click.ClickException(f"Failed to send report: {e}") from e
 
 
 # ── 118E.6: api-keys rotate ─────────────────────────────
@@ -1544,4 +1558,4 @@ def rotate_api_key(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to rotate API key: {e}")
+        raise click.ClickException(f"Failed to rotate API key: {e}") from e

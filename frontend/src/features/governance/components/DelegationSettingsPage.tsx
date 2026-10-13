@@ -16,7 +16,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { Button } from '../../../shared/components/Button';
+import { apiClient } from '../../../shared/api/client';
 import './DelegationSettingsPage.css';
+
+const DELEGATIONS_PATH = '/governance/delegations/';
 
 interface DelegationRecord {
   id: string;
@@ -48,14 +51,14 @@ export function DelegationSettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch('/api/v1/governance/delegations/', {
-        credentials: 'include',
-      });
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
-      }
-      const data = await resp.json();
-      setDelegations(data.results ?? data);
+      // The SPA apiClient carries the Bearer token + tenant context —
+      // a raw cookie fetch is 401 here (the SPA login is token-based,
+      // no session cookie exists).
+      const response = await apiClient.getClient().get<unknown>(DELEGATIONS_PATH);
+      const data = response.data as
+        | Partial<{ results: DelegationRecord[] }>
+        | DelegationRecord[];
+      setDelegations(Array.isArray(data) ? data : (data.results ?? []));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load delegations');
     } finally {
@@ -87,21 +90,15 @@ export function DelegationSettingsPage() {
 
     setSubmitting(true);
     try {
-      const resp = await fetch('/api/v1/governance/delegations/', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          delegate_email: delegateEmail.trim(),
-          start_at: startDate,
-          end_at: endDate,
-          reason: reason.trim() || undefined,
-        }),
+      await apiClient.getClient().post(DELEGATIONS_PATH, {
+        delegate_email: delegateEmail.trim(),
+        // The date inputs carry yyyy-mm-dd; the API contract is full
+        // ISO datetimes. The window covers the WHOLE chosen days —
+        // start at 00:00:00, end at 23:59:59 of the end date.
+        start_at: `${startDate}T00:00:00`,
+        end_at: `${endDate}T23:59:59`,
+        reason: reason.trim() || undefined,
       });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP ${resp.status}`);
-      }
       setSuccessMessage('Delegation created successfully.');
       setDelegateEmail('');
       setStartDate('');
@@ -110,7 +107,14 @@ export function DelegationSettingsPage() {
       setShowForm(false);
       fetchDelegations();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to create delegation');
+      // The apiClient rejects with its normalized ApiError shape
+      // ({error: {code, message, ...}}) — surface the REAL backend
+      // message (the classified 400 detail rides in error.message),
+      // never a bare HTTP status.
+      const apiMessage = (err as { error?: { message?: string } })?.error?.message;
+      setFormError(
+        apiMessage ?? (err instanceof Error ? err.message : 'Failed to create delegation')
+      );
     } finally {
       setSubmitting(false);
     }
@@ -118,13 +122,7 @@ export function DelegationSettingsPage() {
 
   const handleRevoke = async (id: string) => {
     try {
-      const resp = await fetch(`/api/v1/governance/delegations/${id}/`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
-      }
+      await apiClient.getClient().delete(`${DELEGATIONS_PATH}${id}/`);
       fetchDelegations();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to revoke delegation');
@@ -146,13 +144,15 @@ export function DelegationSettingsPage() {
     <div className="delegation-settings-page" data-testid="delegation-settings-page">
       <h1>Approval Delegation</h1>
       <p>
-        Delegate your approval authority to another user for a defined
-        time window (e.g., out-of-office coverage). Delegates can approve
-        access requests on your behalf during the active window.
+        Delegate your approval authority to another user for a defined time window (e.g.,
+        out-of-office coverage). Delegates can approve access requests on your behalf during the
+        active window.
       </p>
 
       {successMessage && (
-        <div role="status" className="delegation-success">{successMessage}</div>
+        <div role="status" className="delegation-success">
+          {successMessage}
+        </div>
       )}
 
       <div className="delegation-actions">
@@ -166,13 +166,11 @@ export function DelegationSettingsPage() {
       </div>
 
       {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="delegation-form"
-          data-testid="delegation-form"
-        >
+        <form onSubmit={handleSubmit} className="delegation-form" data-testid="delegation-form">
           {formError && (
-            <div role="alert" className="delegation-form-error">{formError}</div>
+            <div role="alert" className="delegation-form-error">
+              {formError}
+            </div>
           )}
 
           <div className="delegation-form-field">
@@ -246,14 +244,19 @@ export function DelegationSettingsPage() {
               <tr key={d.id} data-testid={`delegation-row-${d.id}`}>
                 <td>
                   {d.delegate_name && (
-                    <span className="delegate-name">{d.delegate_name}<br /></span>
+                    <span className="delegate-name">
+                      {d.delegate_name}
+                      <br />
+                    </span>
                   )}
                   <code>{d.delegate_email}</code>
                 </td>
                 <td>{new Date(d.start_at).toLocaleDateString()}</td>
                 <td>{new Date(d.end_at).toLocaleDateString()}</td>
                 <td>
-                  <span className={`delegation-status delegation-status-${d.is_active ? 'active' : 'inactive'}`}>
+                  <span
+                    className={`delegation-status delegation-status-${d.is_active ? 'active' : 'inactive'}`}
+                  >
                     {d.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </td>

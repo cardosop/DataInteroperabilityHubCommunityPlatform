@@ -53,7 +53,7 @@ class IncrementalStateManagerTest(TestCase):
     def test_get_processed_files_empty(self):
         """Test getting processed files when none exist"""
         processed = self.state_manager.get_processed_files()
-        self.assertEqual(processed, [])
+        assert processed == []
 
     def test_mark_file_processed(self):
         """Test marking file as processed"""
@@ -65,28 +65,28 @@ class IncrementalStateManagerTest(TestCase):
         )
 
         # Verify file is marked as processed
-        self.assertTrue(self.state_manager.is_file_processed(file_path))
-        self.assertEqual(self.scheduled_ingestion.last_processed_file, file_path)
-        self.assertEqual(self.scheduled_ingestion.last_processed_timestamp, file_timestamp)
+        assert self.state_manager.is_file_processed(file_path)
+        assert self.scheduled_ingestion.last_processed_file == file_path
+        assert self.scheduled_ingestion.last_processed_timestamp == file_timestamp
 
         # Verify in state
         processed_files = self.state_manager.get_processed_files()
-        self.assertIn(file_path, processed_files)
+        assert file_path in processed_files
 
         # Verify file-to-dataset mapping
         ingestion_state = self.scheduled_ingestion.ingestion_state
         file_mappings = ingestion_state.get("file_to_dataset", {})
-        self.assertEqual(file_mappings.get(file_path), "dataset-uuid")
+        assert file_mappings.get(file_path) == "dataset-uuid"
 
     def test_is_file_processed(self):
         """Test checking if file is processed"""
         file_path = "s3://bucket/file1.csv"
 
-        self.assertFalse(self.state_manager.is_file_processed(file_path))
+        assert not self.state_manager.is_file_processed(file_path)
 
         self.state_manager.mark_file_processed(file_path)
 
-        self.assertTrue(self.state_manager.is_file_processed(file_path))
+        assert self.state_manager.is_file_processed(file_path)
 
     def test_mark_file_failed_retryable(self):
         """Test marking file as failed (retryable)"""
@@ -101,15 +101,15 @@ class IncrementalStateManagerTest(TestCase):
             max_retries=3,
         )
 
-        self.assertTrue(should_retry)
-        self.assertTrue(self.state_manager.is_file_failed(file_path))
+        assert should_retry
+        assert self.state_manager.is_file_failed(file_path)
 
         # Verify failure record
         failed_files = self.state_manager.get_failed_files()
-        self.assertEqual(len(failed_files), 1)
-        self.assertEqual(failed_files[0]["file_path"], file_path)
-        self.assertEqual(failed_files[0]["retry_count"], 1)
-        self.assertFalse(failed_files[0]["permanent_failure"])
+        assert len(failed_files) == 1
+        assert failed_files[0]["file_path"] == file_path
+        assert failed_files[0]["retry_count"] == 1
+        assert not failed_files[0]["permanent_failure"]
 
     def test_mark_file_failed_permanent(self):
         """Test marking file as permanently failed"""
@@ -127,19 +127,19 @@ class IncrementalStateManagerTest(TestCase):
             )
 
         # Last call should return False (permanent failure)
-        self.assertFalse(should_retry)
+        assert not should_retry
 
         # Verify permanent failure
         failed_files = self.state_manager.get_failed_files()
-        self.assertEqual(len(failed_files), 1)
-        self.assertTrue(failed_files[0]["permanent_failure"])
+        assert len(failed_files) == 1
+        assert failed_files[0]["permanent_failure"]
 
     def test_should_process_file_new(self):
         """Test should_process_file for new file"""
         file_path = "s3://bucket/new_file.csv"
         file_timestamp = timezone.now()
 
-        self.assertTrue(self.state_manager.should_process_file(file_path, file_timestamp))
+        assert self.state_manager.should_process_file(file_path, file_timestamp)
 
     def test_should_process_file_already_processed(self):
         """Test should_process_file for already processed file"""
@@ -147,7 +147,7 @@ class IncrementalStateManagerTest(TestCase):
 
         self.state_manager.mark_file_processed(file_path)
 
-        self.assertFalse(self.state_manager.should_process_file(file_path))
+        assert not self.state_manager.should_process_file(file_path)
 
     def test_should_process_file_permanently_failed(self):
         """Test should_process_file for permanently failed file"""
@@ -159,7 +159,7 @@ class IncrementalStateManagerTest(TestCase):
                 file_path=file_path, error_message="Error", retry_count=i, max_retries=3
             )
 
-        self.assertFalse(self.state_manager.should_process_file(file_path))
+        assert not self.state_manager.should_process_file(file_path)
 
     def test_should_process_file_timestamp_filtering(self):
         """Test should_process_file with timestamp filtering"""
@@ -172,10 +172,10 @@ class IncrementalStateManagerTest(TestCase):
         self.scheduled_ingestion.save()
 
         # Old file should be skipped
-        self.assertFalse(self.state_manager.should_process_file(file_path, old_timestamp))
+        assert not self.state_manager.should_process_file(file_path, old_timestamp)
 
         # New file should be processed
-        self.assertTrue(self.state_manager.should_process_file(file_path, new_timestamp))
+        assert self.state_manager.should_process_file(file_path, new_timestamp)
 
     def test_clear_failed_file(self):
         """Test clearing failed file record"""
@@ -184,12 +184,12 @@ class IncrementalStateManagerTest(TestCase):
         # Mark as failed
         self.state_manager.mark_file_failed(file_path=file_path, error_message="Error")
 
-        self.assertTrue(self.state_manager.is_file_failed(file_path))
+        assert self.state_manager.is_file_failed(file_path)
 
         # Clear failure
         self.state_manager.clear_failed_file(file_path)
 
-        self.assertFalse(self.state_manager.is_file_failed(file_path))
+        assert not self.state_manager.is_file_failed(file_path)
 
     def test_get_state_summary(self):
         """Test getting state summary"""
@@ -207,7 +207,7 @@ class IncrementalStateManagerTest(TestCase):
 
         summary = self.state_manager.get_state_summary()
 
-        self.assertEqual(summary["total_processed"], 2)
-        self.assertEqual(summary["total_failed"], 2)
-        self.assertEqual(summary["permanent_failures"], 1)
-        self.assertEqual(summary["retryable_failures"], 1)
+        assert summary["total_processed"] == 2
+        assert summary["total_failed"] == 2
+        assert summary["permanent_failures"] == 1
+        assert summary["retryable_failures"] == 1

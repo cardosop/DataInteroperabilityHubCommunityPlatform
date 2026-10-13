@@ -1,0 +1,271 @@
+{
+  "title": "Mesh Compliance Dashboard",
+  "tags": [
+    "data-mesh",
+    "compliance",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Compliance Check Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(mesh_compliance_checks_total[5m])) by (tenant_id, domain_id, compliance_status)",
+          "legendFormat": "{{tenant_id}}/{{domain_id}} - {{compliance_status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Checks/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Compliance Check Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(mesh_compliance_check_duration_seconds_bucket[5m])) by (tenant_id, domain_id, compliance_status, le))",
+          "legendFormat": "{{tenant_id}}/{{domain_id}} - {{compliance_status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Total Compliance Violations",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_compliance_violations_total) by (tenant_id, domain_id, violation_type, severity)",
+          "legendFormat": "{{tenant_id}}/{{domain_id}} - {{violation_type}} ({{severity}})",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "short",
+        "colorMode": "value",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "green"
+            },
+            {
+              "value": 1,
+              "color": "yellow"
+            },
+            {
+              "value": 10,
+              "color": "red"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Violation Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(mesh_compliance_violations_total[5m])) by (tenant_id, domain_id, violation_type, severity)",
+          "legendFormat": "{{tenant_id}}/{{domain_id}} - {{violation_type}} ({{severity}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Violations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Compliance Status Distribution",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 18,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_compliance_checks_total) by (compliance_status)",
+          "legendFormat": "{{compliance_status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Compliance Reports Generated",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(mesh_compliance_report_generated_total[5m])) by (tenant_id, domain_id, compliance_status)",
+          "legendFormat": "{{tenant_id}}/{{domain_id}} - {{compliance_status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Reports/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Violations by Type",
+      "type": "bargauge",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_compliance_violations_total) by (violation_type, severity)",
+          "legendFormat": "{{violation_type}} ({{severity}})",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Violations by Severity",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_compliance_violations_total) by (severity)",
+          "legendFormat": "{{severity}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Compliance Check Success Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(mesh_compliance_checks_total{compliance_status=\"COMPLIANT\"}[15m])) by (tenant_id) / sum(rate(mesh_compliance_checks_total[15m])) by (tenant_id)) * 100",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "percent",
+        "min": 0,
+        "max": 100,
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "red"
+            },
+            {
+              "value": 80,
+              "color": "yellow"
+            },
+            {
+              "value": 95,
+              "color": "green"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

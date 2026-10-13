@@ -118,10 +118,19 @@ class GetTenantHelpersTest(TestCase):
         )
 
     def test_get_tenant_dq_profile_success(self):
-        """Success: returns DQ profile for existing tenant (or platform default)."""
+        """Success: returns platform-default DQ profile for new tenant."""
+        from hub.apps.tenants.services import get_platform_defaults
+
         result = get_tenant_dq_profile(str(self.tenant.id))
+        expected = get_platform_defaults()["default_dq_profile"]
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
+        self.assertEqual(
+            result,
+            expected,
+            f"New tenant should get platform-default DQ profile; "
+            f"expected '{expected}', got '{result}'",
+        )
 
     def test_get_tenant_dq_profile_invalid_uuid_returns_platform_default(self):
         """Failure/edge: invalid UUID returns platform default (no exception)."""
@@ -143,23 +152,50 @@ class GetTenantHelpersTest(TestCase):
         self.assertEqual(result, expected_default)
 
     def test_get_tenant_compliance_regimes_success(self):
-        """Success: returns list for existing tenant."""
+        """Success: returns list matching platform defaults for new tenant."""
+        from hub.apps.tenants.services import get_platform_defaults
+
         result = get_tenant_compliance_regimes(str(self.tenant.id))
+        expected = get_platform_defaults()["default_compliance_regimes"]
         self.assertIsInstance(result, list)
+        self.assertEqual(
+            result,
+            expected,
+            f"New tenant should get platform-default compliance regimes; "
+            f"expected {expected}, got {result}",
+        )
 
     def test_get_tenant_file_size_limit_success(self):
-        """Success: returns int for existing tenant."""
+        """Success: returns platform-default max file size for new tenant."""
+        from hub.apps.tenants.services import get_platform_defaults
+
         result = get_tenant_file_size_limit(str(self.tenant.id))
+        expected = get_platform_defaults()["max_file_size_bytes"]
         self.assertIsInstance(result, int)
         self.assertGreater(result, 0)
+        self.assertEqual(
+            result,
+            expected,
+            f"New tenant should get platform-default file size limit; "
+            f"expected {expected}, got {result}",
+        )
 
     def test_get_tenant_job_limits_success(self):
-        """Success: returns dict with max_job_concurrency and max_queued_jobs."""
+        """Success: returns platform-default job limits for new tenant."""
+        from hub.apps.tenants.services import get_platform_defaults
+
         result = get_tenant_job_limits(str(self.tenant.id))
+        expected = get_platform_defaults()
         self.assertIn("max_job_concurrency", result)
         self.assertIn("max_queued_jobs", result)
-        self.assertIsInstance(result["max_job_concurrency"], int)
-        self.assertIsInstance(result["max_queued_jobs"], int)
+        self.assertEqual(
+            result["max_job_concurrency"],
+            expected["max_job_concurrency"],
+        )
+        self.assertEqual(
+            result["max_queued_jobs"],
+            expected["max_queued_jobs"],
+        )
 
 
 class TenantServiceTest(TestCase):

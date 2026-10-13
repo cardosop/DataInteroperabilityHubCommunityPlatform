@@ -1,6 +1,8 @@
 /**
  * E2E Test: Contract-Asset Linking
- * Tests the "Linked Asset" section on ContractDetailPage and ODPSDetailPage.
+ * Tests the "Linked Asset" section on ContractDetailPage (ODCS and ODPS
+ * contracts both render here — the legacy /odps/:id route redirects to
+ * /contracts/:id per Phase 211.A6).
  * Uses real backend (no mocks/stubs).
  */
 
@@ -23,7 +25,10 @@ test.describe('Contract-Asset Linking', () => {
     page,
   }) => {
     const testUser = await getTestUser();
-    const contractId = await createODCSContractViaApi(testUser);
+    // forceNew: the reuse path can return a legacy contract created before
+    // asset-linking existed (asset_id null) — every test in this file needs
+    // a LINKED asset. See onboarding-checklist.spec.ts for the same guard.
+    const contractId = await createODCSContractViaApi(testUser, { forceNew: true });
     const assetId = await getContractLinkedAssetIdViaApi(testUser, contractId);
     expect(assetId).toBeTruthy();
 
@@ -44,7 +49,10 @@ test.describe('Contract-Asset Linking', () => {
     page,
   }) => {
     const testUser = await getTestUser();
-    const contractId = await createODCSContractViaApi(testUser);
+    // forceNew: the reuse path can return a legacy contract created before
+    // asset-linking existed (asset_id null) — every test in this file needs
+    // a LINKED asset. See onboarding-checklist.spec.ts for the same guard.
+    const contractId = await createODCSContractViaApi(testUser, { forceNew: true });
     const assetId = await getContractLinkedAssetIdViaApi(testUser, contractId);
     expect(assetId).toBeTruthy();
 
@@ -62,28 +70,32 @@ test.describe('Contract-Asset Linking', () => {
     await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
   });
 
-  test('should display "Linked Asset" section on ODPS detail when asset_id is set', async ({
+  test('should display "Linked Asset" section on ODPS contract detail when asset_id is set', async ({
     page,
   }) => {
     const testUser = await getTestUser();
     const odpsContractId = await createODPSContractLinkedToAssetViaApi(testUser);
 
+    // Legacy /odps/:id redirects (Phase 211.A6) to the contract detail page.
     await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
       timeout: 60000,
-      contentSelector: '.odps-detail-page, .error-display, [data-testid="error-display"], h1',
+      contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.odps-detail-page, .error-display, [data-testid="error-display"]', { timeout: 20000 });
+    await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
 
-    const linkedAsset = page.locator('[data-testid="odps-linked-asset"]');
+    const linkedAsset = page.locator('[data-testid="contract-linked-asset"]');
     await expect(linkedAsset).toBeVisible({ timeout: 20000 });
-    const viewBtn = page.locator('[data-testid="odps-linked-asset-view"]');
+    const viewBtn = page.locator('[data-testid="contract-linked-asset-view"]');
     await expect(viewBtn).toBeVisible({ timeout: 10000 });
   });
 
   test('should display contracts table with columns on asset detail page', async ({ page }) => {
     const testUser = await getTestUser();
-    const contractId = await createODCSContractViaApi(testUser);
+    // forceNew: the reuse path can return a legacy contract created before
+    // asset-linking existed (asset_id null) — every test in this file needs
+    // a LINKED asset. See onboarding-checklist.spec.ts for the same guard.
+    const contractId = await createODCSContractViaApi(testUser, { forceNew: true });
     const assetId = await getContractLinkedAssetIdViaApi(testUser, contractId);
     expect(assetId).toBeTruthy();
 
@@ -109,7 +121,10 @@ test.describe('Contract-Asset Linking', () => {
 
   test('should display datasets table with columns on asset detail page', async ({ page }) => {
     const testUser = await getTestUser();
-    const contractId = await createODCSContractViaApi(testUser);
+    // forceNew: the reuse path can return a legacy contract created before
+    // asset-linking existed (asset_id null) — every test in this file needs
+    // a LINKED asset. See onboarding-checklist.spec.ts for the same guard.
+    const contractId = await createODCSContractViaApi(testUser, { forceNew: true });
     const assetId = await getContractLinkedAssetIdViaApi(testUser, contractId);
     expect(assetId).toBeTruthy();
 

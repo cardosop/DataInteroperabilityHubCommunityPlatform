@@ -36,11 +36,17 @@ class DataExportJobViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = DataExportJobSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
-        """Filter queryset by user"""
-        return DataExportJob.objects.filter(user=self.request.user)
+        """Filter queryset by user AND tenant (W1.4a — explicit tenant
+        scope; user-scoping alone is tenant-scoping by proxy, which the
+        RLS-arming audit does not accept as provable)."""
+        tenant_id = get_request_tenant_id(self.request)
+        return DataExportJob.objects.filter(
+            user=self.request.user,
+            tenant_id=tenant_id,
+        )
 
     @extend_schema(
         description=(
@@ -105,11 +111,17 @@ class ErasureRequestViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = ErasureRequestSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
-        """Filter queryset by user"""
-        return ErasureRequest.objects.filter(user=self.request.user)
+        """Filter queryset by user AND tenant (W1.4a — explicit tenant
+        scope; user-scoping alone is tenant-scoping by proxy, which the
+        RLS-arming audit does not accept as provable)."""
+        tenant_id = get_request_tenant_id(self.request)
+        return ErasureRequest.objects.filter(
+            user=self.request.user,
+            tenant_id=tenant_id,
+        )
 
     @transaction.atomic
     @action(detail=False, methods=["post"], url_path="request-erasure")
@@ -130,11 +142,15 @@ class ErasureRequestViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Execute erasure immediately (in production, this might be async)
             try:
-                erasure_request = service.execute_erasure(request_id=str(erasure_request.id))
+                erasure_request = service.execute_erasure(
+                    request_id=str(erasure_request.id)
+                )
             except Exception as e:
                 logger.error(
                     "Failed to execute erasure immediately for request %s: %s",
-                    erasure_request.id, e, exc_info=True,
+                    erasure_request.id,
+                    e,
+                    exc_info=True,
                 )
                 # Persist the error on the request so the consumer can see it
                 erasure_request.error_message = str(e)[:1000]

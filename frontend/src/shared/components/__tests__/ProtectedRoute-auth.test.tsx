@@ -7,7 +7,7 @@
  * Split reduces per-file memory to avoid OOM in vitest worker threads.
  */
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProtectedRoute } from "../ProtectedRoute";
 
@@ -63,13 +63,30 @@ describe("ProtectedRoute — Authentication", () => {
       isAuthenticated: false, user: null, isLoading: false,
     } as never);
 
+    // The production router ALWAYS has a /login route — rendering the
+    // component directly with no /login match makes the unauthenticated
+    // branch's <Navigate to="/login" /> loop forever (each navigation
+    // re-renders the still-unauthenticated route → infinite
+    // render/navigate cycle → worker OOM). Mount it as a route with the
+    // login stub so the redirect LANDS.
     render(
       <MemoryRouter initialEntries={["/protected"]}>
-        <ProtectedRoute><div>Protected Content</div></ProtectedRoute>
+        <Routes>
+          <Route
+            path="/protected"
+            element={
+              <ProtectedRoute>
+                <div>Protected Content</div>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/login" element={<div>Login page</div>} />
+        </Routes>
       </MemoryRouter>,
     );
 
     expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
+    expect(screen.getByText("Login page")).toBeInTheDocument();
   });
 
   it("empty localStorage redirects to /login on first render", () => {
@@ -79,13 +96,22 @@ describe("ProtectedRoute — Authentication", () => {
 
     render(
       <MemoryRouter initialEntries={["/admin"]}>
-        <ProtectedRoute requiredRole={["TENANT_ADMIN"]}>
-          <div>Admin Content</div>
-        </ProtectedRoute>
+        <Routes>
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requiredRole={["TENANT_ADMIN"]}>
+                <div>Admin Content</div>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/login" element={<div>Login page</div>} />
+        </Routes>
       </MemoryRouter>,
     );
 
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
     expect(screen.queryByText("Admin Content")).not.toBeInTheDocument();
+    expect(screen.getByText("Login page")).toBeInTheDocument();
   });
 });

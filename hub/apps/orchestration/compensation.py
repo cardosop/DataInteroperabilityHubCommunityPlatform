@@ -149,7 +149,7 @@ class WorkflowCompensation:
         except Exception as e:
             # Phase 68.1.3: COMPENSATION_INCOMPLETE instead of FAILED
             # so the recovery command can re-attempt failed compensation steps.
-            logger.exception(f"Error rolling back workflow instance {instance.id}: {e!s}")
+            logger.exception(f"Error rolling back workflow instance {instance.id}")
             failed_comp_steps = [
                 r.get("step_name", "unknown")
                 for r in compensation_results
@@ -225,7 +225,7 @@ class WorkflowCompensation:
                 self._compensation_observer(step.step_name)
             return {"status": "skipped", "reason": "no_compensation_defined"}
 
-        try:
+        def _run_compensation() -> dict[str, Any]:
             # Execute compensation logic
             compensation_type = compensation_def.get("type", "task")
 
@@ -263,8 +263,10 @@ class WorkflowCompensation:
                 self._compensation_observer(step.step_name)
             return compensation_log_data
 
+        try:
+            result = _run_compensation()
         except Exception as e:
-            logger.exception(f"Error compensating step {step.step_name}: {e!s}")
+            logger.exception(f"Error compensating step {step.step_name}")
             step.mark_compensated({"status": "failed", "error": str(e)})
             # Phase 78: Prometheus counter for compensation failures
             try:
@@ -282,6 +284,8 @@ class WorkflowCompensation:
             except Exception:
                 pass
             return {"status": "failed", "error": str(e)}
+        else:
+            return result
 
     def _execute_compensation_task(
         self, instance: WorkflowInstance, step: WorkflowStep, compensation_def: dict[str, Any]

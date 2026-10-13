@@ -20,7 +20,7 @@ MESH_TOPOLOGY_CACHE_PREFIX = "mesh:topology"
 
 
 @receiver(post_save, sender="mesh.DataMeshDomain")
-def invalidate_mesh_cache_on_save(sender, instance, **kwargs):
+def invalidate_mesh_cache_on_save(sender, instance, **_kwargs):
     """Invalidate mesh domain and topology caches on save."""
     try:
         domain_id = str(instance.pk)
@@ -46,7 +46,7 @@ def invalidate_mesh_cache_on_save(sender, instance, **kwargs):
 
 
 @receiver(post_delete, sender="mesh.DataMeshDomain")
-def invalidate_mesh_cache_on_delete(sender, instance, **kwargs):
+def invalidate_mesh_cache_on_delete(sender, instance, **_kwargs):
     """Invalidate mesh domain and topology caches on delete."""
     try:
         domain_id = str(instance.pk)

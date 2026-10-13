@@ -7,6 +7,7 @@ used only by the Prefect worker. Supports:
 - API key from DB with scope scheduled_export:internal
 """
 
+import hmac
 import logging
 
 from django.conf import settings
@@ -38,7 +39,9 @@ class WorkerAPIKeyAuthentication(authentication.BaseAuthentication):
             return None
 
         worker_key = getattr(settings, "HUB_WORKER_API_KEY", None)
-        if worker_key and api_key == worker_key:
+        # Phase P.8 — timing-safe comparison: the env key is a shared
+        # secret; a plain `==` leaks prefix information over the network.
+        if worker_key and hmac.compare_digest(api_key, worker_key):
             tenant_id = request.META.get("HTTP_X_TENANT_ID") or request.headers.get("X-Tenant-ID")
             if not tenant_id:
                 raise AuthenticationFailed("X-Tenant-ID header required for worker API key")
@@ -47,7 +50,7 @@ class WorkerAPIKeyAuthentication(authentication.BaseAuthentication):
             try:
                 tenant = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                raise AuthenticationFailed("Invalid X-Tenant-ID for worker")
+                raise AuthenticationFailed("Invalid X-Tenant-ID for worker") from None
             from hub.apps.users.models import User
 
             user = User.objects.filter(tenant=tenant).first()
@@ -69,7 +72,7 @@ class WorkerAPIKeyAuthentication(authentication.BaseAuthentication):
             )
         return result
 
-    def authenticate_header(self, request):
+    def authenticate_header(self, _request):
         return "ApiKey"
 
 
@@ -79,7 +82,7 @@ class WorkerInternalAPIPermission(permissions.BasePermission):
     Reject unauthenticated and tokens without the internal scope.
     """
 
-    def has_permission(self, request, view):
+    def has_permission(self, request, view):  # DRF permission contract
         if not request.user or not request.user.is_authenticated:
             return False
         if getattr(request, "worker_authenticated", False):

@@ -78,9 +78,9 @@ class IncrementalIngestionIntegrationTest(TestCase):
 
         state_manager.mark_file_processed("file1.csv", timezone.now(), "dataset-1")
 
-        self.assertTrue(state_manager.is_file_processed("file1.csv"))
+        assert state_manager.is_file_processed("file1.csv")
         self.scheduled_ingestion.refresh_from_db()
-        self.assertEqual(self.scheduled_ingestion.last_processed_file, "file1.csv")
+        assert self.scheduled_ingestion.last_processed_file == "file1.csv"
 
         # Create processor after state update so it sees current ingestion_state (no stale cache)
         processor = ScheduledIngestionProcessor(
@@ -88,9 +88,9 @@ class IncrementalIngestionIntegrationTest(TestCase):
             connector_factory=factory,
         )
         filtered_files = processor._filter_files(["file1.csv", "file2.csv", "file3.csv"])
-        self.assertNotIn("file1.csv", filtered_files)
-        self.assertIn("file2.csv", filtered_files)
-        self.assertIn("file3.csv", filtered_files)
+        assert "file1.csv" not in filtered_files
+        assert "file2.csv" in filtered_files
+        assert "file3.csv" in filtered_files
 
 
 class DQValidationIntegrationTest(TestCase):
@@ -151,7 +151,7 @@ class DQValidationIntegrationTest(TestCase):
             connector_factory=factory,
             dq_client=dq_client,
         )
-        self.assertTrue(processor._should_run_dq_check())
+        assert processor._should_run_dq_check()
 
 
 class TemplateIntegrationTest(TestCase):
@@ -207,12 +207,12 @@ class TemplateIntegrationTest(TestCase):
         )
 
         # Verify scheduled ingestion was created
-        self.assertEqual(scheduled_ingestion.tenant, self.tenant)
+        assert scheduled_ingestion.tenant == self.tenant
 
         # Verify configuration was resolved
-        self.assertEqual(scheduled_ingestion.get_source_config()["bucket_name"], "my-bucket")
-        self.assertEqual(scheduled_ingestion.get_source_config()["prefix"], "data/")
+        assert scheduled_ingestion.get_source_config()["bucket_name"] == "my-bucket"
+        assert scheduled_ingestion.get_source_config()["prefix"] == "data/"
 
         # Verify DQ configuration from template
-        self.assertTrue(scheduled_ingestion.ingestion_state["enable_dq_validation"])
-        self.assertEqual(scheduled_ingestion.ingestion_state["dq_profile_key"], "intake_basic_gx")
+        assert scheduled_ingestion.ingestion_state["enable_dq_validation"]
+        assert scheduled_ingestion.ingestion_state["dq_profile_key"] == "intake_basic_gx"

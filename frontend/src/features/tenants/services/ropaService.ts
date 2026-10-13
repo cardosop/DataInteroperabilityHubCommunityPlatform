@@ -52,4 +52,17 @@ export const ropaService = {
     );
     return r.data;
   },
+
+  /** 276.B.104 — lifecycle edit step: persist DPO notes inside summary_json. */
+  async updateMetadata(id: string, summaryJson: Record<string, unknown>) {
+    const r = await apiClient
+      .getClient()
+      .patch<RopaGenerationRow>(`${ROPA_BASE}/${id}/update/`, { summary_json: summaryJson });
+    return r.data;
+  },
+
+  /** 276.B.104 — lifecycle retire step: delete a generation record. */
+  async remove(id: string): Promise<void> {
+    await apiClient.getClient().delete(`${ROPA_BASE}/${id}/delete/`);
+  },
 };

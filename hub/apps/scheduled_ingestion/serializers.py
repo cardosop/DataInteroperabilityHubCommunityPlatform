@@ -4,6 +4,8 @@ Scheduled Ingestion Serializers
 DRF serializers for scheduled ingestion API endpoints.
 """
 
+from typing import ClassVar
+
 from rest_framework import serializers
 
 from hub.apps.virtualization.source_config_utils import mask_source_config
@@ -31,7 +33,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ScheduledIngestion
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -63,8 +65,8 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             "created_by_username",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -80,8 +82,8 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             "error_message",
             "created_at",
             "updated_at",
-        ]
-        extra_kwargs = {
+        )
+        extra_kwargs: ClassVar[dict] = {
             # API requires file_pattern on create/update; model allows null/blank for match-all (.*)
             "file_pattern": {"required": True, "allow_blank": True},
         }
@@ -101,7 +103,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
         try:
             re.compile(value)
         except re.error as e:
-            raise serializers.ValidationError(f"Invalid file pattern regex: {e!s}")
+            raise serializers.ValidationError(f"Invalid file pattern regex: {e!s}") from e
         return value
 
     def validate_schedule_config(self, value):
@@ -126,11 +128,11 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
                 )
 
             try:
-                from croniter import croniter
+                from croniter import croniter  # type: ignore[import-untyped]
 
                 croniter(cron_expr)
             except Exception as e:
-                raise serializers.ValidationError(f"Invalid cron expression: {e!s}")
+                raise serializers.ValidationError(f"Invalid cron expression: {e!s}") from e
 
         return value
 
@@ -180,9 +182,10 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Databricks host, http_path, catalog, and schema are required"
                 )
-        elif source_type == SourceType.ATHENA_SOURCE:
-            if not value.get("database") or not value.get("s3_staging_dir"):
-                raise serializers.ValidationError("Athena database and s3_staging_dir are required")
+        elif source_type == SourceType.ATHENA_SOURCE and (
+            not value.get("database") or not value.get("s3_staging_dir")
+        ):
+            raise serializers.ValidationError("Athena database and s3_staging_dir are required")
 
         return value
 
@@ -201,7 +204,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             except Asset.DoesNotExist:
                 raise serializers.ValidationError(
                     {"asset_id": f"Asset with id {asset_id} does not exist"}
-                )
+                ) from None
 
         return attrs
 
@@ -215,7 +218,7 @@ class ScheduledIngestionRunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ScheduledIngestionRun
-        fields = [
+        fields = (
             "id",
             "scheduled_ingestion",
             "scheduled_ingestion_name",
@@ -233,8 +236,8 @@ class ScheduledIngestionRunSerializer(serializers.ModelSerializer):
             "dlq_sync_status",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "scheduled_ingestion_name",
             "status",
@@ -249,7 +252,7 @@ class ScheduledIngestionRunSerializer(serializers.ModelSerializer):
             "dlq_sync_status",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
@@ -262,9 +265,9 @@ class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
     )
 
     class Meta(ScheduledIngestionSerializer.Meta):
-        fields = ScheduledIngestionSerializer.Meta.fields + ["test_connection"]
+        fields = (*ScheduledIngestionSerializer.Meta.fields, "test_connection")
         # Tenant is set by ViewSet.perform_create, not required in request
-        extra_kwargs = {"tenant": {"required": False, "read_only": True}}
+        extra_kwargs: ClassVar[dict] = {"tenant": {"required": False, "read_only": True}}
 
     def validate(self, attrs):
         """Validate and test connection if requested"""
@@ -276,6 +279,15 @@ class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
             source_config = attrs.get("source_config")
 
             if source_type and source_config:
+
+                def _test_connection(connector, config):
+                    if not connector.test_connection(config):
+                        raise serializers.ValidationError(
+                            {
+                                "source_config": "Connection test failed. Please check your source configuration."
+                            }
+                        )
+
                 try:
                     import os
                     import sys
@@ -289,12 +301,7 @@ class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
                     from connectors.factory import SourceConnectorFactory
 
                     connector = SourceConnectorFactory.get_connector(source_type)
-                    if not connector.test_connection(source_config):
-                        raise serializers.ValidationError(
-                            {
-                                "source_config": "Connection test failed. Please check your source configuration."
-                            }
-                        )
+                    _test_connection(connector, source_config)
                 except ImportError:
                     # Connector factory not available (e.g., in test environment)
                     # Skip connection test if factory is not available
@@ -303,7 +310,7 @@ class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
                     # Connection test failed - return validation error instead of raising 500
                     raise serializers.ValidationError(
                         {"source_config": f"Connection test failed: {e!s}"}
-                    )
+                    ) from e
 
         # Remove so it is never in validated_data or passed to create()
         attrs.pop("test_connection", None)

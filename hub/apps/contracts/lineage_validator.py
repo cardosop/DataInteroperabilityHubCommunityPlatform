@@ -175,10 +175,13 @@ def validate_field_exists(
 
     Walks the canonical HubContract shape:
 
-    * ``model_name == ""`` → search ``schema.fields[*].name``
-      (schema-level fields, the legacy ODCS shape).
+    * ``model_name == ""`` → the field must be declared anywhere on the
+      contract: search ``schema.fields[*].name`` (schema-level fields,
+      the legacy ODCS shape) and every ``models[*].fields[*].name``.
+      Model-less edges are valid F2 payloads — the referenced field
+      merely needs to exist on the contract.
     * ``model_name != ""`` → search ``models[*].fields[*].name``
-      where ``models[*].name == model_name``.
+      where ``models[*].name == model_name`` (strict per-model).
 
     Recursive into nested ``object``/``array`` shapes — a field
     ``customer.address.street`` resolves through three levels of
@@ -190,9 +193,15 @@ def validate_field_exists(
 
     if not model_name:
         schema = contract_payload.get("schema") or {}
-        if not isinstance(schema, dict):
-            return False
-        return _field_present(schema.get("fields") or [], field_name)
+        if isinstance(schema, dict) and _field_present(schema.get("fields") or [], field_name):
+            return True
+        # Model-less edge: accept a field declared on any model
+        # (the canonical ODCS 3.x shape) — pinned by the b6 regression
+        # test test_subsequent_save_does_not_close_f2_edges.
+        for model in contract_payload.get("models") or []:
+            if isinstance(model, dict) and _field_present(model.get("fields") or [], field_name):
+                return True
+        return False
 
     for model in contract_payload.get("models") or []:
         if not isinstance(model, dict):

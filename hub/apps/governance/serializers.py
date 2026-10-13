@@ -4,6 +4,7 @@ Governance Serializers
 Serializers for governance models (AccessRequest, RetentionPolicy, ComplianceReport).
 """
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .access_certification import AccessCertification
@@ -15,20 +16,17 @@ from .models import (
 )
 
 
-# Phase 313.1 — the "order" field exists only when the marketplace app is
-# installed (conditional FK on AccessRequest); the field lists adapt so the
-# OpenAPI schema generation works in core-only mode.
-from django.conf import settings
-
-_ACCESS_REQUEST_ORDER_FIELDS = ["order"] if not settings.HUB_CORE_ONLY else []
-
-
 class AccessRequestSerializer(serializers.ModelSerializer):
     """Serializer for AccessRequest"""
 
+    # Phase 313 paid-ward FK — "order" is resolved through the commercial
+    # hook (marketplace registers the reverse lookup); core-only gets None
+    # and the full-mode API surface (UUID pk, read-only) is unchanged.
+    order = serializers.SerializerMethodField()
+
     class Meta:
         model = AccessRequest
-        fields = [
+        fields = (
             "id",
             "tenant",
             "requested_by",
@@ -49,11 +47,11 @@ class AccessRequestSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "expires_at",
             "access_granted_at",
-            *(_ACCESS_REQUEST_ORDER_FIELDS),
+            "order",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "requested_by",
@@ -64,8 +62,20 @@ class AccessRequestSerializer(serializers.ModelSerializer):
             "rejected_by",
             "rejected_at",
             "access_granted_at",
-            *_ACCESS_REQUEST_ORDER_FIELDS,
-        ]
+            "order",
+        )
+
+    @extend_schema_field(serializers.UUIDField(allow_null=True))
+    def get_order(self, obj):
+        """Resolve the linked marketplace Order pk via the commercial hook.
+
+        Phase 313 paid-ward FK: core has no FK in either mode; the paid
+        marketplace registers the reverse lookup. None in core-only mode.
+        """
+        from hub.apps.core.commercial_hooks import get_access_request_order
+
+        order = get_access_request_order(obj)
+        return order.id if order is not None else None
 
 
 class AccessCertificationSerializer(serializers.ModelSerializer):
@@ -73,7 +83,7 @@ class AccessCertificationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AccessCertification
-        fields = [
+        fields = (
             "id",
             "tenant",
             "user",
@@ -87,14 +97,14 @@ class AccessCertificationSerializer(serializers.ModelSerializer):
             "certified_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "certified_at",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class RetentionPolicySerializer(serializers.ModelSerializer):
@@ -129,7 +139,7 @@ class RetentionPolicySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RetentionPolicy
-        fields = [
+        fields = (
             "id",
             "tenant",
             "name",
@@ -153,8 +163,8 @@ class RetentionPolicySerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "created_by",
@@ -163,7 +173,7 @@ class RetentionPolicySerializer(serializers.ModelSerializer):
             "last_enforced_at",
             "tombstoned_at",
             "hard_delete_scheduled_at",
-        ]
+        )
 
 
 class RetentionLegalHoldUpdateSerializer(serializers.Serializer):
@@ -179,7 +189,7 @@ class ComplianceReportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ComplianceReport
-        fields = [
+        fields = (
             "id",
             "tenant",
             "regulation",
@@ -195,8 +205,8 @@ class ComplianceReportSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "created_by",
@@ -204,7 +214,7 @@ class ComplianceReportSerializer(serializers.ModelSerializer):
             "updated_at",
             "email_sent",
             "email_sent_at",
-        ]
+        )
 
 
 class AccessRequestCommentSerializer(serializers.ModelSerializer):
@@ -214,7 +224,7 @@ class AccessRequestCommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AccessRequestComment
-        fields = [
+        fields = (
             "id",
             "access_request",
             "author",
@@ -222,14 +232,14 @@ class AccessRequestCommentSerializer(serializers.ModelSerializer):
             "body",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "author",
             "author_email",
             "created_at",
             "updated_at",
-        ]
+        )
 
     def get_author_email(self, obj):
         if obj.author:

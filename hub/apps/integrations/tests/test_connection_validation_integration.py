@@ -315,7 +315,7 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
         """Test error handling when user_id or tenant_id is None"""
         result = self.rules.validate_connection_access(
             user_id=None,
-            tenant_id=str(self.tenant.id),  # type: ignore[arg-type]  # test: edge-case type exercise
+            tenant_id=str(self.tenant.id),  # test: edge-case type exercise
         )
 
         self.assertIsInstance(result, ValidationResult)

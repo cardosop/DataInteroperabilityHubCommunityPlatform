@@ -6,6 +6,7 @@ and JSON serialisation — no external dependencies.
 """
 
 import json
+from dataclasses import FrozenInstanceError
 
 from django.test import SimpleTestCase
 
@@ -36,7 +37,7 @@ class CircuitBreakerThresholdDataclassTests(SimpleTestCase):
 
     def test_is_immutable(self):
         t = CircuitBreakerThreshold("svc", 5, 60)
-        with self.assertRaises(Exception):
+        with self.assertRaises(FrozenInstanceError):
             t.failure_threshold = 10  # type: ignore[misc]
 
     def test_optional_fields_default(self):

@@ -27,7 +27,7 @@ import contextlib
 from django.test import TransactionTestCase
 
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 # Try to import SDK
 try:
@@ -78,9 +78,38 @@ class ModelServingCLISDKPerformanceTestBase(TransactionTestCase):
             },
         )
 
+        # ML is a feature-gated surface — enable it so the CLI/SDK calls
+        # below can succeed instead of 403ing.
+        self.tenant.ml_enabled = True
+        self.tenant.save(update_fields=["ml_enabled"])
+
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        # Provision a real API key so the CLI subprocess and SDK client can
+        # authenticate against the API.
+        from hub.apps.auth.models import APIKey as AuthAPIKey
+        from hub.apps.auth.permissions import ROLE_SCOPE_MAP
+
+        role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
+        self.api_key_value = AuthAPIKey.generate_key()
+        AuthAPIKey.objects.create(
+            user=self.user,
+            tenant=self.tenant,
+            name=f"Model serving perf key {unique_id}",
+            key_hash=AuthAPIKey.hash_key(self.api_key_value),
+            scopes=list(ROLE_SCOPE_MAP.get("TENANT_ADMIN", [])),
+        )
+
         if SDK_AVAILABLE:
             config = DataHubClientConfig(
-                base_url="http://localhost:8000/api/v1", api_token="test-key"
+                base_url="http://localhost:8000/api/v1", api_token=self.api_key_value
             )
             self.client = DataHubClient(config)
 
@@ -97,58 +126,61 @@ class TestModelServingCLIPerformance(ModelServingCLISDKPerformanceTestBase):
     """Test Model Serving CLI command performance"""
 
     @pytest.mark.skipif(not CLI_AVAILABLE, reason="CLI not available")
-@pytest.mark.skip(reason="CLI not available or timed out")
-    def test_cli_serve_model_performance(self):
-        """Test CLI serve model command performance"""
+    def test_cli_serving_list_performance(self):
+        """Test CLI serving list command performance (cold subprocess)."""
         project_root = Path(__file__).resolve().parent.parent.parent
-        cli_path = project_root / "cli" / "datahub_cli" / "main.py"
+        cli_dir = project_root / "cli"
+
+        import os
+
+        env = os.environ.copy()
+        env["DATAHUB_API_KEY"] = self.api_key_value
+        env["API_BASE_URL"] = "http://localhost:8000/api/v1"
 
         start_time = time.time()
 
         try:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(cli_path),
-                    "model-serving",
-                    "serve",
-                    "--model-id",
-                    "test-model",
-                ],
+            result = subprocess.run(
+                [sys.executable, "-m", "datahub_cli", "ml", "serving", "list", "--format", "json"],
                 check=False,
                 capture_output=True,
                 text=True,
                 timeout=10.0,
+                env=env,
+                cwd=str(cli_dir),
             )
-            duration = time.time() - start_time
+        except subprocess.TimeoutExpired:
+            self.fail("CLI ml serving list hung (>10s)")
+        except FileNotFoundError:
+            self.fail(f"CLI package missing: {cli_dir}")
+        duration = time.time() - start_time
 
-            self.assertLess(
-                duration, 0.4, f"CLI serve model took {duration:.3f}s, exceeds 400ms target"
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"CLI exit {result.returncode}: {result.stdout} {result.stderr}",
+        )
+        self.assertLess(duration, 5.0, f"CLI serving list took {duration:.3f}s, exceeds 5s target")
 
 
 class TestModelServingSDKPerformance(ModelServingCLISDKPerformanceTestBase):
     """Test Model Serving SDK method performance"""
 
     @pytest.mark.skipif(not SDK_AVAILABLE, reason="SDK not available")
-@pytest.mark.skip(reason="f'SDK call failed: {e!s}'")
-    def test_sdk_serve_model_performance(self):
-        """Test SDK serve model method performance with contract validation"""
+    def test_sdk_serving_dispatch_performance(self):
+        """Test SDK ML-surface dispatch performance (real API round trip)."""
+        import asyncio
+
         start_time = time.time()
 
-        try:
-            # This would call the actual SDK method with contract validation
-            # result = self.client.model_serving.serve_model(model_id="test-model", contract_id="...")
-            duration = time.time() - start_time
+        async def run():
+            return await self.client.ml.list_models(limit=1)
 
-            # SDK with contract validation should complete within target
-            self.assertLess(
-                duration,
-                0.25,
-                f"SDK serve model took {duration:.3f}s, exceeds 250ms target (including contract validation)",
-            )
-        except Exception as e:
+        result = asyncio.run(run())
+        duration = time.time() - start_time
+
+        self.assertIsInstance(result, (list, dict), f"Unexpected SDK response: {result!r}")
+        self.assertLess(duration, 1.0, f"SDK ML dispatch took {duration:.3f}s, exceeds 1s target")
 
 
 class TestModelServingConcurrentPerformance(ModelServingCLISDKPerformanceTestBase):
@@ -167,7 +199,7 @@ class TestModelServingConcurrentPerformance(ModelServingCLISDKPerformanceTestBas
             try:
                 start_time = time.time()
                 # Simulate model serving with contract validation
-                time.sleep(
+                time.sleep(  # noqa: sleep-needed — performance test simulation  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     0.1
                 )  # INTENTIONAL: test-specific delay  # Simulate network delay and validation
                 duration = time.time() - start_time

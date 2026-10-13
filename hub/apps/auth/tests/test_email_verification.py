@@ -71,7 +71,6 @@ class EmailVerificationFlowTests(TestCase):
                 "email": email,
                 "password": "SecureP@ss123!",
                 "name": "Reg User",
-                "tenant_id": str(self.tenant.id),
             },
             format="json",
         )
@@ -94,7 +93,6 @@ class EmailVerificationFlowTests(TestCase):
                 "email": email,
                 "password": "SecureP@ss123!",
                 "name": "Delivery User",
-                "tenant_id": str(self.tenant.id),
             },
             format="json",
         )

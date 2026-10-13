@@ -1001,7 +1001,9 @@ services:
       # Hub Worker API configuration (for scheduled ingestion/export flows)
       # Note: HUB_BASE_URL should be base URL without /api/v1 (HubClient adds paths)
       HUB_BASE_URL: http://api-service:8000
-      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-H0QBuCJZpGEohZNSqkW-bHvAASgAwhf60UEDLe6XQtg}
+      # W1.14 — fail-fast: NO committed default (the pre-fix `:-H0Q...`
+      # default authenticated the worker with a known shared secret).
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:?}
       # Prefect deployment image (required for creating deployments)
       PREFECT_DEPLOYMENT_IMAGE: ${PREFECT_DEPLOYMENT_IMAGE:-hub-dev-prefect-integration:latest}
       # Prefect work pool (use docker-pool for Docker image deployments)

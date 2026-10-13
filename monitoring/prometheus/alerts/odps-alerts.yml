@@ -1,0 +1,212 @@
+groups:
+  - name: odps_alerts
+    interval: 30s
+    rules:
+      # ODPS Normalization Failures
+      # Alert when normalization failure rate exceeds 5% over 5 minutes
+      - alert: ODPSNormalizationFailureRate
+        expr: |
+          (
+            sum(rate(odps_normalization_total{status=~"failed|error"}[5m])) by (tenant_id, version)
+            /
+            sum(rate(odps_normalization_total[5m])) by (tenant_id, version)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "High ODPS normalization failure rate for tenant {{ $labels.tenant_id }}"
+          description: "ODPS normalization failure rate is {{ $value | humanizePercentage }} for version {{ $labels.version }} (tenant: {{ $labels.tenant_id }}, threshold: 5%)"
+
+      # ODPS $ref Resolution Errors
+      # Alert when $ref resolution failure rate exceeds 10% over 5 minutes
+      - alert: ODPSRefResolutionErrorRate
+        expr: |
+          (
+            sum(rate(odps_ref_resolution_total{status="failure"}[5m])) by (ref_type, tenant_id)
+            /
+            sum(rate(odps_ref_resolution_total[5m])) by (ref_type, tenant_id)
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "High ODPS $ref resolution error rate for {{ $labels.ref_type }} refs"
+          description: "ODPS $ref resolution failure rate is {{ $value | humanizePercentage }} for {{ $labels.ref_type }} refs (tenant: {{ $labels.tenant_id }}, threshold: 10%)"
+
+      # External Fetch Failures
+      # Alert when external fetch failure rate exceeds 20% over 5 minutes
+      - alert: ODPSExternalFetchFailureRate
+        expr: |
+          (
+            sum(rate(odps_external_fetch_failures_total[5m])) by (error_type, tenant_id)
+            /
+            sum(rate(odps_ref_resolution_total{ref_type="external"}[5m])) by (tenant_id)
+          ) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "High ODPS external fetch failure rate"
+          description: "ODPS external fetch failure rate is {{ $value | humanizePercentage }} for error type {{ $labels.error_type }} (tenant: {{ $labels.tenant_id }}, threshold: 20%)"
+
+      # Rate Limit Violations (Excessive Threshold)
+      # Alert when rate limit violations exceed 50 per hour for any tenant/user
+      - alert: ODPSExcessiveRateLimitViolations
+        expr: |
+          sum(rate(odps_rate_limit_violations_total[1h])) by (level, tenant_id, user_id) > 50
+        for: 10m
+        labels:
+          severity: critical
+          component: odps
+        annotations:
+          summary: "Excessive ODPS rate limit violations detected"
+          description: "Rate limit violations at {{ $labels.level }} level: {{ $value }} violations/hour for tenant {{ $labels.tenant_id }}, user {{ $labels.user_id }} (threshold: 50/hour)"
+
+      # Performance Degradation (>2x target for $ref resolution)
+      # Alert when P95 duration exceeds 2x the target for each ref type
+      # Targets: internal <10ms, local <50ms, external <5s
+      # Alert thresholds: internal >20ms, local >100ms, external >10s
+      # Note: Cached refs are tracked as external refs with cache_hit=true in metrics
+      - alert: ODPSRefResolutionPerformanceDegradationInternal
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type="internal"}[5m])) by (tenant_id, le)
+          ) > 0.020
+        for: 10m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "ODPS internal $ref resolution performance degradation"
+          description: "ODPS internal $ref resolution P95 duration is {{ $value | humanize }}s for tenant {{ $labels.tenant_id }} (threshold: 20ms, target: 10ms)"
+
+      - alert: ODPSRefResolutionPerformanceDegradationLocal
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type="local"}[5m])) by (tenant_id, le)
+          ) > 0.100
+        for: 10m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "ODPS local $ref resolution performance degradation"
+          description: "ODPS local $ref resolution P95 duration is {{ $value | humanize }}s for tenant {{ $labels.tenant_id }} (threshold: 100ms, target: 50ms)"
+
+      - alert: ODPSRefResolutionPerformanceDegradationExternal
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type="external"}[5m])) by (tenant_id, le)
+          ) > 10.0
+        for: 10m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "ODPS external $ref resolution performance degradation"
+          description: "ODPS external $ref resolution P95 duration is {{ $value | humanize }}s for tenant {{ $labels.tenant_id }} (threshold: 10s, target: 5s)"
+
+      # Low Cache Hit Rate (<50% for frequently accessed refs)
+      # Alert when cache hit rate is below 50% over 15 minutes
+      - alert: ODPSLowCacheHitRate
+        expr: |
+          (
+            sum(rate(odps_ref_cache_hits_total[15m])) by (tenant_id)
+            /
+            (sum(rate(odps_ref_cache_hits_total[15m])) by (tenant_id) + sum(rate(odps_ref_cache_misses_total[15m])) by (tenant_id))
+          ) < 0.50
+          and
+          (sum(rate(odps_ref_cache_hits_total[15m])) by (tenant_id) + sum(rate(odps_ref_cache_misses_total[15m])) by (tenant_id)) > 10
+        for: 15m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "Low ODPS cache hit rate for tenant {{ $labels.tenant_id }}"
+          description: "ODPS external $ref cache hit rate is {{ $value | humanizePercentage }} for tenant {{ $labels.tenant_id }} (threshold: 50%, minimum requests: 10)"
+
+      # ODPS Export Failure Rate (Task 6.6.4)
+      # Alert when export failure rate exceeds 5% over 5 minutes
+      - alert: ODPSExportFailureRate
+        expr: |
+          (
+            sum(rate(odps_export_total{status="failure"}[5m])) by (tenant_id, format)
+            /
+            sum(rate(odps_export_total[5m])) by (tenant_id, format)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "High ODPS export failure rate for tenant {{ $labels.tenant_id }}"
+          description: "ODPS export failure rate is {{ $value | humanizePercentage }} for format {{ $labels.format }} (tenant: {{ $labels.tenant_id }}, threshold: 5%)"
+
+      # ODPS Linking Failure Rate (Task 6.6.5)
+      # Alert when linking failure rate exceeds 5% over 5 minutes
+      - alert: ODPSLinkingFailureRate
+        expr: |
+          (
+            sum(rate(odps_linking_failures_total[5m])) by (direction, tenant_id)
+            /
+            sum(rate(odps_linking_total[5m])) by (direction, tenant_id)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "High ODPS linking failure rate for tenant {{ $labels.tenant_id }}"
+          description: "ODPS linking failure rate is {{ $value | humanizePercentage }} for direction {{ $labels.direction }} (tenant: {{ $labels.tenant_id }}, threshold: 5%)"
+
+      # ODPS Semantic Mapping Failure Rate (Task 6.6.6)
+      # Alert when semantic mapping failure rate exceeds 5% over 5 minutes
+      - alert: ODPSSemanticMappingFailureRate
+        expr: |
+          (
+            sum(rate(odps_semantic_mapping_total{status=~"failure|error"}[5m])) by (tenant_id)
+            /
+            sum(rate(odps_semantic_mapping_total[5m])) by (tenant_id)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "High ODPS semantic mapping failure rate for tenant {{ $labels.tenant_id }}"
+          description: "ODPS semantic mapping failure rate is {{ $value | humanizePercentage }} for tenant {{ $labels.tenant_id }} (threshold: 5%)"
+
+      # ODPS Cache Size Alert (Task 9.8.4.2)
+      # Alert when cache size exceeds 90% of limit (900 entries out of 1000)
+      - alert: ODPSHighCacheSize
+        expr: |
+          (
+            odps_ref_cache_size{ref_type="external"}
+            /
+            odps_ref_cache_size_limit{ref_type="external"}
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          component: odps
+        annotations:
+          summary: "ODPS cache size exceeds 90% of limit for tenant {{ $labels.tenant_id }}"
+          description: "ODPS cache size is {{ $value | humanizePercentage }} of limit ({{ $labels.tenant_id }}, ref_type: {{ $labels.ref_type }}, threshold: 90%)"
+
+      # Security Incident Alert (Task 9.8.5.2)
+      # Alert when HIGH or CRITICAL security incidents are detected
+      - alert: ODPSSecurityIncidentDetected
+        expr: |
+          increase(odps_security_incidents_total{severity=~"HIGH|CRITICAL",status="OPEN"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: odps
+        annotations:
+          summary: "Security incident detected: {{ $labels.severity }} severity"
+          description: "Security incident detected: {{ $labels.title }} (severity: {{ $labels.severity }}, event_type: {{ $labels.event_type }}, tenant: {{ $labels.tenant_id }})"
+

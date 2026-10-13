@@ -9,7 +9,6 @@ large query strings, and large headers.
 import json
 
 import pytest
-from rest_framework.test import APIClient
 
 
 @pytest.mark.integration
@@ -18,8 +17,8 @@ class TestPayloadSizeLimit:
     """JSON payload >1MB MUST return 413 Request Entity Too Large."""
 
     @pytest.mark.django_db
-    def test_large_payload_returns_413(self):
-        client = APIClient()
+    def test_large_payload_returns_413(self, authenticated_client):
+        client = authenticated_client
         # Build a payload just over 1MB
         large_string = "x" * (1024 * 1024 + 100)  # ~1MB + 100 bytes
         payload = {"name": "test", "data": large_string}
@@ -44,8 +43,8 @@ class TestDeeplyNestedPayload:
     """JSON nesting depth >20 MUST return 400 Bad Request."""
 
     @pytest.mark.django_db
-    def test_deeply_nested_payload_returns_400(self):
-        client = APIClient()
+    def test_deeply_nested_payload_returns_400(self, authenticated_client):
+        client = authenticated_client
 
         # Build a deeply nested dict (depth 25)
         deeply_nested = "x"
@@ -69,8 +68,8 @@ class TestQueryStringLength:
     """Query string >8192 chars MUST return 414 URI Too Long."""
 
     @pytest.mark.django_db
-    def test_long_query_string_returns_414(self):
-        client = APIClient()
+    def test_long_query_string_returns_414(self, authenticated_client):
+        client = authenticated_client
         long_param = "x" * 9000  # > 8192
         response = client.get(f"/api/v1/assets/?q={long_param}")
         # DRF/WSGI may truncate or return 414
@@ -85,8 +84,8 @@ class TestLargeHeader:
     """Header >8192 chars MUST return 431 Request Header Fields Too Large."""
 
     @pytest.mark.django_db
-    def test_large_header_returns_431(self):
-        client = APIClient()
+    def test_large_header_returns_431(self, authenticated_client):
+        client = authenticated_client
         large_value = "x" * 9000  # > 8192
 
         response = client.get(
@@ -105,8 +104,8 @@ class TestContentTypeValidation:
     """Invalid or missing Content-Type MUST return 415."""
 
     @pytest.mark.django_db
-    def test_wrong_content_type_returns_415(self):
-        client = APIClient()
+    def test_wrong_content_type_returns_415(self, authenticated_client):
+        client = authenticated_client
         response = client.post(
             "/api/v1/assets/",
             data="plain text, not json",
@@ -117,8 +116,8 @@ class TestContentTypeValidation:
         )
 
     @pytest.mark.django_db
-    def test_malformed_json_returns_400(self):
-        client = APIClient()
+    def test_malformed_json_returns_400(self, authenticated_client):
+        client = authenticated_client
         response = client.post(
             "/api/v1/assets/",
             data="this is not valid json {{{",
@@ -135,8 +134,8 @@ class TestMethodValidation:
     """Invalid HTTP methods MUST return 405."""
 
     @pytest.mark.django_db
-    def test_invalid_method_returns_405(self):
-        client = APIClient()
+    def test_invalid_method_returns_405(self, authenticated_client):
+        client = authenticated_client
         # PATCH on a list endpoint without detail
         response = client.patch(
             "/api/v1/assets/", data=json.dumps({}), content_type="application/json"

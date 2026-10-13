@@ -38,7 +38,7 @@ class Command(BaseCommand):
             "--marketplace-only", action="store_true", help="Only warm marketplace listings cache"
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         tenant_id = options.get("tenant_id")
         all_tenants = options.get("all_tenants", False)
         assets_only = options.get("assets_only", False)
@@ -72,7 +72,7 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Failed to warm marketplace cache: {e}"))
                 logger.error(f"Marketplace cache warming failed: {e}", exc_info=True)
-                raise CommandError(f"Marketplace cache warming failed: {e}")
+                raise CommandError(f"Marketplace cache warming failed: {e}") from e
             return
 
         # Warm cache for all tenants
@@ -101,7 +101,7 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Failed to warm cache for all tenants: {e}"))
                 logger.error(f"Cache warming for all tenants failed: {e}", exc_info=True)
-                raise CommandError(f"Cache warming failed: {e}")
+                raise CommandError(f"Cache warming failed: {e}") from e
             return
 
         # Warm cache for specific tenant
@@ -116,7 +116,7 @@ class Command(BaseCommand):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise CommandError(f"Tenant with id {tenant_id} does not exist")
+            raise CommandError(f"Tenant with id {tenant_id} does not exist") from None
 
         self.stdout.write(
             self.style.SUCCESS(f"Warming cache for tenant: {tenant.name} ({tenant_id})")
@@ -151,4 +151,4 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Failed to warm cache for tenant: {e}"))
             logger.error(f"Cache warming for tenant {tenant_id} failed: {e}", exc_info=True)
-            raise CommandError(f"Cache warming failed: {e}")
+            raise CommandError(f"Cache warming failed: {e}") from e

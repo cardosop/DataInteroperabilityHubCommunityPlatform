@@ -6,7 +6,7 @@ Use case–based E2E tests. Each use case spec maps to one or more UC-* IDs from
 
 ```
 use-cases/
-├── auth/           # UC-AUTH-001 to UC-AUTH-004 (registration, login, password reset, public access)
+├── auth/           # UC-AUTH-001 to UC-AUTH-004 (registration, login, password reset, public access), UC-AUTH-006 (SSO login)
 ├── assets/         # UC-AM-001 (asset management)
 ├── contracts/      # UC-CM-001, UC-CM-002 (contract management)
 ├── marketplace/    # UC-MKT-001 to UC-MKT-004 (marketplace publish, browse, purchase, entitlements)
@@ -14,6 +14,7 @@ use-cases/
 ├── compliance/     # UC-COMP-001 (compliance)
 ├── odps/           # UC-ODPS-001 to UC-ODPS-003 (ODPS product)
 ├── integrations/   # UC-INT-001, UC-INT-002 (connectors)
+├── db/             # UC-DB-001 (workspace registry), UC-DB-003 (Databricks SSO), UC-DB-013 (DLT export)
 └── webhooks/       # UC-WH-001 (webhook management)
 ```
 
@@ -41,6 +42,10 @@ use-cases/
 | UC-INT-001 | Install Pre-built Connector | `integrations/UC-INT-001.spec.ts` | ✅ Phase 29.4.2 |
 | UC-INT-002 | Create Custom Connector | `integrations/UC-INT-002.spec.ts` | ✅ Phase 29.4.2 |
 | UC-WH-001 | Create/Manage Webhook | `webhooks/UC-WH-001.spec.ts` | ✅ Phase 29.4.2 |
+| UC-AUTH-006 | SSO Login | `auth/UC-AUTH-006.spec.ts` | ✅ close-test-coverage-gaps 6.4 |
+| UC-DB-001 | Register Databricks Workspace | `db/UC-DB-001.spec.ts` | ✅ close-test-coverage-gaps 6.4 |
+| UC-DB-003 | Databricks SSO Login | `db/UC-DB-003.spec.ts` | ✅ close-test-coverage-gaps 6.4 |
+| UC-DB-013 | Export Dataset to Databricks | `db/UC-DB-013.spec.ts` | ✅ close-test-coverage-gaps 6.4 |
 
 ## Journey vs Use Case
 

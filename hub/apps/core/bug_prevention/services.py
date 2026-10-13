@@ -11,6 +11,7 @@ from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
+from pydantic import ValidationError as PydanticValidationError
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
@@ -45,9 +46,10 @@ class IdempotencyService(BaseService):
         """
         try:
             IdempotencyKeyValidator(key=key)
-            return True, None
-        except Exception as e:
+        except (PydanticValidationError, ValueError) as e:
             return False, str(e)
+        else:
+            return True, None
 
     @staticmethod
     def check_idempotency(

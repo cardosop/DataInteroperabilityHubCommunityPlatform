@@ -21,6 +21,7 @@ from typing import Any
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import DatabaseError
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -100,7 +101,7 @@ class FilesBusinessRules(BusinessRules):
         return "FilesBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -141,9 +142,13 @@ class FilesBusinessRules(BusinessRules):
                 user = user or context.metadata.get("user")
 
             # Also check context.resource
-            if not file and context and hasattr(context, "resource"):
-                if isinstance(context.resource, File):
-                    file = context.resource
+            if (
+                not file
+                and context
+                and hasattr(context, "resource")
+                and isinstance(context.resource, File)
+            ):
+                file = context.resource
 
         # Determine what to validate based on what's provided
         validation_type = kwargs.get("validation_type", "all")
@@ -637,7 +642,6 @@ class FilesBusinessRules(BusinessRules):
                 resource_id=str(file.id),
                 access_type=access_type,
             )
-            return result
         except Exception as e:
             logger.warning(
                 f"ABAC access evaluation failed for file {file.id}, user {user.id}: {e}",
@@ -647,6 +651,8 @@ class FilesBusinessRules(BusinessRules):
             from hub.apps.governance.abac import PolicyEvaluationResult
 
             return PolicyEvaluationResult(allowed=False)
+        else:
+            return result
 
     def _validate_access_request(
         self, file: File, user: User, access_type: str
@@ -998,7 +1004,7 @@ class FilesBusinessRules(BusinessRules):
         content_type: str | None = None,
         upload_method: str = "browser",
         tenant: Any | None = None,
-        user: User | None = None,
+        user: User | None = None,  # public keyword-arg API; callers pass by keyword
         file_content: bytes | None = None,
         validation_type: str = "all",
     ) -> ValidationResult:
@@ -1141,7 +1147,7 @@ class FilesBusinessRules(BusinessRules):
                 tenant_limit = get_tenant_file_size_limit(tenant_id)
                 details["tenant_limit"] = tenant_limit
                 details["limit_source"] = "tenant_configuration"
-            except Exception as e:
+            except DatabaseError as e:
                 logger.warning(f"Failed to get tenant file size limit: {e}")
                 warnings.append(f"Could not retrieve tenant file size limit: {e!s}")
                 details["limit_source"] = "platform_default"
@@ -1167,6 +1173,16 @@ class FilesBusinessRules(BusinessRules):
                 settings, "MAX_BROWSER_UPLOAD_SIZE", 100 * 1024 * 1024
             )  # 100MB default
             limit_name = "browser upload limit"
+            # Phase 260.3.F — the browser cap protects the legacy
+            # single-PUT path. Uploads ABOVE the multipart threshold
+            # route through the resumable multipart engine (chunked
+            # XHR PUTs), so the cap does not apply to them; the
+            # platform/tenant effective limit governs instead.
+            multipart_threshold = getattr(settings, "MULTIPART_UPLOAD_THRESHOLD", 100 * 1024 * 1024)
+            if file_size > multipart_threshold:
+                method_limit = effective_limit
+                limit_name = f"file size limit ({limit_source})"
+                details["multipart_exempt"] = True
         elif upload_method == "sdk":
             method_limit = getattr(
                 settings, "MAX_SDK_UPLOAD_SIZE", 5 * 1024 * 1024 * 1024
@@ -1209,7 +1225,7 @@ class FilesBusinessRules(BusinessRules):
                     if quota_result.warnings:
                         warnings.extend(quota_result.warnings)
                     details.update(quota_result.details)
-            except Exception as e:
+            except (AttributeError, TypeError) as e:
                 logger.warning(f"Failed to validate tenant quota: {e}")
                 warnings.append(f"Could not validate tenant quota: {e!s}")
                 details["quota_check_error"] = str(e)
@@ -1390,7 +1406,7 @@ class FilesBusinessRules(BusinessRules):
                     warnings.append(f"GovernanceService validation failed: {error_message}")
                     details["storage_quota_valid"] = True  # Not a storage quota issue
 
-            except Exception as e:
+            except DatabaseError as e:
                 logger.warning(
                     f"Failed to validate storage quota via GovernanceService for tenant {tenant.id}: {e}",
                     exc_info=True,
@@ -1403,7 +1419,7 @@ class FilesBusinessRules(BusinessRules):
                 details["governance_service_validation"] = "error"
                 details["storage_quota_valid"] = None  # Unknown status
 
-        except Exception as e:
+        except DatabaseError as e:
             logger.warning(f"Failed to check tenant storage quota: {e}", exc_info=True)
             errors.append(f"Could not check tenant storage quota: {e!s}")
             details["quota_check_error"] = str(e)
@@ -1469,7 +1485,7 @@ class FilesBusinessRules(BusinessRules):
                         file_count_limit = tenant.config.get(
                             "max_files_per_tenant", default_file_count_limit
                         )
-            except Exception as e:
+            except (AttributeError, DatabaseError) as e:
                 logger.debug(f"Could not get file count limit from tenant config: {e}")
 
             details["file_count_limit"] = file_count_limit
@@ -1504,7 +1520,7 @@ class FilesBusinessRules(BusinessRules):
                     else:
                         details["file_count_warning"] = False
 
-        except Exception as e:
+        except DatabaseError as e:
             logger.warning(f"Failed to check tenant file count quota: {e}", exc_info=True)
             errors.append(f"Could not check tenant file count quota: {e!s}")
             details["file_count_check_error"] = str(e)
@@ -1584,7 +1600,7 @@ class FilesBusinessRules(BusinessRules):
                 details["quota_exceeded"] = False
                 details["quota_exceeded_handling"] = "no_action_needed"
 
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.warning(f"Failed to validate quota exceeded handling: {e}", exc_info=True)
             warnings.append(f"Could not validate quota exceeded handling: {e!s}")
             details["quota_exceeded_handling_error"] = str(e)
@@ -1649,7 +1665,7 @@ class FilesBusinessRules(BusinessRules):
                     details["quota_warning"] = True
                 else:
                     details["quota_warning"] = False
-            except Exception as e:
+            except DatabaseError as e:
                 logger.debug(f"Could not determine tenant quota limit: {e}")
                 details["quota_limit"] = None
                 details["quota_check_skipped"] = True
@@ -1670,10 +1686,10 @@ class FilesBusinessRules(BusinessRules):
                 # Merge warnings from GovernanceService
                 warnings.extend(storage_result.warnings)
                 details.update(storage_result.details)
-            except Exception as e:
+            except (AttributeError, TypeError) as e:
                 logger.debug(f"Could not check hard quota via GovernanceService: {e}")
 
-        except Exception as e:
+        except DatabaseError as e:
             logger.warning(f"Failed to check tenant quota: {e}")
             warnings.append(f"Could not check tenant storage quota: {e!s}")
             details["quota_check_error"] = str(e)
@@ -1854,25 +1870,24 @@ class FilesBusinessRules(BusinessRules):
         # Validate filename contains only safe characters
         # Allow: alphanumeric, spaces, dots, hyphens, underscores, parentheses
         safe_pattern = re.compile(r"^[a-zA-Z0-9._\-\s()]+$")
-        if not safe_pattern.match(filename_clean):
+        if not safe_pattern.match(filename_clean) and filename_clean.isascii():
             # Phase 260.2.H — locale-aware names use non-ASCII scripts; do not warn.
-            if filename_clean.isascii():
-                # Check if it's just the extension that's problematic
-                if "." in filename_clean:
-                    name_part = filename_clean.rsplit(".", 1)[0]
-                    if safe_pattern.match(name_part):
-                        # Extension might have special chars, but name is OK
-                        details["name_valid"] = True
-                    else:
-                        warnings.append(
-                            f"File name contains special characters that may cause issues: '{filename_clean}'"
-                        )
-                        details["name_warning"] = True
+            # Check if it's just the extension that's problematic
+            if "." in filename_clean:
+                name_part = filename_clean.rsplit(".", 1)[0]
+                if safe_pattern.match(name_part):
+                    # Extension might have special chars, but name is OK
+                    details["name_valid"] = True
                 else:
                     warnings.append(
                         f"File name contains special characters that may cause issues: '{filename_clean}'"
                     )
                     details["name_warning"] = True
+            else:
+                warnings.append(
+                    f"File name contains special characters that may cause issues: '{filename_clean}'"
+                )
+                details["name_warning"] = True
 
         # Validate filename doesn't start or end with dot
         if filename_clean.startswith(".") or filename_clean.endswith("."):
@@ -1890,7 +1905,7 @@ class FilesBusinessRules(BusinessRules):
         file_content: bytes,
         filename: str,
         content_type: str | None = None,
-        tenant: Any | None = None,
+        tenant: Any | None = None,  # keyword-arg API; callers pass by keyword
     ) -> ValidationResult:
         """
         Validate file content (malware scanning, content type verification).
@@ -1927,22 +1942,25 @@ class FilesBusinessRules(BusinessRules):
             )
 
         # Basic content type verification
-        if content_type:
-            # Check if content matches declared type (basic checks)
-            if content_type.startswith("text/") or content_type in [
+        # Check if content matches declared type (basic checks)
+        if content_type and (
+            content_type.startswith("text/")
+            or content_type
+            in [
                 "application/json",
                 "application/csv",
-            ]:
-                # Try to decode as text to verify
-                try:
-                    file_content.decode("utf-8")
-                    details["content_decodable"] = True
-                except UnicodeDecodeError:
-                    warnings.append(
-                        f"Content type '{content_type}' suggests text content, "
-                        "but file content is not valid UTF-8"
-                    )
-                    details["content_decodable"] = False
+            ]
+        ):
+            # Try to decode as text to verify
+            try:
+                file_content.decode("utf-8")
+                details["content_decodable"] = True
+            except UnicodeDecodeError:
+                warnings.append(
+                    f"Content type '{content_type}' suggests text content, "
+                    "but file content is not valid UTF-8"
+                )
+                details["content_decodable"] = False
 
         # Malware scanning via compliance service
         try:
@@ -1960,10 +1978,9 @@ class FilesBusinessRules(BusinessRules):
                 details["malware_scan_status"] = "service_unavailable"
             else:
                 # Extract file format from filename
-                if "." in filename:
-                    file_format = filename.rsplit(".", 1)[1].lower()
-                else:
-                    file_format = "csv"  # Default
+                file_format = (
+                    filename.rsplit(".", 1)[1].lower() if "." in filename else "csv"
+                )  # Default
 
                 # Run compliance scan (which includes basic security checks)
                 try:
@@ -1999,7 +2016,7 @@ class FilesBusinessRules(BusinessRules):
                     else:
                         details["content_valid"] = True
 
-                except Exception as e:
+                except (AttributeError, TypeError, KeyError) as e:
                     logger.warning(f"Compliance scan failed: {e}")
                     warnings.append(f"Could not complete malware scan: {e!s}")
                     details["malware_scan_status"] = "failed"

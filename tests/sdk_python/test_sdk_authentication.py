@@ -11,8 +11,6 @@ import pytest
 try:
     from datahub_interoperability import DataHubClient, DataHubClientConfig
     from datahub_interoperability.errors import (
-        ForbiddenError,
-        NetworkError,
         UnauthorizedError,
     )
 
@@ -69,7 +67,7 @@ class TestSDKAuthentication(SDKTestBase):
 
         async with DataHubClient(config) as client:
             # Test API call with API key
-            response = await client.get("assets/assets/")
+            response = await client.get("assets/")
             # Should succeed (200 or empty list)
             assert response is not None
 
@@ -83,7 +81,7 @@ class TestSDKAuthentication(SDKTestBase):
 
         async with DataHubClient(config) as sdk_client:
             # Test API call with JWT
-            response = await sdk_client.get("assets/assets/")
+            response = await sdk_client.get("assets/")
             # Should succeed
             assert response is not None
 
@@ -140,7 +138,7 @@ class TestSDKAuthentication(SDKTestBase):
         async with DataHubClient(config) as client:
             # Should raise UnauthorizedError
             with pytest.raises(UnauthorizedError):
-                await client.get("assets/assets/")
+                await client.get("assets/")
 
     @pytest.mark.asyncio
     async def test_error_missing_authentication(self):
@@ -155,7 +153,7 @@ class TestSDKAuthentication(SDKTestBase):
         async with DataHubClient(config) as client:
             # Should raise UnauthorizedError
             with pytest.raises(UnauthorizedError):
-                await client.get("assets/assets/")
+                await client.get("assets/")
 
     @pytest.mark.asyncio
     async def test_error_expired_token(self):
@@ -170,4 +168,4 @@ class TestSDKAuthentication(SDKTestBase):
         async with DataHubClient(config) as client:
             # Should raise UnauthorizedError
             with pytest.raises(UnauthorizedError):
-                await client.get("assets/assets/")
+                await client.get("assets/")

@@ -24,6 +24,7 @@ from hub.apps.core.commercial_hooks import get_product_creation_workflow
 
 from .business_rules import ODPSBusinessRules
 from .models import OriginalSpecType
+from .odps_errors import ODPSValidationError
 from .odps_parser import ODPSParser
 from .odps_version_detection import detect_odps_version
 from .serializers import ProductCreateSerializer
@@ -121,7 +122,7 @@ class ContractProductMixin:
         )
         try:
             odps_doc = ODPSParser.parse(content=original_raw, format=format_str)
-        except Exception as parse_err:
+        except ODPSValidationError as parse_err:
             return _product_error_response(
                 f"Failed to parse ODPS document: {parse_err}",
                 "ODPS_PARSE_FAILED",
@@ -129,7 +130,7 @@ class ContractProductMixin:
             )
         try:
             odps_version = detect_odps_version(odps_doc) or "4.1"
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             odps_version = "4.1"
         odps_rules = ODPSBusinessRules()
         structure_result = odps_rules.validate_odps_structure(odps_doc, strict=False)
@@ -176,7 +177,7 @@ class ContractProductMixin:
             try:
                 db_name = settings.DATABASES["default"].get("NAME", "")
                 is_test_env = "test" in db_name.lower() or db_name.startswith("test_")
-            except Exception:
+            except (AttributeError, KeyError):
                 pass
 
         try:
@@ -199,6 +200,33 @@ class ContractProductMixin:
                     asset_id=str(asset_id) if asset_id else None,
                     resolve_external_refs=resolve_external_refs,
                 )
+
+                # Audit-trail guarantee: the UI's unified create flow posts
+                # HERE (POST /contracts/products/) — neither this view nor
+                # ProductCreationWorkflow emitted CONTRACT_CREATED, so the
+                # primary UI contract-creation path wrote NO audit rows
+                # (E2E verifyAuditEvent polled 0 rows forever). Emit for
+                # each persisted contract at the point the row becomes
+                # UI-visible — the synchronous test-env path.
+                from hub.apps.audit.utils import create_audit_event
+
+                for _contract in (result.get("odps_contract"), result.get("odcs_contract")):
+                    if _contract is None:
+                        continue
+                    create_audit_event(
+                        resource_type="CONTRACT",
+                        action="CONTRACT_CREATED",
+                        actor_user=request.user,
+                        tenant=tenant,
+                        resource_id=str(_contract.id),
+                        details={
+                            "original_spec_type": _contract.original_spec_type,
+                            "original_spec_version": _contract.original_spec_version,
+                            "asset_id": str(_contract.asset_id) if _contract.asset_id else None,
+                            "workflow_instance_id": result.get("workflow_instance_id"),
+                        },
+                        request=request,
+                    )
 
                 # Serialize contracts for response
                 from .serializers import ContractSerializer
@@ -245,7 +273,7 @@ class ContractProductMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.exception("Product creation failed: %s", e)
+            logger.exception("Product creation failed")
             return _product_error_response(
                 f"Product creation failed: {e!s}",
                 "INTERNAL_ERROR",
@@ -416,16 +444,21 @@ class ContractProductMixin:
             if hasattr(request, "user") and request.user and not request.user.is_anonymous:
                 user_id = str(request.user.id)
 
-            # Use PaymentGatewayService to get payment gateways
+            # Payment gateways resolve through the commercial hook
+            # (marketplace registers the provider); core-only mode has no
+            # payment layer → an empty gateway list.
+            from hub.apps.core.commercial_hooks import list_payment_gateways_for_contract
             from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError
             from hub.apps.core.services.base import ValidationError as ServiceValidationError
-            from hub.apps.marketplace.payment_gateway_service import PaymentGatewayService
 
             try:
-                payment_gateway_service = PaymentGatewayService(
-                    tenant_id=tenant_id, user_id=user_id
+                payment_gateways = list_payment_gateways_for_contract(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    contract_id=str(contract.id),
                 )
-                payment_gateways = payment_gateway_service.list_payment_gateways(str(contract.id))
+                if payment_gateways is None:
+                    payment_gateways = {}
 
                 return Response(
                     {
@@ -676,7 +709,7 @@ class ContractProductMixin:
                         details = product.get("details", {})
                         if isinstance(details, dict):
                             product_details = details.get(lang)
-                except Exception:
+                except (ValueError, TypeError, AttributeError):
                     # If parsing fails, fall through to hub_contract_json
                     pass
 

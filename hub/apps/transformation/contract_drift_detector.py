@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from hub.apps.integrations.encryption import EncryptionError
+
 logger = logging.getLogger(__name__)
 
 
@@ -214,7 +216,7 @@ class ContractDriftDetector:
                     if hasattr(pipeline, "get_pipeline_definition")
                     else pipeline.pipeline_definition
                 )
-            except Exception:
+            except EncryptionError:
                 pdef = pipeline.pipeline_definition
 
             # Check if this dataset is in the pipeline's declared inputs.

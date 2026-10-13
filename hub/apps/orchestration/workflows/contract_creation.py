@@ -5,6 +5,7 @@ Orchestrates the contract creation process with proper error handling,
 retry logic, and compensation.
 """
 
+import contextlib
 from typing import Any
 
 import structlog
@@ -19,11 +20,12 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
+from hub.apps.contracts.services.contract_service import locked_contract_version
+from hub.apps.core.commercial_hooks import map_via_semantic
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.core.commercial_hooks import map_via_semantic
 
 logger = structlog.get_logger(__name__)
 
@@ -440,15 +442,8 @@ class ContractCreationWorkflow:
 
             asset = Asset.objects.get(id=asset_id, tenant=tenant)
 
-        # Calculate version
-        version = 1
-        if asset:
-            latest_contract = (
-                Contract.objects.filter(tenant=tenant, asset=asset).order_by("-version").first()
-            )
-            if latest_contract:
-                version = latest_contract.version + 1
-
+        # 313.H.5 — the version is allocated atomically under the
+        # asset-row lock at the create below (locked_contract_version).
         # Determine final spec type and version
         # Use detected_spec_type if available, otherwise fall back to original_spec_type or default to ODCS
         final_spec_type = detected_spec_type or original_spec_type or "ODCS"
@@ -535,28 +530,51 @@ class ContractCreationWorkflow:
                     )
 
         # Create contract
-        contract = Contract.objects.create(
-            tenant=tenant,
-            asset=asset,
-            version=version,
-            status=ContractStatus.DRAFT,
-            original_spec_type=final_spec_type,
-            original_spec_version=final_spec_version,
-            original_format=original_format,
-            original_raw=original_raw,
-            hub_contract_version="1.0.0" if hub_contract else None,
-            hub_contract_json=hub_contract,
-            normalization_status=final_norm_status,
-            normalization_errors=normalization_errors,
-            normalization_warnings=normalization_warnings,
-            created_by=user,
-        )
+        with locked_contract_version(tenant_id=str(tenant.id), asset=asset) as version:
+            contract = Contract.objects.create(
+                tenant=tenant,
+                asset=asset,
+                version=version,
+                status=ContractStatus.DRAFT,
+                original_spec_type=final_spec_type,
+                original_spec_version=final_spec_version,
+                original_format=original_format,
+                original_raw=original_raw,
+                hub_contract_version="1.0.0" if hub_contract else None,
+                hub_contract_json=hub_contract,
+                normalization_status=final_norm_status,
+                normalization_errors=normalization_errors,
+                normalization_warnings=normalization_warnings,
+                created_by=user,
+            )
 
         logger.info(
             "Contract record created",
             workflow_instance_id=str(instance.id),
             contract_id=str(contract.id),
             tenant_id=tenant_id,
+        )
+
+        # Emit the CONTRACT_CREATED audit HERE, at row creation — the
+        # contract is UI-visible from this point, and the audit-trail
+        # guarantee says the row exists by the time the mutation is
+        # observable. (Previously this fired in the final
+        # _audit_logging_task, minutes after the row under batch load;
+        # E2E verifyAuditEvent polled 0 rows for whole test budgets.)
+        # The trailing task now dedupes against this row.
+        create_audit_event(
+            resource_type="CONTRACT",
+            action="CONTRACT_CREATED",
+            actor_user=user,
+            tenant=tenant,
+            resource_id=str(contract.id),
+            details={
+                "original_spec_type": final_spec_type,
+                "original_spec_version": final_spec_version,
+                "normalization_status": final_norm_status,
+                "asset_id": str(asset.id) if asset else None,
+            },
+            request=None,  # No request object in workflow context
         )
 
         # Store contract_id in state for subsequent steps
@@ -609,7 +627,8 @@ class ContractCreationWorkflow:
         if not contract_id:
             raise ValueError("contract_id is required for data file linking")
 
-        try:
+        def _link_and_create() -> dict[str, Any]:
+            nonlocal tenant_id, asset_key, asset_name
             # Get contract first (needed for tenant/user fallback)
             contract = Contract.objects.get(id=contract_id)
 
@@ -677,41 +696,31 @@ class ContractCreationWorkflow:
                 created_by=user,
             )
 
-            # Link contract to asset
-            contract.asset = asset
-
-            # Get next version for asset
-            latest_contract = (
-                Contract.objects.filter(tenant=tenant, asset=asset)
-                .exclude(id=contract_id)
-                .order_by("-version")
-                .first()
-            )
-            if latest_contract:
-                contract.version = latest_contract.version + 1
-            else:
-                contract.version = 1
-
-            contract.save(update_fields=["asset", "version"])
+            # Link contract to asset. 313.H.5 — allocate the version
+            # atomically under the asset-row lock (excluding the row
+            # being moved) so concurrent links serialize.
+            with locked_contract_version(
+                tenant_id=str(tenant.id), asset=asset, exclude_pk=contract.pk
+            ) as next_version:
+                contract.asset = asset
+                contract.version = next_version
+                contract.save(update_fields=["asset", "version"])
 
             # If ODPS contract is linked, also link it to asset
             odps_contract_id = instance.state_data.get("odps_contract_id")
             if odps_contract_id:
                 try:
                     odps_contract = Contract.objects.get(id=odps_contract_id, tenant=tenant)
-                    odps_contract.asset = asset
-                    # Update version if needed
-                    latest_contract = (
-                        Contract.objects.filter(tenant=tenant, asset=asset)
-                        .exclude(id=odps_contract_id)
-                        .order_by("-version")
-                        .first()
-                    )
-                    if latest_contract:
-                        odps_contract.version = latest_contract.version + 1
-                    else:
-                        odps_contract.version = 1
-                    odps_contract.save(update_fields=["asset", "version"])
+                    # 313.H.5 — allocate the version atomically under the
+                    # asset-row lock (excluding the row being moved).
+                    with locked_contract_version(
+                        tenant_id=str(tenant.id),
+                        asset=asset,
+                        exclude_pk=odps_contract.pk,
+                    ) as next_version:
+                        odps_contract.asset = asset
+                        odps_contract.version = next_version
+                        odps_contract.save(update_fields=["asset", "version"])
                 except Contract.DoesNotExist:
                     logger.warning(
                         "ODPS contract not found for asset linking",
@@ -732,6 +741,9 @@ class ContractCreationWorkflow:
                 "asset_key": asset_key,
                 "state": {"asset_id": str(asset.id)},
             }
+
+        try:
+            result = _link_and_create()
         except Exception as e:
             # Database error - transaction will rollback automatically
             logger.error(
@@ -743,6 +755,8 @@ class ContractCreationWorkflow:
                 exc_info=True,
             )
             raise ValueError(f"ASSET_CREATION_ERROR: Failed to create asset: {e!s}") from e
+        else:
+            return result
 
     @staticmethod
     @transaction.atomic
@@ -879,7 +893,10 @@ class ContractCreationWorkflow:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
                 if odps_contract.hub_contract_json:
                     semantic_resource = map_via_semantic(
-                        "contract", contract=odps_contract, tenant=odps_contract.tenant, use_cache=False
+                        "contract",
+                        contract=odps_contract,
+                        tenant=odps_contract.tenant,
+                        use_cache=False,
                     )
                     if semantic_resource:
                         mapped_contracts.append(
@@ -959,8 +976,6 @@ class ContractCreationWorkflow:
                 contract_title=contract_title,
                 user_email=user.email,
             )
-
-            return {"notifications_sent": True, "notification_type": "logged"}
         except Exception as e:
             logger.error(
                 "Failed to log contract creation notification",
@@ -971,6 +986,8 @@ class ContractCreationWorkflow:
             )
             # Don't fail workflow on notification errors
             return {"notifications_sent": False, "error": str(e)}
+        else:
+            return {"notifications_sent": True, "notification_type": "logged"}
 
     @staticmethod
     def _audit_logging_task(
@@ -1015,21 +1032,29 @@ class ContractCreationWorkflow:
 
         tenant = Tenant.objects.get(id=tenant_id)
 
-        # Create audit event
-        create_audit_event(
-            resource_type="CONTRACT",
-            action="CONTRACT_CREATED",
-            actor_user=user,
-            tenant=tenant,
-            resource_id=contract_id,
-            details={
-                "original_spec_type": detected_spec_type,
-                "original_spec_version": detected_spec_version,
-                "normalization_status": normalization_status,
-                "asset_id": asset_id,
-            },
-            request=None,  # No request object in workflow context
-        )
+        # The CONTRACT_CREATED audit now fires at ROW CREATION
+        # (_create_contract_record_task) — skip here if already emitted so
+        # the trailing task never duplicates it.
+        from hub.apps.audit.models import AuditEvent
+
+        already_emitted = AuditEvent.objects.filter(
+            action="CONTRACT_CREATED", resource_id=contract_id
+        ).exists()
+        if not already_emitted:
+            create_audit_event(
+                resource_type="CONTRACT",
+                action="CONTRACT_CREATED",
+                actor_user=user,
+                tenant=tenant,
+                resource_id=contract_id,
+                details={
+                    "original_spec_type": detected_spec_type,
+                    "original_spec_version": detected_spec_version,
+                    "normalization_status": normalization_status,
+                    "asset_id": asset_id,
+                },
+                request=None,  # No request object in workflow context
+            )
 
         logger.info(
             "Audit log created for contract creation",
@@ -1140,10 +1165,7 @@ class ContractCreationWorkflow:
         # Get asset if available
         asset = contract.asset
 
-        odps_contract = None
-        odps_contract_id = None
-
-        try:
+        def _link() -> dict[str, Any]:
             if odps_action == "upload":
                 # Parse and validate uploaded ODPS
                 odps_raw = input_data.get("odps_raw")
@@ -1206,13 +1228,12 @@ class ContractCreationWorkflow:
                 # Get original ODCS contract if available (for embedding in ODPS)
                 original_odcs_contract = None
                 if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
-                    try:
+                    # parse_contract raises only ValueError subclasses
+                    with contextlib.suppress(ValueError):
+                        # If parsing fails, continue without original ODCS
                         original_odcs_contract = parse_contract(
                             contract.original_raw, contract.original_format
                         )
-                    except Exception:
-                        # If parsing fails, continue without original ODCS
-                        pass
 
                 # Generate ODPS document
                 odps_doc = generate_odps_from_hubcontract(
@@ -1308,6 +1329,8 @@ class ContractCreationWorkflow:
                 "state": {"odps_contract_id": odps_contract_id},
             }
 
+        try:
+            result = _link()
         except Exception as e:
             logger.error(
                 "ODPS linking failed",
@@ -1317,7 +1340,9 @@ class ContractCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ODPS linking failed: {e!s}")
+            raise ValueError(f"ODPS linking failed: {e!s}") from e
+        else:
+            return result
 
     @staticmethod
     @transaction.atomic

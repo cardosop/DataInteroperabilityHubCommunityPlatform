@@ -23,7 +23,7 @@ All errors include:
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import structlog
@@ -31,7 +31,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-class RecoveryStrategy(str, Enum):
+class RecoveryStrategy(StrEnum):
     """Error recovery strategies"""
 
     RETRY = "retry"
@@ -173,7 +173,7 @@ class ODPSValidationError(ODPSError):
     def __init__(
         self,
         message: str,
-        error_code: str = None,
+        error_code: str | None = None,
         user_message: str | None = None,
         context: dict[str, Any] | None = None,
         field_path: str | None = None,
@@ -291,17 +291,11 @@ class ODPSRefResolutionError(ODPSError):
             self.ERROR_CODE_RESOLUTION_FAILED,
         }
         recovery_strategy = None
-        if (
-            error_code == self.ERROR_CODE_RATE_LIMIT_EXCEEDED
-            or error_code == self.ERROR_CODE_TIMEOUT
-        ):
+        if error_code in (self.ERROR_CODE_RATE_LIMIT_EXCEEDED, self.ERROR_CODE_TIMEOUT):
             recovery_strategy = RecoveryStrategy.RETRY
         elif error_code == self.ERROR_CODE_RESOLUTION_FAILED:
             recovery_strategy = RecoveryStrategy.FALLBACK
-        elif (
-            error_code == self.ERROR_CODE_SECURITY_VIOLATION
-            or error_code == self.ERROR_CODE_INVALID_REF
-        ):
+        elif error_code in (self.ERROR_CODE_SECURITY_VIOLATION, self.ERROR_CODE_INVALID_REF):
             recovery_strategy = RecoveryStrategy.FAIL
 
         super().__init__(
@@ -656,13 +650,13 @@ class RetryRecoveryHandler(ErrorRecoveryHandler):
                 last_error = e
                 if not self.can_handle(e):
                     # Error changed to non-retryable, stop retrying
-                    raise e
+                    raise
                 if attempt < self.max_retries - 1:
                     time.sleep(delay)
                     delay = min(delay * self.backoff_factor, self.max_delay)
                 else:
                     # Last attempt failed
-                    raise e
+                    raise
             except Exception as e:
                 # Non-ODPS error, wrap and raise
                 raise ODPSError(

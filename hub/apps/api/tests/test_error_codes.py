@@ -6,6 +6,8 @@ actually exists in the code, and that the STATUS_TO_CODE mapping
 covers all standard HTTP error statuses.
 """
 
+from typing import ClassVar
+
 import pytest
 from rest_framework import status
 
@@ -15,7 +17,7 @@ from hub.apps.api.standards.error_codes import StandardErrorCodes, get_error_cod
 class TestStandardErrorCodesCompleteness:
     """Verify every documented error code is defined."""
 
-    DOCUMENTED_CODES = [
+    DOCUMENTED_CODES: ClassVar[list[str]] = [
         "ASSET_NOT_FOUND",
         "CONTRACT_VALIDATION_FAILED",
         "DQ_CHECK_FAILED",

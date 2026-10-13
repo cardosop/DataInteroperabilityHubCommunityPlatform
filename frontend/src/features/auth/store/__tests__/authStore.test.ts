@@ -8,7 +8,7 @@
  * No network: localStorage is stubbed via vi.stubGlobal.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   getInitialIsAuthenticated,

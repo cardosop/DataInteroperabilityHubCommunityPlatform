@@ -10,8 +10,9 @@ import time
 import uuid
 
 import structlog
+from botocore.exceptions import BotoCoreError
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -24,6 +25,7 @@ from hub.apps.core.services.base import ValidationError as ServiceValidationErro
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 from hub.apps.tenants.services import get_tenant_file_size_limit
 
+from .magic_bytes import magic_byte_check_post_upload
 from .models import File, FileScanStatus, FileStatus
 from .serializers import (
     ChecksumMismatchSerializer,
@@ -37,10 +39,98 @@ from .serializers import (
     FileSerializer,
 )
 from .services import FileService
-from .storage import S3StorageClient
+from .storage import S3StorageClient, StorageError
 from .validators import calculate_chunk_count, get_chunk_size
 
 logger = structlog.get_logger(__name__)
+
+
+def _mark_upload_failed(file_obj: File) -> None:
+    """R2-B4/B3 — flip a rejected upload to FAILED.
+
+    FAILED rows are excluded from the PENDING-aware storage counter, so
+    the reserved quota is released the moment the upload is rejected.
+    """
+    file_obj.status = FileStatus.FAILED
+    file_obj.save(update_fields=["status", "updated_at"])
+
+
+def _cleanup_rejected_upload(file_obj: File, storage_client: "S3StorageClient") -> None:
+    """R2-B4 — a rejected upload must not leave an orphan S3 object.
+
+    Best-effort: the rejection itself is the caller's response; a
+    storage outage while cleaning must not change it.
+    """
+    if file_obj.storage_path:
+        with contextlib.suppress(Exception):
+            storage_client.delete_file(file_obj.storage_path)
+    _mark_upload_failed(file_obj)
+
+
+def _presign_part_url_for_browser(
+    storage_client: "S3StorageClient",
+    key: str,
+    upload_id: str,
+    part_number: int,
+    expires_in: int = 3600,
+) -> str:
+    """Generate an upload-part presigned URL reachable from a BROWSER.
+
+    boto3 signs presigned URLs against the S3 endpoint the API itself
+    uses (``http://minio-test:9000`` inside docker-compose.test, or
+    ``http://minio:9000`` in dev) — browsers on the host cannot resolve
+    Docker service names. When the URL carries one of those hostnames,
+    regenerate it against the host-published endpoint (``localhost:9010``
+    in the test stack, ``localhost:9000`` in dev) so browser-issued PUTs
+    succeed. Non-Docker endpoints pass through untouched.
+
+    Consolidates the workaround that previously lived inline in
+    ``init_chunk_upload`` — and which the multipart-init bundled
+    first-chunk URL MISSED entirely (260.7.J regression: chunk #1 PUTs
+    failed with EHOSTUNREACH from the browser because
+    ``FileInit`` returned the internally-signed URL and the frontend
+    consumes it verbatim, multipartUploader.ts fast-path).
+    """
+    url = storage_client.generate_presigned_part_url(
+        key=key, upload_id=upload_id, part_number=part_number, expires_in=expires_in
+    )
+    if "minio:9000" not in url and "minio-test:9000" not in url:
+        return url
+
+    import boto3
+    from botocore.config import Config
+
+    if "minio-test:9000" in storage_client.endpoint_url:
+        port = os.environ.get("MINIO_TEST_API_PORT", "9010")
+        browser_endpoint = storage_client.endpoint_url.replace(
+            "minio-test:9000", f"localhost:{port}"
+        )
+    else:
+        browser_endpoint = storage_client.endpoint_url.replace("minio:9000", "localhost:9000")
+    s3_config = Config(
+        signature_version="s3v4",
+        s3={"addressing_style": "path"},
+        retries={"max_attempts": 3, "mode": "standard"},
+    )
+    browser_client = boto3.client(
+        "s3",
+        endpoint_url=browser_endpoint,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        use_ssl=storage_client.use_ssl,
+        verify=getattr(settings, "AWS_S3_VERIFY", True),
+        config=s3_config,
+    )
+    return browser_client.generate_presigned_url(
+        "upload_part",
+        Params={
+            "Bucket": storage_client.bucket_name,
+            "Key": key,
+            "UploadId": upload_id,
+            "PartNumber": part_number,
+        },
+        ExpiresIn=expires_in,
+    )
 
 
 class FileViewSet(viewsets.ModelViewSet):
@@ -62,10 +152,10 @@ class FileViewSet(viewsets.ModelViewSet):
         ensure_tenant_files_api_allowed(request)
         super().initial(request, *args, **kwargs)
 
-    filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ["name"]
-    ordering_fields = ["name", "created_at", "updated_at"]
-    ordering = ["-created_at"]
+    filter_backends = (SearchFilter, OrderingFilter)
+    search_fields = "name"
+    ordering_fields = ("name", "created_at", "updated_at")
+    ordering = "-created_at"
 
     def get_queryset(self):
         """Filter queryset based on user permissions and optional status filter."""
@@ -90,6 +180,14 @@ class FileViewSet(viewsets.ModelViewSet):
         status_param = self.request.query_params.get("status")
         if status_param:
             queryset = queryset.filter(status=status_param)
+        else:
+            # Phase 260.1.C soft-delete contract: the DEFAULT list hides
+            # DELETING/DELETED rows.  A user who just deleted a file must
+            # not see it linger in the list for the whole grace window
+            # (hard purge runs later via ``purge_deleted_files``).  An
+            # explicit ``?status=`` still surfaces tombstones for
+            # retention/audit surfaces.
+            queryset = queryset.exclude(status__in=(FileStatus.DELETING, FileStatus.DELETED))
         return queryset
 
     def get_object(self):
@@ -113,7 +211,7 @@ class FileViewSet(viewsets.ModelViewSet):
             raise DRFValidationError(
                 detail=f"'{raw_id}' is not a valid UUID.",
                 code="invalid",
-            )
+            ) from None
 
         # ── Tenant-scoped fetch ───────────────────────────────────
         queryset = self.filter_queryset(self.get_queryset())
@@ -122,7 +220,7 @@ class FileViewSet(viewsets.ModelViewSet):
         except (File.DoesNotExist, queryset.model.DoesNotExist):
             from django.http import Http404 as _Http404
 
-            raise _Http404("No File matches the given query.")
+            raise _Http404("No File matches the given query.") from None
 
         # ── May raise PermissionDenied ────────────────────────────
         self.check_object_permissions(self.request, obj)
@@ -205,11 +303,17 @@ class FileViewSet(viewsets.ModelViewSet):
         if str(file_obj.tenant_id) == consumer_tid:
             return file_obj
 
-        from hub.apps.marketplace.entitlement_check import (
-            get_asset_id_from_file,
+        # Marketplace is the paid layer — the file→asset link and the
+        # entitlement check both resolve through commercial hooks
+        # (marketplace registers the providers). Core-only mode has no
+        # providers: the probe is denied (404) after auditing — same as
+        # the no-link case below.
+        from hub.apps.core.commercial_hooks import (
+            check_entitlement,
+            get_file_asset_id,
         )
 
-        asset_id = get_asset_id_from_file(str(file_obj.id))
+        asset_id = get_file_asset_id(str(file_obj.id))
         if not asset_id:
             # File exists in another tenant but has no asset link.
             # Audit the probe, return 404 — no existence leak.
@@ -223,12 +327,8 @@ class FileViewSet(viewsets.ModelViewSet):
         # audit with the precise denial reason but STILL return
         # None → 404 (not 403). The audit record captures the
         # entitlement-denied detail for the security team.
-        from hub.apps.marketplace.entitlement_check import (
-            require_entitlement,
-        )
-
         try:
-            require_entitlement(
+            check_entitlement(
                 consumer_tenant_id=consumer_tid,
                 asset_id=asset_id,
                 provider_tenant_id=str(file_obj.tenant_id),
@@ -305,8 +405,11 @@ class FileViewSet(viewsets.ModelViewSet):
         )
 
         # Determine if multipart upload is needed
-        # Use multipart for files > 100MB
-        requires_multipart = size > 100 * 1024 * 1024
+        # Use multipart for files above the configured threshold
+        # (Phase 260.3.F — shared with the size-rule multipart exemption).
+        requires_multipart = size > getattr(
+            settings, "MULTIPART_UPLOAD_THRESHOLD", 100 * 1024 * 1024
+        )
         chunk_size = None
         chunk_count = None
 
@@ -328,18 +431,25 @@ class FileViewSet(viewsets.ModelViewSet):
             file_obj.status = FileStatus.UPLOADING
             file_obj.save(update_fields=["metadata_json", "status"])
 
-            # Generate URL for first chunk
-            upload_url = storage_client.generate_presigned_part_url(
-                key=storage_path, upload_id=upload_id, part_number=1, expires_in=3600
+            # Generate URL for first chunk. BROWSER uploads get the
+            # host-published endpoint (localhost:9010 in the test stack) —
+            # the frontend consumes this bundled fast-path URL verbatim
+            # (multipartUploader.ts) so it MUST be browser-reachable.
+            # (260.7.J regression: this returned the internally-signed
+            # ``minio-test:9000`` URL and browser chunk-#1 PUTs failed.)
+            upload_url = (
+                _presign_part_url_for_browser(
+                    storage_client, storage_path, upload_id, 1, expires_in=3600
+                )
+                if upload_method == "browser"
+                else storage_client.generate_presigned_part_url(
+                    key=storage_path, upload_id=upload_id, part_number=1, expires_in=3600
+                )
             )
 
-            # For browser uploads, generate URL with localhost endpoint
             # Store upload_method in metadata for chunk uploads
             file_obj.metadata_json["upload_method"] = upload_method
             file_obj.save(update_fields=["metadata_json"])
-
-            # Note: For multipart uploads, chunk URLs are generated separately in init_chunk_upload
-            # which will handle browser endpoint replacement
 
             response_data = {
                 "file_id": str(file_obj.id),
@@ -400,7 +510,7 @@ class FileViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="parts")
-    def parts(self, request, id=None):
+    def parts(self, _request, id=None):  # DRF detail action — lookup_field kwarg injected from URL
         """List parts that have been uploaded for a multipart upload.
 
         GET /api/v1/files/{id}/parts/
@@ -440,7 +550,7 @@ class FileViewSet(viewsets.ModelViewSet):
             s3_parts = storage_client.list_multipart_parts(
                 key=file_obj.storage_path, upload_id=upload_id
             )
-        except Exception:
+        except (StorageError, BotoCoreError):
             return api_error_response(
                 "Multipart upload no longer exists",
                 status_code=status.HTTP_409_CONFLICT,
@@ -511,7 +621,7 @@ class FileViewSet(viewsets.ModelViewSet):
                     key=file_obj.storage_path,
                     upload_id=multipart_upload_id,
                 )
-            except Exception as exc:
+            except (StorageError, BotoCoreError) as exc:
                 # ``list_multipart_parts`` raises StorageError for any
                 # ClientError including NoSuchUpload (aborted/expired).
                 err = str(exc)
@@ -548,6 +658,10 @@ class FileViewSet(viewsets.ModelViewSet):
 
             missing = sorted(expected_set - s3_part_numbers)
             if missing:
+                # Client-recoverable state: the uploader uploads the
+                # missing parts and retries — the multipart upload stays
+                # resumable (the abandoned-multipart sweeper ages out
+                # uploads that are never completed).
                 return api_error_response(
                     "Multipart upload is incomplete — S3 is missing "
                     f"{len(missing)} part(s) out of {len(expected_set)} "
@@ -569,63 +683,96 @@ class FileViewSet(viewsets.ModelViewSet):
                     upload_id=multipart_upload_id,
                     parts=parts,
                 )
-            except Exception as e:
+            except (StorageError, BotoCoreError) as e:
+                # R2-B4 — best-effort abort of the leftover parts.
+                with contextlib.suppress(Exception):
+                    storage_client.abort_multipart_upload(
+                        key=file_obj.storage_path,
+                        upload_id=multipart_upload_id,
+                    )
+                _mark_upload_failed(file_obj)
                 return api_error_response(
                     f"Failed to complete multipart upload: {e!s}",
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     code="MULTIPART_COMPOSE_FAILED",
                 )
 
-        # Verify file exists in storage
+        # R2-B5 (W2.7) — storage verification FAILS CLOSED.  The pre-fix
+        # code swallowed every S3 error ("Allowing completion without
+        # storage verification (test/dev mode)") and flipped the row to
+        # ACTIVE with no object behind it — a fail-open upload
+        # completion.  An S3 ERROR now returns 502; a cleanly-MISSING
+        # object returns 409; neither completes the upload.
         storage_client = S3StorageClient()
         file_exists_in_storage = False
         stored_size = None
 
         try:
             file_exists_in_storage = storage_client.file_exists(file_obj.storage_path)
-            if file_exists_in_storage:
-                try:
-                    stored_size = storage_client.get_file_size(file_obj.storage_path)
-                except Exception as size_error:
-                    # If size check fails, log but allow completion (test/dev mode)
-                    logger.warning(
-                        f"File size check failed for file {file_obj.id}: {size_error}. "
-                        f"Allowing completion without size verification (test/dev mode).",
-                        extra={
-                            "file_id": str(file_obj.id),
-                            "tenant_id": str(file_obj.tenant.id),
-                            "error": str(size_error),
-                        },
-                    )
-                    file_exists_in_storage = False
-        except Exception as e:
-            # If storage check fails (e.g., S3 not available in test/dev), log and continue
-            # This allows test/dev environments to complete files without actual S3 uploads
-            # The dataset service has similar fallback logic for missing S3 files
+        except (StorageError, BotoCoreError) as e:
             logger.warning(
-                f"Storage check failed for file {file_obj.id}: {e}. "
-                f"Allowing completion without storage verification (test/dev mode).",
+                "storage_verification_failed",
                 extra={
                     "file_id": str(file_obj.id),
                     "tenant_id": str(file_obj.tenant.id),
                     "error": str(e),
                 },
+                exc_info=True,
             )
-            file_exists_in_storage = False
+            return api_error_response(
+                "Failed to verify the uploaded file in storage",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                code="STORAGE_VERIFICATION_FAILED",
+                details={
+                    "file_id": str(file_obj.id),
+                    "error": str(e)[:256],
+                },
+            )
+
+        if file_exists_in_storage:
+            try:
+                stored_size = storage_client.get_file_size(file_obj.storage_path)
+            except (StorageError, BotoCoreError) as size_error:
+                logger.warning(
+                    "storage_size_check_failed",
+                    extra={
+                        "file_id": str(file_obj.id),
+                        "tenant_id": str(file_obj.tenant.id),
+                        "error": str(size_error),
+                    },
+                    exc_info=True,
+                )
+                return api_error_response(
+                    "Failed to read the uploaded file size from storage",
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    code="STORAGE_SIZE_CHECK_FAILED",
+                    details={
+                        "file_id": str(file_obj.id),
+                        "error": str(size_error)[:256],
+                    },
+                )
+
+        if not file_exists_in_storage:
+            # The object was never uploaded.  Fail closed with a typed
+            # 409 and mark the row FAILED — the reserved quota (R2-B3
+            # PENDING-aware counter) is released.
+            _mark_upload_failed(file_obj)
+            return api_error_response(
+                "File not found in storage — upload the object before completing.",
+                status_code=status.HTTP_409_CONFLICT,
+                code="FILE_NOT_IN_STORAGE",
+                details={
+                    "file_id": str(file_obj.id),
+                    "storage_path": file_obj.storage_path,
+                },
+            )
 
         # If file exists in storage, verify size matches
-        if file_exists_in_storage and stored_size is not None:
-            if stored_size != file_obj.size:
-                return Response(
-                    {"error": f"File size mismatch: expected {file_obj.size}, got {stored_size}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        elif not file_exists_in_storage:
-            # File doesn't exist in storage - allow in test/dev mode (similar to dataset service fallback)
-            # In production, this should be an error, but for test/dev we allow it
-            logger.info(
-                f"File {file_obj.id} not found in storage, allowing completion (test/dev mode)",
-                extra={"file_id": str(file_obj.id), "tenant_id": str(file_obj.tenant.id)},
+        if stored_size != file_obj.size:
+            _cleanup_rejected_upload(file_obj, storage_client)
+            return Response(
+                {"error": f"File size mismatch: expected {file_obj.size}, got {stored_size}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Validate final file size against tenant limit (for chunked uploads, total size may exceed limit)
@@ -634,8 +781,9 @@ class FileViewSet(viewsets.ModelViewSet):
             try:
                 tenant_limit = get_tenant_file_size_limit(str(file_obj.tenant.id))
                 if stored_size > tenant_limit:
-                    # File already uploaded, but we should reject it
-                    # In production, we might want to delete the file from storage
+                    # R2-B4 — the object was already uploaded; reject AND
+                    # delete it (pre-fix it sat orphaned forever).
+                    _cleanup_rejected_upload(file_obj, storage_client)
                     return Response(
                         {
                             "error": f"File size ({stored_size} bytes) exceeds tenant limit ({tenant_limit} bytes). "
@@ -643,7 +791,7 @@ class FileViewSet(viewsets.ModelViewSet):
                         },
                         status_code=status.HTTP_400_BAD_REQUEST,
                     )
-            except Exception as e:
+            except DatabaseError as e:
                 logger.warning(
                     "file_size_validation_failed",
                     file_id=str(file_obj.id),
@@ -674,17 +822,18 @@ class FileViewSet(viewsets.ModelViewSet):
                 actual_hash = hashlib.sha256(file_content).hexdigest()
                 # Compare hashes
                 if actual_hash.lower() != content_sha256.lower():
+                    # R2-B4 — reject AND delete the object (no orphan).
+                    _cleanup_rejected_upload(file_obj, storage_client)
                     return Response(
                         {
                             "error": f"Hash mismatch: provided hash does not match file content. Expected: {actual_hash[:20]}..., got: {content_sha256[:20]}..."
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-            except Exception as e:
-                logger.error(
-                    "Hash verification failed for file %s: %s",
+            except (StorageError, BotoCoreError) as e:
+                logger.exception(
+                    "Hash verification failed for file %s",
                     file_obj.id,
-                    e,
                     extra={
                         "file_id": str(file_obj.id),
                         "tenant_id": str(file_obj.tenant.id),
@@ -694,6 +843,21 @@ class FileViewSet(viewsets.ModelViewSet):
                 return Response(
                     {"error": ("Hash verification failed: unable to verify file integrity")},
                     status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Phase 260.2.B — magic-byte sniff (260.DoD.7): reject declared
+            # content-type vs actual head-bytes mismatches (e.g. PE-as-CSV).
+            # Flag-gated (staging default on, test stack mirrors staging).
+            try:
+                magic_byte_check_post_upload(file_obj=file_obj, storage_client=storage_client)
+            except ServiceValidationError as exc:
+                # R2-B4 — reject AND delete the object (no orphan).
+                _cleanup_rejected_upload(file_obj, storage_client)
+                return api_error_response(
+                    str(exc),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code=getattr(exc, "code", None) or "FILE_FORMAT_MISMATCH",
+                    details=getattr(exc, "details", None) or {},
                 )
 
         # Delegate domain update to FileService (business rules: state, write access)
@@ -765,7 +929,7 @@ class FileViewSet(viewsets.ModelViewSet):
                 id,
             )
             if file_obj is None:
-                raise NotFound("File not found.")
+                raise NotFound("File not found.") from None
 
         if file_obj.status not in (FileStatus.ACTIVE,):
             return Response(
@@ -786,6 +950,23 @@ class FileViewSet(viewsets.ModelViewSet):
                 code="FILE_INFECTED",
                 details={"file_id": str(file_obj.id)},
             )
+        # W1.18 — ClamAV outage policy (SCAN_UNAVAILABLE_POLICY=block):
+        # an unscanned file may not be downloaded while the scanner is
+        # down; the audit row + SRE alerting cover the outage.
+        from hub.apps.files.scan_policy import (
+            audit_scan_unavailable_blocked,
+            scan_unavailable_blocked,
+        )
+
+        if scan_unavailable_blocked(file_obj):
+            audit_scan_unavailable_blocked(file_obj)
+            return api_error_response(
+                "File has not been malware-scanned (scan service unavailable) "
+                "and the current policy blocks unscanned files.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="FILE_SCAN_UNAVAILABLE",
+                details={"file_id": str(file_obj.id)},
+            )
 
         # Generate pre-signed download URL
         storage_client = S3StorageClient()
@@ -794,6 +975,9 @@ class FileViewSet(viewsets.ModelViewSet):
             key=file_obj.storage_path,
             expires_in=3600,
             filename=file_obj.name,  # 1 hour
+            # for_browser: file downloads are browser-consumed; the storage
+            # hostname is a Docker service name in the test stack.
+            for_browser=True,
         )
 
         # Publish file.downloaded event
@@ -841,6 +1025,25 @@ class FileViewSet(viewsets.ModelViewSet):
         )
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="download-payload")
+    def download_payload(self, request, id=None):
+        """
+        Get the verified-download payload for a file.
+
+        GET /api/v1/files/{id}/download-payload/
+
+        Returns {download_url, filename, content_sha256} — the shape the
+        Phase 260.3.G verified-download flow (fileService.getDownloadPayload)
+        expects. Previously this endpoint did not exist at all: the UI
+        called it for EVERY detail-page download and every call 404'd,
+        while the legacy /download endpoint (identical semantics +
+        presign + FILE_DOWNLOADED side effects) sat orphaned (b7 re-run
+        #7). Delegating to the /download action keeps the entitlement
+        checks, scan gates, presign generation, event publishing and
+        audit emission in ONE implementation.
+        """
+        return self.download(request, id)
 
     # ── scan-status (Phase 260.3.D) ──────────────────────────────────
 
@@ -904,7 +1107,9 @@ class FileViewSet(viewsets.ModelViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="download/checksum-mismatch")
-    def download_checksum_mismatch(self, request, id=None):
+    def download_checksum_mismatch(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """Accept a client-side computed SHA-256 and emit a checksum-mismatch audit.
 
         POST /api/v1/files/{id}/download/checksum-mismatch/
@@ -975,9 +1180,7 @@ class FileViewSet(viewsets.ModelViewSet):
         new_name = validate_filename(new_name)
 
         if new_name == file_obj.name:
-            return Response(
-                FileSerializer(file_obj).data, status=status.HTTP_200_OK
-            )
+            return Response(FileSerializer(file_obj).data, status=status.HTTP_200_OK)
 
         # Check active-name collision within the same tenant
         from .business_rules import FilesBusinessRules
@@ -1030,12 +1233,12 @@ class FileViewSet(viewsets.ModelViewSet):
                 details={"name": new_name, "file_id": str(file_obj.id)},
             )
 
-        return Response(
-            FileSerializer(file_obj).data, status=status.HTTP_200_OK
-        )
+        return Response(FileSerializer(file_obj).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="chunks/init")
-    def init_chunk_upload(self, request, id=None):
+    def init_chunk_upload(
+        self, request, id=None
+    ):  # DRF detail action — lookup_field kwarg injected from URL
         """
         Initialize chunk upload (for multipart uploads).
 
@@ -1072,57 +1275,17 @@ class FileViewSet(viewsets.ModelViewSet):
         upload_method = file_obj.metadata_json.get("upload_method", "sdk")
         for_browser = upload_method == "browser"
 
-        # For browser uploads, we need to generate URL with localhost endpoint
-        # But generate_presigned_part_url doesn't support for_browser parameter yet
-        # So we'll generate and then replace (signature will be invalid, need better solution)
-        # TODO: Add for_browser parameter to generate_presigned_part_url
-        upload_url = storage_client.generate_presigned_part_url(
-            key=file_obj.storage_path,
-            upload_id=upload_id,
-            part_number=chunk_number,
-            expires_in=3600,
-        )
-
-        # For browser uploads, we need to regenerate with localhost endpoint
-        # This is a workaround - ideally generate_presigned_part_url should support for_browser
-        # (browser runs on host; can't resolve Docker service names like minio/minio-test)
-        if for_browser and ("minio:9000" in upload_url or "minio-test:9000" in upload_url):
-            import boto3
-            from botocore.config import Config
-            from django.conf import settings
-
-            if "minio-test:9000" in storage_client.endpoint_url:
-                port = os.environ.get("MINIO_TEST_API_PORT", "9010")
-                browser_endpoint = storage_client.endpoint_url.replace(
-                    "minio-test:9000", f"localhost:{port}"
-                )
-            else:
-                browser_endpoint = storage_client.endpoint_url.replace(
-                    "minio:9000", "localhost:9000"
-                )
-            s3_config = Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-                retries={"max_attempts": 3, "mode": "standard"},
-            )
-            browser_client = boto3.client(
-                "s3",
-                endpoint_url=browser_endpoint,
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                use_ssl=storage_client.use_ssl,
-                verify=getattr(settings, "AWS_S3_VERIFY", True),
-                config=s3_config,
-            )
-            upload_url = browser_client.generate_presigned_url(
-                "upload_part",
-                Params={
-                    "Bucket": storage_client.bucket_name,
-                    "Key": file_obj.storage_path,
-                    "UploadId": upload_id,
-                    "PartNumber": chunk_number,
-                },
-                ExpiresIn=3600,
+        # Browser uploads get a host-published endpoint (localhost:9010 in
+        # the test stack) so the browser-issued PUT reaches MinIO — the
+        # shared helper consolidates the rewrite (also used by the
+        # multipart-init bundled first-chunk URL).
+        if for_browser:
+            upload_url = _presign_part_url_for_browser(
+                storage_client,
+                file_obj.storage_path,
+                upload_id,
+                chunk_number,
+                expires_in=3600,
             )
             logger.info(
                 "presigned_chunk_url_generated_for_browser",
@@ -1130,6 +1293,13 @@ class FileViewSet(viewsets.ModelViewSet):
                 chunk_number=chunk_number,
                 upload_url=upload_url,
                 message="Presigned chunk URL generated with localhost endpoint for browser access",
+            )
+        else:
+            upload_url = storage_client.generate_presigned_part_url(
+                key=file_obj.storage_path,
+                upload_id=upload_id,
+                part_number=chunk_number,
+                expires_in=3600,
             )
 
         response_serializer = ChunkUploadResponseSerializer(
@@ -1139,7 +1309,7 @@ class FileViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete a file.
 
@@ -1153,7 +1323,11 @@ class FileViewSet(viewsets.ModelViewSet):
 
         # ── Guard: AUDITOR must not mutate ───────────────────────
         if hasattr(request.user, "roles") and request.user.roles:
-            role_names = {r.name.upper() if hasattr(r, "name") else "" for r in request.user.roles.all()} if hasattr(request.user.roles, "all") else set()
+            role_names = (
+                {r.name.upper() if hasattr(r, "name") else "" for r in request.user.roles.all()}
+                if hasattr(request.user.roles, "all")
+                else set()
+            )
         else:
             role_names = set()
         if hasattr(request.user, "user_roles"):
@@ -1197,7 +1371,7 @@ class FileViewSet(viewsets.ModelViewSet):
         """List files (tenant-scoped)"""
         return super().list(request, *args, **kwargs)
 
-    def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *_args, **_kwargs):
         """Retrieve file by ID.
 
         117B.6: Cross-tenant entitlement check — try tenant-scoped
@@ -1240,7 +1414,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
         try:
             file_tenant = file_obj.tenant
-        except Exception:
+        except (AttributeError, DatabaseError):
             return
 
         if not file_metadata_view_should_emit(

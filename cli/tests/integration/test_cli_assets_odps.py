@@ -24,18 +24,7 @@ from click.testing import CliRunner
 from datahub_cli.config import config
 from datahub_cli.main import cli
 
-
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
-        )
-        return response.status_code < 600
-    except Exception:
-        return False
+from envpolicy import api_available
 
 
 def _create_test_api_key():
@@ -83,8 +72,8 @@ print(api_key_value)
         )
         if result.returncode == 0:
             output_lines = result.stdout.strip().split("\n")
-            for line in reversed(output_lines):
-                line = line.strip()
+            for raw_line in reversed(output_lines):
+                line = raw_line.strip()
                 if (
                     line
                     and len(line) > 30
@@ -245,7 +234,7 @@ def odps_contract_with_asset(sample_asset, sample_odps_file, setup_config):
 class TestCLIAssetsODPS:
     """Tests for assets management with ODPS integration"""
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_assets_create_with_odps_linking_option(self, sample_odps_file, setup_config):
         """Test `assets create` with ODPS linking option"""
         runner = CliRunner()
@@ -290,7 +279,7 @@ class TestCLIAssetsODPS:
         odps_data = json.loads(odps_result.output)
         assert "odps_contract" in odps_data or "id" in odps_data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_assets_list_with_odps_filter(self, odps_contract_with_asset, setup_config):
         """Test `assets list` with ODPS filter"""
         runner = CliRunner()
@@ -319,7 +308,7 @@ class TestCLIAssetsODPS:
         assert result_table.exit_code == 0
         assert asset_id[:8] in result_table.output or "Test Asset" in result_table.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_assets_get_with_odps_details(self, odps_contract_with_asset, setup_config):
         """Test `assets get <id>` with ODPS details"""
         runner = CliRunner()
@@ -343,7 +332,7 @@ class TestCLIAssetsODPS:
         assert result_table.exit_code == 0
         assert asset_id in result_table.output or "Test Asset" in result_table.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_all_asset_commands_with_odps_integration(
         self, sample_asset, sample_odps_file, setup_config
     ):
@@ -396,7 +385,7 @@ class TestCLIAssetsODPS:
         # May succeed or fail depending on contract validation status
         assert activate_result.exit_code == 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_assets_list_filter_by_domain_with_odps(
         self, sample_asset, sample_odps_file, setup_config
     ):
@@ -434,7 +423,7 @@ class TestCLIAssetsODPS:
             items = assets_list.get("results", assets_list.get("items", []))
             assert all(a.get("domain") == "test" for a in items if a.get("domain"))
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
+    @pytest.mark.skipif(not api_available(), reason="API service not available")
     def test_assets_get_includes_odps_contract_info(self, odps_contract_with_asset, setup_config):
         """Test that `assets get` includes ODPS contract information when using --include"""
         runner = CliRunner()

@@ -115,18 +115,18 @@ class IngestionServiceTest(TestCase):
             )
 
             # Verify result structure
-            self.assertIn("files_found", result)
-            self.assertIn("files_processed", result)
-            self.assertIn("files_failed", result)
-            self.assertIn("datasets_created", result)
-            self.assertIn("ingestion_state", result)
-            self.assertIn("workflow_instance_id", result)
+            assert "files_found" in result
+            assert "files_processed" in result
+            assert "files_failed" in result
+            assert "datasets_created" in result
+            assert "ingestion_state" in result
+            assert "workflow_instance_id" in result
 
             # Verify workflow instance was created in DB
             from hub.apps.orchestration.models import WorkflowInstance
 
             workflow_instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
-            self.assertIsNotNone(workflow_instance)
+            assert workflow_instance is not None
 
         except (ImportError, ModuleNotFoundError, ConnectionError, OSError) as e:
             # Infrastructure not available (Prefect, network, storage) —
@@ -160,7 +160,7 @@ class IngestionServiceTest(TestCase):
             scheduled_ingestion_id=str(self.scheduled_ingestion.id),
             tenant_id=str(self.tenant.id),
         )
-        self.assertEqual(retrieved.id, self.scheduled_ingestion.id)
+        assert retrieved.id == self.scheduled_ingestion.id
 
     # --- Failure ---
 
@@ -195,7 +195,7 @@ class IngestionServiceTest(TestCase):
                 scheduled_ingestion_id=str(self.scheduled_ingestion.id),
                 tenant_id=None,
             )
-        self.assertIn("tenant_id", str(cm.exception).lower())
+        assert "tenant_id" in str(cm.exception).lower()
 
     def test_delete_scheduled_ingestion_success(self):
         """delete_scheduled_ingestion removes the scheduled ingestion."""
@@ -204,7 +204,7 @@ class IngestionServiceTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        self.assertFalse(ScheduledIngestion.objects.filter(id=self.scheduled_ingestion.id).exists())
+        assert not ScheduledIngestion.objects.filter(id=self.scheduled_ingestion.id).exists()
 
     def test_delete_scheduled_ingestion_not_found(self):
         """delete_scheduled_ingestion raises NotFoundError for non-existent id."""
@@ -228,9 +228,9 @@ class IngestionServiceTest(TestCase):
             user_id=str(self.user.id),
             description="Updated description",
         )
-        self.assertEqual(updated.description, "Updated description")
+        assert updated.description == "Updated description"
         self.scheduled_ingestion.refresh_from_db()
-        self.assertEqual(self.scheduled_ingestion.description, "Updated description")
+        assert self.scheduled_ingestion.description == "Updated description"
 
     def test_update_scheduled_ingestion_not_found(self):
         """update_scheduled_ingestion raises NotFoundError for non-existent id."""
@@ -263,4 +263,4 @@ class IngestionServiceTest(TestCase):
         retrieved = self.service.get_ingestion_status(
             scheduled_ingestion_id=str(self.scheduled_ingestion.id),
         )
-        self.assertEqual(retrieved.id, self.scheduled_ingestion.id)
+        assert retrieved.id == self.scheduled_ingestion.id

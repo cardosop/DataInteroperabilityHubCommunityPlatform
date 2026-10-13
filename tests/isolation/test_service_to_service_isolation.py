@@ -85,8 +85,8 @@ class TestServiceToServiceIsolation:
         """ORM query scoped to tenant returns only that tenant."""
         a_jobs = Job.objects.filter(tenant=tenant_a)
         b_jobs = Job.objects.filter(tenant=tenant_b)
-        a_ids = set(str(j.id) for j in a_jobs)
-        b_ids = set(str(j.id) for j in b_jobs)
+        a_ids = {str(j.id) for j in a_jobs}
+        b_ids = {str(j.id) for j in b_jobs}
         assert a_ids.isdisjoint(b_ids)
 
     def test_compliance_runs_list_isolation(self, client_b, tenant_a):
@@ -97,7 +97,7 @@ class TestServiceToServiceIsolation:
         if isinstance(results, list):
             ids = {str(r["id"]) for r in results}
             # None of Tenant A's jobs should appear
-            a_job_ids = set(str(j.id) for j in Job.objects.filter(tenant=tenant_a))
+            a_job_ids = {str(j.id) for j in Job.objects.filter(tenant=tenant_a)}
             assert ids.isdisjoint(a_job_ids), "Compliance run list leaked Tenant A data"
 
     def test_dq_runs_list_isolation(self, client_b, tenant_a):

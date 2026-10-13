@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../../../shared/api/client';
+import type { Invoice } from '../../../shared/types/billing';
 
 const BILLING_SUBSCRIPTION_PATH = 'billing/subscription';
 const BILLING_PLANS_PATH = 'billing/plans';
@@ -43,7 +44,10 @@ export interface TenantPlan {
   billing_interval: string;
 }
 
-export interface Invoice {
+// Wire shape of the invoice endpoint (DRF Decimal fields serialize as
+// strings). The CANONICAL type is the shared one; getInvoices normalizes
+// at the boundary.
+interface WireInvoice {
   id: string;
   tenant: string;
   subscription?: string | null;
@@ -62,6 +66,12 @@ export interface Invoice {
   paid_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Convert a DRF decimal string ("12.99") to integer minor units (1299). */
+function toCents(value: string | null | undefined): number {
+  const parsed = Number.parseFloat(value ?? '');
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
 }
 
 export interface PaginatedResponse<T> {
@@ -115,7 +125,7 @@ export const billingService = {
     const response = await apiClient
       .getClient()
       .get<PaginatedResponse<TenantPlan>>(`${BILLING_PLANS_PATH}/`);
-    return response.data.results;
+    return response.data.results ?? [];
   },
 
   /**
@@ -124,8 +134,22 @@ export const billingService = {
   async getInvoices(): Promise<Invoice[]> {
     const response = await apiClient
       .getClient()
-      .get<PaginatedResponse<Invoice>>(`${BILLING_INVOICES_PATH}/`);
-    return response.data.results;
+      .get<PaginatedResponse<WireInvoice>>(`${BILLING_INVOICES_PATH}/`);
+    return (response.data.results ?? []).map((raw) => ({
+      id: raw.id,
+      subscription_id: raw.subscription ?? undefined,
+      amount_due_cents: toCents(raw.amount_due),
+      amount_paid_cents: toCents(raw.amount_paid),
+      currency: raw.currency,
+      status: raw.status as Invoice['status'],
+      period_start: raw.period_start ?? '',
+      period_end: raw.period_end ?? '',
+      due_date: raw.due_date ?? undefined,
+      paid_at: raw.paid_at ?? undefined,
+      invoice_pdf_url: raw.invoice_pdf_url ?? undefined,
+      hosted_invoice_url: raw.hosted_invoice_url ?? undefined,
+      created_at: raw.created_at,
+    }));
   },
 
   /**

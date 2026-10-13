@@ -36,7 +36,8 @@ def get_real_redis_client_or_none():
         )
         client.ping()
         return client
-    except Exception:
+    except (redis.exceptions.RedisError, ValueError):
+        # Redis down/unreachable or malformed REDIS_URL — probe degrades to None.
         return None
 
 
@@ -98,7 +99,8 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             self.assertIsInstance(client._circuit_breaker, CircuitBreaker)
             # The production service_name is "compliance-service", not a UUID.
             self.assertEqual(
-                client._circuit_breaker.service_name, "compliance-service",
+                client._circuit_breaker.service_name,
+                "compliance-service",
             )
             self.assertEqual(client._circuit_breaker.failure_threshold, 5)
             self.assertGreaterEqual(client._circuit_breaker.timeout_seconds, 60)

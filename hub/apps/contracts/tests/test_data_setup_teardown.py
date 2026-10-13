@@ -20,7 +20,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.test import TestCase
 
 from hub.apps.contracts.models import OriginalSpecType

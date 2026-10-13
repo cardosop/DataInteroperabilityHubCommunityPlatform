@@ -21,11 +21,7 @@ from hub.apps import manifest
 
 
 def _hub_app_entries(apps):
-    return [
-        a
-        for a in apps
-        if a.startswith(("hub.apps", "hub.data_movement"))
-    ]
+    return [a for a in apps if a.startswith(("hub.apps", "hub.data_movement"))]
 
 
 def test_core_and_paid_are_disjoint():
@@ -33,7 +29,7 @@ def test_core_and_paid_are_disjoint():
 
 
 def test_manifest_covers_all_installed_hub_apps():
-    """CORE ∪ PAID == the hub.* set in INSTALLED_APPS (full mode).
+    """CORE U PAID == the hub.* set in INSTALLED_APPS (full mode).
 
     graphql_graphene is conditionally inserted when graphene_django is
     importable (settings), so the comparison accounts for it explicitly.
@@ -87,7 +83,9 @@ def test_is_core_only_defaults_false():
 
 
 def test_module_name_normalisation_strips_app_config_suffix():
-    assert manifest.module_name("hub.apps.compliance.apps.ComplianceConfig") == "hub.apps.compliance"
+    assert (
+        manifest.module_name("hub.apps.compliance.apps.ComplianceConfig") == "hub.apps.compliance"
+    )
     assert manifest.module_name("hub.apps.marketplace") == "hub.apps.marketplace"
 
 
@@ -108,6 +106,29 @@ def test_paid_and_core_membership_is_explicit():
     assert "hub.apps.marketplace" in paid_modules
     assert "hub.apps.assets" in core_modules
     assert "hub.apps.assets" not in paid_modules
+    assert "hub.apps.databricks_admin" in core_modules
+    assert "hub.apps.databricks_admin" not in paid_modules
     assert len(manifest.PAID_APPS) == 10
-    assert len(manifest.CORE_APPS) == 42
+    assert len(manifest.CORE_APPS) == 43
     assert not paid_modules & core_modules
+
+
+def test_databricks_admin_is_registered_after_warehouses():
+    """P0 contract (openspec add-databricks-control-plane task 0.1): the
+    Databricks control-plane app is CORE, ships as an AppConfig entry, and
+    sits directly after `warehouses` in ALL_HUB_APPS so its ready() ordering
+    and template/admin discovery are deterministic.
+
+    The AppConfig class itself is pinned by name — the manifest references
+    it, so the package must exist and the class must be importable for any
+    Django boot (settings.INSTALLED_APPS is derived from this list)."""
+    entry = "hub.apps.databricks_admin.apps.DatabricksAdminConfig"
+    assert entry in manifest.ALL_HUB_APPS
+    assert manifest.module_name(entry) == "hub.apps.databricks_admin"
+
+    warehouses = "hub.apps.warehouses.apps.WarehousesConfig"
+    assert manifest.ALL_HUB_APPS.index(entry) == manifest.ALL_HUB_APPS.index(warehouses) + 1
+
+    from hub.apps.databricks_admin.apps import DatabricksAdminConfig
+
+    assert DatabricksAdminConfig.name == "hub.apps.databricks_admin"

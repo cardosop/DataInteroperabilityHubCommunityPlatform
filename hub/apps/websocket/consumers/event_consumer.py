@@ -12,7 +12,7 @@ import structlog
 from django.conf import settings
 
 try:
-    from channels.generic.websocket import AsyncWebsocketConsumer
+    from channels.generic.websocket import AsyncWebsocketConsumer  # type: ignore[import-untyped]
 
     CHANNELS_AVAILABLE = True
 except ImportError:
@@ -20,7 +20,7 @@ except ImportError:
     class AsyncWebsocketConsumer:
         """Stub for AsyncWebsocketConsumer when channels is not available."""
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *_args, **_kwargs):
             raise ImportError(
                 "Django Channels is not installed. "
                 "Install it with: pip install channels channels-redis"
@@ -267,7 +267,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                 await self.send_error("Invalid message format")
                 return
         except Exception as e:
-            logger.error("websocket_message_parse_error", error=str(e))
+            logger.exception("websocket_message_parse_error", error=str(e))
             await self.send_error("Failed to parse message")
             return
 
@@ -383,7 +383,7 @@ class EventConsumer(AsyncWebsocketConsumer):
         try:
             subscribe_msg = SubscribeMessage.from_dict(message.data or {})
         except Exception as e:
-            logger.error("websocket_subscribe_parse_error", error=str(e))
+            logger.exception("websocket_subscribe_parse_error", error=str(e))
             await self.send_error("Invalid subscribe message format")
             return
 
@@ -494,7 +494,7 @@ class EventConsumer(AsyncWebsocketConsumer):
             )
         )
 
-    async def handle_pong(self, message: WebSocketMessage):
+    async def handle_pong(self, _message: WebSocketMessage):
         """Handle pong message from client (response to server ping)."""
         # Update last activity and pong received timestamp
         self.last_activity = datetime.now(UTC)
@@ -631,7 +631,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         # Pattern like "odps.workflow.*" - query events matching the prefix
                         prefix = event_type_pattern[:-2]  # Remove '.*'
 
-                        def _query_pattern_events():
+                        def _query_pattern_events(prefix=prefix):
                             return list(
                                 EventModel.objects.filter(
                                     event_type__startswith=prefix + ".",
@@ -826,7 +826,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         # Pattern like "mesh.domain.*" - query events matching the prefix
                         prefix = event_type_pattern[:-2]  # Remove '.*'
 
-                        def _query_pattern_events():
+                        def _query_pattern_events(prefix=prefix):
                             return list(
                                 EventModel.objects.filter(
                                     event_type__startswith=prefix + ".",
@@ -1023,7 +1023,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         # Pattern like "virtualization.query.*" - query events matching the prefix
                         prefix = event_type_pattern[:-2]  # Remove '.*'
 
-                        def _query_pattern_events():
+                        def _query_pattern_events(prefix=prefix):
                             return list(
                                 EventModel.objects.filter(
                                     event_type__startswith=prefix + ".",
@@ -1248,7 +1248,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         error=str(timestamp_error),
                     )
         except Exception as e:
-            logger.error("websocket_send_event_error", error=str(e))
+            logger.exception("websocket_send_event_error", error=str(e))
 
     def _is_event_type_subscribed(self, event_type: str) -> bool:
         """
@@ -1302,31 +1302,31 @@ class EventConsumer(AsyncWebsocketConsumer):
             # Virtualization-specific pattern matching
             # Support patterns like 'virtualization.*' matching all virtualization events
             # Support patterns like 'virtualization.query.*' matching query events
-            if subscribed_type.startswith("virtualization."):
-                if event_type.startswith("virtualization."):
-                    # Only apply wildcard matching if subscribed_type ends with '.*'
-                    if subscribed_type.endswith(".*"):
-                        # Check if it's a nested pattern (e.g., 'virtualization.query.*')
-                        if "." in subscribed_type[16:-2]:  # After 'virtualization.' and before '.*'
-                            # Nested pattern: 'virtualization.query.*'
-                            pattern_parts = subscribed_type[:-2].split(
-                                "."
-                            )  # Remove '.*' before splitting
-                            event_parts = event_type.split(".")
-                            if len(pattern_parts) <= len(event_parts):
-                                # Check if all pattern parts match
-                                match = True
-                                for i, pattern_part in enumerate(pattern_parts):
-                                    if i < len(event_parts) and pattern_part != event_parts[i]:
-                                        match = False
-                                        break
-                                if match:
-                                    return True
-                        # Simple 'virtualization.*' pattern - matches all virtualization events
-                        elif subscribed_type == "virtualization.*" and event_type.startswith(
-                            "virtualization."
-                        ):
+            # Only apply wildcard matching if subscribed_type ends with '.*'
+            if (
+                subscribed_type.startswith("virtualization.")
+                and event_type.startswith("virtualization.")
+                and subscribed_type.endswith(".*")
+            ):
+                # Check if it's a nested pattern (e.g., 'virtualization.query.*')
+                if "." in subscribed_type[16:-2]:  # After 'virtualization.' and before '.*'
+                    # Nested pattern: 'virtualization.query.*'
+                    pattern_parts = subscribed_type[:-2].split(".")  # Remove '.*' before splitting
+                    event_parts = event_type.split(".")
+                    if len(pattern_parts) <= len(event_parts):
+                        # Check if all pattern parts match
+                        match = True
+                        for i, pattern_part in enumerate(pattern_parts):
+                            if i < len(event_parts) and pattern_part != event_parts[i]:
+                                match = False
+                                break
+                        if match:
                             return True
+                # Simple 'virtualization.*' pattern - matches all virtualization events
+                elif subscribed_type == "virtualization.*" and event_type.startswith(
+                    "virtualization."
+                ):
+                    return True
 
         return False
 
@@ -1360,14 +1360,14 @@ class EventConsumer(AsyncWebsocketConsumer):
             event_tenant_id = str(event_source.get("tenant_id", ""))
 
             # If filter specifies tenant_id, event source tenant_id must match filter
-            if filter_tenant_id:
-                # If event has tenant_id, it must match filter
-                if event_tenant_id and event_tenant_id != filter_tenant_id:
-                    return False
-                # If event doesn't have tenant_id, check if current tenant matches filter
-                elif not event_tenant_id:
-                    if not current_tenant or str(current_tenant.id) != filter_tenant_id:
-                        return False
+            if filter_tenant_id and (
+                (event_tenant_id and event_tenant_id != filter_tenant_id)
+                or (
+                    not event_tenant_id
+                    and (not current_tenant or str(current_tenant.id) != filter_tenant_id)
+                )
+            ):
+                return False
 
         # Filter by resource_type
         if "resource_type" in self.filters:
@@ -1402,9 +1402,8 @@ class EventConsumer(AsyncWebsocketConsumer):
                 ]
 
                 # Check if filter matches any of the resource IDs
-                if filter_resource_id:
-                    if filter_resource_id not in possible_resource_ids:
-                        return False
+                if filter_resource_id and filter_resource_id not in possible_resource_ids:
+                    return False
             else:
                 # For non-ODPS events, use standard fields
                 possible_resource_ids = [
@@ -1419,9 +1418,8 @@ class EventConsumer(AsyncWebsocketConsumer):
                 ]
 
                 # Check if filter matches any of the resource IDs
-                if filter_resource_id:
-                    if filter_resource_id not in possible_resource_ids:
-                        return False
+                if filter_resource_id and filter_resource_id not in possible_resource_ids:
+                    return False
 
         # Filter by execution_id (for virtualization events)
         if "execution_id" in self.filters:
@@ -1429,9 +1427,10 @@ class EventConsumer(AsyncWebsocketConsumer):
             event_data = event.get("data", {})
             event_execution_id = str(event_data.get("execution_id", ""))
 
-            if filter_execution_id:
-                if not event_execution_id or event_execution_id != filter_execution_id:
-                    return False
+            if filter_execution_id and (
+                not event_execution_id or event_execution_id != filter_execution_id
+            ):
+                return False
 
         # Filter by query_execution_id (for virtualization query execution events)
         if "query_execution_id" in self.filters:
@@ -1462,14 +1461,14 @@ class EventConsumer(AsyncWebsocketConsumer):
             filter_user_id = str(self.filters["user_id"])
             event_user_id = str(event_source.get("user_id", ""))
 
-            if filter_user_id:
-                # If event has user_id, it must match filter
-                if event_user_id and event_user_id != filter_user_id:
-                    return False
-                # If event doesn't have user_id, check if current user matches filter
-                elif not event_user_id:
-                    if not current_user or str(current_user.id) != filter_user_id:
-                        return False
+            if filter_user_id and (
+                (event_user_id and event_user_id != filter_user_id)
+                or (
+                    not event_user_id
+                    and (not current_user or str(current_user.id) != filter_user_id)
+                )
+            ):
+                return False
 
         # Filter by event_type (additional check beyond subscription)
         if "event_type" in self.filters:

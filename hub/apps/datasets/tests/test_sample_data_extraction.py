@@ -109,7 +109,7 @@ Jane;25;LA"""
         try:
             import io
 
-            import pandas as pd
+            import pandas as pd  # type: ignore[import-untyped]
         except ImportError:
             self.skipTest("pandas not available for Parquet extraction")
 

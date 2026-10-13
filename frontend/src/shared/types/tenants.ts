@@ -177,20 +177,31 @@ interface QuotaWarning {
 
 export interface TenantUsage {
   tenant_id: string;
-  storage_bytes: number;
-  storage_gb: number;
-  api_calls_this_month: number;
-  asset_count: number;
-  dataset_count: number;
-  scheduled_ingestion_count: number;
-  scheduled_export_count: number;
+  // Phase 277.B.106 — the usage serializer switched to `{limit_key}_usage`
+  // keys; the legacy singular fields are gone from the wire but kept
+  // OPTIONAL here so older backends still type-check.
+  storage_bytes?: number;
+  storage_gb?: number;
+  api_calls_this_month?: number;
+  asset_count?: number;
+  dataset_count?: number;
+  scheduled_ingestion_count?: number;
+  scheduled_export_count?: number;
+  storage_gb_usage?: number;
+  api_calls_per_month_usage?: number;
+  assets_usage?: number;
+  datasets_usage?: number;
+  scheduled_ingestions_usage?: number;
+  scheduled_exports_usage?: number;
   period_start: string | null;
   period_end: string | null;
   threshold_status: string;
   overall_status: string;
   upgrade_recommendation: string[];
   /** Phase 277.B.106 — dynamic usage keys: {limit_key}_usage for every KNOWN_LIMIT_KEY */
-  [key: `${string}_usage`]: number | string;
+  // ``undefined`` included so the OPTIONAL explicit ``*_usage`` fields
+  // above remain assignable to the index signature (TS2411 otherwise).
+  [key: `${string}_usage`]: number | string | undefined;
   plan_limits: Record<string, number | null>;
   usage_percentages: Record<string, number | null>;
   /** Phase 277.B.106 — any limit at >=80% flagged with {usage, limit, percentage} */

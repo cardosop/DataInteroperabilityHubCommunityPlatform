@@ -20,6 +20,7 @@ import contextlib
 import json
 import re
 import uuid
+from typing import ClassVar
 
 from django.test.utils import override_settings
 
@@ -135,7 +136,7 @@ class TestWorkflowMetricsBusinessRulesE2E(WorkflowE2ETestBase):
     that metric labels are correct (workflow name, step name, rule name, tenant).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_metrics_recorded_in_prometheus(self):
         """Verify workflow_business_rules_validations_total counter is recorded."""
@@ -283,7 +284,7 @@ class TestWorkflowEventsBusinessRulesE2E(WorkflowE2ETestBase):
     status and validation context (real Event persistence).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_step_started_events_include_validation_status(self):
         """Test workflow.step.started events include validation status."""
@@ -453,7 +454,7 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
     results, errors/warnings, duration, and workflow/step context in logs.
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_results_in_workflow_execution_logs(self):
         """Test validation results are in workflow execution logs."""
@@ -528,9 +529,11 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        with self.assertLogs("hub.apps.orchestration.workflow_engine", level="ERROR") as log_ctx:
-            with contextlib.suppress(Exception):
-                self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
+        with (
+            self.assertLogs("hub.apps.orchestration.workflow_engine", level="ERROR") as log_ctx,
+            contextlib.suppress(Exception),
+        ):
+            self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
         log_output = "\n".join(log_ctx.output).lower()
         # Engine logs "Workflow validation failed" (validation path) or
         # "Error executing step" (task exception path) at ERROR level.
@@ -609,7 +612,7 @@ class TestWorkflowDistributedTracingBusinessRulesE2E(WorkflowE2ETestBase):
     validation spans, linkage to workflow spans, and span attributes (no mock).
     """
 
-    workflow_classes = [ContractCreationWorkflow]
+    workflow_classes: ClassVar[list] = [ContractCreationWorkflow]
 
     def test_validation_spans_in_opentelemetry_traces(self):
         """Test validation spans are in OpenTelemetry traces."""
@@ -746,10 +749,7 @@ class TestWorkflowDistributedTracingBusinessRulesE2E(WorkflowE2ETestBase):
         has_duration = False
         for span in validation_spans:
             attrs = getattr(span, "attributes", None) or {}
-            if hasattr(attrs, "keys"):
-                keys = list(attrs.keys())
-            else:
-                keys = []
+            keys = list(attrs.keys()) if hasattr(attrs, "keys") else []
             has_rule = has_rule or any("rule" in str(k).lower() for k in keys)
             has_duration = has_duration or any("duration" in str(k).lower() for k in keys)
             if has_rule and has_duration:

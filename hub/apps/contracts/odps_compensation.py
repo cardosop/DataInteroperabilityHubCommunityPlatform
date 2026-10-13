@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
@@ -100,22 +100,19 @@ class ODPSCreationCompensation:
             contract.delete()
 
             logger.info(f"ODPS contract successfully rolled back: {contract_details}")
-
-            return {
-                "status": "success",
-                "contract_id": contract_id,
-                "contract_details": contract_details,
-            }
-
         except Exception as e:
-            logger.exception(
-                f"Failed to rollback ODPS contract: contract_id={contract_id}, error={e!s}"
-            )
+            logger.exception("Failed to rollback ODPS contract: contract_id=, error")
             raise ValidationError(
                 message=f"Failed to rollback ODPS contract {contract_id}: {e!s}",
                 code="ODPS_ROLLBACK_FAILED",
                 details={"contract_id": contract_id, "error": str(e)},
             ) from e
+        else:
+            return {
+                "status": "success",
+                "contract_id": contract_id,
+                "contract_details": contract_details,
+            }
 
     @transaction.atomic
     def cleanup_resources(
@@ -216,19 +213,22 @@ class ODPSCreationCompensation:
                 )
 
                 # If asset has a version field and it was incremented, restore it
-                if hasattr(asset, "version") and asset.version is not None:
-                    if asset.version > state.asset_previous_version:
-                        asset.version = state.asset_previous_version
-                        asset.save(update_fields=["version", "updated_at"])
-                        restoration_results["restored_items"].append("asset_version")
-                        logger.info(
-                            f"Asset version restored successfully: asset_id={state.asset_id}, "
-                            f"restored_version={state.asset_previous_version}"
-                        )
+                if (
+                    hasattr(asset, "version")
+                    and asset.version is not None
+                    and asset.version > state.asset_previous_version
+                ):
+                    asset.version = state.asset_previous_version
+                    asset.save(update_fields=["version", "updated_at"])
+                    restoration_results["restored_items"].append("asset_version")
+                    logger.info(
+                        f"Asset version restored successfully: asset_id={state.asset_id}, "
+                        f"restored_version={state.asset_previous_version}"
+                    )
 
             except Asset.DoesNotExist:
                 logger.warning(f"Asset not found for state restoration: asset_id={state.asset_id}")
-            except Exception as e:
+            except (DatabaseError, ValidationError, AttributeError, TypeError) as e:
                 logger.warning(
                     f"Failed to restore asset state (non-critical): asset_id={state.asset_id}, error={e!s}"
                 )
@@ -288,7 +288,7 @@ class ODPSCreationCompensation:
                 compensation_result["operations"]["rollback"] = rollback_result
             except Exception as e:
                 logger.exception(
-                    f"Rollback failed during compensation: contract_id={state.contract_id}, error={e!s}"
+                    f"Rollback failed during compensation: contract_id={state.contract_id}, error"
                 )
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["rollback"] = {
@@ -304,7 +304,7 @@ class ODPSCreationCompensation:
                 )
                 compensation_result["operations"]["cleanup"] = cleanup_result
             except Exception as e:
-                logger.exception(f"Cleanup failed during compensation: error={e!s}")
+                logger.exception("Cleanup failed during compensation: error")
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["cleanup"] = {"status": "failed", "error": str(e)}
 
@@ -314,7 +314,7 @@ class ODPSCreationCompensation:
                 restore_result = self.restore_previous_state(state=state)
                 compensation_result["operations"]["restore"] = restore_result
             except Exception as e:
-                logger.exception(f"State restoration failed during compensation: error={e!s}")
+                logger.exception("State restoration failed during compensation: error")
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["restore"] = {"status": "failed", "error": str(e)}
 

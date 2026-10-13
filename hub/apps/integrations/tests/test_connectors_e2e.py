@@ -18,6 +18,7 @@ import uuid
 import pytest
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.assets.models import (
     Asset,
     AssetStatus,
@@ -58,7 +59,10 @@ def get_dados_gov_br_credentials() -> dict:
 
 
 def get_snowflake_credentials() -> dict:
-    """Get Snowflake credentials from environment variables."""
+    """Get Snowflake credentials from environment variables (W16-governed).
+
+    Missing credentials: CI raises EnvironmentFailureError; local runs skip.
+    """
     account = os.getenv("SNOWFLAKE_ACCOUNT")
     user = os.getenv("SNOWFLAKE_USER")
     token = os.getenv("SNOWFLAKE_TOKEN")
@@ -67,8 +71,9 @@ def get_snowflake_credentials() -> dict:
     database = os.getenv("SNOWFLAKE_DATABASE")
 
     if not account or not user or not token:
-        raise unittest.SkipTest(
-            "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, and SNOWFLAKE_TOKEN environment variables are required"
+        skip_or_fail(
+            "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, and SNOWFLAKE_TOKEN "
+            "environment variables are required"
         )
 
     credentials = {
@@ -116,7 +121,7 @@ def handle_auth_failure(e: Exception) -> None:
     """
     # Never skip on assertion failures — those are real test bugs.
     if isinstance(e, (AssertionError, unittest.SkipTest)):
-        raise
+        raise e
 
     error_str = str(e).lower()
 
@@ -174,17 +179,20 @@ class TestDadosGovBrConnectorE2E(TestCase):
         # Wrap in outer try/except with explicit atomics rollback following
         # Django's setUpTestData() pattern, so a stale PG transaction
         # does not leak to subsequent test classes.
+        def _validate_connection() -> None:
+            connector = DadosGovBrConnector(
+                base_url=instance_config.base_url,
+                jwt_token=cls.credentials["jwt_token"],
+                swagger_spec_url=getattr(instance_config, "swagger_spec_url", None),
+            )
+            if not connector.test_connection():
+                raise unittest.SkipTest(
+                    "dados.gov.br connection test failed — JWT token may be expired"
+                )
+
         try:
             try:
-                connector = DadosGovBrConnector(
-                    base_url=instance_config.base_url,
-                    jwt_token=cls.credentials["jwt_token"],
-                    swagger_spec_url=getattr(instance_config, "swagger_spec_url", None),
-                )
-                if not connector.test_connection():
-                    raise unittest.SkipTest(
-                        "dados.gov.br connection test failed — JWT token may be expired"
-                    )
+                _validate_connection()
             except unittest.SkipTest:
                 raise
             except Exception as e:
@@ -251,7 +259,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
             workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
             if workflow_instance.status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED]:
                 return workflow_instance
-            time.sleep(1)  # noqa: sleep-needed — polling loop
+            time.sleep(1)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
         raise TimeoutError(
             f"Workflow {workflow_instance_id} did not complete within {timeout} seconds"
         )
@@ -264,7 +272,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
         self.assertEqual(sync_job.status, expected_status.value)
 
     def _verify_asset_creation(
-        self, sync_job: MarketplaceSyncJob, expected_count: int = None, min_count: int = 1
+        self, sync_job: MarketplaceSyncJob, expected_count: int | None = None, min_count: int = 1
     ) -> list:
         """Verify assets were created from sync job (MarketplaceMapping has connection, not sync_job)."""
         mappings = MarketplaceMapping.objects.filter(
@@ -658,12 +666,11 @@ class TestSnowflakeConnectorE2E(TestCase):
     def setUpClass(cls):
         """Set up test class with real credentials"""
         # Check skip conditions BEFORE super().setUpClass() so that if we
-        # raise SkipTest, no class-level atomics are opened and the PG
-        # connection is not left in a stale transaction for the next class.
-        try:
-            cls.credentials = get_snowflake_credentials()
-        except Exception:
-            raise  # get_snowflake_credentials() raises SkipTest if unset
+        # skip, no class-level atomics are opened and the PG connection is
+        # not left in a stale transaction for the next class.
+        # get_snowflake_credentials() is W16-governed: CI raises
+        # EnvironmentFailureError, local runs skip.
+        cls.credentials = get_snowflake_credentials()
 
         super().setUpClass()
 
@@ -725,7 +732,7 @@ class TestSnowflakeConnectorE2E(TestCase):
             workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
             if workflow_instance.status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED]:
                 return workflow_instance
-            time.sleep(1)  # noqa: sleep-needed — polling loop
+            time.sleep(1)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
         raise TimeoutError(
             f"Workflow {workflow_instance_id} did not complete within {timeout} seconds"
         )
@@ -738,7 +745,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         self.assertEqual(sync_job.status, expected_status.value)
 
     def _verify_asset_creation(
-        self, sync_job: MarketplaceSyncJob, expected_count: int = None, min_count: int = 1
+        self, sync_job: MarketplaceSyncJob, expected_count: int | None = None, min_count: int = 1
     ) -> list:
         """Verify assets were created from sync job (MarketplaceMapping has connection, not sync_job)."""
         mappings = MarketplaceMapping.objects.filter(
@@ -839,7 +846,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         except Exception as e:
             # Handle connection errors gracefully
             if "authentication" in str(e).lower() or "connection error" in str(e).lower():
-                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}") from None
             raise
         finally:
             if connector is not None:
@@ -932,7 +939,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         except Exception as e:
             # Handle connection errors gracefully
             if "authentication" in str(e).lower() or "connection error" in str(e).lower():
-                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}") from None
             raise
 
     def test_selective_resource_download(self):
@@ -1005,9 +1012,7 @@ class TestSnowflakeConnectorE2E(TestCase):
 
                     dest_path = tempfile.mktemp(suffix=".data")
                     listing_id = (
-                        asset.source_metadata.get("listing_id")
-                        if asset.source_metadata
-                        else None
+                        asset.source_metadata.get("listing_id") if asset.source_metadata else None
                     )
                     download_result = connector.download_resource(
                         resource_id=resource_ref.resource_id,
@@ -1055,7 +1060,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         except Exception as e:
             # Handle connection errors gracefully
             if "authentication" in str(e).lower() or "connection error" in str(e).lower():
-                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}") from None
             raise
 
     def test_federated_asset_created_with_contracts_and_refs(self):
@@ -1120,7 +1125,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         except Exception as e:
             # Handle connection errors gracefully
             if "authentication" in str(e).lower() or "connection error" in str(e).lower():
-                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}") from None
             raise
 
     def test_snowflake_e2e_with_invalid_listing_ids(self):
@@ -1151,7 +1156,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         except Exception as e:
             # Handle connection errors gracefully
             if "authentication" in str(e).lower() or "connection error" in str(e).lower():
-                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}") from None
             raise
 
     def test_snowflake_e2e_with_empty_listing_ids(self):
@@ -1176,5 +1181,5 @@ class TestSnowflakeConnectorE2E(TestCase):
         except Exception as e:
             # Handle connection errors gracefully
             if "authentication" in str(e).lower() or "connection error" in str(e).lower():
-                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}") from None
             raise

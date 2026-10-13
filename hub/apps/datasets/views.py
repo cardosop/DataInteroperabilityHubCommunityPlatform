@@ -6,7 +6,6 @@ All create/update/destroy/version creation delegate to DatasetService,
 which invokes DatasetsBusinessRules before mutations.
 """
 
-import contextlib
 import uuid
 
 from django.db import transaction
@@ -92,10 +91,10 @@ class DatasetViewSet(viewsets.ModelViewSet):
     serializer_class = DatasetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ["file__name", "format"]
-    ordering_fields = ["created_at", "updated_at", "format"]
-    ordering = ["-created_at"]
+    filter_backends = (SearchFilter, OrderingFilter)
+    search_fields = ("file__name", "format")
+    ordering_fields = ("created_at", "updated_at", "format")
+    ordering = "-created_at"
 
     def initial(self, request, *args, **kwargs):
         ensure_tenant_datasets_api_allowed(request)
@@ -166,19 +165,21 @@ class DatasetViewSet(viewsets.ModelViewSet):
         if not consumer_tenant_id:
             return None
 
-        from django.core.exceptions import PermissionDenied
+        # Marketplace entitlement check resolves through the commercial
+        # hook (marketplace registers require_entitlement from its
+        # AppConfig.ready()); core-only mode fails open (no paywall).
+        from rest_framework.exceptions import PermissionDenied
 
-        from hub.apps.marketplace.entitlement_check import (
-            require_entitlement,
-        )
+        from hub.apps.core.commercial_hooks import check_entitlement
 
         try:
-            require_entitlement(
+            check_entitlement(
                 consumer_tenant_id=consumer_tenant_id,
                 asset_id=str(dataset.asset_id),
                 provider_tenant_id=str(dataset.tenant_id),
             )
         except PermissionDenied as exc:
+            # The provider raises DRF's PermissionDenied (not Django's).
             # For ENTITLEMENT_REQUIRED (never had access), return None so
             # the caller raises 404 — don't reveal the resource exists.
             # For revoked/expired entitlements, re-raise 403.
@@ -340,6 +341,23 @@ class DatasetViewSet(viewsets.ModelViewSet):
             logging.getLogger(__name__).warning(
                 "Failed to invalidate cache after dataset creation: %s", e, exc_info=True
             )
+        # Semantic-ingestion guarantee: map the dataset to RDF so the
+        # triple store carries /id/dataset/ IRIs (the E2E semantic-IRI
+        # contract). Non-critical — a mapping failure degrades to the
+        # null mapper, never to a failed create.
+        try:
+            from hub.apps.core.commercial_hooks import map_via_semantic
+
+            map_via_semantic("dataset", dataset=dataset, tenant=dataset.tenant, use_cache=False)
+        except Exception as _map_err:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Semantic mapping skipped for dataset %s: %s",
+                dataset.id,
+                _map_err,
+                exc_info=True,
+            )
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
@@ -473,6 +491,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         from django.http import Http404
         from rest_framework.exceptions import NotFound
 
+        cross_tenant = False
         try:
             dataset = self.get_object()
         except (Http404, NotFound):
@@ -482,12 +501,19 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 dataset_id,
             )
             if dataset is None:
-                raise NotFound("Dataset not found.")
+                raise NotFound("Dataset not found.") from None
+            cross_tenant = True
 
         # Set resource instance on request for cache headers middleware
         request._resource_instance = dataset
 
-        response = super().retrieve(request, *args, **kwargs)
+        if cross_tenant:
+            # super().retrieve() would re-run get_object() against the
+            # tenant-scoped queryset, which cannot see the cross-tenant
+            # row the entitlement just resolved — serialize directly.
+            response = Response(self.get_serializer(dataset).data)
+        else:
+            response = super().retrieve(request, *args, **kwargs)
 
         # Cache the result
         if response.status_code == 200:
@@ -649,9 +675,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
             invalidate_dataset_caches(str(locked.id), str(locked.tenant_id))
         except (ConnectionError, TimeoutError, OSError) as exc:
             import logging
-            logging.getLogger(__name__).warning(
-                "Cache invalidation failed during retire: %s", exc
-            )
+
+            logging.getLogger(__name__).warning("Cache invalidation failed during retire: %s", exc)
 
         # Return the canonical serialised representation so the
         # client doesn't have to re-fetch.
@@ -671,7 +696,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError, AttributeError):
             raise DRFValidationError(
                 {"error": {"code": "INVALID_DATASET_ID", "message": "Malformed dataset id."}}
-            )
+            ) from None
 
     @extend_schema(
         request=DatasetRefreshFromFileSerializer,
@@ -894,6 +919,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             invalidate_dataset_caches(str(source.id), str(source.tenant_id))
         except (ConnectionError, TimeoutError, OSError) as exc:
             import logging
+
             logging.getLogger(__name__).warning(
                 "Cache invalidation failed during refresh_from_file: %s", exc
             )
@@ -1080,9 +1106,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
             invalidate_dataset_caches(str(locked.id), str(locked.tenant_id))
         except (ConnectionError, TimeoutError, OSError) as exc:
             import logging
-            logging.getLogger(__name__).warning(
-                "Cache invalidation failed during refresh: %s", exc
-            )
+
+            logging.getLogger(__name__).warning("Cache invalidation failed during refresh: %s", exc)
 
         return Response(
             {
@@ -1403,7 +1428,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         )
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """
         Update dataset (full or partial). Delegates to DatasetService; business rules run before update.
         PUT /api/v1/datasets/{id}/ accepts partial data; only provided fields are updated.
@@ -1455,7 +1480,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return Response(DatasetSerializer(dataset).data)
 
     @transaction.atomic
-    def partial_update(self, request, *args, **kwargs):
+    def partial_update(self, request, *_args, **_kwargs):
         """
         Update dataset (partial update). Delegates to DatasetService; business rules run before update.
         PATCH /api/v1/datasets/{id}/
@@ -1507,7 +1532,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return Response(DatasetSerializer(dataset).data)
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete a dataset. Delegates to DatasetService; business rules (validate_version_deletion) run before delete.
         DELETE /api/v1/datasets/{id}/
@@ -1686,6 +1711,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         A legacy plain-value cursor like ``"id-050"`` won't decode to a JSON list.
         """
         import base64 as _b64
+        import binascii as _binascii
         import json as _json
 
         try:
@@ -1693,11 +1719,13 @@ class DatasetViewSet(viewsets.ModelViewSet):
             position = _json.loads(decoded)
             if isinstance(position, list) and len(position) >= 1:
                 return position[0]
-        except Exception:
+        except (_binascii.Error, ValueError):
+            # _binascii.Error: not base64; ValueError: UTF-8 decode or
+            # JSON parse — all "legacy plain-value cursor" shapes.
             pass
         return None
 
-    def _rows_from_file(self, request, dataset, limit, cursor):
+    def _rows_from_file(self, _request, _dataset, limit, _cursor):
         """Serve rows from file-backed dataset."""
         return Response(
             {
@@ -1754,50 +1782,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             return AthenaConnector(config, tenant_id=tenant_id, asset_id=asset_id)
         raise ValueError(f"Unknown warehouse type: {warehouse_type}")
 
-    # ── Phase 275.D.3 — Delta Sharing ───────────────────────────────
-
-    @action(detail=True, methods=["get"], url_path="share")
-    def share(self, request, id=None):
-        """
-        Phase 275.D.3 — Delta Sharing endpoint.
-
-        GET /api/v1/datasets/{id}/share/
-        Serves the Delta Sharing 1.0 protocol with Hub auth + audit.
-        Per-tenant rate limit. WAREHOUSE_SHARE_ACCESSED audit emitted.
-        """
-        dataset = self.get_object()
-        tenant = dataset.tenant
-
-        # Emit audit event.
-        try:
-            from hub.apps.audit.event_types import WAREHOUSE_SHARE_ACCESSED
-            from hub.apps.audit.utils import create_audit_event
-
-            create_audit_event(
-                resource_type="DATASET",
-                action=WAREHOUSE_SHARE_ACCESSED,
-                actor_user=request.user,
-                tenant=tenant,
-                resource_id=str(dataset.id),
-                result="SUCCESS",
-                details={"dataset_id": str(dataset.id), "format": "delta-sharing"},
-            )
-        except Exception:
-            pass
-
-        # Delta Sharing protocol response shape.
-        return Response(
-            {
-                "share": {
-                    "name": getattr(dataset, "name", None) or str(dataset.id),
-                    "id": str(dataset.id),
-                    "format": "delta",
-                },
-                "protocol": {"version": 1},
-                "meta": {
-                    "tenant_id": str(tenant.id),
-                    "created_at": str(dataset.created_at),
-                },
-            },
-            status=status.HTTP_200_OK,
-        )
+    # NOTE (5.5): the fabricated Phase 275.D.3 dataset `share` action
+    # (GET /api/v1/datasets/{id}/share/) was REMOVED — design D6
+    # (removed, not migrated). The native bearer-token Delta Sharing
+    # protocol surface lives under /api/v1/databricks/delta-sharing.

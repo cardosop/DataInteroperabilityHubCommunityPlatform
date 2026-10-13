@@ -38,7 +38,7 @@ def get_pypi_info(package_name: str) -> dict | None:
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
             return json.loads(response.read())
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -99,7 +99,7 @@ def test_installation(package_name: str, version_spec: str) -> tuple[bool, str |
                 return True, version_match.group(2)
             return True, None
         return False, result.stderr[:100] if result.stderr else "Unknown error"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
 
 

@@ -5,9 +5,10 @@ Job operations for DataHub SDK.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, FrozenSet, Optional
+from typing import TYPE_CHECKING, Any
 
-from .client import DataHubClient
+if TYPE_CHECKING:
+    from .client import DataHubClient
 
 
 class JobsAPI:
@@ -21,7 +22,7 @@ class JobsAPI:
     #: class constant so a deployment with non-canonical job
     #: statuses can subclass ``JobsAPI`` and override this set
     #: without re-implementing the poll loop.
-    TERMINAL_STATUSES: FrozenSet[str] = frozenset(
+    TERMINAL_STATUSES: frozenset[str] = frozenset(
         {
             "COMPLETED",
             "FAILED",
@@ -34,19 +35,19 @@ class JobsAPI:
 
     async def list_jobs(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
         if status:
             params["status"] = status
         return await self.client.get("jobs/", params=params)
 
-    async def get_job(self, job_id: str) -> Dict[str, Any]:
+    async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self.client.get(f"jobs/{job_id}/")
 
-    async def cancel_job(self, job_id: str) -> Dict[str, Any]:
+    async def cancel_job(self, job_id: str) -> dict[str, Any]:
         return await self.client.post(f"jobs/{job_id}/cancel/")
 
     async def wait_for(
@@ -54,7 +55,7 @@ class JobsAPI:
         job_id: str,
         timeout: float = 300.0,
         interval: float = 2.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Phase 250.4.2 — poll ``GET /jobs/{id}/`` until terminal status.
 
         Args:
@@ -63,7 +64,7 @@ class JobsAPI:
                 Default 300s — covers the slow-end tail of
                 long-running ingestion + compliance scans on
                 multi-MB payloads. The DE-1 SLO (250.4.10)
-                targets P95 ≤ 60s, so 300s gives a 5× safety
+                targets P95 ≤ 60s, so 300s gives a 5x safety
                 margin.
             interval: Seconds between polls. Default 2.0s — fast
                 enough that completion is observed within one

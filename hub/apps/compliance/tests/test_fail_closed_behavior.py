@@ -12,6 +12,7 @@ All tests use real implementations. Circuit-breaker tests use the
 real Redis-backed breaker by manipulating Redis state directly.
 """
 
+import contextlib
 import time
 import uuid
 
@@ -138,7 +139,7 @@ class FailClosedBehaviorTest(TestCase):
                 compliance_run.status,
                 delay,
             )
-            time.sleep(delay)  # noqa: sleep-needed — polling loop
+            time.sleep(delay)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
 
     def _setup_test_file_content(self):
         """Set up test file content in storage. Retries so MinIO startup delay does not cause skips."""
@@ -506,10 +507,8 @@ class FailClosedBehaviorTest(TestCase):
         )
 
         # Execute compliance run
-        try:
+        with contextlib.suppress(Exception):
             execute_compliance_run(str(compliance_run.id))
-        except Exception:
-            pass
 
         # Drive async (QUEUED) run to a terminal state — RQ worker not running in tests
         self._drive_to_terminal_status(compliance_run)

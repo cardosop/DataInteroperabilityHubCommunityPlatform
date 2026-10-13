@@ -30,6 +30,15 @@ def _load_migration_fn(module_path, fn_name):
     return getattr(mod, fn_name)
 
 
+def _clear_table(table):
+    """Wipe a migration-test table: the forward/reverse migration fns
+    process ALL rows table-wide, so rows committed by earlier tests
+    (encrypted under a different ENCRYPTION_KEY) would poison the
+    reverse run with InvalidToken."""
+    with connection.cursor() as cur:
+        cur.execute(f"DELETE FROM {table}")
+
+
 def _insert_raw(table, columns_values):
     """Insert a row via raw SQL, bypassing model save() encryption."""
     cols = ", ".join(columns_values.keys())
@@ -93,6 +102,7 @@ class ScheduledIngestionMigrationTest(TestCase):
 
         row_id = uuid.uuid4()
         now = timezone.now()
+        _clear_table("scheduled_ingestions")
         _insert_raw(
             "scheduled_ingestions",
             {
@@ -128,8 +138,11 @@ class ScheduledIngestionMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("scheduled_ingestions", "id", row_id, "source_config")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         # Round-trip via model accessor
         obj = ScheduledIngestion.objects.get(pk=row_id)
@@ -143,14 +156,13 @@ class ScheduledIngestionMigrationTest(TestCase):
             "hub.apps.scheduled_ingestion.migrations.0009_encrypt_source_config",
             "encrypt_source_config_forward",
         )
-        reverse_fn = _load_migration_fn(
+        _reverse_fn = _load_migration_fn(
             "hub.apps.scheduled_ingestion.migrations.0009_encrypt_source_config",
             "encrypt_source_config_reverse",
         )
         from django.contrib.auth import get_user_model
 
         from hub.apps.scheduled_ingestion.models import (
-            ScheduledIngestion,
             ScheduleType,
             SourceType,
         )
@@ -161,16 +173,21 @@ class ScheduledIngestionMigrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         user = User.objects.create_user(
-            email=f"u-{uid}@test.com", password="x",
-            tenant=tenant, status=UserStatus.ACTIVE,
+            email=f"u-{uid}@test.com",
+            password="x",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
         )
 
         row_id = uuid.uuid4()
         now = timezone.now()
         plaintext = {"bucket": "b1", "secret_key": "sk1"}
+        _clear_table("scheduled_ingestions")
         _insert_raw(
             "scheduled_ingestions",
             {
@@ -203,6 +220,7 @@ class ScheduledIngestionMigrationTest(TestCase):
         # Verify reverse: directly call decrypt_json_field on the stored
         # ciphertext and assert it round-trips to the original plaintext.
         from hub.apps.integrations.encryption import decrypt_json_field
+
         decrypted = decrypt_json_field(raw["_encrypted"])
         self.assertEqual(decrypted, plaintext)
 
@@ -263,8 +281,11 @@ class ScheduledExportMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("scheduled_exports", "id", row_id, "destination_config")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         from hub.apps.scheduled_export.models import ScheduledExport
 
@@ -286,9 +307,12 @@ class ScheduledExportMigrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
+        _clear_table("scheduled_exports")
         row_id = uuid.uuid4()
         now = timezone.now()
         plaintext = {"bucket": "b2", "secret_key": "sk2"}
@@ -377,8 +401,11 @@ class TenantConfigMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("tenant_configs", "id", row_id, "sso_config")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         obj = TenantConfig.objects.get(pk=row_id)
         decrypted = obj.get_sso_config()
@@ -395,11 +422,13 @@ class TenantConfigMigrationTest(TestCase):
             "hub.apps.tenants.migrations.0021_encrypt_sso_config",
             "encrypt_sso_config_reverse",
         )
-        from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig
+        from hub.apps.tenants.models import KYCStatus, Tenant
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         row_id = uuid.uuid4()
@@ -491,8 +520,11 @@ class DQAlertingRuleMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("dq_alerting_rules", "id", row_id, "channel_config")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         obj = DQAlertingRule.objects.get(pk=row_id)
         decrypted = obj.get_channel_config()
@@ -508,12 +540,13 @@ class DQAlertingRuleMigrationTest(TestCase):
             "hub.apps.dq.migrations.0005_encrypt_channel_config",
             "encrypt_channel_config_reverse",
         )
-        from hub.apps.dq.models import DQAlertingRule
         from hub.apps.tenants.models import KYCStatus, Tenant
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         row_id = uuid.uuid4()
@@ -617,8 +650,11 @@ class VirtualDatasetMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("virtual_datasets", "id", row_id, "sources")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         from hub.apps.virtualization.models import VirtualDataset
 
@@ -647,11 +683,15 @@ class VirtualDatasetMigrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         user = User.objects.create_user(
-            email=f"u-{uid}@test.com", password="x",
-            tenant=tenant, status=UserStatus.ACTIVE,
+            email=f"u-{uid}@test.com",
+            password="x",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
         )
 
         row_id = uuid.uuid4()
@@ -755,8 +795,11 @@ class TransformationPipelineMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("transformation_pipelines", "id", row_id, "pipeline_definition")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         from hub.apps.transformation.models import TransformationPipeline
 
@@ -783,11 +826,15 @@ class TransformationPipelineMigrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         user = User.objects.create_user(
-            email=f"u-{uid}@test.com", password="x",
-            tenant=tenant, status=UserStatus.ACTIVE,
+            email=f"u-{uid}@test.com",
+            password="x",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
         )
 
         row_id = uuid.uuid4()
@@ -906,8 +953,11 @@ class TransformationNodeMigrationTest(TestCase):
         fn(None, None)
         raw2 = _read_json_field("transformation_nodes", "id", node_id, "node_config")
         self.assertIn("_encrypted", raw2)
-        self.assertEqual(raw2["_encrypted"], ciphertext_before,
-            "Re-running migration changed ciphertext — possible double-encryption")
+        self.assertEqual(
+            raw2["_encrypted"],
+            ciphertext_before,
+            "Re-running migration changed ciphertext — possible double-encryption",
+        )
 
         obj = TransformationNode.objects.get(pk=node_id)
         decrypted = obj.get_node_config()
@@ -927,18 +977,21 @@ class TransformationNodeMigrationTest(TestCase):
         from django.contrib.auth import get_user_model
 
         from hub.apps.tenants.models import KYCStatus, Tenant
-        from hub.apps.transformation.models import TransformationNode
         from hub.apps.users.models import UserStatus
 
         User = get_user_model()
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         user = User.objects.create_user(
-            email=f"u-{uid}@test.com", password="x",
-            tenant=tenant, status=UserStatus.ACTIVE,
+            email=f"u-{uid}@test.com",
+            password="x",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
         )
 
         pipe_id = uuid.uuid4()

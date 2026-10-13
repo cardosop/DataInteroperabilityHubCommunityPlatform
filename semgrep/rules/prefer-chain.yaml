@@ -1,6 +1,10 @@
 # Phase 274.7.12 — Semgrep rule flagging direct XxxBusinessRules(...).validate_*()
 # in services when a registered chain exists for the same operation.
 # Whitelist via ``# noqa: prefer-chain`` on the call site line.
+#
+# Phase P.9 status: ADVISORY ONLY — not wired into CI (GATE-25 runs
+# `--config=auto` alone and no CI job installs semgrep). Run locally:
+#   semgrep --config semgrep/rules/prefer-chain.yaml hub/apps
 rules:
   - id: prefer-chain
     patterns:

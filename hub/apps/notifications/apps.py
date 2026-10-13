@@ -21,7 +21,7 @@ class NotificationsConfig(AppConfig):
 
         # Always import signals (needed for tests)
         try:
-            import hub.apps.notifications.signals  # noqa
+            import hub.apps.notifications.signals
         except Exception:
             pass  # Signals may not be critical for all test scenarios
 

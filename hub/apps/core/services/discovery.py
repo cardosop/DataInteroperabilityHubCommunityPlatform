@@ -7,6 +7,7 @@ Supports Docker Compose (DNS-based) and Kubernetes (DNS-based) environments.
 
 import os
 from functools import lru_cache
+from typing import ClassVar
 
 import structlog
 from django.conf import settings
@@ -23,7 +24,7 @@ class ServiceRegistry:
     """
 
     # Service registry - maps service names to their configuration
-    _services: dict[str, dict[str, any]] = {
+    _services: ClassVar[dict[str, dict[str, any]]] = {
         # Core Services
         "api-service": {"port": 8000, "health_path": "/health", "env_var": "API_SERVICE_URL"},
         "contract-service": {

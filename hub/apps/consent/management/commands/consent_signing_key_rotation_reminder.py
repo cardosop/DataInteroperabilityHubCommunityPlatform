@@ -14,7 +14,7 @@ from django.core.management.base import BaseCommand
 class Command(BaseCommand):
     help = "Consent signing-key rotation reminder (Phase 232.1 / 90-day cadence)."
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
         self.stdout.write(
             self.style.NOTICE(
                 "Consent signing keys: prepend a new random 32-byte hex key per tenant to "

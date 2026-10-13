@@ -27,6 +27,7 @@ export const auditService = {
     if (filters.page != null) params.set('page', String(filters.page));
     if (filters.page_size != null) params.set('page_size', String(filters.page_size));
     if (filters.resource_type) params.set('resource_type', filters.resource_type);
+    if (filters.resource_id) params.set('resource_id', filters.resource_id);
     if (filters.action) params.set('action', filters.action);
     if (filters.actor_user_id) params.set('actor_user_id', filters.actor_user_id);
     if (filters.start_date) params.set('start_date', filters.start_date);
@@ -56,6 +57,7 @@ export const auditService = {
     const params = new URLSearchParams();
     params.set('format', format);
     if (filters.resource_type) params.set('resource_type', filters.resource_type);
+    if (filters.resource_id) params.set('resource_id', filters.resource_id);
     if (filters.action) params.set('action', filters.action);
     if (filters.actor_user_id) params.set('actor_user_id', filters.actor_user_id);
     if (filters.start_date) params.set('start_date', filters.start_date);

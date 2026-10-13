@@ -15,8 +15,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+# SKIP_DJANGO_SETUP is honored by tests/conftest.py. Do NOT pop
+# DJANGO_SETTINGS_MODULE here: collection-time removal is too late to
+# prevent Django setup and leaks into every later test module in the
+# session (hub/conftest.py sets it via setdefault once).
 os.environ.setdefault("SKIP_DJANGO_SETUP", "1")
-os.environ.pop("DJANGO_SETTINGS_MODULE", None)
 
 
 def test_validate_odps_schemas_script_exists():

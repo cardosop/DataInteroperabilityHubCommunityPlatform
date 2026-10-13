@@ -1,7 +1,7 @@
 # Runbook Library — Index (281.A.10.2)
 
 **Last updated:** 2026-05-17  
-**Total runbooks:** 115 across 11 categories  
+**Total runbooks:** 117 across 11 categories  
 **Game day tested:** See `docs/operations/game-day-runbook.md`
 
 ## By Category
@@ -92,6 +92,7 @@
 | [RB-AUTH-004-internal-api-key-rotation.md](RB-AUTH-004-internal-api-key-rotation.md) | Internal API key rotation | |
 | [RB-SEC-001-credential-rotation.md](RB-SEC-001-credential-rotation.md) | Credential rotation | |
 | [RB-SEC-002-cve-remediation.md](RB-SEC-002-cve-remediation.md) | CVE remediation | |
+| [RB-SEC-003-databricks-egress-credential-rotation.md](RB-SEC-003-databricks-egress-credential-rotation.md) | Databricks egress allowlist + OIDC trust setup + credential rotation | |
 | [RB-CMP-002-legal-basis-strict-mode-incident.md](RB-CMP-002-legal-basis-strict-mode-incident.md) | Legal basis strict-mode incident | |
 | [dsar-public-penetration-review.md](dsar-public-penetration-review.md) | DSAR penetration review | |
 
@@ -121,12 +122,14 @@
 | [vendor-failure-aws.md](vendor-failure-aws.md) | AWS vendor outage | ✅ GD-INF-02 |
 | [s3-test-namespace-cleanup.md](s3-test-namespace-cleanup.md) | S3 test namespace cleanup | |
 
-### E2E & Testing (6 runbooks)
+### E2E & Testing (8 runbooks)
 | Runbook | Description | Game Day |
 |---|---|---|
 | [REAL_MARKETPLACE_E2E.md](REAL_MARKETPLACE_E2E.md) | Marketplace E2E procedures | |
 | [REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](REAL_SCHEDULED_INGESTION_EXPORT_E2E.md) | Scheduled ingestion/export E2E | |
 | [REAL_VIRTUALIZATION_E2E.md](REAL_VIRTUALIZATION_E2E.md) | Virtualization E2E | |
+| [LOCAL_FULL_TEST_SWEEP.md](LOCAL_FULL_TEST_SWEEP.md) | Step-by-step local run of every backend + frontend test batch (container batches 1–12, estate, vitest, Playwright 1a–8, services, sweep + CI parity) | |
+| [RB-INTEGRATIONS-002-snowflake-sandbox-provisioning.md](RB-INTEGRATIONS-002-snowflake-sandbox-provisioning.md) | Snowflake sandbox provisioning recipe (account/service user/PAT + W16 behavior) for the live connector tests | |
 
 ### Process & Operations (21 runbooks)
 | Runbook | Description | Game Day |

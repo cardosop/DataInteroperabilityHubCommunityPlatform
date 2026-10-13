@@ -14,6 +14,7 @@ Targets uncovered lines in hub/apps/auth/authentication.py:
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -88,7 +89,7 @@ class JWTAuthenticationEdgeCases(TestCase):
             status=UserStatus.ACTIVE,
         )
         token = self._generate_token(user=temp_user)
-        temp_user_id = temp_user.id
+        _temp_user_id = temp_user.id
         temp_user.delete()
 
         auth = JWTAuthentication()

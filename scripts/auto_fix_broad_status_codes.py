@@ -24,8 +24,8 @@ def has_2xx_and_4xx(codes_list: str) -> bool:
     codes = [c.strip() for c in codes_list.split(",")]
     has_2xx = False
     has_4xx = False
-    for c in codes:
-        c = c.strip()
+    for raw_c in codes:
+        c = raw_c.strip()
         # Check for integer codes
         if re.match(r"^\d{3}$", c):
             code = int(c)
@@ -46,7 +46,7 @@ def fix_file(filepath: str) -> int:
     try:
         with open(filepath, encoding="utf-8") as fh:
             source = fh.read()
-    except Exception:
+    except (OSError, ValueError):
         return 0
 
     # Find assertIn(response.*status_code, [2xx, 2xx, 4xx, 4xx, ...])

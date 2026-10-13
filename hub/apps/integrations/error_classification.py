@@ -11,7 +11,7 @@ strategy:
 """
 
 import logging
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ _TRANSIENT_STATUS_CODES = frozenset({429, 502, 503, 504})
 _PERMANENT_STATUS_CODES = frozenset({400, 401, 403, 404, 405, 409, 422})
 
 
-class ConnectorErrorType(str, Enum):
+class ConnectorErrorType(StrEnum):
     """Classification of connector errors for retry decisions."""
 
     TRANSIENT = "transient"

@@ -74,7 +74,7 @@ def check_python_version() -> tuple[bool, str]:
         else:
             print_error("Could not parse Python version")
             return False, "unknown"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print_error(f"Error checking Python version: {e}")
         return False, "error"
 
@@ -318,7 +318,7 @@ def test_dependency_installation() -> tuple[bool, str]:
                 return False, result.stderr
         except subprocess.TimeoutExpired:
             print_warning(f"{req_file}: Installation check timed out")
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             print_warning(f"{req_file}: Could not test installation: {e}")
 
     return True, ""
@@ -349,7 +349,7 @@ def test_docker_build(dockerfile: str) -> tuple[bool, str]:
             return True, ""
         else:
             return False, f"{dockerfile}: Does not use Python 3.12+"
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return False, str(e)
 
 

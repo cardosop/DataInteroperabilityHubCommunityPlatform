@@ -29,10 +29,11 @@ def is_test_mode() -> bool:
         return True
 
     # Check if unittest is loaded (Django test runner uses unittest)
-    if "unittest" in sys.modules:
+    if "unittest" in sys.modules and any(
+        "test" in arg.lower() or "pytest" in arg.lower() for arg in sys.argv
+    ):
         # Check if we're actually running tests (not just importing unittest)
-        if any("test" in arg.lower() or "pytest" in arg.lower() for arg in sys.argv):
-            return True
+        return True
 
     # Check command line arguments
     if any(arg in sys.argv for arg in ["test", "pytest"]):
@@ -82,7 +83,4 @@ def should_skip_initialization() -> bool:
         return True
 
     # Skip during collectstatic
-    if "collectstatic" in sys.argv:
-        return True
-
-    return False
+    return "collectstatic" in sys.argv

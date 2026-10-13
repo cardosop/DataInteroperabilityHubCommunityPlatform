@@ -26,14 +26,14 @@ describe('searchService', () => {
     // Phase 273.1.5 — canonical endpoint is /search/, NOT /api/v1/search/search/
     expect(url).toContain('search/?');
     expect(url).toContain('q=test+query');
-    expect(url).toContain('types=assets,contracts');
+    expect(url).toContain('types=assets%2Ccontracts%2Cuc');
   });
 
-  it('maps ALL scope to assets,contracts types', async () => {
+  it('maps ALL scope to assets,contracts,uc types (1.4 UC feed)', async () => {
     vi.mocked(mock.get).mockResolvedValue({ data: { results: [] } });
     await searchService.search('test', { type: 'ALL' });
     const url = vi.mocked(mock.get).mock.calls[0][0] as string;
-    expect(url).toContain('types=assets%2Ccontracts');
+    expect(url).toContain('types=assets%2Ccontracts%2Cuc');
   });
 
   it('maps ASSET scope to assets type', async () => {

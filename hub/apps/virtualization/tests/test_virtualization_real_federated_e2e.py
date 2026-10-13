@@ -10,7 +10,6 @@ import unittest
 import uuid
 
 import pytest
-
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -209,13 +208,19 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             listing = connector.get_listing("annakarenina")
         except Exception as e:
             # Fallback: get any listing from package_list
-            try:
+
+            def _fallback_listing(fallback_error: Exception):
                 listings = connector.list_listings(limit=5)
                 if not listings:
-                    raise unittest.SkipTest(f"No listings from demo.ckan.org: {e}")
-                listing = connector.get_listing(listings[0].marketplace_id)
+                    raise unittest.SkipTest(
+                        f"No listings from demo.ckan.org: {fallback_error}"
+                    ) from fallback_error
+                return connector.get_listing(listings[0].marketplace_id)
+
+            try:
+                listing = _fallback_listing(e)
             except Exception as e2:
-                raise unittest.SkipTest(f"Cannot get listing from demo.ckan.org: {e2}")
+                raise unittest.SkipTest(f"Cannot get listing from demo.ckan.org: {e2}") from e2
 
         # 3. Map to hub asset
         mapping = connector.map_to_hub_asset(listing)
@@ -357,8 +362,9 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         - No CKAN package with downloadable CSV resource found
         - CKAN service not reachable
         """
+
         # Check if CKAN is reachable before attempting the slow search
-        try:
+        def _probe() -> None:
             import httpx
 
             resp = httpx.get(
@@ -367,8 +373,11 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             )
             if resp.status_code != 200:
                 raise unittest.SkipTest("CKAN service not reachable")
+
+        try:
+            _probe()
         except Exception:
-            raise unittest.SkipTest("CKAN service not reachable")
+            raise unittest.SkipTest("CKAN service not reachable") from None
 
         base_url, listing_id, resource_id = _find_ckan_package_with_downloadable_csv()
         if not base_url or not listing_id or not resource_id:

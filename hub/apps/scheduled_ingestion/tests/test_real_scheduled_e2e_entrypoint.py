@@ -51,7 +51,9 @@ def test_runbook_exists_when_real_e2e_enabled():
     content = runbook.read_text()
     assert "REAL_SCHEDULED_E2E" in content
     assert "real_scheduled_e2e" in content
-    assert "S3" in content and "GCS" in content and "AZURE_BLOB" in content
+    assert "S3" in content
+    assert "GCS" in content
+    assert "AZURE_BLOB" in content
 
 
 def test_env_guard_set_when_real_e2e_run():

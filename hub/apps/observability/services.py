@@ -450,7 +450,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise ValueError(f"Tenant {tenant_id} not found")
+            raise ValueError(f"Tenant {tenant_id} not found") from None
 
         # Get dataset/asset
         dataset = None
@@ -460,13 +460,13 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
             try:
                 dataset = Dataset.objects.get(id=dataset_id, tenant=tenant)
             except Dataset.DoesNotExist:
-                raise ValueError(f"Dataset {dataset_id} not found")
+                raise ValueError(f"Dataset {dataset_id} not found") from None
 
         if asset_id:
             try:
                 asset = Asset.objects.get(id=asset_id, tenant=tenant)
             except Asset.DoesNotExist:
-                raise ValueError(f"Asset {asset_id} not found")
+                raise ValueError(f"Asset {asset_id} not found") from None
 
         # Parse last_update_time
         parsed_last_update_time = None

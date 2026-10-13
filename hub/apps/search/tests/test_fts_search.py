@@ -9,6 +9,7 @@ Covers:
   test_migration_script_idempotent         — script skips already-present objects
 """
 
+import contextlib
 import os
 import uuid
 from unittest.mock import patch
@@ -30,11 +31,19 @@ from hub.apps.users.models import User, UserStatus
 
 
 def _disconnect_semantic_signals():
-    """Disconnect heavy signals that cause external HTTP calls during tests."""
+    """Disconnect heavy signals that cause external HTTP calls during tests.
+
+    Returns the (handler, sender) pairs that were disconnected so the
+    caller can reconnect them in teardown — a permanent disconnect
+    poisons every later suite in the pytest session that asserts the
+    search-vector signals are wired (assets/test_signals.py,
+    test_search_vector_signal_timing.py).
+    """
     import importlib
 
     from django.db.models.signals import post_save
 
+    disconnected = []
     for dotted in (
         "hub.apps.semantic.signals.asset_saved",
         "hub.apps.semantic.signals.contract_saved",
@@ -53,8 +62,25 @@ def _disconnect_semantic_signals():
             }
             sender = sender_map.get(func_name)
             post_save.disconnect(handler, sender=sender)
-        except (ImportError, AttributeError):
+            disconnected.append((handler, sender))
+        except (ImportError, AttributeError, RuntimeError):
+            # RuntimeError covers core-only mode: the paid semantic
+            # module's models are not installed (Django raises at
+            # model-class definition); nothing to disconnect there.
             pass
+    return disconnected
+
+
+def _reconnect_signals(pairs):
+    """Reconnect previously disconnected (handler, sender) pairs."""
+    from django.db.models.signals import post_save
+
+    for handler, sender in pairs:
+        # Default weak=True: Django invokes weak receivers WITHOUT
+        # signal args (the semantic handlers take none), while weak=False
+        # would pass (sender, **kwargs) and raise TypeError.
+        with contextlib.suppress(TypeError):
+            post_save.connect(handler, sender=sender)
 
 
 def _create_tenant(slug):
@@ -105,7 +131,7 @@ def _create_contract(tenant, user, *, original_spec_type="datacontract"):
 @pytest.mark.django_db(transaction=True)
 class TestFTSSearchRankedResults(TestCase):
     def setUp(self):
-        _disconnect_semantic_signals()
+        self.addCleanup(_reconnect_signals, _disconnect_semantic_signals())
         self.client = APIClient()
         self.tenant = _create_tenant("rank-tenant")
         self.user = _create_user(self.tenant)
@@ -176,7 +202,7 @@ class TestFTSSearchRankedResults(TestCase):
 @pytest.mark.django_db(transaction=True)
 class TestFTSSearchTenantScoped(TestCase):
     def setUp(self):
-        _disconnect_semantic_signals()
+        self.addCleanup(_reconnect_signals, _disconnect_semantic_signals())
         self.client = APIClient()
 
         self.tenant_a = _create_tenant("tenant-a")
@@ -232,14 +258,16 @@ class TestFTSIndexUpdatedOnSave(TestCase):
         self.user = _create_user(self.tenant, email="signal@test.com")
 
     def tearDown(self):
-        """Clean up signal connections to leave state clean for subsequent tests."""
+        """Restore the search-vector signal connections for subsequent
+        suites — leaving them disconnected poisoned every later test
+        that asserts the Phase 226 G12 wiring (assets/test_signals.py)."""
         from django.db.models.signals import post_save
 
         from hub.apps.assets.signals import rebuild_asset_search_vector
         from hub.apps.contracts.signals import rebuild_contract_search_vector
 
-        post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
-        post_save.disconnect(rebuild_contract_search_vector, sender=Contract)
+        post_save.connect(rebuild_asset_search_vector, sender=Asset)
+        post_save.connect(rebuild_contract_search_vector, sender=Contract)
         super().tearDown()
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")

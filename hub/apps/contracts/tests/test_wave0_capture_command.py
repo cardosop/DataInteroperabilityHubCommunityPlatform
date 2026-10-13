@@ -26,6 +26,7 @@ from django.test import TestCase
 
 def _create_tenant(name: str = "Wave 0 Capture Co"):
     import uuid
+
     from hub.apps.tenants.models import Tenant
 
     suffix = uuid.uuid4().hex[:8]
@@ -69,7 +70,8 @@ class CaptureCommandTests(TestCase):
                 stdout=out,
             )
 
-            assert tmp_path.exists() and tmp_path.is_dir()
+            assert tmp_path.exists()
+            assert tmp_path.is_dir()
         finally:
             if tmp_path.exists():
                 for p in tmp_path.iterdir():
@@ -129,10 +131,7 @@ class CaptureCommandTests(TestCase):
             ]
             # Filter to only this test's tenant (reuse-db may have accumulated
             # structureless contracts from other test runs).
-            our_lines = [
-                ln for ln in json_lines
-                if f'"tenant_id": "{tenant.id}"' in ln
-            ]
+            our_lines = [ln for ln in json_lines if f'"tenant_id": "{tenant.id}"' in ln]
             assert len(our_lines) == 2, (
                 f"Expected 2 structureless rows for test tenant; "
                 f"got {len(our_lines)} (total {len(json_lines)} across all tenants)\n"
@@ -223,13 +222,9 @@ class CaptureCommandTests(TestCase):
             json_lines = [ln for ln in artefact.read_text().splitlines() if ln.startswith("{")]
             # With reuse-db there may be prior structureless contracts for
             # the same tenant; filter to only the contracts we just created.
-            t1_lines = [
-                ln for ln in json_lines
-                if json.loads(ln).get("tenant_id") == str(t1.id)
-            ]
+            t1_lines = [ln for ln in json_lines if json.loads(ln).get("tenant_id") == str(t1.id)]
             assert len(t1_lines) == 1, (
-                f"Expected 1 structureless row for Tenant A; "
-                f"got {len(t1_lines)} lines: {t1_lines}"
+                f"Expected 1 structureless row for Tenant A; got {len(t1_lines)} lines: {t1_lines}"
             )
             assert json.loads(t1_lines[0])["tenant_id"] == str(t1.id)
         finally:

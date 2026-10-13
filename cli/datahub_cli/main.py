@@ -18,6 +18,7 @@ from .commands import (
     compliance,
     consent,
     contracts,
+    databricks,
     datasets,
     developer,
     dpia,
@@ -124,6 +125,7 @@ cli.add_command(scheduled_ingestion.scheduled_ingestion, name="scheduled-ingesti
 cli.add_command(scheduled_export.scheduled_export, name="scheduled-export")
 cli.add_command(webhooks.webhooks, name="webhooks")
 cli.add_command(warehouses.warehouses, name="warehouses")
+cli.add_command(databricks.databricks, name="databricks")
 cli.add_command(audit.audit, name="audit")
 cli.add_command(health.health, name="health")
 cli.add_command(billing.billing, name="billing")

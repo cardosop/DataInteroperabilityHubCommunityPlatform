@@ -95,9 +95,7 @@ class TestDataFirstAssetFlowIntegration(TestCase):
         # what the server computes from request.body (see
         # IdempotencyService.canonical_body_bytes and
         # hub/apps/testing/idempotency_helpers.py).
-        canonical_body = json.dumps(
-            body, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        canonical_body = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
         idem_key = f"{self.tenant.id}:{hashlib.sha256(canonical_body).hexdigest()}"
         response = self.client.post(
             "/api/v1/assets/data-first/",

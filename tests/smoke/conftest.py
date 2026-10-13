@@ -89,14 +89,17 @@ def admin_credentials() -> dict:
     return {"email": email, "password": password}
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def auth_token(
     base_url: str, api_session: requests.Session, admin_credentials: dict, timeout: int
 ) -> str:
     """
-    Authenticate once per session and return a JWT access token.
+    Authenticate and return a JWT access token.
 
-    Caches the token for all tests in the session to avoid repeated logins.
+    FUNCTION-scoped on purpose: the suite includes logout-all coverage
+    (260.DoD.4), which bumps the admin's ``authz_version`` and invalidates
+    every outstanding access token. A session-scoped token would go stale
+    mid-run and cascade 401 TOKEN_INVALIDATED across all later admin tests.
     """
     response = api_session.post(
         f"{base_url}/api/v1/auth/login/",
@@ -112,7 +115,7 @@ def auth_token(
     return token
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def authenticated_session(auth_token: str) -> requests.Session:
     """
     requests.Session pre-configured with Bearer auth header.

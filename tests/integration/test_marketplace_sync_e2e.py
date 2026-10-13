@@ -19,10 +19,20 @@ django = pytest.importorskip("django")
 hub = pytest.importorskip("hub")
 import json
 import os
+import tempfile
 import uuid
 
 import requests
 from click.testing import CliRunner
+
+# The API test image's $HOME is read-only; the CLI writes its config
+# file under $HOME/.datahub. Point DATAHUB_CONFIG_DIR at a writable
+# temp dir BEFORE importing the config module (CONFIG_DIR resolves at
+# import time).
+os.environ.setdefault(
+    "DATAHUB_CONFIG_DIR",
+    tempfile.mkdtemp(prefix="cli-e2e-config-"),
+)
 from datahub_cli.config import config
 from datahub_cli.main import cli
 from django.contrib.auth import get_user_model
@@ -49,16 +59,19 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         """Set up test fixtures"""
         super().setUp()
         from rest_framework.test import APIClient as DRFClient
+
         self.api = DRFClient()
         self.runner = CliRunner()
 
         # Create tenant (UUID suffix prevents --reuse-db collisions)
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"CLI Marketplace E2E {_uid}", slug=f"cli-marketplace-e2e-{_uid}",
+            name=f"CLI Marketplace E2E {_uid}",
+            slug=f"cli-marketplace-e2e-{_uid}",
             marketplace_integrations_enabled=True,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with ACTIVE status

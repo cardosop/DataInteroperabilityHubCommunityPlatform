@@ -25,11 +25,11 @@ class TestDatabricksConnectorInitialization(TestCase):
         connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com", token="dapi1234567890abcdef"
         )
-        self.assertEqual(connector.host, "https://test-workspace.cloud.databricks.com")
-        self.assertEqual(connector.token, "dapi1234567890abcdef")
-        self.assertIsNone(connector.cluster_id)
-        self.assertIsNotNone(connector.client)
-        self.assertIsNotNone(connector._circuit_breaker)
+        assert connector.host == "https://test-workspace.cloud.databricks.com"
+        assert connector.token == "dapi1234567890abcdef"
+        assert connector.cluster_id is None
+        assert connector.client is not None
+        assert connector._circuit_breaker is not None
 
     def test_init_with_cluster_id(self):
         """Test connector initialization with optional cluster_id"""
@@ -38,46 +38,46 @@ class TestDatabricksConnectorInitialization(TestCase):
             token="dapi1234567890abcdef",
             cluster_id="1234-567890-abcd1234",
         )
-        self.assertEqual(connector.cluster_id, "1234-567890-abcd1234")
+        assert connector.cluster_id == "1234-567890-abcd1234"
 
     def test_init_host_trailing_slash_removed(self):
         """Test connector removes trailing slash from host URL"""
         connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com/", token="dapi1234567890abcdef"
         )
-        self.assertEqual(connector.host, "https://test-workspace.cloud.databricks.com")
+        assert connector.host == "https://test-workspace.cloud.databricks.com"
 
     def test_init_circuit_breaker_configuration(self):
         """Test circuit breaker is initialized with correct parameters"""
         connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com", token="dapi1234567890abcdef"
         )
-        self.assertEqual(connector._circuit_breaker.failure_threshold, 5)
-        self.assertEqual(connector._circuit_breaker.timeout_seconds, 60)
-        self.assertEqual(connector._circuit_breaker.success_threshold, 2)
-        self.assertEqual(connector._circuit_breaker.service_name, "databricks-connector")
+        assert connector._circuit_breaker.failure_threshold == 5
+        assert connector._circuit_breaker.timeout_seconds == 60
+        assert connector._circuit_breaker.success_threshold == 2
+        assert connector._circuit_breaker.service_name == "databricks-connector"
 
     def test_init_http_client_configuration(self):
         """Test HTTP client is initialized with correct configuration"""
         connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com", token="dapi1234567890abcdef"
         )
-        self.assertEqual(connector.client.base_url, "https://test-workspace.cloud.databricks.com")
-        self.assertEqual(connector.client.timeout.read, 30.0)
+        assert connector.client.base_url == "https://test-workspace.cloud.databricks.com"
+        assert connector.client.timeout.read == 30.0
 
     def test_init_token_stored_correctly(self):
         """Test that the bearer token is correctly stored on the connector instance."""
         connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com", token="dapi1234567890abcdef"
         )
-        self.assertEqual(connector.token, "dapi1234567890abcdef")
+        assert connector.token == "dapi1234567890abcdef"
 
     def test_marketplace_type_property(self):
         """Test marketplace_type property returns DATABRICKS_MARKETPLACE"""
         connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com", token="dapi1234567890abcdef"
         )
-        self.assertEqual(connector.marketplace_type, MarketplaceType.DATABRICKS_MARKETPLACE)
+        assert connector.marketplace_type == MarketplaceType.DATABRICKS_MARKETPLACE
 
     def test_supported_sync_directions_property(self):
         """Test supported_sync_directions property returns PULL only"""
@@ -85,9 +85,9 @@ class TestDatabricksConnectorInitialization(TestCase):
             host="https://test-workspace.cloud.databricks.com", token="dapi1234567890abcdef"
         )
         directions = connector.supported_sync_directions
-        self.assertEqual(directions, [SyncDirection.PULL])
-        self.assertNotIn(SyncDirection.PUSH, directions)
-        self.assertNotIn(SyncDirection.BIDIRECTIONAL, directions)
+        assert directions == [SyncDirection.PULL]
+        assert SyncDirection.PUSH not in directions
+        assert SyncDirection.BIDIRECTIONAL not in directions
 
 
 class TestDatabricksConnectorAuthentication(TestCase):
@@ -115,9 +115,9 @@ class TestDatabricksConnectorAuthentication(TestCase):
         }
         result = self.connector.authenticate(credentials)
 
-        self.assertTrue(result)
-        self.assertEqual(self.connector.host, "https://new-workspace.cloud.databricks.com")
-        self.assertEqual(self.connector.token, "dapi9876543210fedcba")
+        assert result
+        assert self.connector.host == "https://new-workspace.cloud.databricks.com"
+        assert self.connector.token == "dapi9876543210fedcba"
         mock_test_connection.assert_called_once()
 
     @patch(
@@ -134,22 +134,22 @@ class TestDatabricksConnectorAuthentication(TestCase):
         }
         result = self.connector.authenticate(credentials)
 
-        self.assertTrue(result)
-        self.assertEqual(self.connector.cluster_id, "1234-567890-abcd1234")
+        assert result
+        assert self.connector.cluster_id == "1234-567890-abcd1234"
 
     def test_authenticate_missing_host(self):
         """Test authentication raises ValueError if host is missing"""
         credentials = {"token": "dapi1234567890abcdef"}
         with self.assertRaises(ValueError) as cm:
             self.connector.authenticate(credentials)
-        self.assertIn("host", str(cm.exception).lower())
+        assert "host" in str(cm.exception).lower()
 
     def test_authenticate_missing_token(self):
         """Test authentication raises ValueError if token is missing"""
         credentials = {"host": "https://test-workspace.cloud.databricks.com"}
         with self.assertRaises(ValueError) as cm:
             self.connector.authenticate(credentials)
-        self.assertIn("token", str(cm.exception).lower())
+        assert "token" in str(cm.exception).lower()
 
     def test_authenticate_empty_credentials(self):
         """Test authentication raises ValueError if credentials dict is empty"""
@@ -174,7 +174,7 @@ class TestDatabricksConnectorAuthentication(TestCase):
         }
         with self.assertRaises(ConnectionError) as cm:
             self.connector.authenticate(credentials)
-        self.assertIn("Connection failed", str(cm.exception))
+        assert "Connection failed" in str(cm.exception)
 
     @patch(
         "hub.apps.integrations.connectors.databricks_connector.DatabricksConnector.test_connection"
@@ -215,13 +215,13 @@ class TestDatabricksConnectorTestConnection(TestCase):
 
         result = self.connector.test_connection()
 
-        self.assertTrue(result)
+        assert result
         mock_request.assert_called_once()
         # Verify it calls the workspace/list endpoint
         call_args = mock_request.call_args
-        self.assertEqual(call_args[0][1], "/api/2.0/workspace/list")
-        self.assertIn("path", call_args[1]["params"])
-        self.assertEqual(call_args[1]["params"]["path"], "/")
+        assert call_args[0][1] == "/api/2.0/workspace/list"
+        assert "path" in call_args[1]["params"]
+        assert call_args[1]["params"]["path"] == "/"
 
     @patch(
         "hub.apps.integrations.connectors.databricks_connector.DatabricksConnector._request_with_retry"
@@ -244,7 +244,7 @@ class TestDatabricksConnectorTestConnection(TestCase):
 
         with self.assertRaises(ConnectionError) as cm:
             self.connector.test_connection()
-        self.assertIn("Network error", str(cm.exception))
+        assert "Network error" in str(cm.exception)
 
     @patch(
         "hub.apps.integrations.connectors.databricks_connector.DatabricksConnector._request_with_retry"
@@ -260,6 +260,6 @@ class TestDatabricksConnectorTestConnection(TestCase):
         with patch.object(self.connector._circuit_breaker, "call") as mock_cb_call:
             mock_cb_call.return_value = mock_response
             result = self.connector.test_connection()
-            self.assertTrue(result)
+            assert result
             # Note: _request_with_retry uses circuit breaker internally,
             # so we verify the request was made successfully

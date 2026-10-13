@@ -106,9 +106,9 @@ class OpenAPISpecValidator:
                 "email": "support@datahub.example.com",
             }
 
-        # Add license information if not present
+        # Add license information if not present (core is Apache-2.0 — D1)
         if "license" not in spec["info"]:
-            spec["info"]["license"] = {"name": "Proprietary"}
+            spec["info"]["license"] = {"name": "Apache-2.0"}
 
         # Add servers if not present
         if "servers" not in spec:

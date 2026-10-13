@@ -12,7 +12,6 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -171,7 +170,6 @@ class DeliveryRecordTest(TestCase):
         ).hexdigest()
         actual_sig = self.webhook.generate_signature(payload_json)
         self.assertEqual(actual_sig, expected_sig)
-
 
 
 class OdpsWebhookFilteringTest(TestCase):

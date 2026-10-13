@@ -9,7 +9,7 @@ import pytest
 
 # Optional channels import
 try:
-    from channels.db import database_sync_to_async
+    from channels.db import database_sync_to_async  # type: ignore[import-untyped]
 
     CHANNELS_AVAILABLE = True
 except ImportError:

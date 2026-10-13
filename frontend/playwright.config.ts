@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { resolvePlaywrightFrontend } from './src/lib/playwright-frontend-resolve';
+import { E2E_STRIPE_PUBLISHABLE_KEY } from './src/lib/e2e-stripe-config';
 
 // Set VITE_E2E_TEST in the test runner process (not just the Vite webServer).
 // Test specs like data-quality.spec.ts check process.env.VITE_E2E_TEST to decide
@@ -52,7 +53,10 @@ export default defineConfig({
   // tests finish in 15-30s. Tests with complex flows (activation, file upload) set their own
   // higher timeout via test.setTimeout(). 120s was needed when loginUser always navigated to
   // /login first; the fast-path eliminates that overhead.
-  timeout: 60000,
+  // 2026-09-22: raised back to 120s — on the HDD dev box (jbd2 D-state stalls) the
+  // full 122-test run's timing budget no longer fits 60s; every remaining batch-1b
+  // failure was a pure timeout (zero assertion/a11y failures).
+  timeout: 120000,
   // 1 worker by default: every test in auth-focused batches requires a full login
   // cycle.  2+ workers saturate the backend login/capabilities endpoints causing
   // PostgreSQL statement timeouts, rate-limit cascades (429), and Phase 11.1 token
@@ -81,6 +85,13 @@ export default defineConfig({
     // Default navigation timeout: 30s. Without this, page.goto() inherits the test timeout
     // (60-300s), so a single stalled Vite dev server response consumes the entire test budget.
     navigationTimeout: 30000,
+    // Default action timeout: 30s. Without this, click/fill actionability waits inherit
+    // the TEST timeout and retry against an unstable/dead locator forever — b7's
+    // JOURNEY-EXPORT-001 burned its entire 900s budget retrying a detached "Create"
+    // button ("element is not stable / detached") instead of failing at the action.
+    // 30s is generous for any single UI action (slow pages use expect timeouts, which
+    // this does not affect); specs needing longer waits use waitFor* with explicit caps.
+    actionTimeout: 30000,
   },
 
   projects: [
@@ -108,6 +119,28 @@ export default defineConfig({
         '**/personas/*.spec.ts',
       ],
     },
+    // Core-only subset project — ONLY when E2E_CORE_ONLY=1 (Phase 313.4).
+    // Same storageState as chromium but WITHOUT the personas ignore:
+    // frontend/e2e/core-only.txt selects specs by title substring and the
+    // persona aggregators are exactly the specs that gate paid personas out.
+    // (The OpenAPI drift spec lives in dimensions/ and is run explicitly
+    // with --project=dimensions, so it stays ignored here.)
+    ...(process.env.E2E_CORE_ONLY === '1'
+      ? [
+          {
+            name: 'chromium-core',
+            use: {
+              ...devices['Desktop Chrome'],
+              storageState: 'e2e/.auth/user.json',
+            },
+            dependencies: ['setup-auth'],
+            testIgnore: [
+              '**/setup/auth-storage.spec.ts',
+              '**/dimensions/*.spec.ts',
+            ],
+          },
+        ]
+      : []),
     // Interactive debugging project — ONLY when E2E_VISIBLE=1
     ...(isVisibleRun
       ? [
@@ -256,6 +289,16 @@ export default defineConfig({
               'http://localhost:8000/api/v1',
             VITE_WS_ENABLED: 'false',
             VITE_E2E_TEST: 'true',
+            // Stripe test-mode keys are baked into docker-compose.test.yml
+            // defaults — mirror them so the dev-server bundle embeds the
+            // publishable key and the Stripe checkout E2E can actually run
+            // locally (the spec's E2E_MARKETPLACE_STRIPE gate stays the
+            // explicit opt-in). vite.config.ts applies the same default for
+            // supervised dev servers Playwright does NOT start (shared
+            // constant: src/lib/e2e-stripe-config.ts).
+            VITE_STRIPE_PUBLISHABLE_KEY:
+              process.env.VITE_STRIPE_PUBLISHABLE_KEY ??
+              E2E_STRIPE_PUBLISHABLE_KEY,
             // Phase 260.3.A — exercise Compare Versions + DatasetVersionDiffView (default on for Playwright).
             VITE_DATASET_VERSION_COMPARE_ENABLED: process.env.VITE_DATASET_VERSION_COMPARE_ENABLED ?? 'true',
             // Phase 226.F2 — propagate the cookie-auth flag into Vite so

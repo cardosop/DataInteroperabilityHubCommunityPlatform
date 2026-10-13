@@ -16,6 +16,11 @@ from hub.apps.core.error_handling.error_tracking import (
 )
 
 
+def _raise_test_error(exc: Exception) -> None:
+    """Raise *exc* so tests can exercise caught-exception tracking paths."""
+    raise exc
+
+
 class ErrorTrackerTest(TestCase):
     """Test ErrorTracker class."""
 
@@ -68,7 +73,7 @@ class ErrorTrackerTest(TestCase):
         tracker = ErrorTracker()
 
         try:
-            raise ValueError("Test error")
+            _raise_test_error(ValueError("Test error"))
         except ValueError as e:
             # Should not raise exception
             tracker.track_error(
@@ -85,7 +90,7 @@ class ErrorTrackerTest(TestCase):
         tracker._sentry_available = True
 
         try:
-            raise ValueError("Test error")
+            _raise_test_error(ValueError("Test error"))
         except ValueError as e:
             tracker.track_error(
                 error=e,
@@ -109,7 +114,7 @@ class ErrorTrackerTest(TestCase):
         tracker._sentry_available = True
 
         try:
-            raise RuntimeError("Test exception")
+            _raise_test_error(RuntimeError("Test exception"))
         except RuntimeError as e:
             tracker.track_exception(e, context={"test": "context"})
 
@@ -174,7 +179,7 @@ class TrackErrorFunctionTest(TestCase):
         mock_get_tracker.return_value = mock_tracker
 
         try:
-            raise ValueError("Test error")
+            _raise_test_error(ValueError("Test error"))
         except ValueError as e:
             track_error(
                 error=e,
@@ -195,7 +200,7 @@ class TrackExceptionFunctionTest(TestCase):
         mock_get_tracker.return_value = mock_tracker
 
         try:
-            raise RuntimeError("Test exception")
+            _raise_test_error(RuntimeError("Test exception"))
         except RuntimeError as e:
             track_exception(e, context={"test": "context"})
 

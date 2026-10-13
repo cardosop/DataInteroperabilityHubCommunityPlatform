@@ -27,7 +27,12 @@ export interface LineageDagResult {
 
 /** Build a minimal valid ODCS YAML body. The ``lineage`` key is the
  *  Meshant extension that the engine reads into ``hub_contract_json.lineage``
- *  on save. */
+ *  on save — it MUST sit at the TOP LEVEL of the document: the relational
+ *  edge sync (lineage_sync._desired_edge_set) and the listing-level
+ *  lineage read (LineageService._edges_at) parse ``hub_contract_json.lineage``
+ *  directly. Placing it under ``info:`` (the old fixture shape) left the
+ *  LineageEdge index empty — every listing showed the lineage-empty panel
+ *  (b6 lineage skips). */
 function buildOdcsYaml(opts: {
   id: string;
   name: string;
@@ -36,10 +41,10 @@ function buildOdcsYaml(opts: {
   const lineage =
     (opts.upstreamContractIds ?? []).length === 0
       ? ''
-      : `\n  lineage:\n    contracts:\n${(opts.upstreamContractIds ?? [])
+      : `\nlineage:\n  contracts:\n${(opts.upstreamContractIds ?? [])
           .map(
             (cid) =>
-              `      - source_contract: ${cid}\n        target_contract: self\n        edge_type: reference`,
+              `    - source_contract: ${cid}\n      target_contract: self\n      edge_type: reference`,
           )
           .join('\n')}`;
   return [
@@ -62,6 +67,7 @@ async function postContract(
   page: Page,
   body: string,
   authHeaders: Record<string, string>,
+  assetId?: string,
 ): Promise<string> {
   const res = await page.request.post(`${API_BASE}/contracts/`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -69,9 +75,14 @@ async function postContract(
       original_raw: body,
       original_spec_type: 'ODCS',
       original_format: 'YAML',
+      // ContractCreateSerializer accepts asset_id — linking the contract
+      // to the asset is what gives listing-level lineage (get_for_asset
+      // roots at the asset's ACTIVE contract) a root to walk.
+      ...(assetId ? { asset_id: assetId } : {}),
     },
   });
   if (!res.ok()) {
+    // intentional: diagnostic-only body read — the throw below carries the status; an unreadable body just yields an empty message.
     const text = await res.text().catch(() => '');
     throw new Error(
       `seedLineageDag: POST ${API_BASE}/contracts/ failed ${res.status()}. ` +
@@ -101,7 +112,7 @@ async function postContract(
 export async function seedLineageDag(
   page: Page,
   n: number = 3,
-  opts: { accessToken?: string } = {},
+  opts: { accessToken?: string; assetId?: string } = {},
 ): Promise<LineageDagResult> {
   if (n < 2) {
     throw new Error(`seedLineageDag: n must be >= 2; got ${n}`);
@@ -124,7 +135,66 @@ export async function seedLineageDag(
       name: idPrefix,
       upstreamContractIds: i === 0 ? [] : [ids[i - 1]],
     });
-    ids.push(await postContract(page, body, authHeaders));
+    // When an asset is supplied, only the LEAF links to it: get_for_asset
+    // roots the listing lineage at the asset's ACTIVE contract and walks
+    // upstream — the leaf's upstream DAG edges then render as graph nodes.
+    const assetForThis = i === n - 1 ? opts.assetId : undefined;
+    ids.push(await postContract(page, body, authHeaders, assetForThis));
+  }
+
+  if (opts.assetId) {
+    // Listing-level lineage reads the RELATIONAL LineageEdge index
+    // (LineageService._edges_at) — which is only written by the lineage
+    // edit endpoint (PATCH /contracts/{id}/lineage/, F2 full-state patch)
+    // and by lineage_edit_service. YAML-ingested contracts never populate
+    // it (the ingestion path strips the lineage subtree), so write the
+    // DAG edges explicitly: each non-root contract declares its upstream
+    // edge(s), then the whole DAG transitions DRAFT→ACTIVE (a valid
+    // lifecycle transition per contracts_lifecycle_validation; the
+    // listing graph roots at the asset's ACTIVE contract).
+    // ORDER MATTERS: activate FIRST, then write lineage. The generic
+    // contract post_save edge-sync reads the YAML `contracts` lineage
+    // shape and CLOSES (valid_to) every edge of a contract whose
+    // hub_contract_json carries the F2 `entries` shape — patching the
+    // lineage before the status save left every edge closed ~18 ms after
+    // creation and the listing graph empty (b6 lineage skips).
+    for (const id of ids) {
+      const res = await page.request.patch(`${API_BASE}/contracts/${id}/`, {
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        data: { status: 'ACTIVE' },
+      });
+      if (!res.ok()) {
+        // intentional: diagnostic-only body read — the throw below carries the status; an unreadable body just yields an empty message.
+        const text = await res.text().catch(() => '');
+        throw new Error(
+          `seedLineageDag: PATCH ${id} status=ACTIVE failed ${res.status()}. Body: ${text.slice(0, 400)}.`
+        );
+      }
+    }
+    for (let i = 1; i < ids.length; i++) {
+      const res = await page.request.patch(
+        `${API_BASE}/contracts/${ids[i]}/lineage/`,
+        {
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          data: {
+            edges: [
+              {
+                source_contract: ids[i - 1],
+                target_contract: ids[i],
+                edge_type: 'reference',
+              },
+            ],
+          },
+        }
+      );
+      if (!res.ok()) {
+        // intentional: diagnostic-only body read — the throw below carries the status; an unreadable body just yields an empty message.
+        const text = await res.text().catch(() => '');
+        throw new Error(
+          `seedLineageDag: PATCH ${ids[i]} lineage failed ${res.status()}. Body: ${text.slice(0, 400)}.`
+        );
+      }
+    }
   }
 
   return {

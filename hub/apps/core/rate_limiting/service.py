@@ -7,7 +7,11 @@ Service layer for rate limit checking with multi-level enforcement.
 import structlog
 from django.http import HttpRequest
 
-from hub.apps.core.rate_limiting.config import get_api_key_rate_limit, get_tenant_rate_limit, get_user_rate_limit
+from hub.apps.core.rate_limiting.config import (
+    get_api_key_rate_limit,
+    get_tenant_rate_limit,
+    get_user_rate_limit,
+)
 from hub.apps.core.rate_limiting.utils import (
     EndpointCategory,
     TimeWindow,
@@ -86,10 +90,7 @@ def check_rate_limit(
     # Single identity (feat1 D2): same request.api_key_obj used for BaaS quota/usage
     if api_key_id is None:
         api_key_obj = getattr(request, "api_key_obj", None)
-        if api_key_obj:
-            api_key_id = str(api_key_obj.id)
-        else:
-            api_key_id = None
+        api_key_id = str(api_key_obj.id) if api_key_obj else None
 
     # Skip rate limiting if no tenant (shouldn't happen in normal flow)
     if not tenant_id:
@@ -217,7 +218,7 @@ def check_rate_limit(
     return all_allowed, results
 
 
-def get_rate_limit_headers(request: HttpRequest, results: list[RateLimitResult]) -> dict[str, str]:
+def get_rate_limit_headers(_request: HttpRequest, results: list[RateLimitResult]) -> dict[str, str]:
     """
     Generate rate limit headers for response.
 

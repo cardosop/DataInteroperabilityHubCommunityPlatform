@@ -808,7 +808,8 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
     def test_visibility_change_no_change(self):
         """Test visibility change with no change (should be valid)"""
         asset = AssetFactory.create_asset(
-            tenant=self.tenant, created_by=self.user,
+            tenant=self.tenant,
+            created_by=self.user,
             # visibility is a derived @property (Phase 250.3.B) — omit
             # the deprecated kwarg; DRAFT (default) → INTERNAL automatically.
         )
@@ -2522,8 +2523,11 @@ class AssetsBusinessRulesStructureValidationTest(TestCase):
     def test_validate_structure_fully_valid(self):
         """Structure validation passes for a valid asset."""
         asset = AssetFactory.create_asset(
-            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT,
-            key="valid-key", name="Valid Asset",
+            tenant=self.tenant,
+            created_by=self.user,
+            status=AssetStatus.DRAFT,
+            key="valid-key",
+            name="Valid Asset",
         )
 
         result = self.rules.validate(
@@ -2541,6 +2545,7 @@ class AssetsBusinessRulesStructureValidationTest(TestCase):
         self.assertEqual(result.errors, [])
         self.assertEqual(result.details["asset_key"], "valid-key")
         self.assertEqual(result.details["asset_name"], "Valid Asset")
+
 
 # ---------------------------------------------------------------------------
 # AssetActivationRule.validate_activation() coverage
@@ -2576,6 +2581,7 @@ class AssetActivationRuleTest(TestCase):
         """Create a TenantConfig if it doesn't exist (required by
         AssetActivationRule.validate_activation)."""
         from hub.apps.tenants.models import TenantConfig
+
         if not TenantConfig.objects.filter(tenant=self.tenant).exists():
             TenantConfig.objects.create(tenant=self.tenant)
 
@@ -2590,8 +2596,11 @@ class AssetActivationRuleTest(TestCase):
         )
 
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=asset,
-            status="SUCCEEDED", risk_level="LOW", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=asset,
+            status="SUCCEEDED",
+            risk_level="LOW",
+            allowed_to_store=True,
         )
 
         result = AssetActivationRule.validate_activation(asset)
@@ -2609,8 +2618,11 @@ class AssetActivationRuleTest(TestCase):
         )
 
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=asset,
-            status="SUCCEEDED", risk_level="LOW", allowed_to_store=False,
+            tenant=self.tenant,
+            asset=asset,
+            status="SUCCEEDED",
+            risk_level="LOW",
+            allowed_to_store=False,
         )
 
         result = AssetActivationRule.validate_activation(asset)
@@ -2628,8 +2640,11 @@ class AssetActivationRuleTest(TestCase):
         )
 
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=asset,
-            status="FAILED", risk_level="HIGH", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=asset,
+            status="FAILED",
+            risk_level="HIGH",
+            allowed_to_store=True,
         )
 
         result = AssetActivationRule.validate_activation(asset)
@@ -2652,8 +2667,11 @@ class AssetActivationRuleTest(TestCase):
         )
 
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=asset,
-            status="SUCCEEDED", risk_level="CRITICAL", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=asset,
+            status="SUCCEEDED",
+            risk_level="CRITICAL",
+            allowed_to_store=True,
         )
 
         result = AssetActivationRule.validate_activation(asset)

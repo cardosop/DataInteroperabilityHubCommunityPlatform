@@ -21,8 +21,17 @@ beforeAll(() => {
 
 // Mock the hook to control test data
 const mockUseContractLineageVisualization = vi.fn();
+// Phase 228 F5 — the component also consumes the diff hook; the mock
+// must provide it (a benign empty query — diffMode is off in these
+// tests).
+const mockUseContractLineageDiff = vi.fn(() => ({
+  data: undefined,
+  isLoading: false,
+  error: null,
+}));
 vi.mock('../../../contracts/hooks/useContracts', () => ({
   useContractLineageVisualization: (...args: unknown[]) => mockUseContractLineageVisualization(...args),
+  useContractLineageDiff: (...args: unknown[]) => mockUseContractLineageDiff(...args),
 }));
 
 import { ContractLineageVisualization } from '../ContractLineageVisualization';

@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { normalizePaginated } from '../../../shared/utils/paginated';
 import { socialService } from '../services/socialService';
 import type {
   RatingCreateRequest,
@@ -128,7 +129,8 @@ export function useCreateOrJoinCommunity() {
 export function useCommunityMembers(communityId: string, filters: SocialListFilters = {}) {
   return useQuery({
     queryKey: ['social', 'communities', communityId, 'members', filters],
-    queryFn: () => socialService.getCommunityMembers(communityId, filters),
+    queryFn: async () =>
+      normalizePaginated(await socialService.getCommunityMembers(communityId, filters)),
     enabled: !!communityId,
   });
 }

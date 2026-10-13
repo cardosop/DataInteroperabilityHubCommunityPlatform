@@ -22,19 +22,6 @@ class ODPSEventPublisherTest(TestCase):
         self.tenant_id = str(uuid.uuid4())
         self.user_id = str(uuid.uuid4())
 
-    def create_service(self):
-        """Create TestService with ODPSEventPublisher - helper method."""
-        tenant_id = self.tenant_id
-        user_id = self.user_id
-
-        class TestService(ODPSEventPublisher):
-            def __init__(self):
-                self.tenant_id = tenant_id
-                self.user_id = user_id
-                super().__init__()
-
-        return TestService()
-
     def test_initialization(self):
         """Test ODPSEventPublisher initialization."""
         service = self.create_service()

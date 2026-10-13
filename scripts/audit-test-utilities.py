@@ -23,7 +23,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -66,7 +66,7 @@ class TestUtilitiesAuditor:
     """Audit test utilities and helpers for endpoint URL references"""
 
     # Patterns to identify utility modules
-    UTILITY_PATTERNS = [
+    UTILITY_PATTERNS: ClassVar[list[str]] = [
         r".*utils?/.*\.py$",
         r".*helper.*\.py$",
         r".*conftest\.py$",
@@ -75,7 +75,7 @@ class TestUtilitiesAuditor:
     ]
 
     # Patterns to match endpoint URLs
-    ENDPOINT_PATTERNS = [
+    ENDPOINT_PATTERNS: ClassVar[list[str]] = [
         # Direct path strings: '/api/v1/...'
         r'["\'](/api/v1/[^"\']+)["\']',
         # f-strings: f'/api/v1/...'
@@ -89,7 +89,7 @@ class TestUtilitiesAuditor:
     ]
 
     # Helper function name patterns
-    HELPER_NAME_PATTERNS = [
+    HELPER_NAME_PATTERNS: ClassVar[list[str]] = [
         r"^get_.*",
         r"^create_.*",
         r"^build_.*",
@@ -202,7 +202,7 @@ class TestUtilitiesAuditor:
         """
         try:
             content = file_path.read_text(encoding="utf-8")
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             if self.verbose:
                 print(f"Warning: Could not read {file_path}: {e}")
             return {
@@ -278,7 +278,7 @@ class TestUtilitiesAuditor:
 
             try:
                 content = util_file_path.read_text(encoding="utf-8")
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 continue
 
             # Parse AST to find helper functions
@@ -321,17 +321,18 @@ class TestUtilitiesAuditor:
                                         if decorator.attr == "fixture":
                                             is_fixture = True
                                             break
-                                    elif isinstance(decorator, ast.Call):
-                                        # Handle @pytest.fixture() or @fixture()
-                                        if (
+                                    elif isinstance(decorator, ast.Call) and (
+                                        (
                                             isinstance(decorator.func, ast.Name)
                                             and decorator.func.id == "fixture"
-                                        ) or (
+                                        )
+                                        or (
                                             isinstance(decorator.func, ast.Attribute)
                                             and decorator.func.attr == "fixture"
-                                        ):
-                                            is_fixture = True
-                                            break
+                                        )
+                                    ):
+                                        is_fixture = True
+                                        break
 
                             helpers.append(
                                 {
@@ -380,7 +381,7 @@ class TestUtilitiesAuditor:
         for line_num, line in enumerate(lines, start=1):
             # Skip comment lines
             stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+            if stripped.startswith(("#", '"""', "'''")):
                 continue
 
             # Search for endpoint patterns
@@ -407,18 +408,17 @@ class TestUtilitiesAuditor:
                             try:
                                 tree = ast.parse(content)
                                 for node in ast.walk(tree):
-                                    if isinstance(node, ast.FunctionDef):
-                                        if (
-                                            node.lineno
-                                            <= line_num
-                                            <= (
-                                                node.lineno + len(node.body)
-                                                if hasattr(node, "body")
-                                                else node.lineno + 10
-                                            )
-                                        ):
-                                            func_name = node.name
-                                            break
+                                    if isinstance(node, ast.FunctionDef) and (
+                                        node.lineno
+                                        <= line_num
+                                        <= (
+                                            node.lineno + len(node.body)
+                                            if hasattr(node, "body")
+                                            else node.lineno + 10
+                                        )
+                                    ):
+                                        func_name = node.name
+                                        break
                             except SyntaxError:
                                 pass
 
@@ -511,7 +511,7 @@ class TestUtilitiesAuditor:
         )
 
         # Count unique endpoint paths
-        unique_endpoints = set(e["endpoint_path"] for e in self.endpoint_urls)
+        unique_endpoints = {e["endpoint_path"] for e in self.endpoint_urls}
 
         # Count dynamic vs static
         dynamic_count = sum(1 for e in self.endpoint_urls if e.get("is_dynamic", False))

@@ -104,7 +104,7 @@ class ODPSLinter:
             self.errors.append((str(file_path), f"Error reading file: {e}"))
             return False
 
-    def _lint_odps_content(self, data: dict[str, Any], file_path: Path, format: str) -> bool:
+    def _lint_odps_content(self, data: dict[str, Any], file_path: Path, _format: str) -> bool:
         """Lint ODPS content structure"""
         is_valid = True
 

@@ -104,7 +104,9 @@ class WorkflowAlertingTest(TestCase):
             )
 
         alerts = self.alerting.check_failed_workflows(min_failure_count=5, time_window_minutes=60)
-        self.assertEqual(len(alerts), 1, "Expected exactly 1 alert for 6 failures with min_failure_count=5")
+        self.assertEqual(
+            len(alerts), 1, "Expected exactly 1 alert for 6 failures with min_failure_count=5"
+        )
         self.assertEqual(alerts[0]["alert_type"], "workflow_failure_rate")
 
     def test_check_retry_exhaustion_no_exhaustion(self):
@@ -251,17 +253,25 @@ class WorkflowAlertingTest(TestCase):
             stuck_threshold_minutes=30,
         )
         # Verify expected keys are present
-        for key in ("timeouts", "failures", "retry_exhaustion", "stuck",
-                     "step_failures", "validation_failures"):
+        for key in (
+            "timeouts",
+            "failures",
+            "retry_exhaustion",
+            "stuck",
+            "step_failures",
+            "validation_failures",
+        ):
             self.assertIn(key, alerts, f"check_all_alerts must include '{key}' key")
         # We created a 2-hour-old RUNNING instance → timeout alert expected
         self.assertGreaterEqual(
-            len(alerts["timeouts"]), 1,
+            len(alerts["timeouts"]),
+            1,
             "Expected at least 1 timeout alert for a workflow running for 2 hours",
         )
         # We created a FAILED instance with retries exhausted → retry alert expected
         self.assertGreaterEqual(
-            len(alerts["retry_exhaustion"]), 1,
+            len(alerts["retry_exhaustion"]),
+            1,
             "Expected at least 1 retry exhaustion alert",
         )
         # Verify alerts structure
@@ -302,9 +312,13 @@ class WorkflowAlertingTest(TestCase):
             min_failure_rate=0.1,
             time_window_minutes=60,
         )
-        self.assertEqual(len(alerts), 1,
-                         "Expected exactly 1 alert for 6 validation failures with min=5")
+        self.assertEqual(
+            len(alerts), 1, "Expected exactly 1 alert for 6 validation failures with min=5"
+        )
         self.assertEqual(alerts[0]["alert_type"], "validation_failure_rate")
         self.assertEqual(alerts[0]["workflow_name"], self.workflow_name)
-        self.assertEqual(alerts[0]["validation_failed_count"], 6,
-                         "Expected 6 validation-failed instances (we created exactly 6)")
+        self.assertEqual(
+            alerts[0]["validation_failed_count"],
+            6,
+            "Expected 6 validation-failed instances (we created exactly 6)",
+        )

@@ -36,9 +36,8 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.service import WebhookDeliveryService
-from tests.utils.wait_helpers import wait_for_event_persistence
-
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 User = get_user_model()
 

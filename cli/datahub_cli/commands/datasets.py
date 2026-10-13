@@ -69,7 +69,7 @@ def list_datasets(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list datasets: {e}")
+        raise click.ClickException(f"Failed to list datasets: {e}") from e
 
 
 @datasets.command("get")
@@ -109,7 +109,7 @@ def get_dataset(dataset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get dataset: {e}")
+        raise click.ClickException(f"Failed to get dataset: {e}") from e
 
 
 @datasets.command("versions")
@@ -152,7 +152,7 @@ def list_versions(dataset_id: str, limit: int, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to list versions: {e}")
+        raise click.ClickException(f"Failed to list versions: {e}") from e
 
 
 @datasets.command("refresh")
@@ -180,4 +180,4 @@ def refresh_dataset(dataset_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to refresh dataset: {e}")
+        raise click.ClickException(f"Failed to refresh dataset: {e}") from e

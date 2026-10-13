@@ -7,6 +7,8 @@ and pagination support.
 SAVING CHECKPOINT: This module contains the core CRUD operations.
 """
 
+import contextlib
+
 from django.core.exceptions import FieldError
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -34,6 +36,7 @@ def _contract_etag(contract) -> str:
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.services.base import (
+    ConflictError,
     NotFoundError,
     PermissionError,
     ValidationError,
@@ -96,7 +99,7 @@ class ContractCRUDMixin:
     """
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
+    def create(self, request, *_args, **_kwargs):
         """
         Create a new contract using workflow orchestration.
 
@@ -121,12 +124,18 @@ class ContractCRUDMixin:
         original_format = serializer.validated_data["original_format"]
         original_spec_type = serializer.validated_data.get("original_spec_type")
         asset_id = serializer.validated_data.get("asset_id")
-        disable_external_refs = serializer.validated_data.get("disable_external_refs", False)
-        remove_external_refs = serializer.validated_data.get("remove_external_refs", False)
+        disable_external_refs = serializer.validated_data.get(
+            "disable_external_refs", False
+        )
+        remove_external_refs = serializer.validated_data.get(
+            "remove_external_refs", False
+        )
 
         # Get tenant from user (relation or tenant_id so tests/API always have tenant)
         tenant = (
-            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+            request.user.tenant
+            if hasattr(request.user, "tenant") and request.user.tenant
+            else None
         )
         if not tenant and getattr(request.user, "tenant_id", None):
             from hub.apps.tenants.models import Tenant as TenantModel
@@ -206,6 +215,13 @@ class ContractCRUDMixin:
         except PermissionDenied:
             # Re-raise PermissionDenied so DRF can handle it properly (returns 403)
             raise
+        except ConflictError as e:
+            # W4.4 (R2-I1) — the deterministic 409: a concurrent creation
+            # won the version allocation (never a raw 500).
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details},
+                status=status.HTTP_409_CONFLICT,
+            )
         except Exception as e:
             return Response(
                 {
@@ -217,7 +233,7 @@ class ContractCRUDMixin:
             )
 
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *_args, **_kwargs):
         """
         Update a contract.
 
@@ -241,7 +257,10 @@ class ContractCRUDMixin:
             current_etag = _contract_etag(contract)
             # Tolerate the optional weak-prefix difference (`W/"x"` vs `"x"`).
             client_tags = {t.strip() for t in if_match.split(",")}
-            if current_etag not in client_tags and current_etag.lstrip("W/") not in client_tags:
+            if (
+                current_etag not in client_tags
+                and current_etag.lstrip("W/") not in client_tags
+            ):
                 response = Response(
                     {
                         "error": "Contract has been modified since you read it",
@@ -271,7 +290,9 @@ class ContractCRUDMixin:
 
         # Get tenant from user
         tenant = (
-            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+            request.user.tenant
+            if hasattr(request.user, "tenant") and request.user.tenant
+            else None
         )
         if not tenant:
             return Response(
@@ -291,9 +312,13 @@ class ContractCRUDMixin:
             original_raw = serializer.validated_data.get("original_raw")
             original_format = serializer.validated_data.get("original_format")
             original_spec_type = serializer.validated_data.get("original_spec_type")
-            original_spec_version = serializer.validated_data.get("original_spec_version") or None
+            original_spec_version = (
+                serializer.validated_data.get("original_spec_version") or None
+            )
             status_value = serializer.validated_data.get("status")
-            remove_external_refs = serializer.validated_data.get("remove_external_refs", False)
+            remove_external_refs = serializer.validated_data.get(
+                "remove_external_refs", False
+            )
 
             # Update contract using service layer
             contract = service.update_contract(
@@ -308,11 +333,12 @@ class ContractCRUDMixin:
                 remove_external_refs=remove_external_refs,
             )
 
-            response = Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+            response = Response(
+                ContractSerializer(contract).data, status=status.HTTP_200_OK
+            )
             # Phase 227 Wave 1 (227.L4.3) — emit fresh ETag so the
             # client can chain subsequent PATCHes without a re-read.
             response["ETag"] = _contract_etag(contract)
-            return response
 
         except ValidationError as e:
             return Response(
@@ -336,9 +362,11 @@ class ContractCRUDMixin:
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        else:
+            return response
 
     @transaction.atomic
-    def destroy(self, request, *args, **kwargs):
+    def destroy(self, request, *_args, **_kwargs):
         """
         Delete a contract (soft delete: set status to RETIRED).
 
@@ -350,7 +378,9 @@ class ContractCRUDMixin:
         contract = self.get_object()
 
         tenant = (
-            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+            request.user.tenant
+            if hasattr(request.user, "tenant") and request.user.tenant
+            else None
         )
         if not tenant:
             return Response(
@@ -401,7 +431,7 @@ class ContractCRUDMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.exception(f"Contract deletion failed: {e}")
+            logger.exception("Contract deletion failed")
             return Response(
                 {
                     "error": "Contract deletion failed",
@@ -434,7 +464,7 @@ class ContractCRUDMixin:
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def list(self, request, *args, **kwargs):
+    def list(self, request, *_args, **_kwargs):
         """
         List contracts (tenant-scoped) with enhanced filtering, sorting,
         caching, and pagination.
@@ -448,7 +478,11 @@ class ContractCRUDMixin:
         try:
             # Get tenant ID for caching
             tenant_id = None
-            if hasattr(request, "user") and request.user and hasattr(request.user, "tenant_id"):
+            if (
+                hasattr(request, "user")
+                and request.user
+                and hasattr(request.user, "tenant_id")
+            ):
                 tenant_id = str(request.user.tenant_id)
 
             # Build query parameters dict for cache key
@@ -459,23 +493,38 @@ class ContractCRUDMixin:
                 cached_result = get_cached_query_result(query_params, tenant_id)
                 if cached_result:
                     results, total_count = cached_result
-                    # Return cached results with pagination metadata
+                    # W4.5 (R2-I2) — the cached value is ALREADY the
+                    # paginated page for THIS request's page/page_size
+                    # (the store side caches ``serializer.data`` from
+                    # ``paginate_queryset``, and the cache key includes
+                    # the full query params). Re-slicing it with
+                    # ``[start_idx:end_idx]`` was the double-slice bug:
+                    # page 1 survived by accident (slice [0:size] on a
+                    # size-length list), page ≥ 2 returned EMPTY on
+                    # every cache hit. Return the cached page as-is and
+                    # build the same pagination metadata the uncached
+                    # branch returns (has_next/has_previous/next_page/
+                    # previous_page) so the two branches stay
+                    # shape-identical.
                     pagination_params = get_pagination_params(request)
                     page = pagination_params["page"]
                     page_size = pagination_params["page_size"]
 
-                    # Calculate pagination metadata
-                    start_idx = (page - 1) * page_size
-                    end_idx = start_idx + page_size
-                    paginated_results = results[start_idx:end_idx]
+                    total_pages = (total_count + page_size - 1) // page_size
+                    has_next = page < total_pages
+                    has_previous = page > 1
 
                     return Response(
                         {
                             "count": total_count,
                             "page": page,
                             "page_size": page_size,
-                            "total_pages": (total_count + page_size - 1) // page_size,
-                            "results": paginated_results,
+                            "total_pages": total_pages,
+                            "has_next": has_next,
+                            "has_previous": has_previous,
+                            "next_page": page + 1 if has_next else None,
+                            "previous_page": page - 1 if has_previous else None,
+                            "results": results,
                             "_cached": True,
                         }
                     )
@@ -509,7 +558,9 @@ class ContractCRUDMixin:
                 if user is None or not getattr(user, "is_authenticated", False):
                     return Response(
                         {
-                            "error": ("Authentication required to access ?filter=structureless"),
+                            "error": (
+                                "Authentication required to access ?filter=structureless"
+                            ),
                             "code": "AUTHENTICATION_REQUIRED",
                         },
                         status=status.HTTP_401_UNAUTHORIZED,
@@ -517,7 +568,9 @@ class ContractCRUDMixin:
                 if not user.has_role("TENANT_ADMIN"):
                     return Response(
                         {
-                            "error": ("?filter=structureless requires TENANT_ADMIN role"),
+                            "error": (
+                                "?filter=structureless requires TENANT_ADMIN role"
+                            ),
                             "code": "PERMISSION_DENIED",
                             "details": {
                                 "required_roles": ["TENANT_ADMIN"],
@@ -537,7 +590,9 @@ class ContractCRUDMixin:
                 # see >1k contracts/tenant we can revisit with a
                 # generated column.
                 offending_ids = [
-                    c.id for c in queryset.iterator(chunk_size=200) if is_structureless(c)
+                    c.id
+                    for c in queryset.iterator(chunk_size=200)
+                    if is_structureless(c)
                 ]
                 queryset = queryset.filter(id__in=offending_ids).order_by("-updated_at")
 
@@ -634,8 +689,8 @@ class ContractCRUDMixin:
 
         # Apply ON_READ migration (lazy, in-memory) for backward compatibility
         if contract.hub_contract_json and contract.hub_contract_version:
-            migrated_hub_contract, migration_warnings = ContractMigrationManager.migrate_on_read(
-                contract
+            migrated_hub_contract, migration_warnings = (
+                ContractMigrationManager.migrate_on_read(contract)
             )
 
             # If migration was applied, return migrated version in response
@@ -667,7 +722,9 @@ class ContractCRUDMixin:
         if contract.hub_contract_json:
             # Optimize large JSON before caching
             if should_optimize_contract(contract.hub_contract_json):
-                optimized_json = optimize_large_contract_json(contract.hub_contract_json)
+                optimized_json = optimize_large_contract_json(
+                    contract.hub_contract_json
+                )
                 cache_contract(
                     contract_id,
                     {
@@ -692,13 +749,11 @@ class ContractCRUDMixin:
         # Phase 227 Wave 1 (227.L4.3) — attach the ETag last so the
         # super() default response carries the optimistic-concurrency
         # validator regardless of which branch produced it.
-        try:
+        # Defensive: if super() returned something unexpected
+        # (StreamingHttpResponse subclass, etc.), don't break the
+        # endpoint — just skip the header.
+        with contextlib.suppress(AttributeError, TypeError):
             response["ETag"] = etag
-        except Exception:
-            # Defensive: if super() returned something unexpected
-            # (StreamingHttpResponse subclass, etc.), don't break the
-            # endpoint — just skip the header.
-            pass
         return response
 
     # ------------------------------------------------------------------
@@ -811,7 +866,7 @@ class ContractCRUDMixin:
 
         try:
             json_schema = HubContractModel.model_json_schema(by_alias=True)
-        except Exception as exc:  # pragma: no cover — defensive
+        except Exception as exc:
             return Response(
                 {
                     "error": "Failed to build HubContract JSON Schema",
@@ -839,7 +894,7 @@ class ContractCRUDMixin:
         url_path="lineage",
         url_name="contract-lineage-edit",
     )
-    def lineage_edit(self, request, *args, **kwargs):
+    def lineage_edit(self, request, *_args, **kwargs):
         """``PATCH /api/v1/contracts/{id}/lineage/`` — full-state lineage edit.
 
         Request body shape (validated by :class:`LineageEditPatchSerializer`)::
@@ -899,9 +954,14 @@ class ContractCRUDMixin:
 
             if isinstance(exc, PermissionDenied):
                 return Response(
-                    exc.detail
-                    if isinstance(exc.detail, dict)
-                    else {"error": str(exc.detail), "code": "EDIT_LINEAGE_FORBIDDEN"},
+                    (
+                        exc.detail
+                        if isinstance(exc.detail, dict)
+                        else {
+                            "error": str(exc.detail),
+                            "code": "EDIT_LINEAGE_FORBIDDEN",
+                        }
+                    ),
                     status=status.HTTP_403_FORBIDDEN,
                 )
             raise
@@ -999,13 +1059,15 @@ class ContractCRUDMixin:
                     path=request.path,
                     body=request.data,
                 )
-            except Exception:  # pragma: no cover — best-effort
+            except Exception:
                 cached_response = None
             if cached_response is not None:
                 return Response(
-                    cached_response.get("data")
-                    if isinstance(cached_response, dict)
-                    else cached_response,
+                    (
+                        cached_response.get("data")
+                        if isinstance(cached_response, dict)
+                        else cached_response
+                    ),
                     status=status.HTTP_200_OK,
                     headers={"X-Idempotent-Replay": "true"},
                 )

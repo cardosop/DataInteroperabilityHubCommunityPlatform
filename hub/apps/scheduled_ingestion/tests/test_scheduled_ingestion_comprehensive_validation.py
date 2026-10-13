@@ -62,8 +62,7 @@ except AttributeError:
     import logging
 
     logging.getLogger(__name__).warning(
-        "sql_flush patch failed (Django internals changed) — "
-        "tests may run against non-empty tables"
+        "sql_flush patch failed (Django internals changed) — tests may run against non-empty tables"
     )
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -184,10 +183,8 @@ def _assert_created(test_case, response):
 
     Returns the resource data dict regardless of which status code was returned.
     """
-    test_case.assertIn(
-        response.status_code,
-        (201, 207),
-        f"Expected 201 or 207, got {response.status_code}: {getattr(response, 'data', '')}",
+    assert response.status_code in (201, 207), (
+        f"Expected 201 or 207, got {response.status_code}: {getattr(response, 'data', '')}"
     )
     if response.status_code == 207:
         return response.data.get("resource", response.data)
@@ -252,19 +249,19 @@ class ScheduledIngestionCRUDTest(TestCase):
         )
 
         resp_data = _assert_created(self, response)
-        self.assertEqual(resp_data["name"], f"Daily Sales Ingestion {self.unique_id}")
-        self.assertEqual(resp_data["source_type"], SourceType.S3)
-        self.assertEqual(resp_data["schedule_type"], ScheduleType.DAILY)
-        self.assertIn("id", resp_data)
-        self.assertIsNotNone(resp_data.get("next_run_at"))
+        assert resp_data["name"] == f"Daily Sales Ingestion {self.unique_id}"
+        assert resp_data["source_type"] == SourceType.S3
+        assert resp_data["schedule_type"] == ScheduleType.DAILY
+        assert "id" in resp_data
+        assert resp_data.get("next_run_at") is not None
 
         # Verify scheduled ingestion created in database
         ingestion = ScheduledIngestion.objects.get(id=resp_data["id"])
-        self.assertEqual(ingestion.tenant, self.tenant)
-        self.assertEqual(ingestion.created_by, self.user)
-        self.assertEqual(ingestion.status, ScheduledIngestionStatus.ACTIVE)
-        self.assertEqual(ingestion.source_type, SourceType.S3)
-        self.assertEqual(ingestion.schedule_type, ScheduleType.DAILY)
+        assert ingestion.tenant == self.tenant
+        assert ingestion.created_by == self.user
+        assert ingestion.status == ScheduledIngestionStatus.ACTIVE
+        assert ingestion.source_type == SourceType.S3
+        assert ingestion.schedule_type == ScheduleType.DAILY
 
     def test_create_scheduled_ingestion_with_cron_schedule(self):
         """Test creating scheduled ingestion with custom cron schedule"""
@@ -289,8 +286,8 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         resp_data = _assert_created(self, response)
         ingestion = ScheduledIngestion.objects.get(id=resp_data["id"])
-        self.assertEqual(ingestion.schedule_type, ScheduleType.CUSTOM_CRON)
-        self.assertEqual(ingestion.schedule_config["cron"], "0 */6 * * *")
+        assert ingestion.schedule_type == ScheduleType.CUSTOM_CRON
+        assert ingestion.schedule_config["cron"] == "0 */6 * * *"
 
     def test_create_scheduled_ingestion_with_weekly_schedule(self):
         """Test creating scheduled ingestion with weekly schedule"""
@@ -316,8 +313,8 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         resp_data = _assert_created(self, response)
         ingestion = ScheduledIngestion.objects.get(id=resp_data["id"])
-        self.assertEqual(ingestion.schedule_type, ScheduleType.WEEKLY)
-        self.assertEqual(ingestion.schedule_config["days_of_week"], [0, 3])
+        assert ingestion.schedule_type == ScheduleType.WEEKLY
+        assert ingestion.schedule_config["days_of_week"] == [0, 3]
 
     def test_create_scheduled_ingestion_with_monthly_schedule(self):
         """Test creating scheduled ingestion with monthly schedule"""
@@ -343,8 +340,8 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         resp_data = _assert_created(self, response)
         ingestion = ScheduledIngestion.objects.get(id=resp_data["id"])
-        self.assertEqual(ingestion.schedule_type, ScheduleType.MONTHLY)
-        self.assertEqual(ingestion.schedule_config["day_of_month"], 1)
+        assert ingestion.schedule_type == ScheduleType.MONTHLY
+        assert ingestion.schedule_config["day_of_month"] == 1
 
     def test_create_scheduled_ingestion_with_asset(self):
         """Test creating scheduled ingestion with associated asset"""
@@ -374,7 +371,7 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         resp_data = _assert_created(self, response)
         ingestion = ScheduledIngestion.objects.get(id=resp_data["id"])
-        self.assertEqual(ingestion.asset, asset)
+        assert ingestion.asset == asset
 
     def test_create_scheduled_ingestion_validation_file_pattern(self):
         """Test scheduled ingestion creation with invalid file pattern"""
@@ -394,8 +391,8 @@ class ScheduledIngestionCRUDTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("file_pattern", str(response.data))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "file_pattern" in str(response.data)
 
     def test_create_scheduled_ingestion_validation_cron_expression(self):
         """Test scheduled ingestion creation with invalid cron expression"""
@@ -418,8 +415,8 @@ class ScheduledIngestionCRUDTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("schedule_config", str(response.data))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "schedule_config" in str(response.data)
 
     def test_create_scheduled_ingestion_validation_source_config(self):
         """Test scheduled ingestion creation with missing required source config"""
@@ -439,8 +436,8 @@ class ScheduledIngestionCRUDTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("source_config", str(response.data))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "source_config" in str(response.data)
 
     def test_create_scheduled_ingestion_unique_name_per_tenant(self):
         """Test that scheduled ingestion names must be unique per tenant"""
@@ -475,7 +472,7 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         # Should fail due to unique constraint — the custom exception
         # handler wraps Django ValidationError as DRF ValidationError (400).
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_update_scheduled_ingestion_success(self):
         """Test successful scheduled ingestion update"""
@@ -503,12 +500,12 @@ class ScheduledIngestionCRUDTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         ingestion.refresh_from_db()
-        self.assertEqual(ingestion.name, "Updated Name")
-        self.assertEqual(ingestion.description, "Updated description")
-        self.assertEqual(ingestion.get_source_config()["bucket"], "updated-bucket")
-        self.assertEqual(ingestion.schedule_config["time"], "03:00")
+        assert ingestion.name == "Updated Name"
+        assert ingestion.description == "Updated description"
+        assert ingestion.get_source_config()["bucket"] == "updated-bucket"
+        assert ingestion.schedule_config["time"] == "03:00"
 
     def test_update_scheduled_ingestion_status(self):
         """Test updating scheduled ingestion status"""
@@ -530,9 +527,9 @@ class ScheduledIngestionCRUDTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         ingestion.refresh_from_db()
-        self.assertEqual(ingestion.status, ScheduledIngestionStatus.PAUSED)
+        assert ingestion.status == ScheduledIngestionStatus.PAUSED
 
         # Resume ingestion
         response = self.client.patch(
@@ -541,9 +538,9 @@ class ScheduledIngestionCRUDTest(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         ingestion.refresh_from_db()
-        self.assertEqual(ingestion.status, ScheduledIngestionStatus.ACTIVE)
+        assert ingestion.status == ScheduledIngestionStatus.ACTIVE
 
     def test_delete_scheduled_ingestion_success(self):
         """Test successful scheduled ingestion deletion"""
@@ -562,7 +559,7 @@ class ScheduledIngestionCRUDTest(TestCase):
         url = f"/api/v1/scheduled-ingestions/{ingestion.id}/"
         response = self.client.delete(url)
 
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
 
         # Verify deletion
         with self.assertRaises(ScheduledIngestion.DoesNotExist):
@@ -584,8 +581,8 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-ingestions/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data.get("results", response.data)), 5)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data.get("results", response.data)) >= 5
 
     def test_list_scheduled_ingestions_filter_by_status(self):
         """Test filtering scheduled ingestions by status"""
@@ -614,10 +611,10 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-ingestions/?status=ACTIVE")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = response.data.get("results", response.data)
         for item in results:
-            self.assertEqual(item["status"], ScheduledIngestionStatus.ACTIVE)
+            assert item["status"] == ScheduledIngestionStatus.ACTIVE
 
     def test_get_scheduled_ingestion_detail(self):
         """Test retrieving scheduled ingestion details"""
@@ -634,10 +631,10 @@ class ScheduledIngestionCRUDTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-ingestions/{ingestion.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(ingestion.id))
-        self.assertEqual(response.data["name"], f"Detail Test Ingestion {self.unique_id}")
-        self.assertEqual(response.data["description"], "Test description")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == str(ingestion.id)
+        assert response.data["name"] == f"Detail Test Ingestion {self.unique_id}"
+        assert response.data["description"] == "Test description"
 
 
 class ScheduledIngestionExecutionTest(TestCase):
@@ -691,9 +688,9 @@ class ScheduledIngestionExecutionTest(TestCase):
             tenant_id=str(self.tenant.id),
         )
 
-        self.assertIsNotNone(status_result)
-        self.assertEqual(status_result.id, self.scheduled_ingestion.id)
-        self.assertEqual(status_result.status, ScheduledIngestionStatus.ACTIVE)
+        assert status_result is not None
+        assert status_result.id == self.scheduled_ingestion.id
+        assert status_result.status == ScheduledIngestionStatus.ACTIVE
 
     def test_get_ingestion_status_not_found(self):
         """Test retrieving status for non-existent ingestion"""
@@ -714,7 +711,6 @@ class ScheduledIngestionExecutionTest(TestCase):
 
         # May return 503 if Prefect/deployment unavailable, or 200/202 if successful
         self.assertIn(  # noqa: broad-status-codes
-
             response.status_code,
             [
                 status.HTTP_200_OK,
@@ -724,21 +720,22 @@ class ScheduledIngestionExecutionTest(TestCase):
         )
 
         if response.status_code in (status.HTTP_200_OK, status.HTTP_202_ACCEPTED):
-            self.assertIn("run_id", response.data)
-            self.assertIn("flow_run_id", response.data)
+            assert "run_id" in response.data
+            assert "flow_run_id" in response.data
 
             # Verify run record created
             run_id = response.data.get("run_id")
             if run_id:
                 run = ScheduledIngestionRun.objects.get(id=run_id)
-                self.assertEqual(run.scheduled_ingestion, self.scheduled_ingestion)
-                self.assertEqual(run.status, ScheduledIngestionRunStatus.PENDING)
+                assert run.scheduled_ingestion == self.scheduled_ingestion
+                assert run.status == ScheduledIngestionRunStatus.PENDING
 
     def test_ingestion_execution_creates_job(self):
         """Test that ingestion execution creates a job"""
         # Execute ingestion via service
         # Note: This may fail if workflow engine is not properly configured
         # but we test the structure
+        workflow_error: Exception | None = None
         try:
             result = self.service.execute_ingestion(
                 scheduled_ingestion_id=str(self.scheduled_ingestion.id),
@@ -746,17 +743,18 @@ class ScheduledIngestionExecutionTest(TestCase):
             )
 
             # Verify result structure
-            self.assertIn("files_found", result)
-            self.assertIn("files_processed", result)
-            self.assertIn("files_failed", result)
-            self.assertIn("datasets_created", result)
-            self.assertIn("ingestion_state", result)
+            assert "files_found" in result
+            assert "files_processed" in result
+            assert "files_failed" in result
+            assert "datasets_created" in result
+            assert "ingestion_state" in result
         except Exception as e:
-            # If workflow engine not available, skip this test
+            # If workflow engine not available, skip the result checks
             # but verify the service method exists and has correct signature
-            self.assertTrue(
-                hasattr(self.service, "execute_ingestion"),
-                f"Service method missing: {e}",
+            workflow_error = e
+        if workflow_error is not None:
+            assert hasattr(self.service, "execute_ingestion"), (
+                f"Service method missing: {workflow_error}"
             )
 
     def test_ingestion_execution_with_error_handling(self):
@@ -775,30 +773,24 @@ class ScheduledIngestionExecutionTest(TestCase):
             file_pattern=r".*\.csv",
             status=ScheduledIngestionStatus.ACTIVE,
         )
+        workflow_error: Exception | None = None
         try:
             self.service.execute_ingestion(
                 scheduled_ingestion_id=str(test_ingestion.id),
                 tenant_id=str(self.tenant.id),
             )
-            # Success — verify ingestion is still intact
-            test_ingestion.refresh_from_db()
-            self.assertEqual(
-                test_ingestion.status,
-                ScheduledIngestionStatus.ACTIVE,
-            )
-        except Exception as e:
-            # External dependency unavailable — verify ingestion survived
-            test_ingestion.refresh_from_db()
-            self.assertEqual(
-                test_ingestion.status,
-                ScheduledIngestionStatus.ACTIVE,
-            )
-            self.assertIsNotNone(str(e))
+        except Exception as exc:
+            # External dependency unavailable — the row must survive either way.
+            workflow_error = exc
+        test_ingestion.refresh_from_db()
+        assert test_ingestion.status == ScheduledIngestionStatus.ACTIVE
+        if workflow_error is not None:
+            assert str(workflow_error) is not None
 
     def test_ingestion_status_monitoring(self):
         """Test monitoring ingestion status changes"""
         # Start with ACTIVE status
-        self.assertEqual(self.scheduled_ingestion.status, ScheduledIngestionStatus.ACTIVE)
+        assert self.scheduled_ingestion.status == ScheduledIngestionStatus.ACTIVE
 
         # Simulate error by setting status to ERROR
         self.scheduled_ingestion.status = ScheduledIngestionStatus.ERROR
@@ -810,8 +802,8 @@ class ScheduledIngestionExecutionTest(TestCase):
             scheduled_ingestion_id=str(self.scheduled_ingestion.id),
             tenant_id=str(self.tenant.id),
         )
-        self.assertEqual(status_result.status, ScheduledIngestionStatus.ERROR)
-        self.assertEqual(status_result.error_message, "Test error")
+        assert status_result.status == ScheduledIngestionStatus.ERROR
+        assert status_result.error_message == "Test error"
 
     def test_ingestion_retry_after_failure(self):
         """Test ingestion retry logic after failure"""
@@ -839,8 +831,8 @@ class ScheduledIngestionExecutionTest(TestCase):
             run_id = response.data.get("run_id")
             if run_id:
                 new_run = ScheduledIngestionRun.objects.get(id=run_id)
-                self.assertNotEqual(new_run.id, failed_run.id)
-                self.assertEqual(new_run.status, ScheduledIngestionRunStatus.PENDING)
+                assert new_run.id != failed_run.id
+                assert new_run.status == ScheduledIngestionRunStatus.PENDING
 
 
 class ScheduledIngestionRunHistoryTest(TestCase):
@@ -889,10 +881,10 @@ class ScheduledIngestionRunHistoryTest(TestCase):
             status=ScheduledIngestionRunStatus.PENDING,
         )
 
-        self.assertEqual(run.scheduled_ingestion, self.scheduled_ingestion)
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.PENDING)
-        self.assertIsNone(run.started_at)
-        self.assertIsNone(run.completed_at)
+        assert run.scheduled_ingestion == self.scheduled_ingestion
+        assert run.status == ScheduledIngestionRunStatus.PENDING
+        assert run.started_at is None
+        assert run.completed_at is None
 
     def test_track_ingestion_run_lifecycle(self):
         """Test tracking ingestion run through complete lifecycle"""
@@ -907,8 +899,8 @@ class ScheduledIngestionRunHistoryTest(TestCase):
         run.started_at = timezone.now()
         run.save()
 
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.RUNNING)
-        self.assertIsNotNone(run.started_at)
+        assert run.status == ScheduledIngestionRunStatus.RUNNING
+        assert run.started_at is not None
 
         # Complete run
         run.status = ScheduledIngestionRunStatus.COMPLETED
@@ -923,13 +915,13 @@ class ScheduledIngestionRunHistoryTest(TestCase):
         }
         run.save()
 
-        self.assertEqual(run.status, ScheduledIngestionRunStatus.COMPLETED)
-        self.assertIsNotNone(run.completed_at)
-        self.assertEqual(run.files_found, 10)
-        self.assertEqual(run.files_processed, 9)
-        self.assertEqual(run.files_failed, 1)
-        self.assertEqual(run.datasets_created, 9)
-        self.assertIsNotNone(run.result_json)
+        assert run.status == ScheduledIngestionRunStatus.COMPLETED
+        assert run.completed_at is not None
+        assert run.files_found == 10
+        assert run.files_processed == 9
+        assert run.files_failed == 1
+        assert run.datasets_created == 9
+        assert run.result_json is not None
 
     def test_retrieve_run_history(self):
         """Test retrieving run history for scheduled ingestion"""
@@ -952,14 +944,14 @@ class ScheduledIngestionRunHistoryTest(TestCase):
             f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/runs/"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         # Handle both list and paginated dict responses
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
-        self.assertGreaterEqual(len(results), 5)
+        assert len(results) >= 5
 
         # Verify runs are ordered by created_at descending
         if len(results) > 1:
@@ -970,7 +962,7 @@ class ScheduledIngestionRunHistoryTest(TestCase):
                 next_created = datetime.fromisoformat(
                     results[i + 1]["created_at"].replace("Z", "+00:00")
                 )
-                self.assertGreaterEqual(current_created, next_created)
+                assert current_created >= next_created
 
     def test_run_result_storage(self):
         """Test storing and retrieving run results"""
@@ -999,9 +991,9 @@ class ScheduledIngestionRunHistoryTest(TestCase):
 
         # Retrieve and verify
         run.refresh_from_db()
-        self.assertEqual(run.result_json, result_data)
-        self.assertEqual(run.result_json["files_found"], result_data["files_found"])
-        self.assertEqual(run.result_json["processing_time_seconds"], 45.2)
+        assert run.result_json == result_data
+        assert run.result_json["files_found"] == result_data["files_found"]
+        assert run.result_json["processing_time_seconds"] == 45.2
 
     def test_run_status_queries(self):
         """Test querying runs by status"""
@@ -1026,14 +1018,14 @@ class ScheduledIngestionRunHistoryTest(TestCase):
             scheduled_ingestion=self.scheduled_ingestion,
             status=ScheduledIngestionRunStatus.COMPLETED,
         )
-        self.assertEqual(completed_runs.count(), 1)
+        assert completed_runs.count() == 1
 
         # Query failed runs
         failed_runs = ScheduledIngestionRun.objects.filter(
             scheduled_ingestion=self.scheduled_ingestion,
             status=ScheduledIngestionRunStatus.FAILED,
         )
-        self.assertEqual(failed_runs.count(), 1)
+        assert failed_runs.count() == 1
 
     def test_run_history_pagination(self):
         """Test run history retrieval with multiple runs"""
@@ -1050,7 +1042,7 @@ class ScheduledIngestionRunHistoryTest(TestCase):
             f"/api/v1/scheduled-ingestions/{self.scheduled_ingestion.id}/runs/"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         # Handle both list and paginated dict responses
         results = (
             response.data.get("results", response.data)
@@ -1058,7 +1050,7 @@ class ScheduledIngestionRunHistoryTest(TestCase):
             else response.data
         )
         # Should return all runs since pagination is not implemented
-        self.assertGreaterEqual(len(results), 25)
+        assert len(results) >= 25
 
     def test_run_history_with_job_association(self):
         """Test run history with associated job"""
@@ -1080,11 +1072,11 @@ class ScheduledIngestionRunHistoryTest(TestCase):
 
         # Verify association
         run.refresh_from_db()
-        self.assertEqual(run.job_id, job.id)
+        assert run.job_id == job.id
 
         # Verify job can be accessed
         associated_job = Job.objects.get(id=job.id)
-        self.assertEqual(associated_job.type, JobType.SCHEDULED_INGESTION)
+        assert associated_job.type == JobType.SCHEDULED_INGESTION
 
 
 class ScheduledIngestionODPSIntegrationTest(TestCase):
@@ -1172,15 +1164,19 @@ class ScheduledIngestionODPSIntegrationTest(TestCase):
             )
 
             # Verify association
-            self.assertEqual(ingestion.contract, odps_contract)
-            self.assertEqual(ingestion.contract.original_spec_type, OriginalSpecType.ODPS)
-            self.assertEqual(ingestion.asset, self.asset)
+            assert ingestion.contract == odps_contract
+            assert ingestion.contract.original_spec_type == OriginalSpecType.ODPS
+            assert ingestion.asset == self.asset
 
         except Exception as e:
-            # If ODPS service not fully configured, skip but verify structure
-            self.assertTrue(
-                hasattr(self.odps_service, "create_odps"),
-                f"ODPS service method missing: {e}",
+            # If ODPS service not fully configured, skip the association
+            # checks but verify the service surface exists.
+            odps_error: Exception | None = e
+        else:
+            odps_error: Exception | None = None
+        if odps_error is not None:
+            assert hasattr(self.odps_service, "create_odps"), (
+                f"ODPS service method missing: {odps_error}"
             )
 
     def test_scheduled_ingestion_odps_workflow(self):
@@ -1226,17 +1222,21 @@ class ScheduledIngestionODPSIntegrationTest(TestCase):
             )
 
             # Verify ingestion is configured for ODPS workflow
-            self.assertEqual(ingestion.contract.original_spec_type, OriginalSpecType.ODPS)
-            self.assertIsNotNone(ingestion.contract.hub_contract_json)
+            assert ingestion.contract.original_spec_type == OriginalSpecType.ODPS
+            assert ingestion.contract.hub_contract_json is not None
 
             # Verify contract is linked to asset
-            self.assertEqual(odps_contract.asset, self.asset)
+            assert odps_contract.asset == self.asset
 
         except Exception as e:
-            # If ODPS service not fully configured, verify structure exists
-            self.assertTrue(
-                ScheduledIngestion._meta.get_field("contract") is not None,
-                f"Contract field missing: {e}",
+            # If ODPS service not fully configured, skip the workflow checks
+            # but verify the contract field structure exists.
+            odps_error: Exception | None = e
+        else:
+            odps_error: Exception | None = None
+        if odps_error is not None:
+            assert ScheduledIngestion._meta.get_field("contract") is not None, (
+                f"Contract field missing: {odps_error}"
             )
 
     def test_scheduled_ingestion_odps_error_handling(self):
@@ -1274,11 +1274,16 @@ class ScheduledIngestionODPSIntegrationTest(TestCase):
 
             # Verify association works (contract field accepts any contract)
             ingestion.refresh_from_db()
-            self.assertEqual(ingestion.contract, non_odps_contract)
+            assert ingestion.contract == non_odps_contract
 
         except Exception as e:
-            # If contract creation fails, verify error is handled
-            self.assertIsNotNone(str(e))
+            # If contract creation fails, verify the error is handled
+            # (a non-None message) — hoisted out of the except block.
+            contract_error: Exception | None = e
+        else:
+            contract_error: Exception | None = None
+        if contract_error is not None:
+            assert str(contract_error) is not None
 
     def test_scheduled_ingestion_odps_retry_logic(self):
         """Test retry logic for ODPS ingestion failures"""
@@ -1340,17 +1345,16 @@ class ScheduledIngestionODPSIntegrationTest(TestCase):
 
             # May succeed or fail depending on Prefect availability
             # but should handle retry attempt
-            self.assertIn(
-                response.status_code,
-                [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE],
-            )
+            assert response.status_code in [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE]
 
         except Exception as e:
-            # If ODPS service not available, verify structure
-            self.assertTrue(
-                hasattr(ScheduledIngestion, "contract"),
-                f"Contract field missing: {e}",
-            )
+            # If ODPS service not available, skip the retry attempt checks
+            # but verify the model structure exists.
+            retry_error: Exception | None = e
+        else:
+            retry_error: Exception | None = None
+        if retry_error is not None:
+            assert hasattr(ScheduledIngestion, "contract"), f"Contract field missing: {retry_error}"
 
     def test_scheduled_ingestion_odps_contract_updates(self):
         """Test scheduled ODPS contract updates"""
@@ -1424,12 +1428,16 @@ class ScheduledIngestionODPSIntegrationTest(TestCase):
 
             # Verify update
             ingestion.refresh_from_db()
-            self.assertEqual(ingestion.contract, odps_contract_v2)
-            self.assertEqual(ingestion.contract.version, 2)
+            assert ingestion.contract == odps_contract_v2
+            assert ingestion.contract.version == 2
 
         except Exception as e:
-            # If ODPS service not available, verify update capability exists
-            self.assertTrue(
-                hasattr(ScheduledIngestion, "contract"),
-                f"Contract field missing: {e}",
+            # If ODPS service not available, skip the update checks but
+            # verify the update capability surface exists.
+            update_error: Exception | None = e
+        else:
+            update_error: Exception | None = None
+        if update_error is not None:
+            assert hasattr(ScheduledIngestion, "contract"), (
+                f"Contract field missing: {update_error}"
             )

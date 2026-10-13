@@ -14,7 +14,7 @@ class IsBreachResponder(BasePermission):
 
     message = "Breach response requires TENANT_ADMIN, DPO, or SECURITY_ADMIN."
 
-    def has_permission(self, request, view) -> bool:
+    def has_permission(self, request, view) -> bool:  # DRF permission contract
         tenant = _tenant_for_request(request)
         if not tenant or not request.user or not request.user.is_authenticated:
             return False

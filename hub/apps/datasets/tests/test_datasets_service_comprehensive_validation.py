@@ -16,7 +16,6 @@ import json
 import uuid
 
 import pytest
-
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -31,7 +30,7 @@ from hub.apps.datasets.schema_evolution import CompatibilityLevel, SchemaEvoluti
 from hub.apps.datasets.services import DatasetService
 from hub.apps.datasets.time_travel import TimeTravelQuery
 from hub.apps.datasets.versioning_service import VersioningService
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import UserStatus
 
@@ -132,6 +131,7 @@ class TestDatasetCRUDOperations(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset1.csv",
         )
         self.file2 = File.objects.create(
@@ -140,6 +140,7 @@ class TestDatasetCRUDOperations(TestCase):
             content_type="application/json",
             size=2048,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset2.json",
         )
 
@@ -241,13 +242,14 @@ class TestDatasetCRUDOperations(TestCase):
         """Test dataset pagination"""
         # Create multiple datasets with unique names to avoid
         # unique_active_filename_per_tenant collisions with setUp.
-        for i in range(15):
+        for _i in range(15):
             file = File.objects.create(
                 tenant=self.tenant,
                 name=f"paginate-{uuid.uuid4().hex[:8]}.csv",
                 content_type="text/csv",
                 size=1024,
                 status=FileStatus.ACTIVE,
+                scan_status=FileScanStatus.CLEAN,
                 storage_path=f"{self.tenant.id}/{uuid.uuid4()}/paginate.csv",
             )
             self.service.create_dataset(
@@ -275,7 +277,6 @@ class TestDatasetCRUDOperations(TestCase):
         )
 
         # Wait a bit to ensure different timestamps
-
 
         dataset2 = self.service.create_dataset(
             tenant_id=str(self.tenant.id),
@@ -362,6 +363,7 @@ class TestDatasetVersioning(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset.csv",
         )
         self.asset = Asset.objects.create(
@@ -561,6 +563,7 @@ class TestSchemaEvolution(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset.csv",
         )
         self.asset = Asset.objects.create(
@@ -738,6 +741,7 @@ class TestTimeTravelQueries(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset.csv",
         )
         self.asset = Asset.objects.create(
@@ -759,12 +763,10 @@ class TestTimeTravelQueries(TestCase):
 
         # Wait to ensure different timestamps
 
-
     def test_time_travel_queries(self):
         """Test time travel queries"""
         # Create version 2
         timestamp_before_v2 = timezone.now()
-
 
         Dataset.objects.create(
             tenant=self.tenant,
@@ -844,12 +846,14 @@ class TestTimeTravelQueries(TestCase):
             "A version must be returned for a timestamp between v1 and v2",
         )
         self.assertEqual(
-            version_at_midpoint.id, self.dataset_v1.id,
+            version_at_midpoint.id,
+            self.dataset_v1.id,
             "At midpoint between v1 and v2 (before v2 existed), "
             "get_version_at_timestamp must return v1",
         )
         self.assertEqual(
-            version_at_midpoint.version, 1,
+            version_at_midpoint.version,
+            1,
             "The retrieved version at midpoint must be version 1",
         )
 
@@ -886,7 +890,8 @@ class TestTimeTravelQueries(TestCase):
                 f"Version {idx} must be retrievable via get_version_by_number",
             )
             self.assertEqual(
-                retrieved.id, ds.id,
+                retrieved.id,
+                ds.id,
                 f"Retrieved version {idx} must match the created Dataset id",
             )
 
@@ -938,6 +943,7 @@ class TestDatasetRollback(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset.csv",
         )
         self.asset = Asset.objects.create(
@@ -1091,6 +1097,7 @@ class TestDatasetsODPSIntegration(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset.csv",
         )
         self.asset = Asset.objects.create(
@@ -1245,7 +1252,6 @@ class TestDatasetsODPSIntegration(TestCase):
         """Test ODPS time travel queries"""
         # Create version 2
 
-
         Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -1321,7 +1327,7 @@ class TestDatasetsODPSIntegration(TestCase):
 
     def test_comprehensive_validation_edge_case_multiple_versions(self):
         """Test comprehensive validation with multiple versions (edge case)"""
-        # setUp already created version 1 (self.dataset_v1). Create versions 2–5 with parent chain.
+        # setUp already created version 1 (self.dataset_v1). Create versions 2-5 with parent chain.
         # Use a dedicated asset so (tenant, asset, version) is unique and we avoid collisions with
         # any existing datasets for self.asset from other tests or --reuse-db state.
         multi_asset = Asset.objects.create(

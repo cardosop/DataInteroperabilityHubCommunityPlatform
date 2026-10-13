@@ -6,8 +6,8 @@ Rule-based classifier for automatic data classification with confidence scoring.
 
 import re
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import Any, ClassVar
 
 from django.db import transaction
 from django.utils import timezone
@@ -17,7 +17,7 @@ from hub.apps.compliance.service_client import ComplianceServiceClient
 from .models import ClassificationCategory, ClassificationStatus, DataClassification
 
 
-class PIIType(str, Enum):
+class PIIType(StrEnum):
     """PII types for detection"""
 
     EMAIL = "EMAIL"
@@ -68,7 +68,7 @@ class DataClassifier:
     """
 
     # Classification rules
-    RULES = [
+    RULES: ClassVar[list[ClassificationRule]] = [
         # PII Rules
         ClassificationRule(
             name="email_detection",
@@ -283,7 +283,7 @@ class DataClassifier:
         tenant_id: str,
         asset_id: str | None = None,
         dataset_id: str | None = None,
-        field_name: str = None,
+        field_name: str | None = None,
         field_data: dict[str, Any] | None = None,
         sample_values: list[Any] | None = None,
         user_id: str | None = None,

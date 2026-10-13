@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from django.conf import settings as _settings
 from django.db import transaction
 from django.test import TestCase
 
@@ -36,6 +37,15 @@ class QuotaEnforcementTests(TestCase):
 
     def setUp(self):
         super().setUp()
+        # Plan-limit ENFORCEMENT machinery lives in the paid billing
+        # limit_registry (check_limit no-ops to unlimited in core-only
+        # deployments by design).
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            self.skipTest(
+                "plan-limit enforcement is paid-layer (billing limit_registry) — absent in core-only mode"
+            )
         uid = uuid.uuid4().hex[:8]
         self.plan = TenantPlan.objects.create(
             name=f"Limit Plan {uid}",
@@ -63,7 +73,7 @@ class QuotaEnforcementTests(TestCase):
 
     def test_storage_limit_exceeded_with_gb_conversion(self):
         """max_storage_gb blocks writes when total exceeds plan limit."""
-        # 5 files × 512 MB each = 2.5 GB > 2 GB plan limit.
+        # 5 files x 512 MB each = 2.5 GB > 2 GB plan limit.
         for i in range(5):
             File.objects.create(
                 tenant=self.tenant,
@@ -88,7 +98,7 @@ class QuotaEnforcementTests(TestCase):
 
     def test_storage_limit_within_budget_allows(self):
         """max_storage_gb allows writes when total is under plan limit."""
-        # 2 files × 512 MB = 1 GB < 2 GB plan limit.
+        # 2 files x 512 MB = 1 GB < 2 GB plan limit.
         for i in range(2):
             File.objects.create(
                 tenant=self.tenant,
@@ -110,6 +120,10 @@ class QuotaEnforcementTests(TestCase):
 
     # ── ML plan routing ────────────────────────────────────────────────
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="ML plan limits are a paid (ml) concept; core-only has no ML app",
+    )
     def test_ml_key_without_ml_plan_returns_zero(self):
         """Tenant without ml_plan has max=0 for ML limit keys."""
         self.assertIsNone(self.tenant.ml_plan)
@@ -125,6 +139,10 @@ class QuotaEnforcementTests(TestCase):
         self.assertEqual(details["limit_key"], "max_ml_models")
         self.assertEqual(details["max"], 0)
 
+    @pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="ML plan limits are a paid (ml) concept; core-only has no ML app",
+    )
     def test_ml_key_routed_to_ml_plan(self):
         """ML limit keys read limits from ml_plan, not base plan."""
         ml_plan = TenantPlan.objects.create(

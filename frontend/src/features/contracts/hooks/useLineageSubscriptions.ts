@@ -13,11 +13,7 @@
  * invalidation refreshes every consumer (the settings page list,
  * the per-resource Subscribe button, the notification card link).
  */
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '../../../shared/api/client';
 
@@ -68,7 +64,15 @@ export function useLineageSubscriptions(cursor?: string | null) {
     queryFn: async () => {
       const url = cursor ? `${BASE_PATH}?cursor=${encodeURIComponent(cursor)}` : BASE_PATH;
       const response = await apiClient.getClient().get<LineageSubscriptionListResponse>(url);
-      return response.data;
+      // Phase 1.5 — normalize at the hook boundary: LineageSubscriptionPanel
+      // calls ``list?.results.find(...)`` and the optional chain only guards
+      // ``list`` itself; a 200 without an array ``results`` (error envelope,
+      // drift) crashed with "results.find is not a function".
+      const data = (response.data ?? {}) as Partial<LineageSubscriptionListResponse>;
+      return {
+        ...data,
+        results: Array.isArray(data.results) ? data.results : [],
+      } as LineageSubscriptionListResponse;
     },
     staleTime: 30_000,
   });
@@ -78,9 +82,7 @@ export function useCreateLineageSubscription() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: CreateLineageSubscriptionInput) => {
-      const response = await apiClient
-        .getClient()
-        .post<LineageSubscription>(BASE_PATH, input);
+      const response = await apiClient.getClient().post<LineageSubscription>(BASE_PATH, input);
       return response.data;
     },
     onSuccess: () => {
@@ -92,9 +94,7 @@ export function useCreateLineageSubscription() {
 export function useUpdateLineageSubscription() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id, input,
-    }: { id: string; input: UpdateLineageSubscriptionInput }) => {
+    mutationFn: async ({ id, input }: { id: string; input: UpdateLineageSubscriptionInput }) => {
       const response = await apiClient
         .getClient()
         .patch<LineageSubscription>(`${BASE_PATH}${id}/`, input);

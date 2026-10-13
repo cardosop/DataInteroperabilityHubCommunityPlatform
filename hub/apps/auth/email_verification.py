@@ -84,12 +84,9 @@ def plaintext_valid_for_user(user, plaintext: str) -> bool:
     if not hmac.compare_digest(expected, sig):
         return False
 
-    if user.email_verification_sent_at is None:
-        return False
-    if timezone.now() > user.email_verification_sent_at + timedelta(hours=72):
-        return False
-
-    return True
+    return user.email_verification_sent_at is not None and not (
+        timezone.now() > user.email_verification_sent_at + timedelta(hours=72)
+    )
 
 
 def verify_plaintext_token(plaintext: str):

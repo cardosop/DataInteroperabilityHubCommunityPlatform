@@ -1,5 +1,12 @@
 from django.urls import include, path, re_path
 
+# Phase P.8 D4 — business-rules subsystem health at the documented path.
+from hub.apps.health.views import business_rules_health
+
+# Phase 273.x hardening — path-derived capability manifest (parity contract
+# with the SPA's OpenAPI derivation, see capabilities.py).
+from .capabilities import capabilities_manifest_view
+
 # Phase 226 OQ-MailHog — E2E-only MailHog inbox proxy.
 from .mailhog_proxy_views import mailhog_message_detail, mailhog_messages_list
 from .views import (
@@ -25,8 +32,20 @@ from .webhook_sink_views import webhook_sink
 # by MvpModeApiGateMiddleware and omitted from OpenAPI via postprocess_drop_mvp_gated_paths.
 urlpatterns = [
     path("", api_info, name="api-info"),
+    # Phase P.8 D4 — operational health endpoint at the path named in the
+    # contract docs (docs/BUSINESS_RULES_FRAMEWORK_GUIDE.md). Plain Django
+    # view: probe-friendly (no credentials), schema-neutral.
+    path("health/business-rules/", business_rules_health, name="health-business-rules"),
     # Phase 228 (REQ-LIN-006, 228.0.18) — capability discovery.
     path("capabilities/", capabilities_view, name="capabilities"),
+    # Phase 273.x hardening — lightweight path-derived capability manifest
+    # (SPA fetches this instead of the 19.7 MB OpenAPI schema; see
+    # capabilities.py PATH_CAPABILITY_DEFINITIONS parity contract).
+    path(
+        "capabilities/manifest/",
+        capabilities_manifest_view,
+        name="capabilities-manifest",
+    ),
     path("public/", include("hub.apps.dsar.public_urls")),
     path("openapi.json", OpenAPISchemaView.as_view(), name="openapi-schema-v1"),
     path("openapi.yaml", OpenAPIYAMLView.as_view(), name="openapi-schema-yaml"),
@@ -89,6 +108,7 @@ urlpatterns = [
     path("workflows/", include("hub.apps.orchestration.urls")),
     path("transformation/", include("hub.apps.api.transformation_urls")),
     path("warehouses/", include("hub.apps.warehouses.urls")),
+    path("databricks/", include("hub.apps.databricks_admin.urls")),
     path("breach/", include("hub.apps.breach.urls")),
     path("gdpr/", include("hub.apps.gdpr.urls")),
     path("dsar/", include("hub.apps.dsar.urls")),
@@ -161,7 +181,7 @@ urlpatterns = [
         name="mailhog-detail-slash",
     ),
     re_path(
-        r"^(?!admin/|auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|warehouses/|notifications/|governance/|public/|test/|lineage/|breach/|gdpr/|dsar/|consent/|processor-agreements/|ropa/|dpia/).*$",
+        r"^(?!admin/|auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|warehouses/|databricks/|notifications/|governance/|public/|test/|lineage/|breach/|gdpr/|dsar/|consent/|processor-agreements/|ropa/|dpia/).*$",
         api_not_found,
         name="api-not-found",
     ),

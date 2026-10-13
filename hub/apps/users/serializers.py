@@ -4,12 +4,14 @@ User Serializers
 DRF serializers for User and Role API.
 """
 
+from typing import ClassVar
+
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from hub.apps.auth.utils import sha256_hex
 
-from .models import Role, User, UserRole, UserStatus
+from .models import Role, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -19,8 +21,8 @@ class RoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Role
-        fields = ["id", "tenant", "name", "description", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = ("id", "tenant", "name", "description", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
@@ -31,8 +33,8 @@ class UserRoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserRole
-        fields = ["id", "user", "role", "role_id", "created_at"]
-        read_only_fields = ["id", "user", "created_at"]
+        fields = ("id", "user", "role", "role_id", "created_at")
+        read_only_fields = ("id", "user", "created_at")
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -40,11 +42,13 @@ class UserSerializer(serializers.ModelSerializer):
 
     status = serializers.ChoiceField(choices=UserStatus.choices, read_only=True)
     roles = serializers.SerializerMethodField()
-    tenant_name = serializers.CharField(source="tenant.name", read_only=True, allow_null=True)
+    tenant_name = serializers.CharField(
+        source="tenant.name", read_only=True, allow_null=True
+    )
 
     class Meta:
         model = User
-        fields = [
+        fields = (
             "id",
             "tenant",
             "tenant_name",
@@ -55,8 +59,14 @@ class UserSerializer(serializers.ModelSerializer):
             "roles",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "status", "is_platform_admin", "created_at", "updated_at"]
+        )
+        read_only_fields = (
+            "id",
+            "status",
+            "is_platform_admin",
+            "created_at",
+            "updated_at",
+        )
 
     def get_roles(self, obj):
         """Get user's role names (strings) for display in admin/list views."""
@@ -73,20 +83,29 @@ class UserCreateSerializer(serializers.ModelSerializer):
         help_text="List of role IDs to assign to the user",
     )
     send_invitation = serializers.BooleanField(
-        required=False, default=True, help_text="Whether to send an invitation email to the user"
+        required=False,
+        default=True,
+        help_text="Whether to send an invitation email to the user",
     )
 
     class Meta:
         model = User
-        fields = [
+        fields = (
             "email",
             "display_name",
             "tenant",
             "password",
             "role_ids",
             "send_invitation",
-        ]
-        extra_kwargs = {"password": {"write_only": True, "required": False}}
+        )
+        extra_kwargs: ClassVar[dict] = {
+            "password": {"write_only": True, "required": False},
+            # W1.2 (R2-S2): the tenant comes from the REQUEST, never the
+            # payload — a client-supplied tenant is the register-JOIN
+            # cross-tenant class (the view rejects divergence with 403
+            # and honors the payload only for PLATFORM_ADMIN).
+            "tenant": {"read_only": True},
+        }
 
     def create(self, validated_data):
         """Create user with optional role assignment"""
@@ -145,7 +164,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["display_name", "status", "role_ids"]
+        fields = ("display_name", "status", "role_ids")
 
     def validate_status(self, value):
         """Validate status transitions"""
@@ -164,7 +183,9 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         from .models import Role
 
         valid_ids = set(
-            Role.objects.filter(id__in=value, tenant_id=user.tenant_id).values_list("id", flat=True)
+            Role.objects.filter(id__in=value, tenant_id=user.tenant_id).values_list(
+                "id", flat=True
+            )
         )
         invalid = set(value) - valid_ids
         if invalid:

@@ -225,12 +225,13 @@ class GrafanaDashboardsE2ETest(TestCase):
                 f"{self.grafana_url}/",
                 timeout=self.timeout,
             )
-            return resp.status_code in [200, 302, 401, 403]
         except (
             requests.exceptions.RequestException,
             requests.exceptions.Timeout,
         ):
             return False
+        else:
+            return resp.status_code in [200, 302, 401, 403]
 
     def _check_grafana_with_retry(
         self,
@@ -243,17 +244,16 @@ class GrafanaDashboardsE2ETest(TestCase):
                 return True
             if attempt < max_attempts - 1:
                 # INTENTIONAL: e2e test polling real services
-                time.sleep(delay_seconds)
+                time.sleep(delay_seconds)  # noqa: sleep-needed — INTENTIONAL
         return False
 
-    @pytest.mark.skip(reason="Grafana not accessible")
     def test_grafana_accessible(self):
         """Test that Grafana is accessible"""
         if not self._check_grafana_with_retry():  # noqa: skip-in-body — runtime service dependency
             pytest.skip(
                 "Grafana not available (not reachable at "
-                "%s after retries; ensure grafana-test "
-                "container is running)" % self.grafana_url
+                f"{self.grafana_url} after retries; ensure grafana-test "
+                "container is running)"
             )
 
         try:
@@ -326,12 +326,13 @@ class AlertingRulesE2ETest(TestCase):
                 f"{self.prometheus_url}/api/v1/status/config",
                 timeout=self.timeout,
             )
-            return resp.status_code in [200, 401, 403]
         except (
             requests.exceptions.RequestException,
             requests.exceptions.Timeout,
         ):
             return False
+        else:
+            return resp.status_code in [200, 401, 403]
 
     def test_alerting_rules_configured(self):
         """Test that alerting rules are configured"""
@@ -351,7 +352,6 @@ class AlertingRulesE2ETest(TestCase):
             # Config might be in different location
             pass
 
-    @pytest.mark.skip(reason="Prometheus not accessible")
     def test_prometheus_alerts_endpoint(self):
         """Test that Prometheus alerts endpoint is accessible"""
         if not self._check_prometheus_available():
@@ -391,7 +391,6 @@ class DistributedTracingE2ETest(TestCase):
         self.client = Client()
         self.tenant = TenantFactory.create_tenant()
 
-    @pytest.mark.skip(reason="OpenTelemetry not installed")
     def test_tracing_setup_complete(self):
         """Test that tracing setup is complete"""
         try:
@@ -465,7 +464,6 @@ class DistributedTracingE2ETest(TestCase):
                 all(c in "0123456789abcdef" for c in tid),
             )
 
-    @pytest.mark.skip(reason="Jaeger not accessible")
     def test_jaeger_trace_export(self):
         """Test that traces are exported to Jaeger"""
         jaeger_url = get_jaeger_service_url()
@@ -915,7 +913,6 @@ class MonitoringEdgeCasesE2ETest(TestCase):
         else:
             self.assertEqual(expected_rate, 0.10)
 
-    @pytest.mark.skip(reason="OpenTelemetry not installed")
     def test_log_correlation_with_nested_spans(self):
         """Test log correlation with nested spans"""
         try:

@@ -108,20 +108,36 @@ class UCDEV001InstallPluginTest(DevExpTestBase):
 
 
 class UCDEV002CreateCustomPluginTest(DevExpTestBase):
-    """UC-DEV-002: Create Custom Plugin -- not implemented."""
+    """UC-DEV-002: Create Custom Plugin — Phase 278 lifecycle."""
 
-    def test_plugin_creation_returns_405(self):
-        """POST to plugins -> 405 (ReadOnlyModelViewSet)."""
+    def test_plugin_creation_returns_201(self):
+        """POST to plugins -> 201, new plugin starts at ALPHA (hidden
+        from the public marketplace until published)."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.post(
             "/api/v1/developer/plugins/",
-            {"name": "Custom Plugin", "type": "connector"},
+            {
+                "name": "Custom Plugin",
+                "description": "UC-DEV-002 test plugin",
+                "version": "1.0.0",
+                "author": "UC-DEV-002",
+                "category": "CONNECTOR",
+                "metadata_json": {"entrypoint": "plugin.main", "dependencies": []},
+            },
             format="json",
         )
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_405_METHOD_NOT_ALLOWED,
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "ALPHA")
+
+    def test_plugin_creation_requires_authentication(self):
+        """Anonymous POST is rejected (public reads only)."""
+        self.client.logout()
+        response = self.client.post(
+            "/api/v1/developer/plugins/",
+            {"name": "Anonymous Plugin"},
+            format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class UCDEV003UseCLIToolTest(DevExpTestBase):

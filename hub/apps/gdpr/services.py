@@ -524,8 +524,12 @@ for privacy and storage reasons. Contact support if you need file contents.
             Signed download URL
         """
         storage_client = S3StorageClient()
+        # for_browser: export downloads are consumed by host-side browsers /
+        # SDK clients — regenerate against the host-published endpoint when
+        # the storage hostname is a Docker service name (b6: export download
+        # failed with EHOSTUNREACH on minio-test:9000).
         return storage_client.generate_presigned_download_url(
-            key=storage_path, expires_in=expires_in
+            key=storage_path, expires_in=expires_in, for_browser=True
         )
 
 
@@ -689,13 +693,11 @@ class ErasureService(BaseService):
 
                     MAX_SESSIONS_TO_CHECK = 10000
                     session_keys_to_delete = []
-                    checked = 0
                     user_id_str = str(user.id)
                     qs = Session.objects.only("session_key", "session_data")
-                    for s in qs.iterator(chunk_size=500):
+                    for checked, s in enumerate(qs.iterator(chunk_size=500)):
                         if checked >= MAX_SESSIONS_TO_CHECK:
                             break
-                        checked += 1
                         try:
                             if hasattr(s, "get_decoded"):
                                 decoded = s.get_decoded()
@@ -704,20 +706,27 @@ class ErasureService(BaseService):
                         except Exception:
                             logger.warning(
                                 "Failed to decode session %s during erasure for user %s",
-                                getattr(s, "session_key", "?"), user_id_str,
+                                getattr(s, "session_key", "?"),
+                                user_id_str,
                                 exc_info=True,
                             )
                     if session_keys_to_delete:
                         Session.objects.filter(session_key__in=session_keys_to_delete).delete()
                     deleted_resources.append("sessions")
 
-                    # Revoke API keys
-                    from hub.apps.baas.models import APIKey
+                    # Revoke API keys. Phase 313 — baas is the paid
+                    # layer; core-only mode has no BaaS keys (the models
+                    # module raises RuntimeError on import), so the step
+                    # degrades to a no-op there.
+                    try:
+                        from hub.apps.baas.models import APIKey
 
-                    APIKey.objects.filter(user=user, revoked_at__isnull=True).update(
-                        revoked_at=timezone.now()
-                    )
-                    deleted_resources.append("api_keys")
+                        APIKey.objects.filter(user=user, revoked_at__isnull=True).update(
+                            revoked_at=timezone.now()
+                        )
+                        deleted_resources.append("api_keys")
+                    except (RuntimeError, ModuleNotFoundError):
+                        pass
 
                     # Phase 250.5.F.5 — anonymise (NOT hard-delete)
                     # assets owned by the user. Hard-delete would
@@ -788,14 +797,24 @@ class ErasureService(BaseService):
                     # where the user is listed as created_by.  The
                     # listing row is preserved (audit history) but
                     # PII-bearing metadata and FK are scrubbed.
-                    from hub.apps.marketplace.models import Listing
+                    # Phase 313 — marketplace is the paid layer; core-only
+                    # mode has no listings, so the step degrades to a
+                    # no-op there.
+                    try:
+                        from hub.apps.marketplace.models import Listing
+                    except (RuntimeError, ModuleNotFoundError):
+                        Listing = None  # type: ignore[assignment]
 
                     _LISTING_TITLE = "Deleted User Listing"
                     _LISTING_DESC = "PII redacted per GDPR Article 17 right-to-erasure."
                     listing_count = 0
-                    for listing in Listing.objects.filter(
-                        created_by=user,
-                    ).iterator(chunk_size=200):
+                    if Listing is not None:
+                        listing_qs = Listing.objects.filter(created_by=user).iterator(
+                            chunk_size=200
+                        )
+                    else:
+                        listing_qs = ()
+                    for listing in listing_qs:
                         current_meta = listing.metadata_json or {}
                         current_meta["title"] = _LISTING_TITLE
                         current_meta["description"] = _LISTING_DESC

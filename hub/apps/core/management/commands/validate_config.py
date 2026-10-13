@@ -17,7 +17,7 @@ class Command(BaseCommand):
         "Exit 0 if valid, 1 if invalid. See docs/CONFIG_VALIDATION_DESIGN.md."
     )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         try:
             validate_all()
             self.stdout.write(self.style.SUCCESS("Configuration valid."))

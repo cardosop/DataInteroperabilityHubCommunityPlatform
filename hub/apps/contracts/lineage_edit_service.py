@@ -30,10 +30,11 @@ or type-mismatch.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
 
 from hub.apps.contracts.lineage_validator import (
@@ -119,7 +120,9 @@ def apply_lineage_patch(
         desired_keys = {_edge_signature(e) for e in desired_normalised}
 
         to_close = [e for e in existing_open if _edge_signature(e) not in desired_keys]
-        to_open = [e for e in desired_normalised if _edge_signature(e) not in existing_keys]
+        to_open = [
+            e for e in desired_normalised if _edge_signature(e) not in existing_keys
+        ]
 
         try:
             _close_edges(to_close)
@@ -144,6 +147,18 @@ def apply_lineage_patch(
             closed=to_close,
         )
 
+        # W4.5 (R2-I2) — invalidate the lineage caches AFTER commit.
+        # Pre-fix this path mutated ``LineageEdge`` rows (via the
+        # ``.update()`` SCD2 close in ``_close_edges``) and the
+        # reserialised payload but never touched the caches — the
+        # lineage GET kept serving the pre-patch snapshot until TTL.
+        # The contract's own post-save lineage sync cannot cover this:
+        # after the patch the desired set already equals the current
+        # set, so the sync diffs to a no-op and skips its (own)
+        # invalidation. Dependents are covered by the same cascade
+        # used in the update path.
+        transaction.on_commit(lambda: _invalidate_lineage_patch_caches(contract))
+
     return {
         "contract_id": str(contract.id),
         "edges": desired_normalised,
@@ -151,6 +166,77 @@ def apply_lineage_patch(
         "removed": len(to_close),
         "kept": len(desired_normalised) - len(to_open),
     }
+
+
+def _invalidate_lineage_patch_caches(contract: Any) -> None:
+    """Cache invalidation for a committed lineage patch.
+
+    Best-effort: every step is fail-soft (a cache outage must not turn
+    a committed patch into a 500). Covers:
+
+    * the contract's own lineage keys (contract + model + field scopes),
+    * the contract detail cache (``hub_contract_json`` was re-written),
+    * the reference-resolution keys for this contract's namespace/name,
+    * the lineage caches of every contract that references this one.
+    """
+    contract_id = str(contract.id)
+    try:
+        from hub.apps.contracts.caching import (
+            invalidate_contract_cache,
+            invalidate_lineage_cache,
+            invalidate_lineage_resolution_cache,
+        )
+
+        invalidate_contract_cache(contract_id)
+        invalidate_lineage_cache(contract_id)
+        payload = getattr(contract, "hub_contract_json", None) or {}
+        info = payload.get("info") or {}
+        name = info.get("name")
+        if name:
+            namespace = _lineage_namespace(contract)
+            if namespace:
+                invalidate_lineage_resolution_cache(namespace, str(name))
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 - fail-soft: cache outage never blocks the patch
+        logger.warning(
+            "lineage_patch_cache_invalidation_failed contract_id=%s error=%s",
+            contract_id,
+            exc,
+        )
+        return
+    try:
+        from hub.apps.contracts.cache_invalidation import (
+            _invalidate_dependents_lineage_caches,
+        )
+
+        _invalidate_dependents_lineage_caches(contract)
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 - fail-soft: cache outage never blocks the patch
+        logger.warning(
+            "lineage_patch_dependents_invalidation_failed contract_id=%s error=%s",
+            contract_id,
+            exc,
+        )
+
+
+def _lineage_namespace(contract: Any) -> str | None:
+    """The contract's resolution namespace (the ``info.namespace`` /
+    ``x-odps.namespace`` shape used by the resolution cache keys)."""
+    payload = getattr(contract, "hub_contract_json", None) or {}
+    if not isinstance(payload, dict):
+        return None
+    info = payload.get("info") or {}
+    namespace = info.get("namespace")
+    if namespace:
+        return str(namespace)
+    x_odps = payload.get("x-odps") or {}
+    if isinstance(x_odps, dict):
+        namespace = x_odps.get("namespace")
+        if namespace:
+            return str(namespace)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -191,12 +277,10 @@ def _set_serializable_isolation() -> None:
         with connection.cursor() as cursor:
             cursor.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         connection.savepoint_commit(sid)
-    except Exception as exc:
+    except DatabaseError as exc:
         if sid is not None:
-            try:
+            with contextlib.suppress(DatabaseError):  # pragma: no cover — defensive
                 connection.savepoint_rollback(sid)
-            except Exception:  # pragma: no cover — defensive
-                pass
         logger.warning(
             "lineage_edit.serializable_set_skipped: %s — "
             "tx runs at default isolation (ETag concurrency check is "
@@ -219,14 +303,20 @@ def _load_existing_open_edges(contract: Any) -> list[dict[str, Any]]:
     )
     from django.db.models import Q
 
-    rows = rows.filter(Q(source_contract_id=contract.id) | Q(target_contract_id=contract.id))
+    rows = rows.filter(
+        Q(source_contract_id=contract.id) | Q(target_contract_id=contract.id)
+    )
     return [_edge_row_to_dict(row) for row in rows]
 
 
 def _edge_row_to_dict(row: Any) -> dict[str, Any]:
     return {
-        "source_contract": (str(row.source_contract_id) if row.source_contract_id else None),
-        "target_contract": (str(row.target_contract_id) if row.target_contract_id else None),
+        "source_contract": (
+            str(row.source_contract_id) if row.source_contract_id else None
+        ),
+        "target_contract": (
+            str(row.target_contract_id) if row.target_contract_id else None
+        ),
         "source_model": row.source_model or "",
         "source_field": row.source_field or "",
         "target_model": row.target_model or "",
@@ -251,10 +341,14 @@ def _normalise_desired_edges(
         out.append(
             {
                 "source_contract": (
-                    str(edge.get("source_contract")) if edge.get("source_contract") else None
+                    str(edge.get("source_contract"))
+                    if edge.get("source_contract")
+                    else None
                 ),
                 "target_contract": (
-                    str(edge.get("target_contract")) if edge.get("target_contract") else None
+                    str(edge.get("target_contract"))
+                    if edge.get("target_contract")
+                    else None
                 ),
                 "source_model": edge.get("source_model", "") or "",
                 "source_field": edge.get("source_field", "") or "",
@@ -650,6 +744,33 @@ def _reserialise_hub_contract_lineage(
             ]
         entries.append(entry)
 
+    # Also rebuild the sync-native ``contracts`` shape. The generic
+    # contract post_save edge-sync (lineage_sync._desired_edge_set)
+    # reconstructs the desired relational rows from
+    # ``hub_contract_json.lineage.contracts`` — leaving this block stale
+    # made the sync treat the freshly-written F2 rows as unwanted and
+    # close them (valid_to) on the next save, emptying every listing
+    # lineage graph (b6 lineage skips root cause).
+    contracts_entries = []
+    for edge in desired_edges:
+        src_cid = edge.get("source_contract")
+        if not src_cid:
+            continue
+        contracts_entries.append(
+            {
+                "source_contract": src_cid,
+                "target_contract": "self",
+                "source_model": edge.get("source_model") or "",
+                "source_field": edge.get("source_field") or "",
+                "target_model": edge.get("target_model") or "",
+                "target_field": edge.get("target_field") or "",
+                "edge_type": edge.get("edge_type") or "reference",
+                "transformation_ref": edge.get("transformation_ref") or "",
+                "job_ref": edge.get("job_ref") or "",
+            }
+        )
+    existing_lineage["contracts"] = contracts_entries
+
     existing_lineage["entries"] = entries
     payload["lineage"] = existing_lineage
     contract.hub_contract_json = payload
@@ -666,7 +787,7 @@ def _emit_audit_events(
     """One audit event per opened/closed edge (F2.9)."""
     try:
         from hub.apps.audit.utils import create_audit_event
-    except Exception:  # pragma: no cover — defensive
+    except ImportError:  # pragma: no cover — defensive
         return
     for row in opened:
         try:
@@ -690,7 +811,7 @@ def _emit_audit_events(
                     "phase": "228.F2.9",
                 },
             )
-        except Exception as exc:  # pragma: no cover — best-effort
+        except Exception as exc:
             logger.warning(
                 "lineage_edit.audit_emit_failed_added: %s",
                 exc,
@@ -712,7 +833,7 @@ def _emit_audit_events(
                     "phase": "228.F2.9",
                 },
             )
-        except Exception as exc:  # pragma: no cover — best-effort
+        except Exception as exc:
             logger.warning(
                 "lineage_edit.audit_emit_failed_removed: %s",
                 exc,

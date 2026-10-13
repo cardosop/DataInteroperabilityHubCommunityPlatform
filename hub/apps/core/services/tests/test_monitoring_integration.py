@@ -4,6 +4,7 @@ Integration tests for service layer monitoring functionality.
 Tests Prometheus metrics, tracing, and alerting capabilities.
 """
 
+import contextlib
 import os
 import sys
 import uuid
@@ -21,6 +22,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 # Setup Django
 django.setup()
 
+import httpx
 from django.test import TestCase, override_settings
 
 from hub.apps.core.services.base import (
@@ -59,7 +61,7 @@ class SampleService(BaseService):
         """Test operation that raises an error."""
         return self.execute_with_metrics(
             operation="test_error_operation",
-            func=lambda: self._raise_error(),
+            func=self._raise_error,
             tenant_id=tenant_id,
         )
 
@@ -151,12 +153,10 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
             timeout=1.0,
         )
 
-        try:
-            health_check.check_health(use_cache=False)
-        except (ConnectionError, OSError, TimeoutError):
+        with contextlib.suppress(ConnectionError, OSError, TimeoutError):
             # Health check failed because service is not
             # running; metrics should still be recorded.
-            pass
+            health_check.check_health(use_cache=False)
 
         # Verify health check metrics (if registry available)
         if REGISTRY is not None:
@@ -213,10 +213,8 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
             )
 
             # Attempt a call (will fail, but metrics recorded)
-            try:
-                client.get("/test")
-            except Exception:
-                pass  # Any connection error is expected
+            with contextlib.suppress(httpx.HTTPError):
+                client.get("/test")  # Any connection error is expected
         except (ImportError, RuntimeError) as exc:
             self.skipTest(f"Service client creation failed: {exc}")
 

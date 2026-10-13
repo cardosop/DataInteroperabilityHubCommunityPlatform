@@ -11,27 +11,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { normalizeReviewQueuePayload } from './kybReviewQueueNormalize';
+import type { StuckAccount } from './kybReviewQueueNormalize';
 import './KYBReviewQueuePage.css';
-
-interface StuckAccount {
-  id: string;
-  stripe_account_id: string;
-  tenant_id: string;
-  tenant_name: string;
-  country: string;
-  details_submitted: boolean;
-  charges_enabled: boolean;
-  payouts_enabled: boolean;
-  currently_due: string[];
-  past_due: string[];
-  created_at: string;
-  hours_stuck: number;
-}
-
-interface ReviewQueueResponse {
-  results: StuckAccount[];
-  count: number;
-}
 
 export function KYBReviewQueuePage() {
   const [results, setResults] = useState<StuckAccount[]>([]);
@@ -54,7 +36,7 @@ export function KYBReviewQueuePage() {
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`);
       }
-      const data: ReviewQueueResponse = await resp.json();
+      const data = normalizeReviewQueuePayload(await resp.json());
       setResults(data.results);
       setCount(data.count);
     } catch (err) {
@@ -70,13 +52,7 @@ export function KYBReviewQueuePage() {
 
   if (loading) return <LoadingSpinner data-testid="kyb-queue-loading" />;
   if (error) {
-    return (
-      <ErrorDisplay
-        error={error}
-        title="KYB Review Queue"
-        onRetry={fetchQueue}
-      />
-    );
+    return <ErrorDisplay error={error} title="KYB Review Queue" onRetry={fetchQueue} />;
   }
 
   return (
@@ -111,23 +87,13 @@ export function KYBReviewQueuePage() {
                 <td>{acct.country}</td>
                 <td>
                   <span
-                    className={`kyb-stuck-hours ${
-                      acct.hours_stuck > 72 ? 'kyb-critical' : ''
-                    }`}
+                    className={`kyb-stuck-hours ${acct.hours_stuck > 72 ? 'kyb-critical' : ''}`}
                   >
                     {acct.hours_stuck}h
                   </span>
                 </td>
-                <td>
-                  {acct.currently_due.length > 0
-                    ? acct.currently_due.join(', ')
-                    : '-'}
-                </td>
-                <td>
-                  {acct.past_due.length > 0
-                    ? acct.past_due.join(', ')
-                    : '-'}
-                </td>
+                <td>{acct.currently_due.length > 0 ? acct.currently_due.join(', ') : '-'}</td>
+                <td>{acct.past_due.length > 0 ? acct.past_due.join(', ') : '-'}</td>
               </tr>
             ))}
           </tbody>

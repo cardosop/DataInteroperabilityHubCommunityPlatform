@@ -10,7 +10,10 @@ Tests cover:
 - Error handling
 """
 
+import uuid
+
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -231,12 +234,9 @@ class SDKDocumentationViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify the response contains the expected SDK listing structure.
         # The endpoint returns {sdks: [...]}.
-        self.assertIn("sdks", response.data,
-                      "SDK list response must contain a 'sdks' key")
-        self.assertIsInstance(response.data["sdks"], list,
-                              "'sdks' value must be a list")
-        self.assertGreater(len(response.data["sdks"]), 0,
-                           "SDK list must not be empty")
+        self.assertIn("sdks", response.data, "SDK list response must contain a 'sdks' key")
+        self.assertIsInstance(response.data["sdks"], list, "'sdks' value must be a list")
+        self.assertGreater(len(response.data["sdks"]), 0, "SDK list must not be empty")
 
     def test_retrieve_sdk(self):
         """Test retrieving SDK documentation by ID"""
@@ -304,3 +304,143 @@ class DeveloperFeatureFlagTests(TestCase):
         client.force_authenticate(user=self.dev_user)
         response = client.get("/api/v1/developer/plugins/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class PluginLifecycleTest(TestCase):
+    """Phase 278 plugin lifecycle: create -> test -> validate -> publish -> deploy.
+
+    Uses a tenant-less user — ``check_developer_enabled`` passes when the
+    tenant cannot be resolved (its documented platform-admin/anonymous
+    escape hatch), while the viewset's ``get_permissions`` still requires
+    authentication for writes.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user(
+            email=f"plugin-dev-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _create_plugin(self, **overrides):
+        payload = {
+            "name": f"lifecycle-plugin-{uuid.uuid4().hex[:8]}",
+            "description": "Lifecycle test plugin",
+            "version": "1.0.0",
+            "author": "Lifecycle Test",
+            "category": "CONNECTOR",
+            "metadata_json": {"entrypoint": "plugin.main", "dependencies": []},
+        }
+        payload.update(overrides)
+        return self.client.post("/api/v1/developer/plugins/", payload, format="json")
+
+    def _plugin_id(self, response):
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return response.data["id"]
+
+    def test_create_starts_at_alpha_and_hidden_from_marketplace(self):
+        response = self._create_plugin()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "ALPHA")
+
+        list_response = self.client.get("/api/v1/developer/plugins/")
+        listed_ids = [item["id"] for item in list_response.data.get("results", [])]
+        self.assertNotIn(response.data["id"], listed_ids)
+
+    def test_client_cannot_set_status_on_create(self):
+        response = self._create_plugin(status="AVAILABLE")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "ALPHA")
+
+    def test_write_requires_authentication(self):
+        self.client.logout()
+        response = self.client.post(
+            "/api/v1/developer/plugins/",
+            {"name": "anonymous-plugin"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_test_plugin_reports_checks(self):
+        plugin_id = self._plugin_id(self._create_plugin())
+
+        response = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/test/", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "tested")
+        self.assertIs(response.data["passed"], True)
+        self.assertEqual(len(response.data["checks"]), 3)
+
+    def test_validate_promotes_alpha_to_beta(self):
+        plugin_id = self._plugin_id(self._create_plugin())
+
+        response = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/validate/", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["plugin_status"], "BETA")
+        self.assertEqual(Plugin.objects.get(pk=plugin_id).status, PluginStatus.BETA)
+
+    def test_validate_fails_on_invalid_version(self):
+        plugin_id = self._plugin_id(self._create_plugin(version="1"))
+
+        response = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/validate/", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["error"], "validation_failed")
+        self.assertIn("version_format", [c["name"] for c in response.data["failed_checks"]])
+
+    def test_publish_promotes_to_available_and_marketplace_visible(self):
+        plugin_id = self._plugin_id(self._create_plugin())
+        self.client.post(f"/api/v1/developer/plugins/{plugin_id}/validate/", {}, format="json")
+
+        response = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/publish/", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["plugin_status"], "AVAILABLE")
+
+        list_response = self.client.get("/api/v1/developer/plugins/")
+        listed_ids = [item["id"] for item in list_response.data.get("results", [])]
+        self.assertIn(plugin_id, listed_ids)
+
+    def test_publish_from_deprecated_rejected(self):
+        plugin_id = self._plugin_id(self._create_plugin())
+        Plugin.objects.filter(pk=plugin_id).update(status=PluginStatus.DEPRECATED)
+
+        response = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/publish/", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_deploy_requires_published_and_records_metadata(self):
+        plugin_id = self._plugin_id(self._create_plugin())
+
+        too_early = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/deploy/", {}, format="json"
+        )
+        self.assertEqual(too_early.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(too_early.data["error"], "plugin_not_published")
+
+        self.client.post(f"/api/v1/developer/plugins/{plugin_id}/validate/", {}, format="json")
+        self.client.post(f"/api/v1/developer/plugins/{plugin_id}/publish/", {}, format="json")
+
+        response = self.client.post(
+            f"/api/v1/developer/plugins/{plugin_id}/deploy/", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "deployed")
+        metadata = Plugin.objects.get(pk=plugin_id).metadata_json
+        self.assertIn("deployment", metadata)
+        self.assertEqual(metadata["deployment"]["mode"], "local")

@@ -269,7 +269,8 @@ class IncidentManagerSuccessTest(TestCase):
             incident_id=str(incident.id), status="TRIAGED"
         )
         self.assertEqual(
-            updated2.triaged_at, first_triaged_at,
+            updated2.triaged_at,
+            first_triaged_at,
             "triaged_at must not change on second TRIAGED update",
         )
 
@@ -317,9 +318,7 @@ class IncidentManagerSuccessTest(TestCase):
             incident_type="QUALITY_VIOLATION",
             severity="HIGH",
         )
-        IncidentManager.update_incident_status(
-            incident_id=str(triaged.id), status="TRIAGED"
-        )
+        IncidentManager.update_incident_status(incident_id=str(triaged.id), status="TRIAGED")
         resolved = IncidentManager.create_incident(
             tenant_id=str(self.tenant.id),
             title="Resolved Incident",
@@ -333,9 +332,7 @@ class IncidentManagerSuccessTest(TestCase):
             resolved_by_id=str(self.user.id),
         )
 
-        dashboard = IncidentManager.get_incidents_dashboard(
-            tenant_id=str(self.tenant.id), limit=10
-        )
+        dashboard = IncidentManager.get_incidents_dashboard(tenant_id=str(self.tenant.id), limit=10)
 
         self.assertIn("results", dashboard)
         self.assertIn("summary", dashboard)
@@ -529,8 +526,11 @@ class IncidentManagerEdgeCasesTest(TestCase):
             incident_id=str(incident.id),
             assigned_to_id=str(other_user.id),
         )
-        self.assertEqual(reassigned.status, "RESOLVED",
-                        "Assigning a RESOLVED incident must not change its status")
+        self.assertEqual(
+            reassigned.status,
+            "RESOLVED",
+            "Assigning a RESOLVED incident must not change its status",
+        )
         self.assertEqual(str(reassigned.assigned_to.id), str(other_user.id))
 
 

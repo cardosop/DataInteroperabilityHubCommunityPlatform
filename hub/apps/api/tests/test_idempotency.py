@@ -56,10 +56,10 @@ def get_real_redis_client_or_skip():
     """Get real Redis client or skip test if unavailable."""
     try:
         return get_redis_client()
-    except (redis.ConnectionError, Exception) as e:
+    except redis.ConnectionError as e:
         import unittest
 
-        raise unittest.SkipTest(f"Redis not available: {e}")
+        raise unittest.SkipTest(f"Redis not available: {e}") from None
 
 
 # ============================================================================
@@ -238,7 +238,7 @@ class TestRedisOperations(TestCase):
             self.assertIsNotNone(client)
             # Test connection
             client.ping()
-        except (redis.ConnectionError, Exception) as e:
+        except (redis.ConnectionError, redis.TimeoutError) as e:
             self.skipTest(f"Redis not available: {e}")
 
     def test_store_and_get_idempotency_record(self):
@@ -725,11 +725,11 @@ class TestIdempotencyMiddleware(TestCase):
         idempotency_key = str(uuid.uuid4())
 
         mock_redis = MagicMock()
-        mock_redis.get.return_value = None      # No existing record
-        mock_redis.ttl.return_value = -2        # Key doesn't exist
+        mock_redis.get.return_value = None  # No existing record
+        mock_redis.ttl.return_value = -2  # Key doesn't exist
         mock_redis.setex.return_value = True
         mock_get_redis.return_value = mock_redis
-        mock_acquire_lock.return_value = True   # Lock acquired successfully
+        mock_acquire_lock.return_value = True  # Lock acquired successfully
 
         get_response = Mock(return_value=JsonResponse({"id": "new-request"}, status=201))
         middleware = IdempotencyMiddleware(get_response)
@@ -749,9 +749,7 @@ class TestIdempotencyMiddleware(TestCase):
 
     @patch("hub.apps.api.middleware.idempotency.get_redis_client")
     @patch("hub.apps.api.middleware.idempotency.check_idempotency_key_expired")
-    def test_middleware_returns_410_for_expired_key(
-        self, mock_check_expired, mock_get_redis
-    ):
+    def test_middleware_returns_410_for_expired_key(self, mock_check_expired, mock_get_redis):
         """Test middleware returns 410 Gone when the idempotency key has expired."""
         idempotency_key = str(uuid.uuid4())
 

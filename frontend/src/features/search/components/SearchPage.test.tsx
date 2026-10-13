@@ -170,4 +170,32 @@ describe('SearchPage — 223.6', () => {
     await waitFor(() => expect(spy).toHaveBeenCalled(), { timeout: 1500 });
     expect(spy.mock.calls[spy.mock.calls.length - 1][0]).toBe('beta');
   });
+
+  it('renders UC results without a navigation link (1.4 UC feed)', async () => {
+    // The UC catalog browser lands with 1.9 — until then UC results must
+    // NOT render as links (there is no detail route; a link would 404).
+    spy.mockResolvedValue({
+      query: 'orders',
+      total: 1,
+      results: [
+        {
+          type: 'DATABRICKS_UC_TABLE',
+          id: 'uc-table-1',
+          title: 'orders',
+          description: 'Order fact table',
+          relevance_score: 0.9,
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(<SearchPage />, { wrapper: Wrapper });
+    await user.type(screen.getByTestId('search-input'), 'orders');
+    await waitFor(() => expect(screen.getByText('orders')).toBeInTheDocument(), {
+      timeout: 1500,
+    });
+    const item = screen.getByText('orders').closest('li');
+    expect(item).not.toBeNull();
+    expect(item!.querySelector('a')).toBeNull();
+  });
 });

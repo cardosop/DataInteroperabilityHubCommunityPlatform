@@ -40,7 +40,7 @@ def _execute_virtual_query_job(job_obj: Job) -> dict:
         # Use select_for_update to prevent concurrent execution
         execution = QueryExecution.objects.select_for_update().get(id=execution_id)
     except QueryExecution.DoesNotExist:
-        raise ValueError(f"QueryExecution {execution_id} not found")
+        raise ValueError(f"QueryExecution {execution_id} not found") from None
 
     # Idempotency check: if execution is already in terminal state, return existing result
     if execution.is_completed():

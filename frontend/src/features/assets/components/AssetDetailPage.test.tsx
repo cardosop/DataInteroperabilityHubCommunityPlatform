@@ -97,9 +97,10 @@ describe('AssetDetailPage', () => {
     });
     render(<AssetDetailPage />, { wrapper: Wrapper });
     await waitFor(() => {
-      // Detail page mounts (the asset name appears) but the card
-      // does NOT.
-      expect(screen.queryByText('Test Item')).toBeInTheDocument();
+      // Detail page mounts (the asset name appears in the h1 — the
+      // breadcrumb nav repeats it, so scope to the heading) but the
+      // card does NOT.
+      expect(screen.getByRole('heading', { name: 'Test Item' })).toBeInTheDocument();
     });
     expect(screen.queryByTestId('canonical-iri-card')).not.toBeInTheDocument();
   });

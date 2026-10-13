@@ -10,6 +10,7 @@ import json
 import click
 
 from ..api_client import api_client
+from ..output import print_json_output
 
 
 @click.group()
@@ -29,7 +30,7 @@ def list_tenants(output_format, page, page_size):
     try:
         data = api_client.get("tenants/", params={"page": page, "page_size": page_size})
         if output_format == "json":
-            click.echo(json.dumps(data, indent=2))
+            print_json_output(data)
         else:
             results = data.get("results", [])
             if not results:
@@ -39,7 +40,7 @@ def list_tenants(output_format, page, page_size):
                 click.echo(f"{t.get('id', '?')}  {t.get('slug', t.get('display_name', '?'))}")
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
 
 # ── Usage ────────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ def get_usage(output_format):
             click.echo(f"  Storage: {data.get('storage_gb', 0):.2f} GB")
             click.echo(f"  API Calls: {data.get('api_calls_this_month', 0)}")
     except Exception as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
 
 # ── Profile / Config ─────────────────────────────────────────────────────

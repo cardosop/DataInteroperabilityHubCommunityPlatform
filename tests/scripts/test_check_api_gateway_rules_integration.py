@@ -79,12 +79,15 @@ class TestAPIGatewayRulesCheckerIntegration:
         rules = checker.extract_routing_rules()
         assert len(rules) > 0, "Should extract routing rules from actual configs"
 
-        # Verify we have expected services
+        # Post-gateway architecture (routes.yml): Traefik exposes
+        # gateway-level routers (api-gateway / frontend); backend services
+        # (contract-service, asset-service, ...) are Traefik ``services``
+        # behind those routers — routing to backends moved to the FastAPI
+        # gateway layer, so per-service router names no longer exist.
         router_names = [r.router_name for r in rules]
-        expected_services = ["contract-service", "asset-service", "dataset-service"]
-        for service in expected_services:
-            assert any(service in name for name in router_names), (
-                f"Should find routing rule for {service}"
+        for expected in ("api-gateway", "frontend"):
+            assert any(expected in name for name in router_names), (
+                f"Should find routing rule for {expected}"
             )
 
     def test_extract_actual_rate_limiting_rules(
@@ -98,15 +101,14 @@ class TestAPIGatewayRulesCheckerIntegration:
         )
 
         rate_limit_rules = checker.extract_rate_limiting_rules()
-        assert len(rate_limit_rules) > 0, "Should find rate limiting rules"
-
-        # Verify rate limit configuration
-        for rule in rate_limit_rules:
-            assert rule.average is not None, "Rate limit rule should have average configured"
-            assert rule.period is not None, "Rate limit rule should have period configured"
-            assert len(rule.applied_to_routers) > 0, (
-                f"Rate limit rule {rule.middleware_name} should be applied to at least one router"
-            )
+        # Rate limiting moved to the FastAPI gateway (routes.yml documents
+        # this); Traefik must NOT carry rateLimit middlewares anymore.
+        # This guards against accidentally reintroducing gateway-layer
+        # concerns at the edge.
+        assert rate_limit_rules == [], (
+            "Traefik should have no rateLimit middlewares — rate limiting "
+            "is owned by the FastAPI gateway layer."
+        )
 
     def test_extract_actual_authentication_rules(
         self, actual_traefik_config_dir, actual_endpoint_inventory
@@ -119,18 +121,13 @@ class TestAPIGatewayRulesCheckerIntegration:
         )
 
         auth_rules = checker.extract_authentication_rules()
-        assert len(auth_rules) > 0, "Should find authentication rules"
-
-        # Verify auth configuration
-        for rule in auth_rules:
-            assert rule.auth_type, f"Auth rule {rule.middleware_name} should have auth_type"
-            if rule.auth_type == "forwardAuth":
-                assert rule.auth_address, (
-                    f"forwardAuth rule {rule.middleware_name} should have auth_address"
-                )
-            assert len(rule.applied_to_routers) > 0, (
-                f"Auth rule {rule.middleware_name} should be applied to at least one router"
-            )
+        # Authentication moved to the FastAPI gateway (routes.yml documents
+        # this); Traefik must NOT carry forwardAuth/basicAuth middlewares
+        # anymore. Guards against reintroducing auth at the edge.
+        assert auth_rules == [], (
+            "Traefik should have no auth middlewares — authentication "
+            "is owned by the FastAPI gateway layer."
+        )
 
     def test_map_actual_gateway_rules_to_endpoints(
         self, actual_traefik_config_dir, actual_endpoint_inventory
@@ -173,13 +170,15 @@ class TestAPIGatewayRulesCheckerIntegration:
         assert "summary" in results
         summary = results["summary"]
         assert summary["routing_rules"] > 0
-        assert summary["rate_limiting_rules"] > 0
-        assert summary["authentication_rules"] > 0
+        # Rate limiting and auth moved to the FastAPI gateway — Traefik
+        # must not carry them anymore.
+        assert summary["rate_limiting_rules"] == 0
+        assert summary["authentication_rules"] == 0
 
         # Verify all rule types are present
         assert len(results["routing_rules"]) > 0
-        assert len(results["rate_limiting_rules"]) > 0
-        assert len(results["authentication_rules"]) > 0
+        assert len(results["rate_limiting_rules"]) == 0
+        assert len(results["authentication_rules"]) == 0
         assert "mappings" in results
 
     def test_generate_actual_report(
@@ -241,24 +240,15 @@ class TestAPIGatewayRulesCheckerIntegration:
             content = yaml.safe_load(f)
 
         middlewares = content["http"]["middlewares"]
-        rate_limit_found = False
 
+        # Rate limiting is owned by the FastAPI gateway layer — a
+        # rateLimit middleware in Traefik would be an architectural
+        # regression (routes.yml documents the split).
         for middleware_name, middleware_config in middlewares.items():
-            if "rateLimit" in middleware_config:
-                rate_limit_found = True
-                rate_limit_config = middleware_config["rateLimit"]
-                assert "average" in rate_limit_config, (
-                    f"Rate limit middleware {middleware_name} should have average"
-                )
-                assert "period" in rate_limit_config, (
-                    f"Rate limit middleware {middleware_name} should have period"
-                )
-                assert isinstance(rate_limit_config["average"], int), (
-                    "Rate limit average should be integer"
-                )
-                break
-
-        assert rate_limit_found, "Should have at least one rate limit middleware"
+            assert "rateLimit" not in middleware_config, (
+                f"Rate limit middleware {middleware_name} in Traefik — rate "
+                "limiting is owned by the FastAPI gateway layer."
+            )
 
     def test_auth_middleware_configuration(self, actual_traefik_config_dir):
         """Test that auth middleware is properly configured"""
@@ -267,19 +257,15 @@ class TestAPIGatewayRulesCheckerIntegration:
             content = yaml.safe_load(f)
 
         middlewares = content["http"]["middlewares"]
-        auth_found = False
 
+        # Authentication is owned by the FastAPI gateway layer — a
+        # forwardAuth middleware in Traefik would be an architectural
+        # regression (routes.yml documents the split).
         for middleware_name, middleware_config in middlewares.items():
-            if "forwardAuth" in middleware_config:
-                auth_found = True
-                forward_auth = middleware_config["forwardAuth"]
-                assert "address" in forward_auth, (
-                    f"Auth middleware {middleware_name} should have address"
-                )
-                assert forward_auth["address"].startswith("http"), "Auth address should be HTTP URL"
-                break
-
-        assert auth_found, "Should have at least one auth middleware"
+            assert "forwardAuth" not in middleware_config, (
+                f"Auth middleware {middleware_name} in Traefik — authentication "
+                "is owned by the FastAPI gateway layer."
+            )
 
     def test_routers_use_middlewares(self, actual_traefik_config_dir):
         """Test that routers reference existing middlewares"""

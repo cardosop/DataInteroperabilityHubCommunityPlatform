@@ -44,9 +44,10 @@ def get_cached_result(
         cached = cache.get(key)
         if cached:
             return json.loads(cached) if isinstance(cached, str) else cached
-        return None
     except Exception:
         logger.exception("cache_get_failed")
+        return None
+    else:
         return None
 
 

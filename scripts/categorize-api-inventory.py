@@ -235,7 +235,7 @@ class APICategorizer:
 
         return endpoints
 
-    def _determine_source_file(self, path: str, view_class: str | None) -> str | None:
+    def _determine_source_file(self, path: str, _view_class: str | None) -> str | None:
         """Determine source file from path and view class"""
         # Extract app name from path
         path_parts = path.split("/")
@@ -270,7 +270,7 @@ class APICategorizer:
 
         return None
 
-    def _categorize_endpoint(self, endpoint_key: str, endpoint_info: dict) -> APICategory | None:
+    def _categorize_endpoint(self, _endpoint_key: str, endpoint_info: dict) -> APICategory | None:
         """Categorize a single endpoint"""
         path = endpoint_info["path"]
         method = endpoint_info["method"]
@@ -427,7 +427,7 @@ class APICategorizer:
                     # If ViewSet exists, assume methods are implemented (conservative)
                     if f"class {view_class}" in content:
                         return "Complete"
-                except Exception as e:
+                except (OSError, UnicodeDecodeError) as e:
                     print(f"Error checking completeness for {path}: {e}")
 
         # For function-based views, check if function exists
@@ -440,7 +440,7 @@ class APICategorizer:
                     func_name = view_class.split(".")[-1] if "." in view_class else view_class
                     if f"def {func_name}" in content or f"def {func_name.lower()}" in content:
                         return "Complete"
-                except Exception:
+                except (OSError, UnicodeDecodeError):
                     pass
 
         # If view file exists and endpoint is documented, assume complete
@@ -451,7 +451,7 @@ class APICategorizer:
 
         return "Incomplete"
 
-    def _extract_action_from_path(self, path: str, method: str) -> str | None:
+    def _extract_action_from_path(self, path: str, _method: str) -> str | None:
         """Extract action name from path"""
         # Remove base path
         path_parts = path.split("/")
@@ -465,7 +465,7 @@ class APICategorizer:
 
         return None
 
-    def _check_schema(self, path: str, source_file: str | None) -> bool:
+    def _check_schema(self, _path: str, source_file: str | None) -> bool:
         """Check if endpoint has OpenAPI schema definition"""
         # Look for serializer files
         if source_file:
@@ -516,7 +516,7 @@ class APICategorizer:
                     try:
                         content = test_file.read_text(encoding="utf-8")
                         # Extract path segment for matching
-                        path_segment = path.split("/")[-1].rstrip("/")
+                        path_segment = path.rsplit("/", maxsplit=1)[-1].rstrip("/")
                         if not path_segment:
                             path_segment = path.split("/")[-2] if len(path.split("/")) > 2 else ""
 
@@ -530,12 +530,14 @@ class APICategorizer:
                             or "client.post" in content
                         ):
                             return True
-                    except Exception:
+                    except (OSError, UnicodeDecodeError):
                         continue
 
         return False
 
-    def _check_deprecated(self, path: str, view_class: str | None, source_file: str | None) -> bool:
+    def _check_deprecated(
+        self, _path: str, view_class: str | None, source_file: str | None
+    ) -> bool:
         """Check if endpoint is deprecated"""
         if source_file:
             file_path = self.hub_dir / source_file
@@ -558,7 +560,7 @@ class APICategorizer:
 
         return False
 
-    def _find_view_file(self, source_file: str, view_class: str) -> Path | None:
+    def _find_view_file(self, source_file: str, _view_class: str) -> Path | None:
         """Find the view file for a view class"""
         if not source_file:
             return None
@@ -597,13 +599,14 @@ class APICategorizer:
                         if re.search(r"def\s+\w+", class_body):
                             return True
 
-            return False
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"Error checking view implementation {view_file}: {e}")
+            return False
+        else:
             return False
 
     def _get_implemented_methods(
-        self, path: str, view_class: str | None, source_file: str | None
+        self, _path: str, view_class: str | None, source_file: str | None
     ) -> set[str]:
         """Get set of implemented HTTP methods for a ViewSet"""
         methods = set()
@@ -797,7 +800,7 @@ class APICategorizer:
                         new_content += content[insertion_point:]
                         inventory_file.write_text(new_content, encoding="utf-8")
                         print("✅ Updated original inventory with categorization")
-        except Exception as e:
+        except (OSError, UnicodeError) as e:
             print(f"Warning: Could not update original inventory: {e}")
 
 

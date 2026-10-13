@@ -91,17 +91,25 @@ class TestFTSSearchReturnsResults(TestCase):
     """
 
     def setUp(self):
-        # Disconnect noisy async signals to keep tests fast and deterministic
+        # Disconnect noisy async signals to keep tests fast and deterministic.
+        # Track WHICH disconnects succeeded so tearDown reconnects exactly
+        # those — a missing reconnect leaks the disconnect into every later
+        # test in the process (the assets search-vector signal suite runs
+        # after this one and asserts the handler is still wired).
         from django.db.models.signals import post_save
 
+        self._fts_signal_restores = []
         try:
             from hub.apps.assets.signals import rebuild_asset_search_vector
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
 
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-            post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
+            if post_save.disconnect(contract_saved, sender=Contract):
+                self._fts_signal_restores.append((contract_saved, Contract))
+            if post_save.disconnect(asset_saved, sender=Asset):
+                self._fts_signal_restores.append((asset_saved, Asset))
+            if post_save.disconnect(rebuild_asset_search_vector, sender=Asset):
+                self._fts_signal_restores.append((rebuild_asset_search_vector, Asset))
         except (ImportError, AttributeError):
             pass
 
@@ -119,6 +127,15 @@ class TestFTSSearchReturnsResults(TestCase):
             key_suffix="zephyr",
         )
         SearchIndexer.index_asset(self.asset)
+
+    def tearDown(self):
+        # Reconnect exactly the handlers this instance's setUp removed —
+        # never leave a post_save handler disconnected for later tests.
+        from django.db.models.signals import post_save
+
+        for receiver, sender in getattr(self, "_fts_signal_restores", []):
+            post_save.connect(receiver, sender=sender)
+        super().tearDown()
 
     def test_asset_name_searchable(self):
         """Searching by the exact asset name must return at least one result."""
@@ -181,14 +198,18 @@ class TestFTSCrossTenantIsolation(TestCase):
     def setUp(self):
         from django.db.models.signals import post_save
 
+        self._fts_signal_restores = []
         try:
             from hub.apps.assets.signals import rebuild_asset_search_vector
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
 
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-            post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
+            if post_save.disconnect(contract_saved, sender=Contract):
+                self._fts_signal_restores.append((contract_saved, Contract))
+            if post_save.disconnect(asset_saved, sender=Asset):
+                self._fts_signal_restores.append((asset_saved, Asset))
+            if post_save.disconnect(rebuild_asset_search_vector, sender=Asset):
+                self._fts_signal_restores.append((rebuild_asset_search_vector, Asset))
         except (ImportError, AttributeError):
             pass
 
@@ -212,6 +233,13 @@ class TestFTSCrossTenantIsolation(TestCase):
 
         self.client_a = _bearer_client(self.user_a)
         self.client_b = _bearer_client(self.user_b)
+
+    def tearDown(self):
+        from django.db.models.signals import post_save
+
+        for receiver, sender in getattr(self, "_fts_signal_restores", []):
+            post_save.connect(receiver, sender=sender)
+        super().tearDown()
 
     def test_tenant_a_finds_own_asset(self):
         """Tenant A must be able to find its own indexed asset."""
@@ -301,14 +329,18 @@ class TestFTSQueryCount(TestCase):
     def setUp(self):
         from django.db.models.signals import post_save
 
+        self._fts_signal_restores = []
         try:
             from hub.apps.assets.signals import rebuild_asset_search_vector
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
 
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-            post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
+            if post_save.disconnect(contract_saved, sender=Contract):
+                self._fts_signal_restores.append((contract_saved, Contract))
+            if post_save.disconnect(asset_saved, sender=Asset):
+                self._fts_signal_restores.append((asset_saved, Asset))
+            if post_save.disconnect(rebuild_asset_search_vector, sender=Asset):
+                self._fts_signal_restores.append((rebuild_asset_search_vector, Asset))
         except (ImportError, AttributeError):
             pass
 
@@ -325,6 +357,13 @@ class TestFTSQueryCount(TestCase):
                 key_suffix=f"qc{i}",
             )
             SearchIndexer.index_asset(asset)
+
+    def tearDown(self):
+        from django.db.models.signals import post_save
+
+        for receiver, sender in getattr(self, "_fts_signal_restores", []):
+            post_save.connect(receiver, sender=sender)
+        super().tearDown()
 
     def test_search_query_count_does_not_explode(self):
         """Search for 5 results must use ≤ MAX_QUERIES DB queries."""

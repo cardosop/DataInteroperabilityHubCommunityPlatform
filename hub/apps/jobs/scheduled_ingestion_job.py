@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import structlog
+from django.db import DatabaseError
 from django.utils import timezone
 
 from hub.apps.jobs.models import Job
@@ -55,7 +56,7 @@ def _execute_scheduled_ingestion_job(job_obj: Job) -> dict[str, Any]:
     try:
         scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
     except ScheduledIngestion.DoesNotExist:
-        raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found")
+        raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found") from None
 
     # Get or create run record
     run = None
@@ -161,13 +162,19 @@ def _execute_scheduled_ingestion_job(job_obj: Job) -> dict[str, Any]:
         # Calculate and store costs
         try:
             CostTrackingManager.calculate_run_costs(str(run.id))
-        except Exception as e:
+        except (ScheduledIngestionRun.DoesNotExist, DatabaseError, TypeError, ArithmeticError) as e:
             logger.warning("Failed to calculate ingestion costs", run_id=str(run.id), error=str(e))
 
         # Sync DLQ items from ingestion state
         try:
             DeadLetterQueueManager.sync_from_ingestion_state(str(scheduled_ingestion.id))
-        except Exception as e:
+        except (
+            ScheduledIngestion.DoesNotExist,
+            DatabaseError,
+            KeyError,
+            AttributeError,
+            ValueError,
+        ) as e:
             logger.warning(
                 "Failed to sync DLQ items",
                 scheduled_ingestion_id=str(scheduled_ingestion.id),

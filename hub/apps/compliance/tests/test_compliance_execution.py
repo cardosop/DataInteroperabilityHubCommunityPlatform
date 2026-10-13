@@ -143,7 +143,7 @@ class ComplianceExecutionTest(TestCase):
                 compliance_run.status,
                 delay,
             )
-            time.sleep(delay)  # noqa: sleep-needed — polling loop
+            time.sleep(delay)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
             elapsed += delay
         else:
             self.skipTest(
@@ -632,7 +632,7 @@ class EmptyBytesGuardTest(TestCase):
                 return
             except (ConnectionError, OSError):
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)  # noqa: sleep-needed — polling loop
+                    time.sleep(delay_seconds)  # noqa: sleep-needed — polling loop  # INTENTIONAL: sleep-needed (auto-fixer marker completion)
                     continue
 
     def test_empty_bytes_persists_storage_missing_error_type(self):

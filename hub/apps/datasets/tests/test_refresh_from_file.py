@@ -794,9 +794,9 @@ class DatasetRefreshFromFileConcurrencyTest(TransactionTestCase):
             [200, 200],
             (
                 "Concurrent refresh-from-file did not serialise via select_for_update — "
-                "expected two 200s, got %s. Without the lock the second writer's "
+                f"expected two 200s, got {sorted(results)}. Without the lock the second writer's "
                 "Dataset.objects.create() violates unique_dataset_version_per_asset "
-                "and the action returns 500." % sorted(results)
+                "and the action returns 500."
             ),
         )
 

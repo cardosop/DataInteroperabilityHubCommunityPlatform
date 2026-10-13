@@ -13,6 +13,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../fixtures/auth';
+import { environmentSkipGuard } from '../fixtures/envPolicy.cjs';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../fixtures/helpers';
 
 const RUN_E2E = process.env.RUN_FILE_VIRUS_SCAN_E2E === '1';
@@ -33,19 +34,31 @@ const EICAR_PATH = path.resolve(
 );
 
 test.describe('File virus scan (EICAR)', () => {
-  test.skip(!RUN_E2E, 'Set RUN_FILE_VIRUS_SCAN_E2E=1 with API + ClamAV + MinIO (Phase 260.2.D)');
   test.setTimeout(240000);
 
   test('upload EICAR → poll INFECTED → download and dataset creation forbidden', async ({
     page,
     request,
   }) => {
+    // W16 environment policy: the opt-in skip must FAIL in CI (where the
+    // stack is supposed to provide ClamAV + MinIO) instead of silently
+    // skipping; local runs keep the graceful skip.
+    if (!RUN_E2E) {
+      environmentSkipGuard(
+        'file virus scan E2E not opted in (RUN_FILE_VIRUS_SCAN_E2E=1) — CI must provision clamav-test + CLAMAV_ENABLED=true and opt in'
+      );
+    }
+    test.skip(!RUN_E2E, 'Set RUN_FILE_VIRUS_SCAN_E2E=1 with API + ClamAV + MinIO (Phase 260.2.D)');
     const uploadedFileName = `eicar-${Date.now()}.csv`;
 
     const user = await getTestUser();
     await loginUser(page, user);
 
-    const token = await page.evaluate(() => localStorage.getItem('access_token'));
+    const token = await page.evaluate(() => {
+      const g = (window as unknown as { __getAccessToken?: () => string | null })
+        .__getAccessToken;
+      return (typeof g === 'function' ? g() : null) ?? localStorage.getItem('access_token');
+    });
     expect(token, 'access_token after login').toBeTruthy();
     const authHeader = { Authorization: `Bearer ${token}` };
 

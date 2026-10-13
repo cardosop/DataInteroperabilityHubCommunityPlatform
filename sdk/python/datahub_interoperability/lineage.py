@@ -4,7 +4,7 @@ Lineage operations for DataHub SDK.
 Provides methods for querying multi-level lineage (contract, model, field levels).
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from .client import DataHubClient
 
@@ -28,7 +28,7 @@ class LineageAPI:
     async def get_contract_lineage(
         self,
         contract_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get contract-level lineage.
 
@@ -44,7 +44,7 @@ class LineageAPI:
         self,
         contract_id: str,
         model_name: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get model-level lineage.
 
@@ -62,7 +62,7 @@ class LineageAPI:
         contract_id: str,
         model_name: str,
         field_name: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get field-level lineage.
 
@@ -74,7 +74,7 @@ class LineageAPI:
         Returns:
             Field-level lineage data
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if model_name:
             params["model_name"] = model_name
         return await self.client.get(
@@ -88,7 +88,7 @@ class LineageAPI:
         max_contract_depth: int = 10,
         max_model_depth: int = 10,
         max_field_depth: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get complete hierarchical lineage (contract, model, and field levels).
 
@@ -112,7 +112,7 @@ class LineageAPI:
         self,
         contract_id: str,
         format: str = "json",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get lineage graph in various visualization formats.
 
@@ -140,7 +140,7 @@ class LineageAPI:
         contract_id: str,
         depth: int = 10,
         include_fields: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get impact analysis for a contract.
 
@@ -159,15 +159,15 @@ class LineageAPI:
         return await self.client.get(f"contracts/{contract_id}/impact-analysis/", params=params)
 
     # Convenience methods with shorter names (matching expected API)
-    async def contract(self, contract_id: str) -> Dict[str, Any]:
+    async def contract(self, contract_id: str) -> dict[str, Any]:
         """Convenience method for get_contract_lineage"""
         return await self.get_contract_lineage(contract_id)
 
-    async def model(self, contract_id: str, model_name: str) -> Dict[str, Any]:
+    async def model(self, contract_id: str, model_name: str) -> dict[str, Any]:
         """Convenience method for get_model_lineage"""
         return await self.get_model_lineage(contract_id, model_name)
 
-    async def field(self, contract_id: str, model_name: str, field_name: str) -> Dict[str, Any]:
+    async def field(self, contract_id: str, model_name: str, field_name: str) -> dict[str, Any]:
         """Convenience method for get_field_lineage"""
         return await self.get_field_lineage(contract_id, model_name, field_name)
 
@@ -177,13 +177,13 @@ class LineageAPI:
         max_contract_depth: int = 10,
         max_model_depth: int = 10,
         max_field_depth: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Convenience method for get_full_lineage"""
         return await self.get_full_lineage(
             contract_id, max_contract_depth, max_model_depth, max_field_depth
         )
 
-    async def visualize(self, contract_id: str, format: str = "json") -> Dict[str, Any]:
+    async def visualize(self, contract_id: str, format: str = "json") -> dict[str, Any]:
         """Convenience method for get_visualization"""
         return await self.get_visualization(contract_id, format)
 
@@ -192,6 +192,6 @@ class LineageAPI:
         contract_id: str,
         depth: int = 10,
         include_fields: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Convenience method for get_impact_analysis"""
         return await self.get_impact_analysis(contract_id, depth, include_fields)

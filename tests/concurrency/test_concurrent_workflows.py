@@ -2,6 +2,7 @@
 Concurrent workflow execution tests. Real WorkflowEngine and DB; no mocks.
 """
 
+import contextlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.db import connection
@@ -29,18 +30,19 @@ class ConcurrentWorkflowsTest(WorkflowConcurrencyTestBase):
             )
             self.engine.start_instance(str(instance.id))
             instance = self.engine.execute_instance(str(instance.id))
+        except Exception as e:
+            return {"index": index, "success": False, "status": str(e)}
+        else:
             return {
                 "index": index,
                 "success": instance.status == WorkflowStatus.COMPLETED,
                 "status": instance.status,
             }
-        except Exception as e:
-            return {"index": index, "success": False, "status": str(e)}
         finally:
-            try:
+            with contextlib.suppress(
+                Exception
+            ):  # teardown cleanup: close errors must not mask the worker result
                 connection.close()
-            except Exception:
-                pass  # Ignore connection close errors in teardown
 
     def test_concurrent_workflow_execution(self):
         """Multiple workflows run concurrently; all complete or fail cleanly."""

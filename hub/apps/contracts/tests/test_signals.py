@@ -55,7 +55,7 @@ class ContractCacheInvalidationSignalTest(TestCase):
             if len(receiver_tuple) < 2:
                 continue
             ref = receiver_tuple[1]
-            if hasattr(ref, "__call__"):
+            if callable(ref):
                 try:
                     obj = ref()
                 except TypeError:
@@ -88,9 +88,11 @@ class ContractCacheInvalidationSignalTest(TestCase):
         raw = "openapi: 3.0.0"
         instance = _make_contract_instance(tenant, raw=raw)
 
-        with patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client):
-            with self.captureOnCommitCallbacks(execute=True):
-                invalidate_datacontract_cache(sender=None, instance=instance)
+        with (
+            patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            invalidate_datacontract_cache(sender=None, instance=instance)
 
         expected_hash = hashlib.sha256(raw.encode()).hexdigest()
         expected_payload = json.dumps({"spec_hash": expected_hash})
@@ -108,9 +110,11 @@ class ContractCacheInvalidationSignalTest(TestCase):
         raw = "unique content for hash test"
         instance = _make_contract_instance(tenant, raw=raw)
 
-        with patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client):
-            with self.captureOnCommitCallbacks(execute=True):
-                invalidate_datacontract_cache(sender=None, instance=instance)
+        with (
+            patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            invalidate_datacontract_cache(sender=None, instance=instance)
 
         payload = json.loads(mock_client.publish.call_args[0][1])
         assert payload["spec_hash"] == hashlib.sha256(raw.encode()).hexdigest()
@@ -123,9 +127,11 @@ class ContractCacheInvalidationSignalTest(TestCase):
         tenant = self._create_tenant()
         instance = _make_contract_instance(tenant, raw="json-test")
 
-        with patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client):
-            with self.captureOnCommitCallbacks(execute=True):
-                invalidate_datacontract_cache(sender=None, instance=instance)
+        with (
+            patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            invalidate_datacontract_cache(sender=None, instance=instance)
 
         parsed = json.loads(mock_client.publish.call_args[0][1])
         assert "spec_hash" in parsed
@@ -138,9 +144,11 @@ class ContractCacheInvalidationSignalTest(TestCase):
         tenant = self._create_tenant()
         instance = _make_contract_instance(tenant, raw="")
 
-        with patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client):
-            with self.captureOnCommitCallbacks(execute=True):
-                invalidate_datacontract_cache(sender=None, instance=instance)
+        with (
+            patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            invalidate_datacontract_cache(sender=None, instance=instance)
 
         mock_client.publish.assert_not_called()
 
@@ -154,10 +162,12 @@ class ContractCacheInvalidationSignalTest(TestCase):
         instance = _make_contract_instance(tenant, raw="redis-fail-test")
 
         with patch("hub.apps.contracts.signals.logger") as mock_logger:
-            with patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client):
-                with self.captureOnCommitCallbacks(execute=True):
-                    # Should NOT raise
-                    invalidate_datacontract_cache(sender=None, instance=instance)
+            with (
+                patch("hub.apps.contracts.signals._get_redis_client", return_value=mock_client),
+                self.captureOnCommitCallbacks(execute=True),
+            ):
+                # Should NOT raise
+                invalidate_datacontract_cache(sender=None, instance=instance)
 
             mock_logger.warning.assert_called_once()
 

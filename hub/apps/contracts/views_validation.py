@@ -230,7 +230,9 @@ class ContractValidationMixin:
                 _job_id = str(job.id)
                 transaction.on_commit(
                     lambda: queue.enqueue(
-                        process_job, _job_id, job_type=JobType.CONTRACT_VALIDATION,
+                        process_job,
+                        _job_id,
+                        job_type=JobType.CONTRACT_VALIDATION,
                     )
                 )
 

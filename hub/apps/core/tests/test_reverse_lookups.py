@@ -90,7 +90,7 @@ class ReverseLookupTest(TestCase):
                     try:
                         # Generate appropriate dummy values based on parameter names
                         dummy_kwargs = {}
-                        for key in kwargs.keys():
+                        for key in kwargs:
                             if "report_id" in key.lower():
                                 # Special handling for report_id (needs different UUID)
                                 dummy_kwargs[key] = "00000000-0000-0000-0000-000000000001"
@@ -184,10 +184,7 @@ class ReverseLookupTest(TestCase):
                     continue
 
             try:
-                if kwargs:
-                    url = reverse(url_name, kwargs=kwargs)
-                else:
-                    url = reverse(url_name)
+                url = reverse(url_name, kwargs=kwargs) if kwargs else reverse(url_name)
                 self.assertIsNotNone(url, f"Reverse lookup '{url_name}' returned None")
             except NoReverseMatch as e:  # noqa: no-reverse-match — URL validation
                 failures.append(

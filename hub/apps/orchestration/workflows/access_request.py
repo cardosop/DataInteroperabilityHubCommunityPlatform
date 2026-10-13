@@ -9,7 +9,7 @@ from datetime import timedelta
 from typing import Any
 
 import structlog
-from dateutil import parser as date_parser
+from dateutil import parser as date_parser  # type: ignore[import-untyped]
 from django.db import transaction
 from django.utils import timezone
 
@@ -209,7 +209,7 @@ class AccessRequestWorkflow:
             try:
                 asset = Asset.objects.get(id=asset_id)
             except Asset.DoesNotExist:
-                raise ValueError(f"Asset with id {asset_id} not found")
+                raise ValueError(f"Asset with id {asset_id} not found") from None
 
         if dataset_id:
             from hub.apps.datasets.models import Dataset
@@ -217,7 +217,7 @@ class AccessRequestWorkflow:
             try:
                 dataset = Dataset.objects.get(id=dataset_id)
             except Dataset.DoesNotExist:
-                raise ValueError(f"Dataset with id {dataset_id} not found")
+                raise ValueError(f"Dataset with id {dataset_id} not found") from None
 
         if file_id:
             from hub.apps.files.models import File
@@ -225,7 +225,7 @@ class AccessRequestWorkflow:
             try:
                 file_obj = File.objects.get(id=file_id)
             except File.DoesNotExist:
-                raise ValueError(f"File with id {file_id} not found")
+                raise ValueError(f"File with id {file_id} not found") from None
 
         # Parse expiration date if provided
         expires_at = None
@@ -1030,10 +1030,10 @@ class AccessRequestWorkflow:
 
                 # Access revocation is handled by status change
                 # ABAC policies are evaluated dynamically based on access request status
-
-            return {"revoked": True}
         except AccessRequest.DoesNotExist:
             return {"revoked": False, "reason": "access_request not found"}
+        else:
+            return {"revoked": True}
 
     @staticmethod
     def _send_notifications_task(

@@ -44,7 +44,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
 
     def test_odps_version_directories_exist(self):
         """Test that all required ODPS version directories exist"""
-        required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+        required_versions = ["v4.2", "v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
 
         for version in required_versions:
             version_dir = self.odps_dir / version
@@ -60,7 +60,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
 
     def test_odps_version_directories_are_python_packages(self):
         """Test that all ODPS version directories have __init__.py files"""
-        required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+        required_versions = ["v4.2", "v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
 
         for version in required_versions:
             version_dir = self.odps_dir / version
@@ -100,6 +100,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
         expected_structure = [
             self.schemas_dir,
             self.odps_dir,
+            self.odps_dir / "v4.2",
             self.odps_dir / "v4.1",
             self.odps_dir / "v4.0",
             self.odps_dir / "v3.x",
@@ -114,7 +115,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
 
     def test_no_unexpected_directories(self):
         """Test that only expected version directories exist"""
-        required_versions = {"v4.1", "v4.0", "v3.x", "v2.x", "v1.x"}
+        required_versions = {"v4.2", "v4.1", "v4.0", "v3.x", "v2.x", "v1.x"}
 
         if self.odps_dir.exists():
             actual_versions = {
@@ -147,7 +148,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
 
     def test_gitkeep_files_exist(self):
         """Test: Verify directory structure exists - .gitkeep files preserve structure"""
-        required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+        required_versions = ["v4.2", "v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
 
         for version in required_versions:
             version_dir = self.odps_dir / version

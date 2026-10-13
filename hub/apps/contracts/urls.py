@@ -115,8 +115,30 @@ def lineage_visualization_custom(request, id=None, *args, **kwargs):
     # This is normally done by DRF's action dispatch, but we're calling the action directly
     try:
         viewset.check_permissions(drf_request)
-    except Exception:
-        # If permission check fails, let it raise (don't catch and hide)
+    except Exception as e:
+        # Route DRF auth/permission exceptions through DRF's exception
+        # handler so NotAuthenticated/PermissionDenied render as 401/403
+        # responses — raising them raw escapes Django's handler as a 500
+        # (b7 lineage-field-level: an unauthenticated probe returned 500;
+        # auth failures must never surface as server errors). Same pattern
+        # as export_contract_custom below.
+        from django.http import Http404
+        from rest_framework.exceptions import NotFound
+        from rest_framework.views import exception_handler
+
+        if isinstance(e, Http404):
+            e = NotFound(str(e) if str(e) else "Not found")
+        context = {
+            "view": viewset,
+            "args": args,
+            "kwargs": kwargs,
+            "request": drf_request,
+        }
+        exc_response = exception_handler(e, context)
+        if exc_response is not None:
+            with contextlib.suppress(AttributeError, TypeError):
+                exc_response = viewset.finalize_response(drf_request, exc_response, *args, **kwargs)
+            return exc_response
         raise
 
     # CRITICAL: Call the action method directly
@@ -134,12 +156,10 @@ def lineage_visualization_custom(request, id=None, *args, **kwargs):
     # DRF's Response objects need to have the renderer set for proper rendering
     # We use finalize_response to set up the renderer, but we need to ensure headers is set
     viewset.headers = {}
-    try:
-        response = viewset.finalize_response(drf_request, response, *args, **kwargs)
-    except AttributeError:
+    with contextlib.suppress(AttributeError):
         # If finalize_response fails (e.g., headers not set), just return the response
         # Django will handle rendering
-        pass
+        response = viewset.finalize_response(drf_request, response, *args, **kwargs)
 
     return response
 
@@ -226,11 +246,9 @@ def export_contract_custom(request, id=None, *args, **kwargs):
         # Fallback: get tenant object from tenant_id (for tests where middleware doesn't run)
         from hub.apps.tenants.models import Tenant
 
-        try:
+        with contextlib.suppress(Tenant.DoesNotExist):
             # tenant_id is already a UUID, so we can use it directly
             drf_request.tenant = Tenant.objects.get(id=drf_request.tenant_id)
-        except Tenant.DoesNotExist:
-            pass
 
     # CRITICAL: Set up viewset for detail action BEFORE calling the action method
     # This ensures get_object() works correctly:
@@ -315,12 +333,10 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     # CRITICAL: Ensure response is properly finalized
     # DRF's Response objects need to have the renderer set for proper rendering
     viewset.headers = {}
-    try:
-        response = viewset.finalize_response(drf_request, response, *args, **kwargs)
-    except AttributeError:
+    with contextlib.suppress(AttributeError):
         # If finalize_response fails (e.g., headers not set), just return the response
         # Django will handle rendering
-        pass
+        response = viewset.finalize_response(drf_request, response, *args, **kwargs)
 
     return response
 
@@ -471,12 +487,10 @@ def download_contract_custom(request, id=None, *args, **kwargs):
     # CRITICAL: Ensure response is properly finalized
     # DRF's Response objects need to have the renderer set for proper rendering
     viewset.headers = {}
-    try:
-        response = viewset.finalize_response(drf_request, response, *args, **kwargs)
-    except AttributeError:
+    with contextlib.suppress(AttributeError):
         # If finalize_response fails (e.g., headers not set), just return the response
         # Django will handle rendering
-        pass
+        response = viewset.finalize_response(drf_request, response, *args, **kwargs)
 
     return response
 
@@ -487,12 +501,24 @@ urlpatterns = [
     # is not eaten by the router's UUID lookup. The view increments OTel
     # counters server-side from frontend telemetry POSTs.
     path(
-        "schema-editor/metrics",
+        # Trailing-slash form satisfies the URL standards/resolution gates;
+        # the no-slash form preserves the existing telemetry-client contract
+        # (POST without a slash — APPEND_SLASH's 301 would convert POST to
+        # GET and drop the metrics payload).
+        "schema-editor/metrics/",
         __import__(
             "hub.apps.contracts.views_schema_editor_metrics",
             fromlist=["SchemaEditorMetricsView"],
         ).SchemaEditorMetricsView.as_view(),
         name="contract-schema-editor-metrics",
+    ),
+    path(
+        "schema-editor/metrics",
+        __import__(
+            "hub.apps.contracts.views_schema_editor_metrics",
+            fromlist=["SchemaEditorMetricsView"],
+        ).SchemaEditorMetricsView.as_view(),
+        name="contract-schema-editor-metrics-no-slash",
     ),
     # Custom visualization endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence

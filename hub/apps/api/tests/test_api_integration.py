@@ -111,14 +111,30 @@ class APIIntegrationTest(TestCase):
         self.assertIn("X-Request-ID", response)
         self.assertIsNotNone(response["X-Request-ID"])
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_rate_limit_headers(self):
-        """Test that rate limit headers are included when rate limiting is enabled."""
-        from django.conf import settings
+        """Rate limit headers are present when rate limiting is enabled.
 
+        The X-RateLimit-* headers are produced by the PAID rate_limiting
+        layer (hub.apps.rate_limiting.middleware.RateLimitMiddleware —
+        the core request_middleware variant is deprecated and unwired).
+        In core-only mode the layer is absent by design, so the header
+        contract cannot hold — skip honestly (W7.1).
+
+        The test environment disables rate limiting globally
+        (``is_test_env`` → ``RATE_LIMIT_ENABLED=False`` to keep suites
+        deterministic), so the flag is overridden for this single
+        request instead of skipping — the middleware reads the setting
+        per request.
+        """
+        from hub.apps.manifest import is_core_only
+
+        if is_core_only():
+            pytest.skip(
+                "rate_limiting (paid layer) provides the X-RateLimit-* "
+                "headers; absent in core-only mode"
+            )
         response = self.client.get("/api/v1/")
-
-        if not getattr(settings, "RATE_LIMIT_ENABLED", True):
-            self.skipTest("Rate limiting is explicitly disabled via settings.RATE_LIMIT_ENABLED")
 
         # When rate limiting is enabled, headers must be present
         self.assertIn(

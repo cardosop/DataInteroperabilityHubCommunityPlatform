@@ -12,16 +12,22 @@ import type {
 } from '../../../shared/types/scheduledIngestion';
 import { scheduledIngestionService } from '../services/scheduledIngestionService';
 
-export function useScheduledIngestions(filters: ScheduledIngestionListFilters = {}) {
+export function useScheduledIngestions(
+  filters: ScheduledIngestionListFilters | null = {},
+) {
   return useQuery({
     queryKey: ['scheduled-ingestions', 'list', filters],
     queryFn: async () => {
-      const data = await scheduledIngestionService.list(filters);
+      const data = await scheduledIngestionService.list(filters ?? {});
       if (data == null) {
         return { results: [], count: 0, next: null, previous: null };
       }
       return data;
     },
+    // `null` disables the query — callers without a scope (e.g. the
+    // dataset schedule modal without an assetId) must not fire a
+    // tenant-wide listing.
+    enabled: filters !== null,
   });
 }
 

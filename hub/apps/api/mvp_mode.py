@@ -59,6 +59,7 @@ MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (
     "breach/",
     "consent/",
     "data-movement/",
+    "databricks/",
     "dsar/",
     "gdpr/",
     "processor-agreements/",

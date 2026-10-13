@@ -12,6 +12,7 @@ import sys
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from redis.exceptions import RedisError
 
 _CLEANUP_LOCK_KEY = "meshant:cleanup_abandoned_multipart_uploads:v1"
 
@@ -49,7 +50,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **opts):
+    def handle(self, *_args, **opts):
         dry_run = bool(opts.get("dry_run"))
         # ``opts.get("min_age_hours") or 24.0`` would mask a deliberate
         # ``min_age_hours=0`` (legitimate for ops + tests that want to
@@ -71,7 +72,7 @@ class Command(BaseCommand):
 
         try:
             redis_client = get_redis_client()
-        except Exception as exc:
+        except RedisError as exc:
             self.stderr.write(self.style.ERROR(f"Redis unavailable: {exc}"))
             sys.exit(2)
 

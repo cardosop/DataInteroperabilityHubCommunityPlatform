@@ -14,7 +14,7 @@ test.describe('Navigation Accessibility', () => {
     // Use /login which renders immediately with role="main" regardless of auth state.
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     if (!(await page.title())) {
-      test.skip(true, 'App not running');
+      test.skip(!(await page.title()), 'App not running');
       return;
     }
 
@@ -26,7 +26,7 @@ test.describe('Navigation Accessibility', () => {
   test('interactive elements are focusable', async ({ page }) => {
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     if (!(await page.title())) {
-      test.skip(true, 'App not running');
+      test.skip(!(await page.title()), 'App not running');
       return;
     }
 

@@ -11,24 +11,27 @@
 
 import { expect, test } from '@playwright/test';
 import { getPlatformAdminUser, loginAsPersona } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MPA-009: Manage Plugin Marketplace', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('developer page loads (plugin marketplace)', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onDeveloper = page.url().includes('/developer');
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
-      if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
-        return;
-      }
-      expect(onDeveloper).toBe(true);
+      // Terminal-state navigation — the fixed 3s wait raced the
+      // capability fetch on this gated route (batch b5 pattern).
+      await loginAndNavigateToRoute(page, await getPlatformAdminUser(), '/developer', {
+        timeout: 65000,
+        contentSelector:
+          '.developer-portal-page, .app-main, [data-testid="app-main"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
+      });
+      test.skip(
+        page.url().includes('/login') ||
+          page.url().includes('/403') ||
+          page.url().includes('/unavailable'),
+        'Auth/role/capability gated — skipping success assertion'
+      );
+      expect(page.url()).toContain('/developer');
       const hasContent =
         (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);

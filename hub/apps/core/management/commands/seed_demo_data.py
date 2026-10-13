@@ -19,8 +19,11 @@ import logging
 import uuid
 from datetime import timedelta
 
+from django.conf import settings as _django_settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError
 from django.db.models import F
 from django.utils import timezone
 
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # ---------------------------------------------------------------------------
-# Domain templates — 6 domains × 5 nouns = 30 assets
+# Domain templates — 6 domains x 5 nouns = 30 assets
 # ---------------------------------------------------------------------------
 
 DOMAINS = [
@@ -228,7 +231,7 @@ def _build_schema(domain, noun):
 class Command(BaseCommand):
     help = "Seed persistent demo data for staging QA (~250 records)"
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
         from hub.apps.contracts.models import (
@@ -241,25 +244,42 @@ class Command(BaseCommand):
         from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
         from hub.apps.files.models import File
         from hub.apps.jobs.models import Job, JobStatus, JobType
-        from hub.apps.marketplace.models import (  # Phase 313.1 — paid layer
-            Entitlement, Listing, Order,
-        )
+
+        # Phase 313.1 — the marketplace seed phases are paid-layer and
+        # skipped in core-only mode; the import itself must not be
+        # attempted there: the private core mode raises RuntimeError
+        # (app not installed), the public tree raises ModuleNotFoundError
+        # (module absent) — both are the same condition, so branch on the
+        # settings flag instead of catching either exception.
+        if _django_settings.HUB_CORE_ONLY:
+            Entitlement = Listing = Order = None
+        else:
+            from hub.apps.marketplace.models import (
+                Entitlement,
+                Listing,
+                Order,
+            )
         from hub.apps.webhooks.models import Webhook
 
         # ── Resolve users ────────────────────────────────────────────
+        # Fresh-install path (make quickstart): bootstrap the demo tenant
+        # and users when they are missing instead of requiring the
+        # separate staging-QA step. ensure_e2e_user_roles is idempotent.
         try:
             dpo_user = User.objects.get(email="e2e_test@example.com")
         except User.DoesNotExist:
-            self.stderr.write("e2e_test@example.com not found — run ensure_e2e_user_roles first")
-            return
+            from django.core.management import call_command
+
+            call_command("ensure_e2e_user_roles", verbosity=0)
+            dpo_user = User.objects.get(email="e2e_test@example.com")
         dpo_tenant = dpo_user.tenant
         try:
             consumer_user = User.objects.get(email="e2e_consumer@example.com")
         except User.DoesNotExist:
-            self.stderr.write(
-                "e2e_consumer@example.com not found — run ensure_e2e_user_roles first"
-            )
-            return
+            from django.core.management import call_command
+
+            call_command("ensure_e2e_user_roles", verbosity=0)
+            consumer_user = User.objects.get(email="e2e_consumer@example.com")
         consumer_tenant = consumer_user.tenant
 
         svc = ContractService(tenant_id=str(dpo_tenant.id), user_id=str(dpo_user.id))
@@ -275,14 +295,14 @@ class Command(BaseCommand):
                 asset, new = Asset.objects.get_or_create(
                     key=key,
                     tenant=dpo_tenant,
-                    defaults=dict(
-                        name=f"{domain['name'].title()} {noun.replace('-', ' ').title()}",
-                        description=f"Demo {domain['name']} asset: {noun.replace('-', ' ')}.",
-                        domain=domain["name"],
-                        visibility="PUBLIC" if i % 3 == 0 else "INTERNAL",
-                        status=AssetStatus.DRAFT,
-                        created_by=dpo_user,
-                    ),
+                    defaults={
+                        "name": f"{domain['name'].title()} {noun.replace('-', ' ').title()}",
+                        "description": f"Demo {domain['name']} asset: {noun.replace('-', ' ')}.",
+                        "domain": domain["name"],
+                        "visibility": "PUBLIC" if i % 3 == 0 else "INTERNAL",
+                        "status": AssetStatus.DRAFT,
+                        "created_by": dpo_user,
+                    },
                 )
                 if new:
                     stats["assets"] += 1
@@ -340,27 +360,27 @@ class Command(BaseCommand):
             file_obj, _ = File.objects.get_or_create(
                 tenant=dpo_tenant,
                 name=f"demo-{domain['name']}-{noun}.{ext}",
-                defaults=dict(
-                    content_type={
+                defaults={
+                    "content_type": {
                         "CSV": "text/csv",
                         "JSON": "application/json",
                         "PARQUET": "application/octet-stream",
                     }[fmt],
-                    size=FILE_SIZES[idx % len(FILE_SIZES)],
-                    storage_path=f"demo/{dpo_tenant.id}/{asset.id}/data.{ext}",
-                    status="ACTIVE",
-                    created_by=dpo_user,
-                ),
+                    "size": FILE_SIZES[idx % len(FILE_SIZES)],
+                    "storage_path": f"demo/{dpo_tenant.id}/{asset.id}/data.{ext}",
+                    "status": "ACTIVE",
+                    "created_by": dpo_user,
+                },
             )
             Dataset.objects.get_or_create(
                 asset=asset,
                 tenant=dpo_tenant,
-                defaults=dict(
-                    file=file_obj,
-                    format=fmt,
-                    schema_json=_build_schema(domain, noun),
-                    row_count=(idx + 1) * 1000,
-                ),
+                defaults={
+                    "file": file_obj,
+                    "format": fmt,
+                    "schema_json": _build_schema(domain, noun),
+                    "row_count": (idx + 1) * 1000,
+                },
             )
             asset.dq_status = "PASS"
             asset.compliance_status = "PASS"
@@ -387,8 +407,6 @@ class Command(BaseCommand):
 
         # Phase 313.1 — marketplace seed phases are paid-layer; skipped in
         # core-only mode (HUB_CORE_ONLY=1).
-        from django.conf import settings as _django_settings
-
         if not _django_settings.HUB_CORE_ONLY:
             # ── Phase 5: Marketplace Listings (20) ───────────────────────
             # Mix of pricing models: FREE_AUTO_APPROVE (free, instant access),
@@ -474,10 +492,10 @@ class Command(BaseCommand):
                     order=order,
                     tenant=consumer_tenant,
                     listing=listing,
-                    defaults=dict(
-                        asset=listing.asset,
-                        status="ACTIVE",
-                    ),
+                    defaults={
+                        "asset": listing.asset,
+                        "status": "ACTIVE",
+                    },
                 )
                 stats["orders"] += 1
 
@@ -563,7 +581,7 @@ class Command(BaseCommand):
                         retry_intervals=[1, 5, 30],
                         created_by=dpo_user,
                     )
-                except Exception as e:
+                except (DatabaseError, ValidationError) as e:
                     self.stderr.write(f"  Webhook '{wh_name}' failed: {e}")
         # ── Summary ──────────────────────────────────────────────────
         total_assets = Asset.objects.filter(key__startswith="demo-", tenant=dpo_tenant).count()

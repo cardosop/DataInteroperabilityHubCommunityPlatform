@@ -22,22 +22,25 @@ def _api(path, method="get", session=None, **kwargs):
     url = f"{BASE_URL}{path}"
     try:
         r = (session or requests).request(method, url, timeout=TIMEOUT, **kwargs)
-        return r
     except (requests.ConnectionError, requests.Timeout):
         pytest.skip(f"Service unavailable at {url}")
+    else:
+        return r
 
 
 class TestAPIFullStackSmoke:
     """Register → login → profile → create asset → list → delete."""
 
     @pytest.fixture(scope="class")
-    def session(self):
+    @classmethod
+    def session(cls):
         s = requests.Session()
         yield s
         s.close()
 
     @pytest.fixture(scope="class")
-    def test_user_credentials(self):
+    @classmethod
+    def test_user_credentials(cls):
         return {
             "email": os.environ.get(
                 "SMOKE_TEST_EMAIL", f"smoke-test-{os.urandom(4).hex()}@meshant.test"
@@ -83,13 +86,15 @@ class TestAPIFullStackSmoke:
             pytest.skip("Auth endpoint not available (MVP-gated?)")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (200, 201), f"Login failed: {r.status_code} body={r.text[:200]}"
         data = r.json()
-        token = data.get("access") or data.get("token") or data.get("key")
+        token = (
+            data.get("access_token") or data.get("access") or data.get("token") or data.get("key")
+        )
         if token:
             session.headers.update({"Authorization": f"Bearer {token}"})
 
     def test_04_profile(self, session):
-        """Fetch current user profile."""
-        r = _api("/api/v1/auth/profile/", session=session)
+        """Fetch current user profile (/auth/me/ — the current profile route)."""
+        r = _api("/api/v1/auth/me/", session=session)
         if r.status_code == 404:
             pytest.skip("Profile endpoint not available (MVP-gated?)")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code == 200, f"Profile failed: {r.status_code}"
@@ -101,6 +106,9 @@ class TestAPIFullStackSmoke:
             method="post",
             session=session,
             json={
+                # `key` is the required unique-per-tenant identifier
+                # (lowercase alphanumeric + hyphens).
+                "key": f"smoke-test-asset-{os.urandom(4).hex()}",
                 "name": f"smoke-test-asset-{os.urandom(4).hex()}",
                 "description": "Created by full-stack smoke test (312.15.1)",
                 "asset_type": "dataset",

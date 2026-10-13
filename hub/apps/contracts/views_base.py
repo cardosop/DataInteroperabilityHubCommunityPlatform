@@ -7,6 +7,7 @@ Contains core CRUD operations and shared functionality.
 
 import contextlib
 
+from django.db import DatabaseError
 from django.db.models import Case, IntegerField, Q, Value, When
 from rest_framework import permissions, viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -26,22 +27,24 @@ def _is_test_environment():
     import os
     import sys
 
-    # Pytest / env (conftest sets TESTING=1; batch runners may set BATCH_TEST)
-    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING"):
-        return True
-    if os.getenv("BATCH_TEST") == "1":
-        return True
-    # PYTEST_CURRENT_TEST is set by pytest for current test; other PYTEST_* in test runs
-    if any(k.startswith("PYTEST_") for k in os.environ):
+    # Pytest / env (conftest sets TESTING=1; batch runners may set BATCH_TEST;
+    # PYTEST_CURRENT_TEST is set by pytest for the current test; other PYTEST_*
+    # env vars are set in test runs)
+    if (
+        "pytest" in sys.modules
+        or os.getenv("PYTEST_CURRENT_TEST")
+        or os.getenv("TESTING")
+        or os.getenv("BATCH_TEST") == "1"
+        or any(k.startswith("PYTEST_") for k in os.environ)
+    ):
         return True
     # sys.argv often contains pytest or path with "test" when run as pytest.
     # ``manage.py test`` passes "test" as a bare argument — detect it here
     # so that Django test-runner invocations in Docker are recognized.
     argv = getattr(sys, "argv", []) or []
-    if any("pytest" in str(x).lower() or "/test" in str(x) or "\\test" in str(x) for x in argv):
-        return True
-    # ``manage.py test <modules>``: "test" appears as the second positional arg
-    if len(argv) >= 2 and "manage.py" in str(argv[0]) and str(argv[1]) == "test":
+    if any("pytest" in str(x).lower() or "/test" in str(x) or "\\test" in str(x) for x in argv) or (
+        len(argv) >= 2 and "manage.py" in str(argv[0]) and str(argv[1]) == "test"
+    ):
         return True
 
     # Django settings flag (some setups set settings.TESTING)
@@ -54,7 +57,7 @@ def _is_test_environment():
         db_lower = str(db_name).lower()
         if db_name == "hub_test" or "_test_" in db_lower or db_lower.startswith("test_"):
             return True
-    except Exception:
+    except (AttributeError, KeyError):
         pass
 
     # Live connection DB name (most reliable when request runs; handles Django test DB naming)
@@ -65,7 +68,7 @@ def _is_test_environment():
         db_lower = db_name.lower()
         if db_name == "hub_test" or "_test_" in db_lower or db_lower.startswith("test_"):
             return True
-    except Exception:
+    except (AttributeError, KeyError):
         pass
     return False
 
@@ -138,32 +141,32 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         """
         # Ensure tenant_id is set on request if not already set
         # This is important for custom actions where middleware might not have run
-        if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
+        if (
+            (not hasattr(self.request, "tenant_id") or not self.request.tenant_id)
+            and hasattr(self.request, "user")
+            and self.request.user
+            and not self.request.user.is_anonymous
+        ):
             # Get tenant_id from user (for tests where middleware doesn't run)
-            if (
-                hasattr(self.request, "user")
-                and self.request.user
-                and not self.request.user.is_anonymous
-            ):
-                from django.contrib.auth import get_user_model
+            from django.contrib.auth import get_user_model
 
-                User = get_user_model()
-                try:
-                    db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
-                    if db_user.tenant_id:
-                        # Store as UUID (not string) to match get_queryset()
-                        # expectations
-                        # get_queryset() will convert string to UUID, but storing
-                        # as UUID is more reliable
-                        self.request.tenant_id = db_user.tenant_id
-                        # Also set tenant object if available
-                        if not hasattr(self.request, "tenant") or not self.request.tenant:
-                            from hub.apps.tenants.models import Tenant
+            User = get_user_model()
+            try:
+                db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
+                if db_user.tenant_id:
+                    # Store as UUID (not string) to match get_queryset()
+                    # expectations
+                    # get_queryset() will convert string to UUID, but storing
+                    # as UUID is more reliable
+                    self.request.tenant_id = db_user.tenant_id
+                    # Also set tenant object if available
+                    if not hasattr(self.request, "tenant") or not self.request.tenant:
+                        from hub.apps.tenants.models import Tenant
 
-                            with contextlib.suppress(Tenant.DoesNotExist):
-                                self.request.tenant = Tenant.objects.get(id=db_user.tenant_id)
-                except User.DoesNotExist:
-                    pass
+                        with contextlib.suppress(Tenant.DoesNotExist):
+                            self.request.tenant = Tenant.objects.get(id=db_user.tenant_id)
+            except User.DoesNotExist:
+                pass
 
         # ROOT CAUSE FIX: Ensure tenant_id is a UUID before calling get_queryset()
         # get_queryset() can handle string conversion, but ensuring UUID here is
@@ -172,12 +175,10 @@ class ContractViewSetBase(viewsets.ModelViewSet):
             import uuid
 
             if isinstance(self.request.tenant_id, str):
-                try:
+                # Invalid UUID - this will cause get_queryset() to return
+                # empty queryset
+                with contextlib.suppress(ValueError, TypeError):
                     self.request.tenant_id = uuid.UUID(self.request.tenant_id)
-                except (ValueError, TypeError):
-                    # Invalid UUID - this will cause get_queryset() to return
-                    # empty queryset
-                    pass
 
         # Call parent get_object which uses get_queryset()
         return super().get_object()
@@ -287,13 +288,8 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         """
         request = self.request
         # Handle both DRF Request objects (with query_params) and Django
-        # WSGIRequest (with GET)
-        if hasattr(request, "query_params"):
-            query_params = request.query_params
-        else:
-            # Fallback for Django WSGIRequest (e.g., in tests with
-            # APIRequestFactory)
-            query_params = request.GET
+        # WSGIRequest (with GET, e.g. in tests with APIRequestFactory)
+        query_params = request.query_params if hasattr(request, "query_params") else request.GET
 
         # Filter by linked asset (asset detail page, pickers). Must mirror
         # datasets list behavior: valid UUID filters; invalid UUID → empty.
@@ -389,7 +385,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                             contract_ids.append(contract.id)
                     elif owner_name and name_match:
                         contract_ids.append(contract.id)
-            except Exception as e:
+            except (DatabaseError, AttributeError, TypeError) as e:
                 # Log the error for debugging but don't fail silently
                 import logging
 
@@ -398,15 +394,11 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                 # If queryset evaluation fails, return empty queryset
                 return queryset.none()
 
-            if contract_ids:
-                # Filter the queryset by the matching contract IDs
-                # Since the contracts_list came from a tenant-filtered queryset,
-                # all IDs are already tenant-scoped
-                # We can safely filter by ID without losing tenant security
-                queryset = queryset.filter(id__in=contract_ids)
-            else:
-                # No contracts matched the owner filter
-                queryset = queryset.none()
+            # Filter the queryset by the matching contract IDs. Since the
+            # contracts_list came from a tenant-filtered queryset, all IDs are
+            # already tenant-scoped, so filtering by ID keeps tenant security.
+            # If no contracts matched the owner filter, return an empty queryset.
+            queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by tags
         tags = query_params.getlist("tag")  # Support multiple tags
@@ -453,7 +445,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                                 if email and email.lower() == contact_email.lower():
                                     contract_ids.append(contract.id)
                                     break
-            except Exception as e:
+            except (DatabaseError, AttributeError, TypeError) as e:
                 import logging
 
                 logger = logging.getLogger(__name__)
@@ -463,10 +455,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                 )
                 return queryset.none()
 
-            if contract_ids:
-                queryset = queryset.filter(id__in=contract_ids)
-            else:
-                queryset = queryset.none()
+            queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by contact_name (from contact[] array)
         contact_name = query_params.get("contact_name")
@@ -485,7 +474,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                                 if name and contact_name.lower() in name.lower():
                                     contract_ids.append(contract.id)
                                     break
-            except Exception as e:
+            except (DatabaseError, AttributeError, TypeError) as e:
                 import logging
 
                 logger = logging.getLogger(__name__)
@@ -495,10 +484,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                 )
                 return queryset.none()
 
-            if contract_ids:
-                queryset = queryset.filter(id__in=contract_ids)
-            else:
-                queryset = queryset.none()
+            queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by server_type
         server_type = query_params.get("server_type")
@@ -540,10 +526,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                 # Invalid min_availability value, return empty queryset
                 queryset = queryset.none()
             else:
-                if contract_ids:
-                    queryset = queryset.filter(id__in=contract_ids)
-                else:
-                    queryset = queryset.none()
+                queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by max_latency_ms (from servicelevels[])
         max_latency_ms = query_params.get("max_latency_ms")
@@ -574,10 +557,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 queryset = queryset.none()
             else:
-                if contract_ids:
-                    queryset = queryset.filter(id__in=contract_ids)
-                else:
-                    queryset = queryset.none()
+                queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by model_name — uses JSONB @> containment because models is an array of objects
         model_name = query_params.get("model_name")
@@ -672,13 +652,8 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         """
         request = self.request
         # Handle both DRF Request objects (with query_params) and Django
-        # WSGIRequest (with GET)
-        if hasattr(request, "query_params"):
-            query_params = request.query_params
-        else:
-            # Fallback for Django WSGIRequest (e.g., in tests with
-            # APIRequestFactory)
-            query_params = request.GET
+        # WSGIRequest (with GET, e.g. in tests with APIRequestFactory)
+        query_params = request.query_params if hasattr(request, "query_params") else request.GET
         ordering = query_params.get("ordering", "-created_at")  # Default to
         # newest first
 

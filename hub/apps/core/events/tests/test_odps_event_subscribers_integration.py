@@ -111,7 +111,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             # Check if event type is in handlers (may use pattern matching)
             has_handler = any(
                 event_type in pattern or pattern.endswith("*") or pattern == event_type
-                for pattern in self.webhook_subscriber.handlers.keys()
+                for pattern in self.webhook_subscriber.handlers
             )
             self.assertTrue(has_handler, f"Webhook subscriber should handle {event_type}")
 
@@ -126,7 +126,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
         for event_type in lifecycle_events:
             has_handler = any(
                 event_type in pattern or pattern.endswith("*") or pattern == event_type
-                for pattern in self.notification_subscriber.handlers.keys()
+                for pattern in self.notification_subscriber.handlers
             )
             self.assertTrue(has_handler, f"Notification subscriber should handle {event_type}")
 
@@ -138,7 +138,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
         # Audit subscriber should subscribe to all ODPS events using wildcard
         has_wildcard = any(
             pattern == "odps.*" or pattern.endswith("*")
-            for pattern in self.audit_subscriber.handlers.keys()
+            for pattern in self.audit_subscriber.handlers
         )
         self.assertTrue(has_wildcard, "Audit subscriber should subscribe to odps.* pattern")
 

@@ -18,7 +18,7 @@ class WebhookSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Webhook
-        fields = [
+        fields = (
             "id",
             "name",
             "url",
@@ -29,8 +29,8 @@ class WebhookSerializer(serializers.ModelSerializer):
             "retry_intervals",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
 
     def validate_url(self, value):
         """Validate webhook URL is safe (SSRF protection).
@@ -82,7 +82,7 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WebhookDelivery
-        fields = [
+        fields = (
             "id",
             "webhook",
             "webhook_name",
@@ -99,8 +99,8 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
             "next_retry_at",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "signature",
             "status",
@@ -112,4 +112,4 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
             "next_retry_at",
             "created_at",
             "updated_at",
-        ]
+        )

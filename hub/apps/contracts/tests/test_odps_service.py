@@ -54,7 +54,6 @@ class ODPSServiceTestBase(ContractsTestBase):
             name="Test Asset for ODPS Service",
             description="Asset for testing ODPS service",
             status=AssetStatus.ACTIVE,
-            visibility="INTERNAL",
             created_by=self.user,
         )
 
@@ -358,7 +357,7 @@ class ODPSServiceNormalizeTest(ODPSServiceTestBase):
         with self.assertRaises(ValidationError):
             self.service.normalize_odps(
                 odps_doc=invalid_doc,
-                tenant_id=str(self.tenant.id),  # type: ignore[misc]  # test: edge-case type exercise
+                tenant_id=str(self.tenant.id),  # test: edge-case type exercise
             )
 
     def test_normalize_odps_missing_required_fields(self):
@@ -666,7 +665,7 @@ class ODPSServiceGenerateTest(ODPSServiceTestBase):
         with self.assertRaises(ValidationError):
             self.service.generate_odps_from_hubcontract(
                 hub_contract=invalid_hub_contract,
-                target_version="4.1",  # type: ignore[misc]  # test: edge-case type exercise
+                target_version="4.1",  # test: edge-case type exercise
             )
 
     def test_generate_odps_from_hubcontract_different_version(self):
@@ -962,7 +961,7 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
         with self.assertRaises(ValidationError):
             self.service.normalize_odps(
                 odps_doc=None,
-                tenant_id=str(self.tenant.id),  # type: ignore[misc]  # test: edge-case type exercise
+                tenant_id=str(self.tenant.id),  # test: edge-case type exercise
             )
 
     def test_normalize_odps_with_malformed_schema_url(self):

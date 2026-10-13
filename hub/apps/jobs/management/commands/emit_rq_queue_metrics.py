@@ -32,7 +32,7 @@ class Command(BaseCommand):
             help="Suppress per-sample output.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         loop_interval = options["loop"]
         quiet = options["quiet"]
 

@@ -274,7 +274,8 @@ class SchemaDriftWorkflowMismatchTest(TestCase):
             action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED,
             tenant=tenant,
         ).first()
-        assert ev is not None and ev.result == "WARNING"
+        assert ev is not None
+        assert ev.result == "WARNING"
         assert ev.details_json["severity"] == "WARN"
 
 

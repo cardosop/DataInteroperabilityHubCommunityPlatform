@@ -1,0 +1,177 @@
+groups:
+  - name: marketplace_integration_alerts
+    interval: 30s
+    rules:
+      # Marketplace Sync Job Failures
+      - alert: MarketplaceSyncJobFailure
+        expr: |
+          sum(rate(marketplace_sync_jobs_total{status="failed"}[5m])) by (marketplace_type, direction, tenant_id) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace sync job failures detected"
+          description: "Marketplace sync job failure rate is {{ $value }} failures/sec for {{ $labels.marketplace_type }} {{ $labels.direction }} (tenant: {{ $labels.tenant_id }})"
+
+      - alert: MarketplaceSyncJobHighFailureRate
+        expr: |
+          (
+            sum(rate(marketplace_sync_jobs_total{status="failed"}[10m])) by (marketplace_type, direction)
+            /
+            sum(rate(marketplace_sync_jobs_total[10m])) by (marketplace_type, direction)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High marketplace sync job failure rate"
+          description: "Sync job failure rate is {{ $value | humanizePercentage }} for {{ $labels.marketplace_type }} {{ $labels.direction }} (threshold: 10%)"
+
+      - alert: MarketplaceSyncJobLongDuration
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(marketplace_sync_job_duration_seconds_bucket[5m])) by (marketplace_type, direction, le)
+          ) > 3600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace sync job taking too long"
+          description: "Sync job P95 duration is {{ $value | humanize }}s for {{ $labels.marketplace_type }} {{ $labels.direction }} (threshold: 3600s)"
+
+      # Connector Operation Errors
+      - alert: MarketplaceConnectorOperationErrors
+        expr: |
+          sum(rate(marketplace_connector_operation_errors_total[5m])) by (marketplace_type, operation_type, error_type) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace connector operation errors detected"
+          description: "Connector operation error rate is {{ $value }} errors/sec for {{ $labels.marketplace_type }} {{ $labels.operation_type }} (error: {{ $labels.error_type }})"
+
+      - alert: MarketplaceConnectorHighErrorRate
+        expr: |
+          (
+            sum(rate(marketplace_connector_operation_errors_total[10m])) by (marketplace_type, operation_type)
+            /
+            sum(rate(marketplace_connector_operations_total[10m])) by (marketplace_type, operation_type)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High marketplace connector error rate"
+          description: "Connector error rate is {{ $value | humanizePercentage }} for {{ $labels.marketplace_type }} {{ $labels.operation_type }} (threshold: 5%)"
+
+      - alert: MarketplaceConnectorOperationSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(marketplace_connector_operation_duration_seconds_bucket[5m])) by (marketplace_type, operation_type, le)
+          ) > 60
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace connector operations are slow"
+          description: "Connector operation P95 duration is {{ $value | humanize }}s for {{ $labels.marketplace_type }} {{ $labels.operation_type }} (threshold: 60s)"
+
+      # Marketplace API Call Errors and Rate Limits
+      - alert: MarketplaceAPICallErrors
+        expr: |
+          sum(rate(marketplace_api_call_errors_total[5m])) by (marketplace_type, endpoint, method, error_type) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace API call errors detected"
+          description: "API call error rate is {{ $value }} errors/sec for {{ $labels.marketplace_type }} {{ $labels.endpoint }} {{ $labels.method }} (error: {{ $labels.error_type }})"
+
+      - alert: MarketplaceAPIRateLimit
+        expr: |
+          sum(rate(marketplace_api_calls_total{status_code="429"}[5m])) by (marketplace_type, endpoint) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace API rate limit exceeded"
+          description: "API rate limit (429) rate is {{ $value }} calls/sec for {{ $labels.marketplace_type }} {{ $labels.endpoint }}"
+
+      - alert: MarketplaceAPIHighErrorRate
+        expr: |
+          (
+            sum(rate(marketplace_api_call_errors_total[10m])) by (marketplace_type, endpoint)
+            /
+            sum(rate(marketplace_api_calls_total[10m])) by (marketplace_type, endpoint)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High marketplace API error rate"
+          description: "API error rate is {{ $value | humanizePercentage }} for {{ $labels.marketplace_type }} {{ $labels.endpoint }} (threshold: 10%)"
+
+      - alert: MarketplaceAPISlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(marketplace_api_call_duration_seconds_bucket[5m])) by (marketplace_type, endpoint, method, le)
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace API calls are slow"
+          description: "API call P95 duration is {{ $value | humanize }}s for {{ $labels.marketplace_type }} {{ $labels.endpoint }} {{ $labels.method }} (threshold: 5s)"
+
+      - alert: MarketplaceAPIConnectionErrors
+        expr: |
+          sum(rate(marketplace_api_call_errors_total{error_type=~".*Connection.*|.*Timeout.*|.*Network.*"}[5m])) by (marketplace_type, endpoint) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Marketplace API connection errors"
+          description: "API connection error rate is {{ $value }} errors/sec for {{ $labels.marketplace_type }} {{ $labels.endpoint }}"
+
+      # Marketplace Connection Status
+      - alert: MarketplaceConnectionInactive
+        expr: |
+          (
+            sum(marketplace_connection_status) by (marketplace_type, tenant_id, connection_id) == 0
+            and
+            sum(marketplace_connections_total{status="active"}) by (marketplace_type, tenant_id) > 0
+          )
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Marketplace connection is inactive"
+          description: "Connection {{ $labels.connection_id }} for {{ $labels.marketplace_type }} (tenant: {{ $labels.tenant_id }}) has been inactive for more than 15 minutes"
+
+      # Connection Test Failures
+      - alert: MarketplaceConnectionTestFailures
+        expr: |
+          sum(rate(marketplace_connection_test_failures_total[5m])) by (marketplace_type, tenant_id, connection_id) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: marketplace_integration
+        annotations:
+          summary: "Marketplace connection test failures detected"
+          description: "Connection test failure rate is {{ $value }} failures/sec for connection {{ $labels.connection_id }} ({{ $labels.marketplace_type }}, tenant: {{ $labels.tenant_id }})"
+
+      - alert: MarketplaceConnectionTestHighFailureRate
+        expr: |
+          (
+            sum(rate(marketplace_connection_test_failures_total[10m])) by (marketplace_type, tenant_id)
+            /
+            sum(rate(marketplace_connection_tests_total[10m])) by (marketplace_type, tenant_id)
+          ) > 0.20
+        for: 10m
+        labels:
+          severity: critical
+          component: marketplace_integration
+        annotations:
+          summary: "High marketplace connection test failure rate"
+          description: "Connection test failure rate is {{ $value | humanizePercentage }} for {{ $labels.marketplace_type }} (tenant: {{ $labels.tenant_id }}, threshold: 20%)"
+

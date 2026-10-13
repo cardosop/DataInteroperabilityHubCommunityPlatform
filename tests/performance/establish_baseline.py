@@ -235,13 +235,14 @@ def main():
         print(f"   Test Type: {args.test_type}")
         print(f"   Baseline File: {baseline_path}")
         print(f"   Metrics: {len(baseline.metrics)}")
-        return 0
     except Exception as e:
         print(f"\n❌ Error establishing baseline: {e}")
         import traceback
 
         traceback.print_exc()
         return 1
+    else:
+        return 0
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ class SearchAnalyticsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SearchAnalytics
-        fields = [
+        fields = (
             "id",
             "query",
             "query_type",
@@ -68,8 +68,8 @@ class SearchAnalyticsSerializer(serializers.ModelSerializer):
             "clicked_result_type",
             "clicked_at",
             "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
+        )
+        read_only_fields = ("id", "created_at")
 
 
 class SearchAnalyticsDashboardSerializer(serializers.Serializer):

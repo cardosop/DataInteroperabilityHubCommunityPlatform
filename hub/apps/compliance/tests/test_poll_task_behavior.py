@@ -56,28 +56,28 @@ class PollTaskBehaviorTest(TestCase):
         )
 
     def _create_job(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            user=self.user,
-            job_type=JobType.COMPLIANCE_RUN,
-            resource_type="COMPLIANCE_RUN",
-            resource_id=str(uuid.uuid4()),
-            details_json={"scan_mode": "internal"},
-            timeout_seconds=300,
-            executed_by_prefect=True,
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "user": self.user,
+            "job_type": JobType.COMPLIANCE_RUN,
+            "resource_type": "COMPLIANCE_RUN",
+            "resource_id": str(uuid.uuid4()),
+            "details_json": {"scan_mode": "internal"},
+            "timeout_seconds": 300,
+            "executed_by_prefect": True,
+        }
         defaults.update(overrides)
         return create_job(**defaults)
 
     def _create_run(self, **overrides):
-        defaults = dict(
-            tenant=self.tenant,
-            asset=self.asset,
-            job=self._create_job(),
-            status=ComplianceRunStatus.QUEUED,
-            metadata_json={"job_id": "remote-job-1", "poll_url": "/poll/1"},
-            started_at=timezone.now(),
-        )
+        defaults = {
+            "tenant": self.tenant,
+            "asset": self.asset,
+            "job": self._create_job(),
+            "status": ComplianceRunStatus.QUEUED,
+            "metadata_json": {"job_id": "remote-job-1", "poll_url": "/poll/1"},
+            "started_at": timezone.now(),
+        }
         defaults.update(overrides)
         return ComplianceRun.objects.create(**defaults)
 
@@ -183,10 +183,12 @@ class PollTaskBehaviorTest(TestCase):
         # Phase 213.G.6 — error detail must be persisted so API
         # consumers can surface it (not just logged and thrown away).
         self.assertEqual(
-            run.regulation_mapping_json["error_type"], "REMOTE_FAILURE",
+            run.regulation_mapping_json["error_type"],
+            "REMOTE_FAILURE",
         )
         self.assertEqual(
-            run.regulation_mapping_json["error"], "Internal scanner error",
+            run.regulation_mapping_json["error"],
+            "Internal scanner error",
         )
 
     # ----------------------------------------------------------------

@@ -72,9 +72,12 @@
   border-color: var(--color-primary);
 }
 
-/* Danger */
+/* Danger — error-700 (#D32F2F) with white text passes WCAG AA (4.98:1);
+ * error-500 (#F44336) is 3.68:1 and failed the axe color-contrast audit
+ * the moment a page rendered real danger buttons (close-test-coverage-
+ * gaps 2.4, approval-inbox populated state). */
 .btn--danger {
-  background: var(--color-error-500);
+  background: var(--color-error-700);
   color: var(--color-text-on-primary);
 }
 .btn--danger:hover:not(:disabled) {

@@ -24,6 +24,13 @@ from pathlib import Path
 # Patterns that indicate ORM access to tenant-scoped data.
 # These are string patterns found in Python source that suggest a Django
 # queryset is being built against a tenant-scoped model column.
+#
+# Phase P.9 — ``tenant_id=`` catches the kwarg write form
+# (``Model.objects.create(\n tenant_id=...,``) the previous set could not
+# see: the earlier patterns required ``<verb>(tenant`` on ONE line, so the
+# multi-line write in semantic/signals.py was invisible and the linter
+# reported all-clean while tenant-scoped Job rows were written outside
+# tenant_context.
 _TENANT_ACCESS_PATTERNS = frozenset(
     {
         ".objects.filter(tenant",
@@ -34,6 +41,7 @@ _TENANT_ACCESS_PATTERNS = frozenset(
         ".objects.exclude(tenant",
         ".objects.values(",
         ".objects.values_list(",
+        "tenant_id=",
     }
 )
 
@@ -42,18 +50,31 @@ _TENANT_ACCESS_PATTERNS = frozenset(
 # the admin DB router)
 _EXEMPT_SUFFIXES = frozenset({"/tests/", "/migrations/", "/management/commands/"})
 
-# Files that MUST be checked (worker tasks + signals)
-_CHECK_SUFFIXES = frozenset({"/tasks.py", "/signals.py"})
+# Files that MUST be checked: the canonical worker names (tasks.py /
+# signals.py) PLUS the repo's actual worker-module conventions
+# (``*_jobs``, ``*_sync``, ``*_reaper``, ``*_scheduler``).  Worker code
+# under those names was invisible to the gate — the databricks estate's
+# sync workers (``uc_sync_jobs.py``, ``cost_sync.py``, ...) ride them,
+# so a coverage hole here is the exact class the gate exists to forbid.
+_CHECK_SUFFIXES = frozenset(
+    {
+        "/tasks.py",
+        "/signals.py",
+        "/_jobs.py",
+        "/_sync.py",
+        "/_reaper.py",
+        "/_scheduler.py",
+    }
+)
 
 
 def _has_tenant_context_import(tree: ast.AST) -> bool:
     """Check if the module imports ``tenant_context`` from the canonical path."""
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.module == "hub.apps.tenants.request_tenant":
-                for alias in node.names:
-                    if alias.name == "tenant_context":
-                        return True
+        if isinstance(node, ast.ImportFrom) and node.module == "hub.apps.tenants.request_tenant":
+            for alias in node.names:
+                if alias.name == "tenant_context":
+                    return True
     return False
 
 
@@ -61,16 +82,21 @@ def _has_tenant_context_usage(tree: ast.AST) -> bool:
     """Check if the module calls ``tenant_context(...)`` or uses ``with tenant_context``."""
     for node in ast.walk(tree):
         # Check for function calls: tenant_context(something)
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == "tenant_context":
-                return True
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "tenant_context"
+        ):
+            return True
         # Check for with statements: with tenant_context(id):
         if isinstance(node, ast.With):
             for item in node.items:
-                if isinstance(item.context_expr, ast.Call):
-                    if isinstance(item.context_expr.func, ast.Name):
-                        if item.context_expr.func.id == "tenant_context":
-                            return True
+                if (
+                    isinstance(item.context_expr, ast.Call)
+                    and isinstance(item.context_expr.func, ast.Name)
+                    and item.context_expr.func.id == "tenant_context"
+                ):
+                    return True
     return False
 
 
@@ -80,17 +106,11 @@ def _accesses_tenant_scoped_data(source: str) -> bool:
     Looks for patterns like ``tenant_id=``, ``tenant__field``, etc.
     that indicate querying/filtering by tenant.
     """
-    for pattern in _TENANT_ACCESS_PATTERNS:
-        if pattern in source:
-            return True
-    return False
+    return any(pattern in source for pattern in _TENANT_ACCESS_PATTERNS)
 
 
 def _is_exempt(filepath: str) -> bool:
-    for suffix in _EXEMPT_SUFFIXES:
-        if suffix in filepath:
-            return True
-    return False
+    return any(suffix in filepath for suffix in _EXEMPT_SUFFIXES)
 
 
 def lint_file(filepath: str) -> str | None:
@@ -105,7 +125,7 @@ def lint_file(filepath: str) -> str | None:
     try:
         with open(filepath, encoding="utf-8") as f:
             source = f.read()
-    except Exception:
+    except (OSError, ValueError):
         return None
 
     # Skip files that don't touch tenant-scoped data
@@ -152,11 +172,19 @@ def main() -> int:
     if args.check_file:
         files = [args.check_file]
     else:
-        # Find all tasks.py and signals.py files under hub/
+        # Find every worker file under hub/: the canonical names plus the
+        # repo's worker-module conventions (see _CHECK_SUFFIXES).
         hub_dir = repo_root / "hub"
         files = []
-        for suffix in (("tasks.py",), ("signals.py",)):
-            for path in hub_dir.rglob(suffix[0]):
+        for glob_pattern in (
+            "**/tasks.py",
+            "**/signals.py",
+            "**/*_jobs.py",
+            "**/*_sync.py",
+            "**/*_reaper.py",
+            "**/*_scheduler.py",
+        ):
+            for path in hub_dir.glob(glob_pattern):
                 files.append(str(path))
 
     violations: list[str] = []

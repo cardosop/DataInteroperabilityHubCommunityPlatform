@@ -1,5 +1,5 @@
 """
-Phase 118A — CLI Endpoint & Parameter Fixes (GF-22.1–22.7)
+Phase 118A — CLI Endpoint & Parameter Fixes (GF-22.1-22.7)
 
 TDD tests verifying that CLI commands send the correct endpoint paths
 and filter parameter names to match the backend ViewSet implementations.

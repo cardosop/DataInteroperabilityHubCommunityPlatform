@@ -126,17 +126,17 @@ class ScheduledExportViewSetTest(TestCase):
 
         # 201 = created with successful Prefect sync
         # 207 = created but Prefect deployment sync failed (expected in test env)
-        self.assertIn(response.status_code, (status.HTTP_201_CREATED, 207))
+        assert response.status_code in (status.HTTP_201_CREATED, 207)
         resp_data = response.data
         # 207 wraps the resource inside a "resource" key
         if response.status_code == 207:
             resp_data = response.data.get("resource", response.data)
-        self.assertEqual(resp_data["name"], "Daily Sales Export")
-        self.assertEqual(resp_data["destination_type"], DestinationType.S3)
-        self.assertIn("id", resp_data)
+        assert resp_data["name"] == "Daily Sales Export"
+        assert resp_data["destination_type"] == DestinationType.S3
+        assert "id" in resp_data
 
         export = ScheduledExport.objects.get(id=resp_data["id"])
-        self.assertEqual(export.tenant, self.tenant)
+        assert export.tenant == self.tenant
 
     def test_create_scheduled_export_invalid_cron(self):
         """Test creating a scheduled export with invalid cron expression"""
@@ -150,8 +150,8 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/scheduled-exports/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("cron", str(response.data).lower())
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "cron" in str(response.data).lower()
 
     def test_create_scheduled_export_invalid_source_scope(self):
         """Test creating a scheduled export with invalid source_scope"""
@@ -165,8 +165,8 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/scheduled-exports/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("source_scope", str(response.data).lower())
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "source_scope" in str(response.data).lower()
 
     def test_list_scheduled_exports(self):
         """Test listing scheduled exports"""
@@ -179,15 +179,15 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-exports/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
         export_ids = [item["id"] for item in results]
-        self.assertIn(str(export1.id), export_ids)
-        self.assertIn(str(export2.id), export_ids)
+        assert str(export1.id) in export_ids
+        assert str(export2.id) in export_ids
 
     def test_retrieve_scheduled_export(self):
         """Test retrieving a specific scheduled export"""
@@ -197,9 +197,9 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-exports/{export.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(export.id))
-        self.assertEqual(response.data["name"], "Test Export")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == str(export.id)
+        assert response.data["name"] == "Test Export"
 
     def test_update_scheduled_export(self):
         """Test updating a scheduled export"""
@@ -213,14 +213,14 @@ class ScheduledExportViewSetTest(TestCase):
 
         # 200 = updated with successful Prefect sync
         # 207 = updated but Prefect deployment sync failed (expected in test env)
-        self.assertIn(response.status_code, (status.HTTP_200_OK, 207))
+        assert response.status_code in (status.HTTP_200_OK, 207)
         resp_data = response.data
         if response.status_code == 207:
             resp_data = response.data.get("resource", response.data)
-        self.assertEqual(resp_data["name"], "Updated Name")
+        assert resp_data["name"] == "Updated Name"
 
         export.refresh_from_db()
-        self.assertEqual(export.name, "Updated Name")
+        assert export.name == "Updated Name"
 
     def test_delete_scheduled_export(self):
         """Test deleting a scheduled export"""
@@ -230,8 +230,8 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.delete(f"/api/v1/scheduled-exports/{export.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(ScheduledExport.objects.filter(id=export.id).exists())
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not ScheduledExport.objects.filter(id=export.id).exists()
 
     def test_list_runs(self):
         """Test listing runs for a scheduled export"""
@@ -255,11 +255,11 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-exports/{export.id}/runs/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
         run_ids = [item["id"] for item in response.data]
-        self.assertIn(str(run1.id), run_ids)
-        self.assertIn(str(run2.id), run_ids)
+        assert str(run1.id) in run_ids
+        assert str(run2.id) in run_ids
 
     def test_retrieve_run(self):
         """Test retrieving a specific run"""
@@ -279,10 +279,10 @@ class ScheduledExportViewSetTest(TestCase):
         # Retrieve run via flat runs endpoint: /api/v1/scheduled-exports/runs/{run_id}/
         response = self.client.get(f"/api/v1/scheduled-exports/runs/{run.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["status"], "COMPLETED")
-        self.assertEqual(response.data["id"], str(run.id))
-        self.assertEqual(response.data["result_json"]["items_exported"], 5)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["status"] == "COMPLETED"
+        assert response.data["id"] == str(run.id)
+        assert response.data["result_json"]["items_exported"] == 5
 
     def test_trigger_export_not_active(self):
         """Test triggering a non-active scheduled export"""
@@ -292,8 +292,8 @@ class ScheduledExportViewSetTest(TestCase):
             )
         )
         response = self.client.post(f"/api/v1/scheduled-exports/{export.id}/trigger/")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("not active", response.data.get("error", "").lower())
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "not active" in response.data.get("error", "").lower()
 
     def test_trigger_export_success(self):
         """Test successful trigger creates a run and returns flow_run_id."""
@@ -312,12 +312,12 @@ class ScheduledExportViewSetTest(TestCase):
                 format="json",
             )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["status"], "success")
-        self.assertEqual(response.data["flow_run_id"], "flow-run-abc-123")
-        self.assertIn("run_id", response.data)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["status"] == "success"
+        assert response.data["flow_run_id"] == "flow-run-abc-123"
+        assert "run_id" in response.data
         # Verify a run record was created
-        self.assertEqual(ScheduledExportRun.objects.filter(scheduled_export=export).count(), 1)
+        assert ScheduledExportRun.objects.filter(scheduled_export=export).count() == 1
 
     def test_sync_not_configured_returns_400(self):
         """POST /{id}/sync/ returns 400 when PREFECT_INTEGRATION_SERVICE_URL not set."""
@@ -332,8 +332,8 @@ class ScheduledExportViewSetTest(TestCase):
 
         with patch.dict(os.environ, {"PREFECT_INTEGRATION_SERVICE_URL": ""}):
             response = self.client.post(f"/api/v1/scheduled-exports/{export.id}/sync/")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("PREFECT_INTEGRATION_SERVICE_URL", response.data.get("error", ""))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "PREFECT_INTEGRATION_SERVICE_URL" in response.data.get("error", "")
 
     def test_sync_unauthorized_returns_401(self):
         """POST /{id}/sync/ returns 401 for unauthenticated requests."""
@@ -342,9 +342,7 @@ class ScheduledExportViewSetTest(TestCase):
         )
         unauth_client = APIClient()
         response = unauth_client.post(f"/api/v1/scheduled-exports/{export.id}/sync/")
-        self.assertIn(
-            response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
-        )
+        assert response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
 
     def test_tenant_isolation(self):
         """Test that tenants can only see their own scheduled exports"""
@@ -364,14 +362,14 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-exports/")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
         export_ids = [item["id"] for item in results]
-        self.assertNotIn(str(export2.id), export_ids)
+        assert str(export2.id) not in export_ids
 
     def test_tenant_isolation_retrieve(self):
         """Test that tenants cannot retrieve other tenants' scheduled exports"""
@@ -389,7 +387,7 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.get(f"/api/v1/scheduled-exports/{export2.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_tenant_isolation_runs(self):
         """Test that tenants can only see runs for their own scheduled exports"""
@@ -414,7 +412,7 @@ class ScheduledExportViewSetTest(TestCase):
         # Try to retrieve run from other tenant
         response = self.client.get(f"/api/v1/scheduled-exports/runs/{run2.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_filter_by_status(self):
         """Test filtering scheduled exports by status"""
@@ -431,15 +429,15 @@ class ScheduledExportViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/scheduled-exports/?status=ACTIVE")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assert response.status_code == status.HTTP_200_OK
         results = (
             response.data.get("results", response.data)
             if isinstance(response.data, dict)
             else response.data
         )
         export_ids = [item["id"] for item in results]
-        self.assertIn(str(export1.id), export_ids)
-        self.assertNotIn(str(export2.id), export_ids)
+        assert str(export1.id) in export_ids
+        assert str(export2.id) not in export_ids
 
     # --- Edge cases ---
 
@@ -448,21 +446,21 @@ class ScheduledExportViewSetTest(TestCase):
         response = self.client.get(
             "/api/v1/scheduled-exports/00000000-0000-0000-0000-000000000000/"
         )
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_retrieve_malformed_uuid_returns_404(self):
         """Retrieve with malformed ID returns 404."""
         response = self.client.get("/api/v1/scheduled-exports/not-a-uuid/")
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_list_unauthenticated_returns_401(self):
         """List without authentication returns 401."""
         self.client.force_authenticate(user=None)
         response = self.client.get("/api/v1/scheduled-exports/")
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_create_unauthenticated_returns_401(self):
         """Create without authentication returns 401."""
@@ -475,8 +473,8 @@ class ScheduledExportViewSetTest(TestCase):
             "source_scope": {"asset_ids": []},
         }
         response = self.client.post("/api/v1/scheduled-exports/", data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_update_with_invalid_destination_config_returns_400(self):
         """Update with invalid destination_config (e.g. missing bucket for S3) returns 400."""
@@ -485,12 +483,11 @@ class ScheduledExportViewSetTest(TestCase):
         )
         data = {"destination_config": {}}
         response = self.client.patch(f"/api/v1/scheduled-exports/{export.id}/", data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         # Verify error response references the validation issue
         resp_str = str(response.data).lower()
-        self.assertTrue(
-            "destination" in resp_str or "bucket" in resp_str or "code" in response.data,
-            f"Error response should reference destination/bucket validation, got: {response.data}",
+        assert "destination" in resp_str or "bucket" in resp_str or "code" in response.data, (
+            f"Error response should reference destination/bucket validation, got: {response.data}"
         )
 
     def test_delete_other_tenant_export_returns_404(self):
@@ -505,8 +502,8 @@ class ScheduledExportViewSetTest(TestCase):
             **_scheduled_export_kwargs(tenant2, name="Other Export")
         )
         response = self.client.delete(f"/api/v1/scheduled-exports/{export2.id}/")
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.content, f"Response body must be non-empty for {response.status_code}"
 
     def test_trigger_with_malformed_body_returns_400(self):
         """Trigger with invalid JSON body returns 400 (DRF parser rejects it)."""
@@ -520,7 +517,7 @@ class ScheduledExportViewSetTest(TestCase):
         )
         # DRF JSONParser rejects non-JSON content with 400 (ParseError)
         # Some DRF versions return 415 (UnsupportedMediaType) instead
-        self.assertIn(
-            response.status_code,
-            (status.HTTP_400_BAD_REQUEST, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE),
+        assert response.status_code in (
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         )

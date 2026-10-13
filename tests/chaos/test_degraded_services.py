@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import pytest
 from django.conf import settings
-from django.test import Client, TestCase, override_settings
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -23,7 +24,32 @@ class DegradedServicesChaosTests(TestCase):
     """Verify the system degrades gracefully when services are unreachable."""
 
     def setUp(self):
-        self.client = Client()
+        # The degradation assertions target authenticated API surfaces
+        # (SPARQL, assets list) — an anonymous client 401s at the auth
+        # layer before ever reaching the degraded service, which is not
+        # what these tests measure.
+        import uuid
+
+        from django.contrib.auth import get_user_model
+
+        from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+        from hub.apps.users.models import UserStatus
+
+        unique = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Chaos {unique}",
+            slug=f"chaos-{unique}",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        self.user = get_user_model().objects.create_user(
+            email=f"chaos-{unique}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
 
     # ── Fuseki (SPARQL) degradation ─────────────────────────────────
 
@@ -44,7 +70,7 @@ class DegradedServicesChaosTests(TestCase):
     @override_settings(FUSEKI_URL="http://unreachable:3030")
     def test_health_endpoint_reports_fuseki_degraded(self):
         """Health endpoint should report Fuseki as unhealthy."""
-        response = self.client.get("/api/v1/health/")
+        response = self.client.get("/health/")
         # Health endpoint should not crash when Fuseki is down
         assert response.status_code in (200, 503), (
             f"Health endpoint crashed on Fuseki outage: {response.status_code}"

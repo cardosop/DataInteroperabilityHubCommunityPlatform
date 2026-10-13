@@ -9,11 +9,15 @@
  */
 import { apiClient } from '../../../shared/api/client';
 
-const INCIDENTS_BASE = 'governance/breach-incidents';
-const NOTIFICATIONS_BASE = 'governance/breach-notifications';
-const TEMPLATES_BASE = 'governance/breach-templates';
-const TEMPLATE_OVERRIDES_BASE = 'governance/breach-template-overrides';
-const DASHBOARD_PATH = 'governance/breach-dashboard/';
+// The breach API lives at /api/v1/breach/* (hub/apps/breach/urls.py) —
+// NOT under /governance/. close-test-coverage-gaps 4.4: the old
+// 'governance/breach-*' bases 404'd every dashboard/incident/template
+// call once the compliance_breach capability route started rendering.
+const INCIDENTS_BASE = 'breach/incidents';
+const NOTIFICATIONS_BASE = 'breach/notifications';
+const TEMPLATES_BASE = 'breach/templates';
+const TEMPLATE_OVERRIDES_BASE = 'breach/template-overrides';
+const DASHBOARD_PATH = 'breach/dashboard/';
 
 // ---------------------------------------------------------------------------
 // Response shapes — public surface used by the components.
@@ -93,21 +97,17 @@ export interface UpsertTemplateOverrideRequest {
 
 export const breachService = {
   async getDashboard(): Promise<BreachDashboardPayload> {
-    const res = await apiClient
-      .getClient()
-      .get<BreachDashboardPayload>(DASHBOARD_PATH);
+    const res = await apiClient.getClient().get<BreachDashboardPayload>(DASHBOARD_PATH);
     return res.data;
   },
 
   async getIncident(id: string): Promise<BreachIncidentDetail> {
-    const res = await apiClient
-      .getClient()
-      .get<BreachIncidentDetail>(`${INCIDENTS_BASE}/${id}/`);
+    const res = await apiClient.getClient().get<BreachIncidentDetail>(`${INCIDENTS_BASE}/${id}/`);
     return res.data;
   },
 
   async createIncident(
-    payload: CreateBreachIncidentRequest,
+    payload: CreateBreachIncidentRequest
   ): Promise<CreateBreachIncidentResponse> {
     const res = await apiClient
       .getClient()
@@ -115,34 +115,29 @@ export const breachService = {
     return res.data;
   },
 
-  async patchIncidentStatus(
-    id: string,
-    payload: PatchIncidentStatusRequest,
-  ): Promise<void> {
+  async patchIncidentStatus(id: string, payload: PatchIncidentStatusRequest): Promise<void> {
     await apiClient.getClient().patch(`${INCIDENTS_BASE}/${id}/status/`, payload);
   },
 
   async markNotificationSent(
     notificationId: string,
-    payload: MarkNotificationSentRequest,
+    payload: MarkNotificationSentRequest
   ): Promise<void> {
-    await apiClient
-      .getClient()
-      .post(`${NOTIFICATIONS_BASE}/${notificationId}/mark-sent/`, payload);
+    await apiClient.getClient().post(`${NOTIFICATIONS_BASE}/${notificationId}/mark-sent/`, payload);
   },
 
   async getTemplateCatalog(): Promise<BreachTemplateCatalog> {
     const res = await apiClient
       .getClient()
       .get<BreachTemplateCatalog>(`${TEMPLATES_BASE}/catalog/`);
-    return res.data;
+    // Phase 1.5 — normalize at the service boundary: BreachTemplateEditorPage
+    // calls ``rows.find`` on ``catalog.templates``; a missing/non-array
+    // templates key (drift, error envelope) used to crash the render.
+    const templates = res.data?.templates;
+    return { templates: Array.isArray(templates) ? templates : [] };
   },
 
-  async upsertTemplateOverride(
-    payload: UpsertTemplateOverrideRequest,
-  ): Promise<void> {
-    await apiClient
-      .getClient()
-      .post(`${TEMPLATE_OVERRIDES_BASE}/upsert/`, payload);
+  async upsertTemplateOverride(payload: UpsertTemplateOverrideRequest): Promise<void> {
+    await apiClient.getClient().post(`${TEMPLATE_OVERRIDES_BASE}/upsert/`, payload);
   },
 };

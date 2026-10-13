@@ -62,9 +62,10 @@ def query_events(
             # Use request method to get raw response for CSV
             response = api_client.request("GET", "audit/audit-events/export/", params=params)
             click.echo(response.text)
-            return
         except Exception as e:
-            raise click.ClickException(f"Failed to export audit events: {e}")
+            raise click.ClickException(f"Failed to export audit events: {e}") from e
+        else:
+            return
 
     try:
         data = api_client.get("audit/audit-events/", params=params)
@@ -112,7 +113,7 @@ def query_events(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to query audit events: {e}")
+        raise click.ClickException(f"Failed to query audit events: {e}") from e
 
 
 @audit.command("get")
@@ -144,7 +145,7 @@ def get_event(event_id: str, output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to get audit event: {e}")
+        raise click.ClickException(f"Failed to get audit event: {e}") from e
 
 
 @audit.command("export")
@@ -189,4 +190,4 @@ def export_events(
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(f"Failed to export audit events: {e}")
+        raise click.ClickException(f"Failed to export audit events: {e}") from e

@@ -64,8 +64,8 @@ def find_endpoint_in_backlog(backlog_content: str, endpoint: str) -> list[tuple[
     # Try different patterns
     patterns = [
         rf"#### \d+\.\s+{re.escape(endpoint)}",
-        rf"#### \d+\.\s+.*{re.escape(endpoint.split('/')[-1])}",
-        rf"\*\*.*{re.escape(endpoint.split('/')[-1])}.*\*\*",
+        rf"#### \d+\.\s+.*{re.escape(endpoint.rsplit('/', maxsplit=1)[-1])}",
+        rf"\*\*.*{re.escape(endpoint.rsplit('/', maxsplit=1)[-1])}.*\*\*",
     ]
 
     matches = []

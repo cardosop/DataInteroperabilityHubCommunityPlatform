@@ -23,6 +23,7 @@ from django.test import TestCase
 
 def _create_tenant(name: str = "Wave 0 Co"):
     import uuid
+
     from hub.apps.tenants.models import Tenant
 
     uid = uuid.uuid4().hex[:8]
@@ -69,6 +70,7 @@ class FilterStructurelessTests(TestCase):
         accounts, which is unsafe during test setup.
         """
         from hub.apps.contracts.models import Contract
+
         Contract.objects.all().delete()
 
     def test_filter_structureless_dry_run_emits_jsonl_to_stdout(self):
@@ -209,6 +211,7 @@ class OutputJsonContractTests(TestCase):
         accounts, which is unsafe during test setup.
         """
         from hub.apps.contracts.models import Contract
+
         Contract.objects.all().delete()
 
     REQUIRED_FIELDS = {

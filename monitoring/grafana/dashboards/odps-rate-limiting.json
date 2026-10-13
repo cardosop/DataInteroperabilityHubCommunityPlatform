@@ -1,0 +1,174 @@
+{
+  "title": "ODPS Rate Limiting",
+  "tags": [
+    "odps",
+    "rate-limiting",
+    "security",
+    "task-6.2.5"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Rate Limit Violations by Level",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_rate_limit_violations_total[5m])) by (level)",
+          "legendFormat": "{{level}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Violations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate limit violations by level (global, tenant, user)"
+    },
+    {
+      "id": 2,
+      "title": "Rate Limit Violations by Tenant",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_rate_limit_violations_total[5m])) by (tenant_id, level)",
+          "legendFormat": "{{tenant_id}} ({{level}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Violations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate limit violations broken down by tenant and level"
+    },
+    {
+      "id": 3,
+      "title": "Rate Limit Violations by User",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_rate_limit_violations_total[5m])) by (user_id, tenant_id)",
+          "legendFormat": "{{user_id}} ({{tenant_id}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Violations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate limit violations broken down by user and tenant"
+    },
+    {
+      "id": 4,
+      "title": "Rate Limit Violations Trend",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(odps_rate_limit_violations_total[1h])) by (level)",
+          "legendFormat": "{{level}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Violations/hour"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Trend of rate limit violations over time by level"
+    },
+    {
+      "id": 5,
+      "title": "Rate Limit Violations Heatmap",
+      "type": "heatmap",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_rate_limit_violations_total[5m])) by (level, tenant_id)",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Level"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Heatmap showing rate limit violations by level and tenant"
+    },
+    {
+      "id": 6,
+      "title": "Top Violating Tenants",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum(increase(odps_rate_limit_violations_total[1h])) by (tenant_id))",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "description": "Top 10 tenants with highest rate limit violations in the last hour"
+    }
+  ]
+}

@@ -104,7 +104,7 @@ def _handle_pipeline_execution_completed(
     instance,
     created: bool,
     raw: bool,
-    **kwargs,
+    **_kwargs,
 ):
     """Post-save handler for all pipeline execution models.
 
@@ -433,7 +433,7 @@ def _enqueue_batch_trigger(
             sub_batches=(len(batch) + _MAX_BATCH_SIZE - 1) // _MAX_BATCH_SIZE,
         )
     except Exception as exc:
-        logger.error(
+        logger.exception(
             "trigger_engine_batch_failed",
             tenant_id=tenant_id,
             upstream_type=upstream_type,

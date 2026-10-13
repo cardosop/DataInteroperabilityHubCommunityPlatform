@@ -18,7 +18,6 @@ import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 import {
   assertNonExistentIdShowsError,
   loginAndNavigateToRoute,
-  waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
@@ -178,7 +177,10 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
         const saveBtn = page.locator('button:has-text("Save"), button[type="submit"]').first();
         if ((await saveBtn.count()) > 0) await saveBtn.click();
       } else {
-        test.skip(true, 'No Retire button or status select found; UI may not expose retirement for this user/role.');
+        test.skip(
+          (await retireBtn.count()) === 0 && (await statusSelect.count()) === 0,
+          'No Retire button or status select found; UI may not expose retirement for this user/role.',
+        );
         return;
       }
 
@@ -248,7 +250,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       // Use the actual element id from AssetListPage.tsx — more reliable than text-based filter
       const statusSelect = page.locator('#asset-status-filter, select[aria-label="Filter by status"]').first();
       if ((await statusSelect.count()) === 0) {
-        test.skip(true, 'No status filter select (#asset-status-filter) found on assets list page');
+        test.skip((await statusSelect.count()) === 0, 'No status filter select (#asset-status-filter) found on assets list page');
         return;
       }
       await statusSelect.selectOption({ index: 1 });

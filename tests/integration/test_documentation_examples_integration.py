@@ -55,9 +55,10 @@ class TestDocumentationExamplesIntegration:
 
             # If health endpoints don't work, try a simple API endpoint
             response = requests.get(f"{self.api_base_url}/api/v1/compliance/runs/", timeout=2)
-            return response.status_code != 500  # Any status except 500 means service is up
         except Exception:
             return False
+        else:
+            return response.status_code != 500  # Any status except 500 means service is up
 
     def test_verify_script_runs(self):
         """Test that verification script runs successfully"""
@@ -191,7 +192,8 @@ class TestDocumentationScriptsWork:
             "Verify script should run without crashing (exit 0 or 1)"
         )
         assert (
-            "Files checked" in result.stdout or "Checking" in result.stdout
+            "Files checked" in result.stdout
+            or "Checking" in result.stdout
             or "issues found" in result.stdout
         ), "Verify script should report file checks or issues"
 

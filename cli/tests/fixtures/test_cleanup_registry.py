@@ -62,7 +62,7 @@ def test_drain_empties_the_registry() -> None:
 def test_add_rejects_non_callable() -> None:
     reg = CleanupRegistry()
     with pytest.raises(TypeError):
-        reg.add("not callable")  # type: ignore[arg-type]
+        reg.add("not callable")
 
 
 def test_persona_teardown_is_drained_in_lifo() -> None:

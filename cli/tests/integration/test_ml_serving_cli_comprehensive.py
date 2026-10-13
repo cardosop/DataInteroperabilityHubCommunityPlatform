@@ -1,5 +1,7 @@
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
+from envpolicy import api_available
+
 pytestmark = skip_if_mvp_mode
 
 """
@@ -24,25 +26,10 @@ from datahub_cli.config import config
 from datahub_cli.main import cli
 
 
-def _check_api_available():
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(
-            os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1")
-            + "/health/",
-            timeout=2,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
 @pytest.fixture(scope="module")
-def api_available():
+def api_service_available():
     """Check if API is available before running tests"""
-    if not _check_api_available():
+    if not api_available():
         pytest.skip(
             "API service not available at http://localhost:8000. Start with: docker compose up -d api db redis"
         )
@@ -56,7 +43,7 @@ def runner():
 
 
 @pytest.fixture
-def test_model_id(api_available):
+def test_model_id(api_service_available):
     """
     Get or create a test model for use in tests.
     Returns a model ID that can be used for serving operations.
@@ -165,7 +152,7 @@ def test_model_id(api_available):
 class TestMLServingDeployCommand:
     """Comprehensive tests for ML serving deploy command"""
 
-    def test_deploy_command_success(self, runner, api_available, test_model_id):
+    def test_deploy_command_success(self, runner, api_service_available, test_model_id):
         """Test successful deployment"""
         result = runner.invoke(
             cli, ["ml", "serving", "deploy", "--model-id", test_model_id, "--format", "json"]
@@ -191,7 +178,7 @@ class TestMLServingDeployCommand:
                 ]
             )
 
-    def test_deploy_command_with_endpoint(self, runner, api_available, test_model_id):
+    def test_deploy_command_with_endpoint(self, runner, api_service_available, test_model_id):
         """Test deployment with custom endpoint"""
         result = runner.invoke(
             cli,
@@ -218,13 +205,13 @@ class TestMLServingDeployCommand:
                     or "test-endpoint" in data["endpoint"]
                 )
 
-    def test_deploy_command_missing_model_id(self, runner, api_available):
+    def test_deploy_command_missing_model_id(self, runner, api_service_available):
         """Test deploy command without required model-id"""
         result = runner.invoke(cli, ["ml", "serving", "deploy"])
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_deploy_command_invalid_model_id_format(self, runner, api_available):
+    def test_deploy_command_invalid_model_id_format(self, runner, api_service_available):
         """Test deploy command with invalid model ID format"""
         result = runner.invoke(
             cli,
@@ -236,7 +223,7 @@ class TestMLServingDeployCommand:
             for keyword in ["invalid", "uuid", "format", "model-id"]
         )
 
-    def test_deploy_command_table_format(self, runner, api_available, test_model_id):
+    def test_deploy_command_table_format(self, runner, api_service_available, test_model_id):
         """Test deploy command with table format output"""
         result = runner.invoke(
             cli, ["ml", "serving", "deploy", "--model-id", test_model_id, "--format", "table"]
@@ -249,7 +236,7 @@ class TestMLServingDeployCommand:
             assert "Model ID:" in result.output or "model_id" in result.output.lower()
             assert "Status:" in result.output or "status" in result.output.lower()
 
-    def test_deploy_command_json_format(self, runner, api_available, test_model_id):
+    def test_deploy_command_json_format(self, runner, api_service_available, test_model_id):
         """Test deploy command with JSON format output"""
         result = runner.invoke(
             cli, ["ml", "serving", "deploy", "--model-id", test_model_id, "--format", "json"]
@@ -265,7 +252,7 @@ class TestMLServingDeployCommand:
 class TestMLServingPredictCommand:
     """Comprehensive tests for ML serving predict command"""
 
-    def test_predict_command_with_json_string(self, runner, api_available, test_model_id):
+    def test_predict_command_with_json_string(self, runner, api_service_available, test_model_id):
         """Test predict command with JSON string input"""
         result = runner.invoke(
             cli,
@@ -299,7 +286,7 @@ class TestMLServingPredictCommand:
                 ]
             )
 
-    def test_predict_command_with_file(self, runner, api_available, test_model_id):
+    def test_predict_command_with_file(self, runner, api_service_available, test_model_id):
         """Test predict command with input file"""
         input_data = {"feature1": 0.5, "feature2": 0.8, "feature3": 0.3}
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -329,19 +316,19 @@ class TestMLServingPredictCommand:
             if os.path.exists(input_file):
                 os.unlink(input_file)
 
-    def test_predict_command_missing_model_id(self, runner, api_available):
+    def test_predict_command_missing_model_id(self, runner, api_service_available):
         """Test predict command without required model-id"""
         result = runner.invoke(cli, ["ml", "serving", "predict", "--input", '{"data": [1, 2, 3]}'])
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_predict_command_missing_input(self, runner, api_available, test_model_id):
+    def test_predict_command_missing_input(self, runner, api_service_available, test_model_id):
         """Test predict command without required input"""
         result = runner.invoke(cli, ["ml", "serving", "predict", "--model-id", test_model_id])
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_predict_command_invalid_json_input(self, runner, api_available, test_model_id):
+    def test_predict_command_invalid_json_input(self, runner, api_service_available, test_model_id):
         """Test predict command with invalid JSON input"""
         result = runner.invoke(
             cli,
@@ -362,7 +349,7 @@ class TestMLServingPredictCommand:
             keyword in result.output.lower() for keyword in ["invalid", "json", "parse", "format"]
         )
 
-    def test_predict_command_invalid_model_id_format(self, runner, api_available):
+    def test_predict_command_invalid_model_id_format(self, runner, api_service_available):
         """Test predict command with invalid model ID format"""
         result = runner.invoke(
             cli,
@@ -384,7 +371,7 @@ class TestMLServingPredictCommand:
             for keyword in ["invalid", "uuid", "format", "model-id"]
         )
 
-    def test_predict_command_table_format(self, runner, api_available, test_model_id):
+    def test_predict_command_table_format(self, runner, api_service_available, test_model_id):
         """Test predict command with table format output"""
         result = runner.invoke(
             cli,
@@ -406,7 +393,7 @@ class TestMLServingPredictCommand:
             assert "Model ID:" in result.output or "model_id" in result.output.lower()
             assert "Output:" in result.output or "output" in result.output.lower()
 
-    def test_predict_command_json_format(self, runner, api_available, test_model_id):
+    def test_predict_command_json_format(self, runner, api_service_available, test_model_id):
         """Test predict command with JSON format output"""
         result = runner.invoke(
             cli,
@@ -431,7 +418,7 @@ class TestMLServingPredictCommand:
 class TestMLServingListCommand:
     """Comprehensive tests for ML serving list command"""
 
-    def test_list_command_basic(self, runner, api_available):
+    def test_list_command_basic(self, runner, api_service_available):
         """Test basic list command"""
         result = runner.invoke(cli, ["ml", "serving", "list", "--format", "json"])
 
@@ -440,7 +427,7 @@ class TestMLServingListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_list_command_with_model_id_filter(self, runner, api_available, test_model_id):
+    def test_list_command_with_model_id_filter(self, runner, api_service_available, test_model_id):
         """Test list command with model ID filter"""
         result = runner.invoke(
             cli, ["ml", "serving", "list", "--model-id", test_model_id, "--format", "json"]
@@ -451,7 +438,7 @@ class TestMLServingListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_list_command_with_status_filter(self, runner, api_available):
+    def test_list_command_with_status_filter(self, runner, api_service_available):
         """Test list command with status filter"""
         result = runner.invoke(
             cli, ["ml", "serving", "list", "--status", "READY", "--format", "json"]
@@ -462,7 +449,7 @@ class TestMLServingListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_list_command_with_pagination(self, runner, api_available):
+    def test_list_command_with_pagination(self, runner, api_service_available):
         """Test list command with pagination parameters"""
         result = runner.invoke(
             cli, ["ml", "serving", "list", "--limit", "10", "--offset", "0", "--format", "json"]
@@ -473,7 +460,7 @@ class TestMLServingListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_list_command_table_format(self, runner, api_available):
+    def test_list_command_table_format(self, runner, api_service_available):
         """Test list command with table format"""
         result = runner.invoke(cli, ["ml", "serving", "list", "--format", "table"])
 
@@ -482,7 +469,7 @@ class TestMLServingListCommand:
             # Should show table headers or "No serving deployments found"
             assert "Serving ID" in result.output or "No serving deployments found" in result.output
 
-    def test_list_command_json_format(self, runner, api_available):
+    def test_list_command_json_format(self, runner, api_service_available):
         """Test list command with JSON format"""
         result = runner.invoke(cli, ["ml", "serving", "list", "--format", "json"])
 
@@ -491,7 +478,7 @@ class TestMLServingListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_list_command_invalid_model_id_format(self, runner, api_available):
+    def test_list_command_invalid_model_id_format(self, runner, api_service_available):
         """Test list command with invalid model ID format"""
         result = runner.invoke(
             cli, ["ml", "serving", "list", "--model-id", "invalid-uuid", "--format", "json"]
@@ -506,7 +493,7 @@ class TestMLServingListCommand:
 class TestMLServingGetCommand:
     """Comprehensive tests for ML serving get command"""
 
-    def test_get_command_success(self, runner, api_available):
+    def test_get_command_success(self, runner, api_service_available):
         """Test get command with valid serving ID"""
         # Use a test serving ID (will fail if not exists, but tests command structure)
         test_serving_id = str(uuid.uuid4())
@@ -524,13 +511,13 @@ class TestMLServingGetCommand:
                 for keyword in ["failed", "error", "not found", "authentication"]
             )
 
-    def test_get_command_missing_serving_id(self, runner, api_available):
+    def test_get_command_missing_serving_id(self, runner, api_service_available):
         """Test get command without serving ID"""
         result = runner.invoke(cli, ["ml", "serving", "get"])
         assert result.exit_code != 0
         assert "Missing argument" in result.output or "required" in result.output.lower()
 
-    def test_get_command_table_format(self, runner, api_available):
+    def test_get_command_table_format(self, runner, api_service_available):
         """Test get command with table format"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(cli, ["ml", "serving", "get", test_serving_id, "--format", "table"])
@@ -540,7 +527,7 @@ class TestMLServingGetCommand:
             assert "Model ID:" in result.output or "model_id" in result.output.lower()
             assert "Status:" in result.output or "status" in result.output.lower()
 
-    def test_get_command_json_format(self, runner, api_available):
+    def test_get_command_json_format(self, runner, api_service_available):
         """Test get command with JSON format"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(cli, ["ml", "serving", "get", test_serving_id, "--format", "json"])
@@ -553,7 +540,7 @@ class TestMLServingGetCommand:
 class TestMLServingUndeployCommand:
     """Comprehensive tests for ML serving undeploy command"""
 
-    def test_undeploy_command_success(self, runner, api_available):
+    def test_undeploy_command_success(self, runner, api_service_available):
         """Test undeploy command with valid serving ID"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -572,13 +559,13 @@ class TestMLServingUndeployCommand:
                 for keyword in ["failed", "error", "not found", "authentication"]
             )
 
-    def test_undeploy_command_missing_serving_id(self, runner, api_available):
+    def test_undeploy_command_missing_serving_id(self, runner, api_service_available):
         """Test undeploy command without serving ID"""
         result = runner.invoke(cli, ["ml", "serving", "undeploy"])
         assert result.exit_code != 0
         assert "Missing argument" in result.output or "required" in result.output.lower()
 
-    def test_undeploy_command_table_format(self, runner, api_available):
+    def test_undeploy_command_table_format(self, runner, api_service_available):
         """Test undeploy command with table format"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -588,7 +575,7 @@ class TestMLServingUndeployCommand:
         if result.exit_code == 0:
             assert "Serving deployment undeployed successfully!" in result.output
 
-    def test_undeploy_command_json_format(self, runner, api_available):
+    def test_undeploy_command_json_format(self, runner, api_service_available):
         """Test undeploy command with JSON format"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -603,7 +590,7 @@ class TestMLServingUndeployCommand:
 class TestMLServingMetricsCommand:
     """Comprehensive tests for ML serving metrics command"""
 
-    def test_metrics_command_success(self, runner, api_available):
+    def test_metrics_command_success(self, runner, api_service_available):
         """Test metrics command with valid serving ID"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -633,13 +620,13 @@ class TestMLServingMetricsCommand:
                 for keyword in ["failed", "error", "not found", "authentication"]
             )
 
-    def test_metrics_command_missing_serving_id(self, runner, api_available):
+    def test_metrics_command_missing_serving_id(self, runner, api_service_available):
         """Test metrics command without serving ID"""
         result = runner.invoke(cli, ["ml", "serving", "metrics"])
         assert result.exit_code != 0
         assert "Missing argument" in result.output or "required" in result.output.lower()
 
-    def test_metrics_command_table_format(self, runner, api_available):
+    def test_metrics_command_table_format(self, runner, api_service_available):
         """Test metrics command with table format"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -654,7 +641,7 @@ class TestMLServingMetricsCommand:
                 for keyword in ["accuracy", "latency", "error rate", "data drift", "requests"]
             )
 
-    def test_metrics_command_json_format(self, runner, api_available):
+    def test_metrics_command_json_format(self, runner, api_service_available):
         """Test metrics command with JSON format"""
         test_serving_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -669,7 +656,7 @@ class TestMLServingMetricsCommand:
 class TestMLServingABTestCreateCommand:
     """Comprehensive tests for ML serving A/B test create command"""
 
-    def test_ab_test_create_command_success(self, runner, api_available, test_model_id):
+    def test_ab_test_create_command_success(self, runner, api_service_available, test_model_id):
         """Test A/B test create command"""
         result = runner.invoke(
             cli,
@@ -702,7 +689,7 @@ class TestMLServingABTestCreateCommand:
                 for keyword in ["failed", "error", "not found", "not available", "authentication"]
             )
 
-    def test_ab_test_create_command_missing_model_id(self, runner, api_available):
+    def test_ab_test_create_command_missing_model_id(self, runner, api_service_available):
         """Test A/B test create without model-id"""
         result = runner.invoke(
             cli,
@@ -720,7 +707,9 @@ class TestMLServingABTestCreateCommand:
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_ab_test_create_command_missing_variant_id(self, runner, api_available, test_model_id):
+    def test_ab_test_create_command_missing_variant_id(
+        self, runner, api_service_available, test_model_id
+    ):
         """Test A/B test create without variant-id"""
         result = runner.invoke(
             cli,
@@ -739,7 +728,7 @@ class TestMLServingABTestCreateCommand:
         assert "Missing option" in result.output or "required" in result.output.lower()
 
     def test_ab_test_create_command_missing_traffic_split(
-        self, runner, api_available, test_model_id
+        self, runner, api_service_available, test_model_id
     ):
         """Test A/B test create without traffic-split"""
         result = runner.invoke(
@@ -759,7 +748,7 @@ class TestMLServingABTestCreateCommand:
         assert "Missing option" in result.output or "required" in result.output.lower()
 
     def test_ab_test_create_command_invalid_traffic_split_format(
-        self, runner, api_available, test_model_id
+        self, runner, api_service_available, test_model_id
     ):
         """Test A/B test create with invalid traffic split format"""
         result = runner.invoke(
@@ -786,7 +775,7 @@ class TestMLServingABTestCreateCommand:
         )
 
     def test_ab_test_create_command_traffic_split_not_summing_to_100(
-        self, runner, api_available, test_model_id
+        self, runner, api_service_available, test_model_id
     ):
         """Test A/B test create with traffic split not summing to 100"""
         result = runner.invoke(
@@ -809,7 +798,9 @@ class TestMLServingABTestCreateCommand:
         assert result.exit_code != 0
         assert any(keyword in result.output.lower() for keyword in ["sum", "100", "traffic split"])
 
-    def test_ab_test_create_command_table_format(self, runner, api_available, test_model_id):
+    def test_ab_test_create_command_table_format(
+        self, runner, api_service_available, test_model_id
+    ):
         """Test A/B test create with table format"""
         result = runner.invoke(
             cli,
@@ -833,7 +824,7 @@ class TestMLServingABTestCreateCommand:
             assert "A/B test created successfully!" in result.output
             assert "A/B Test ID:" in result.output or "ab_test_id" in result.output.lower()
 
-    def test_ab_test_create_command_json_format(self, runner, api_available, test_model_id):
+    def test_ab_test_create_command_json_format(self, runner, api_service_available, test_model_id):
         """Test A/B test create with JSON format"""
         result = runner.invoke(
             cli,
@@ -861,7 +852,7 @@ class TestMLServingABTestCreateCommand:
 class TestMLServingABTestListCommand:
     """Comprehensive tests for ML serving A/B test list command"""
 
-    def test_ab_test_list_command_basic(self, runner, api_available):
+    def test_ab_test_list_command_basic(self, runner, api_service_available):
         """Test basic A/B test list command"""
         result = runner.invoke(cli, ["ml", "serving", "ab-test", "list", "--format", "json"])
 
@@ -870,7 +861,9 @@ class TestMLServingABTestListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_ab_test_list_command_with_model_id_filter(self, runner, api_available, test_model_id):
+    def test_ab_test_list_command_with_model_id_filter(
+        self, runner, api_service_available, test_model_id
+    ):
         """Test A/B test list with model ID filter"""
         result = runner.invoke(
             cli,
@@ -882,7 +875,7 @@ class TestMLServingABTestListCommand:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
 
-    def test_ab_test_list_command_table_format(self, runner, api_available):
+    def test_ab_test_list_command_table_format(self, runner, api_service_available):
         """Test A/B test list with table format"""
         result = runner.invoke(cli, ["ml", "serving", "ab-test", "list", "--format", "table"])
 
@@ -890,7 +883,7 @@ class TestMLServingABTestListCommand:
         if result.exit_code == 0:
             assert "A/B Test ID" in result.output or "No A/B tests found" in result.output
 
-    def test_ab_test_list_command_json_format(self, runner, api_available):
+    def test_ab_test_list_command_json_format(self, runner, api_service_available):
         """Test A/B test list with JSON format"""
         result = runner.invoke(cli, ["ml", "serving", "ab-test", "list", "--format", "json"])
 
@@ -903,7 +896,7 @@ class TestMLServingABTestListCommand:
 class TestMLServingABTestGetCommand:
     """Comprehensive tests for ML serving A/B test get command"""
 
-    def test_ab_test_get_command_success(self, runner, api_available):
+    def test_ab_test_get_command_success(self, runner, api_service_available):
         """Test A/B test get command"""
         test_ab_test_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -921,13 +914,13 @@ class TestMLServingABTestGetCommand:
                 for keyword in ["failed", "error", "not found", "authentication"]
             )
 
-    def test_ab_test_get_command_missing_id(self, runner, api_available):
+    def test_ab_test_get_command_missing_id(self, runner, api_service_available):
         """Test A/B test get without ID"""
         result = runner.invoke(cli, ["ml", "serving", "ab-test", "get"])
         assert result.exit_code != 0
         assert "Missing argument" in result.output or "required" in result.output.lower()
 
-    def test_ab_test_get_command_table_format(self, runner, api_available):
+    def test_ab_test_get_command_table_format(self, runner, api_service_available):
         """Test A/B test get with table format"""
         test_ab_test_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -938,7 +931,7 @@ class TestMLServingABTestGetCommand:
             assert "A/B Test ID:" in result.output or "ab_test_id" in result.output.lower()
             assert "Base Model ID:" in result.output or "model_id" in result.output.lower()
 
-    def test_ab_test_get_command_json_format(self, runner, api_available):
+    def test_ab_test_get_command_json_format(self, runner, api_service_available):
         """Test A/B test get with JSON format"""
         test_ab_test_id = str(uuid.uuid4())
         result = runner.invoke(
@@ -953,7 +946,7 @@ class TestMLServingABTestGetCommand:
 class TestMLServingCLIErrorHandling:
     """Comprehensive tests for CLI error handling"""
 
-    def test_error_handling_invalid_endpoint(self, runner, api_available, test_model_id):
+    def test_error_handling_invalid_endpoint(self, runner, api_service_available, test_model_id):
         """Test error handling for invalid API endpoint"""
         # This tests that errors are properly caught and displayed
         result = runner.invoke(
@@ -995,7 +988,7 @@ class TestMLServingCLIErrorHandling:
 class TestMLServingCLIOutputConsistency:
     """Comprehensive tests for CLI output format consistency"""
 
-    def test_output_format_consistency_deploy(self, runner, api_available, test_model_id):
+    def test_output_format_consistency_deploy(self, runner, api_service_available, test_model_id):
         """Test output format consistency for deploy command"""
         json_result = runner.invoke(
             cli, ["ml", "serving", "deploy", "--model-id", test_model_id, "--format", "json"]
@@ -1017,7 +1010,7 @@ class TestMLServingCLIOutputConsistency:
                 or "deployment_id" in table_result.output.lower()
             )
 
-    def test_output_format_consistency_list(self, runner, api_available):
+    def test_output_format_consistency_list(self, runner, api_service_available):
         """Test output format consistency for list command"""
         json_result = runner.invoke(cli, ["ml", "serving", "list", "--format", "json"])
 

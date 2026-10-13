@@ -19,7 +19,7 @@ describe('Tooltip', () => {
     render(
       <Tooltip content="Helpful hint">
         <button type="button">Trigger</button>
-      </Tooltip>,
+      </Tooltip>
     );
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
@@ -29,7 +29,7 @@ describe('Tooltip', () => {
     render(
       <Tooltip content="Helpful hint">
         <button type="button">Trigger</button>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole('button', { name: /trigger/i });
     await user.hover(trigger);
@@ -46,7 +46,7 @@ describe('Tooltip', () => {
     render(
       <Tooltip content="Focus hint">
         <button type="button">Trigger</button>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole('button', { name: /trigger/i });
     trigger.focus();
@@ -59,7 +59,7 @@ describe('Tooltip', () => {
     render(
       <Tooltip content="Escapable hint">
         <button type="button">Trigger</button>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole('button', { name: /trigger/i });
     trigger.focus();
@@ -79,16 +79,21 @@ describe('Tooltip', () => {
     render(
       <Tooltip content="Described content">
         <button type="button">Trigger</button>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole('button', { name: /trigger/i });
     expect(trigger).not.toHaveAttribute('aria-describedby');
     await user.hover(trigger);
     await waitFor(() => {
       expect(trigger).toHaveAttribute('aria-describedby');
-      const id = trigger.getAttribute('aria-describedby');
-      expect(id).toBeTruthy();
-      expect(document.getElementById(id!)).toHaveTextContent('Described content');
+      const id = trigger.getAttribute('aria-describedby')!;
+      // React 19's useId dual representation: the rendered id ATTRIBUTE is
+      // sanitised (`_r_0_`) while the DOM PROPERTY is `«r0»`. getElementById
+      // uses the property and returned null forever; querySelector matches
+      // the attribute.
+      const bubble = document.querySelector(`#${CSS.escape(id)}`);
+      expect(bubble).not.toBeNull();
+      expect(bubble).toHaveTextContent('Described content');
     });
   });
 });

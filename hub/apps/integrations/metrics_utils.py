@@ -19,8 +19,8 @@ def track_marketplace_api_call(
     method: str,
     tenant_id: str | None = None,
     func=None,
-    *args,
-    **kwargs,
+    *_args,
+    **_kwargs,
 ):
     """
     Track API calls to marketplaces with metrics.
@@ -64,7 +64,6 @@ def track_marketplace_api_call(
                 # Try to extract status code from result if it's an httpx.Response
                 if hasattr(result, "status_code"):
                     status_code = str(result.status_code)
-                return result
             except Exception as e:
                 status_code = "error"
                 error_type = type(e).__name__
@@ -72,6 +71,8 @@ def track_marketplace_api_call(
                 if hasattr(e, "response") and hasattr(e.response, "status_code"):
                     status_code = str(e.response.status_code)
                 raise
+            else:
+                return result
             finally:
                 _record_api_metrics(
                     marketplace_type,
@@ -124,9 +125,7 @@ def _record_api_metrics(
         correlation_context = {}
 
     duration = time.time() - start_time
-    is_error = status_code == "error" or (
-        status_code.startswith("4") or status_code.startswith("5")
-    )
+    is_error = status_code == "error" or (status_code.startswith(("4", "5")))
 
     # Log API call with structured fields
     log_level = "error" if is_error else "info"

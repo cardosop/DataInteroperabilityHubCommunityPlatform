@@ -136,11 +136,8 @@ def get_available_odps_versions() -> list[str]:
         # Normalize version directory name back to version string
         # All directories have "v" prefix, so remove it
         version_name = version_dir.name
-        if version_name.startswith("v"):
-            version = version_name[1:]
-        else:
-            # If somehow no "v" prefix, use as-is
-            version = version_name
+        # Remove "v" prefix; if somehow absent, use as-is
+        version = version_name[1:] if version_name.startswith("v") else version_name
 
         versions.append(version)
 
@@ -148,7 +145,7 @@ def get_available_odps_versions() -> list[str]:
     def version_sort_key(v: str) -> tuple:
         if v.endswith(".x"):
             # .x versions go last, sorted by major version (descending)
-            major = int(v.split(".")[0]) if v.split(".")[0].isdigit() else 0
+            major = int(v.split(".", maxsplit=1)[0]) if v.split(".", maxsplit=1)[0].isdigit() else 0
             return (1, -major)  # 1 means .x version, negative for descending
         else:
             # Numeric versions, sorted descending

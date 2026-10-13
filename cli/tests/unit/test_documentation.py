@@ -161,9 +161,10 @@ class TestCLIDocumentation:
         content = readme_path.read_text()
         # Check for BaaS section with workflow-like content
         assert "BaaS" in content, "README should contain BaaS section"
-        assert "api-keys" in content.lower() and (
-            "create" in content.lower() or "list" in content.lower()
-        ), "README should contain BaaS API key examples"
+        assert "api-keys" in content.lower(), "README should contain BaaS API key examples"
+        assert "create" in content.lower() or "list" in content.lower(), (
+            "README should contain BaaS API key examples"
+        )
 
     def test_baas_usage_doc_exists(self, baas_usage_path):
         """Test that BaaS usage documentation exists"""

@@ -9,12 +9,12 @@ import uuid
 
 from django.test import TestCase
 
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+from hub.apps.marketplace.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
 
-def create_valid_odps_document(product_id: str = None) -> dict:
+def create_valid_odps_document(product_id: str | None = None) -> dict:
     """Create a valid ODPS 4.1 document for testing"""
     if not product_id:
         product_id = f"test-{int(time.time() * 1000)}"

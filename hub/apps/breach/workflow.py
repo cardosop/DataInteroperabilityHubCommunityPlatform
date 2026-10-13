@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -28,8 +27,12 @@ from hub.apps.regulation_policies.registry import (
     compute_breach_supervisory_deadline_utc,
     resolve_breach_supervisory_authority_ids,
 )
-from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import tenant_context
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 

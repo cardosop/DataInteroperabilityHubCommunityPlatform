@@ -6,6 +6,7 @@ REST API views for contract management.
 This module imports ContractViewSet which uses mixins for different responsibilities.
 """
 
+from django.db import DatabaseError
 from django.db.models import Case, IntegerField, Q, Value, When
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -482,11 +483,8 @@ class ContractViewSet(
         """Apply filtering by owners, tags, quality profile, compliance regime, and new filters (GAP-9.2.2)"""
         request = self.request
         # Handle both DRF Request objects (with query_params) and Django WSGIRequest (with GET)
-        if hasattr(request, "query_params"):
-            query_params = request.query_params
-        else:
-            # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
-            query_params = request.GET
+        # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
+        query_params = request.query_params if hasattr(request, "query_params") else request.GET
 
         # Filter by linked asset (asset detail page, pickers). Mirrors datasets list:
         # valid UUID filters; invalid UUID → empty (no 500).
@@ -581,7 +579,7 @@ class ContractViewSet(
                             contract_ids.append(contract.id)
                     elif owner_name and name_match:
                         contract_ids.append(contract.id)
-            except Exception as e:
+            except (DatabaseError, AttributeError, TypeError) as e:
                 # Log the error for debugging but don't fail silently
                 import logging
 
@@ -590,14 +588,11 @@ class ContractViewSet(
                 # If queryset evaluation fails, return empty queryset
                 return queryset.none()
 
-            if contract_ids:
-                # Filter the queryset by the matching contract IDs
-                # Since the contracts_list came from a tenant-filtered queryset, all IDs are already tenant-scoped
-                # We can safely filter by ID without losing tenant security
-                queryset = queryset.filter(id__in=contract_ids)
-            else:
-                # No contracts matched the owner filter
-                queryset = queryset.none()
+            # Filter the queryset by the matching contract IDs
+            # Since the contracts_list came from a tenant-filtered queryset, all IDs are already tenant-scoped
+            # We can safely filter by ID without losing tenant security
+            # No contracts matched the owner filter
+            queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by tags
         tags = query_params.getlist("tag")  # Support multiple tags
@@ -641,17 +636,14 @@ class ContractViewSet(
                                 if email and email.lower() == contact_email.lower():
                                     contract_ids.append(contract.id)
                                     break
-            except Exception as e:
+            except (DatabaseError, AttributeError, TypeError) as e:
                 import logging
 
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Error filtering contracts by contact_email: {e}", exc_info=True)
                 return queryset.none()
 
-            if contract_ids:
-                queryset = queryset.filter(id__in=contract_ids)
-            else:
-                queryset = queryset.none()
+            queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by contact_name (from contact[] array)
         contact_name = query_params.get("contact_name")
@@ -670,17 +662,14 @@ class ContractViewSet(
                                 if name and contact_name.lower() in name.lower():
                                     contract_ids.append(contract.id)
                                     break
-            except Exception as e:
+            except (DatabaseError, AttributeError, TypeError) as e:
                 import logging
 
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Error filtering contracts by contact_name: {e}", exc_info=True)
                 return queryset.none()
 
-            if contract_ids:
-                queryset = queryset.filter(id__in=contract_ids)
-            else:
-                queryset = queryset.none()
+            queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by server_type — uses JSONB @> containment because servers is an array of objects
         server_type = query_params.get("server_type")
@@ -734,10 +723,7 @@ class ContractViewSet(
                 # Invalid min_availability value, return empty queryset
                 queryset = queryset.none()
             else:
-                if contract_ids:
-                    queryset = queryset.filter(id__in=contract_ids)
-                else:
-                    queryset = queryset.none()
+                queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by max_latency_ms (from servicelevels[])
         max_latency_ms = query_params.get("max_latency_ms")
@@ -767,10 +753,7 @@ class ContractViewSet(
             except (ValueError, TypeError):
                 queryset = queryset.none()
             else:
-                if contract_ids:
-                    queryset = queryset.filter(id__in=contract_ids)
-                else:
-                    queryset = queryset.none()
+                queryset = queryset.filter(id__in=contract_ids) if contract_ids else queryset.none()
 
         # Filter by model_name — uses JSONB @> containment because models is an array of objects
         model_name = query_params.get("model_name")
@@ -844,11 +827,8 @@ class ContractViewSet(
         """Apply sorting by quality score, compliance risk level, creation date, update date (GAP-9.2.2)"""
         request = self.request
         # Handle both DRF Request objects (with query_params) and Django WSGIRequest (with GET)
-        if hasattr(request, "query_params"):
-            query_params = request.query_params
-        else:
-            # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
-            query_params = request.GET
+        # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
+        query_params = request.query_params if hasattr(request, "query_params") else request.GET
         ordering = query_params.get("ordering", "-created_at")  # Default to newest first
 
         # Parse ordering parameter (can be comma-separated)

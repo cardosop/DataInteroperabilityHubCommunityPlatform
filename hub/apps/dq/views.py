@@ -7,6 +7,7 @@ REST API views for DQ run management.
 import contextlib
 import uuid
 from datetime import UTC, datetime
+from typing import ClassVar
 
 import structlog
 from django.db import connection, transaction
@@ -31,8 +32,8 @@ from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tena
 from hub.apps.tenants.services import get_tenant_dq_profile
 
 from .feature_flags import DQFeatureFlagMixin
-from .mixins import AuditorPermissionMixin
 from .log_helpers import _redact
+from .mixins import AuditorPermissionMixin
 from .models import (
     DQAlertingRule,
     DQAnomaly,
@@ -782,7 +783,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
 
     dq_flag_scope = "advanced"
     permission_classes = [permissions.IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = (ScopedRateThrottle,)
 
     # Phase 240.3.B.5 — per-action throttle scope.  ``ScopedRateThrottle``
     # reads ``view.throttle_scope`` during ``check_throttles`` (which runs
@@ -791,7 +792,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
     # throttle has already returned True (no scope = no limit).  We set
     # the scope in ``get_throttles()`` (called BY ``check_throttles``)
     # using ``self.action`` (already populated by ``initialize_request``).
-    _ACTION_THROTTLE_SCOPE = {
+    _ACTION_THROTTLE_SCOPE: ClassVar[dict[str, str]] = {
         "anomalies": "dq_quality_anomalies",
         "trends": "dq_quality_trends",
         "scorecards": "dq_quality_scorecards",
@@ -1593,7 +1594,7 @@ def execute_dq_run(dq_run_id: str) -> None:
                     resource_id=str(dq_run.id),
                 )
             except Exception:
-                pass  # Notifications must never block DQ pipeline
+                pass
 
     except Exception as e:
         # Every condition caught here (no file, storage unavailable,

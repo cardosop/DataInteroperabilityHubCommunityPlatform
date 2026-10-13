@@ -23,8 +23,12 @@ export function ConsentDashboardPage() {
     let cancelled = false;
     (async () => {
       try {
+        // close-test-coverage-gaps 4.4 — the consent API lives at
+        // /api/v1/consent/ (hub/apps/consent/urls.py); the old
+        // /api/v1/governance/consent-dashboard/ path 404'd (and double-
+        // prefixed the client baseURL).
         const { data: body } = await apiClient.getClient().get<Dash>(
-          '/api/v1/governance/consent-dashboard/',
+          'consent/consent-dashboard/',
         );
         if (!cancelled) setData(body);
       } catch (e) {

@@ -74,7 +74,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='pipelinedependency',
-            constraint=models.UniqueConstraint(fields=('tenant', 'pipeline_type', 'pipeline_id', 'dependency_type', 'downstream_pipeline_type', 'downstream_pipeline_id'), name='uq_pipeline_dependency_scope'),
+            constraint=models.UniqueConstraint(fields=['tenant', 'pipeline_type', 'pipeline_id', 'dependency_type', 'downstream_pipeline_type', 'downstream_pipeline_id'], name='uq_pipeline_dependency_scope'),
         ),
         migrations.AddIndex(
             model_name='pipelinerundependency',

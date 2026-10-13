@@ -81,7 +81,11 @@ export interface MarketplaceOrder {
 
 export interface MarketplaceEntitlement {
   id: string;
-  listing_id: string;
+  // The entitlement serializer (hub/apps/marketplace/entitlement_serializers.py)
+  // exposes the FK as ``listing`` (a UUID string), NOT ``listing_id`` —
+  // the old matcher compared against a field the wire never sent and
+  // every entitlement poll timed out deterministically (b6 #49).
+  listing: string;
   status: string;
 }
 
@@ -144,9 +148,13 @@ export async function createListingViaApi(
 }
 
 /**
- * Publish a draft listing.
- * Tries PATCH /marketplace/listings/{id}/ with status=PUBLISHED,
- * then POST /marketplace/listings/{id}/publish/ as fallback.
+ * Publish a draft listing via PATCH status=PUBLISHED.
+ *
+ * 231.DoD.5 — the publish chain now enforces the compliance gate for
+ * tenants with ``marketplace_publish_compliance_gate_enabled``: the
+ * listing's asset must have a SUCCEEDED ComplianceRun (the removed
+ * POST /publish/ fallback no longer exists). Ensure a run before
+ * publishing so the gate passes legitimately.
  */
 export async function publishListingViaApi(
   providerUser: TestUser,
@@ -158,23 +166,55 @@ export async function publishListingViaApi(
     Authorization: `Bearer ${token}`,
   };
 
+  // Ensure the 231.DoD.5 publish chain is satisfied before publishing.
+  // The gate requires, in order: a File row for the asset (STORAGE_MISSING
+  // otherwise), a SUCCEEDED DQ run (DQ status PASS), and a SUCCEEDED
+  // ComplianceRun. Seeded persona assets carry none of these — provision
+  // the chain legitimately rather than bypassing the gate.
+  try {
+    const listingResp = await fetch(`${API_BASE_URL}/marketplace/listings/${listingId}/`, {
+      headers,
+    });
+    if (listingResp.ok) {
+      const listing = (await listingResp.json()) as {
+        asset_id?: string;
+        asset?: string;
+      };
+      const assetId = listing.asset_id ?? listing.asset;
+      if (assetId) {
+        const { createDatasetViaApi } = await import('./api-assets');
+        const {
+          triggerComplianceRunViaApi,
+          waitForComplianceRunViaApi,
+          triggerDQRunViaApi,
+          waitForDQRunViaApi,
+        } = await import('./api-compliance');
+
+        // File row (dataset + upload) → DQ PASS → compliance SUCCEEDED.
+        await createDatasetViaApi(providerUser, { assetId, forceNew: true });
+        const dqRunId = await triggerDQRunViaApi(providerUser, { assetId });
+        await waitForDQRunViaApi(providerUser, dqRunId, 240_000);
+        const complianceRunId = await triggerComplianceRunViaApi(providerUser, {
+          assetId,
+        });
+        await waitForComplianceRunViaApi(providerUser, complianceRunId, 240_000);
+      }
+    }
+  } catch {
+    // intentional: non-fatal — the PATCH below surfaces the gate's own error if the chain could not be produced — Non-fatal: the PATCH below surfaces the gate's own error if the
+    // chain could not be produced.
+  }
+
   // Try PATCH status first
   const patchResp = await fetch(`${API_BASE_URL}/marketplace/listings/${listingId}/`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({ status: 'PUBLISHED' }),
   });
-  if (patchResp.ok) return;
-
-  // Fallback: POST /publish/
-  const publishResp = await fetch(
-    `${API_BASE_URL}/marketplace/listings/${listingId}/publish/`,
-    { method: 'POST', headers }
-  );
-  if (!publishResp.ok) {
+  if (!patchResp.ok) {
     // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
-    const body = await publishResp.text().catch(() => '');
-    throw new Error(`publishListingViaApi failed: ${publishResp.status} ${body}`);
+    const body = await patchResp.text().catch(() => '');
+    throw new Error(`publishListingViaApi failed: ${patchResp.status} ${body}`);
   }
 }
 
@@ -282,4 +322,40 @@ export async function getEntitlementsViaApi(
     | { results?: MarketplaceEntitlement[] }
     | MarketplaceEntitlement[];
   return Array.isArray(data) ? data : data.results ?? [];
+}
+
+/**
+ * Drive a purchase via API so the entitlement lands before page render.
+ *
+ * E2E listings default to pricing_model FREE_AUTO_APPROVE, so placing the
+ * order runs the auto-approve path in the backend (order_views.py) and
+ * creates the entitlement inline. The paid checkout route
+ * (POST /marketplace/orders/purchase) requires a real payment gateway and
+ * is not part of the E2E purchase flow.
+ *
+ * Returns the order id.
+ */
+export async function purchaseListingViaApi(
+  consumerUser: TestUser,
+  listingId: string,
+  options?: { cleanup?: CleanupRegistry }
+): Promise<string> {
+  const orderId = await placeOrderViaApi(consumerUser, listingId, options);
+
+  // Poll until the entitlement lands — auto-approve fires in the same
+  // request, but poll against eventual-consistency noise on slow runners.
+  const deadline = Date.now() + 30_000;
+  const hasEntitlement = (rows: MarketplaceEntitlement[]) =>
+    rows.some((e) => e.listing === listingId);
+  let entitlements = await getEntitlementsViaApi(consumerUser);
+  while (!hasEntitlement(entitlements) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    entitlements = await getEntitlementsViaApi(consumerUser);
+  }
+  if (!hasEntitlement(entitlements)) {
+    throw new Error(
+      `purchaseListingViaApi: no entitlement for listing ${listingId} after 30s (order ${orderId})`
+    );
+  }
+  return orderId;
 }

@@ -8,16 +8,19 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from datetime import timedelta
 from typing import Any
 
 import structlog
 from django.conf import settings as django_settings
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from hub.apps.contracts.odps_errors import RecoveryStrategy
 
+from .metrics import emit_outbound_attempt
 from .models import (
     DeliveryStatus,
     Webhook,
@@ -33,7 +36,6 @@ from .odps_webhook_errors import (
     ODPSWebhookValidationError,
 )
 from .odps_webhook_validators import validate_odps_webhook_payload
-from .metrics import emit_outbound_attempt, observe_signature_duration
 from .rate_limit import check_outbound_rate_limit, emit_rate_limit_block_metric
 from .service_client import WebhookDeliveryClient
 from .ssrf_guard import SSRFViolationError, is_safe_url, validate_webhook_url
@@ -177,7 +179,7 @@ class WebhookDeliveryService:
                 )
             except ODPSWebhookPayloadError as e:
                 # Log validation error
-                logger.error(
+                logger.exception(
                     "odps_webhook_payload_validation_failed",
                     webhook_id=str(webhook.id),
                     event_type=event_type,
@@ -205,7 +207,7 @@ class WebhookDeliveryService:
                 webhook_id=str(webhook.id),
                 event_type=event_type,
                 cause=e,
-            )
+            ) from e
 
         # ── Outbound rate limiting (REQ-WH-RL-002) ──────────────────
         # Check tenant's per-minute budget BEFORE creating the delivery row.
@@ -300,7 +302,7 @@ class WebhookDeliveryService:
                 webhook_id=str(webhook.id),
                 event_type=event_type,
                 cause=e,
-            )
+            ) from e
 
         # ── Idempotency check ────────────────────────────────────────
         # Phase 93.7: skip if this exact event was already successfully
@@ -346,7 +348,7 @@ class WebhookDeliveryService:
                 webhook_id=str(webhook.id),
                 event_type=event_type,
                 cause=e,
-            )
+            ) from e
 
         # Enqueue async delivery via RQ (13.6): decouples HTTP fan-out from
         # the request thread.  In tests WEBHOOK_ASYNC_DELIVERY=False falls
@@ -368,9 +370,49 @@ class WebhookDeliveryService:
             from hub.apps.webhooks import tasks as _wh_tasks
 
             _did = str(delivery.id)
-            transaction.on_commit(lambda: _wh_tasks.deliver_webhook.delay(_did))
+            # Pass the tenant so the worker can wrap the attempt in
+            # tenant_context() — the webhooks table is RLS-enabled and a
+            # bare worker connection resolves the select_related join to
+            # DoesNotExist under a RLS-enforcing DB role.
+            _tid = str(webhook.tenant_id)
+            transaction.on_commit(lambda: _wh_tasks.deliver_webhook.delay(_did, _tid))
         else:
             WebhookDeliveryService._attempt_delivery(delivery)
+            # Inline retry execution (WEBHOOK_ASYNC_DELIVERY=False — test /
+            # E2E stacks): ``_attempt_delivery`` → ``_schedule_retry`` only
+            # WRITES ``next_retry_at``; no processor (cron / scheduler job)
+            # ever reads it back, so a FAILED delivery would stay parked at
+            # attempt_number=1 forever and the retry+DLQ contract
+            # (attempt_number > 1, DEAD_LETTER after max_retries) never
+            # converges. Drive the per-webhook retry budget synchronously —
+            # the E2E forced-failure subflow (b7 #44) depends on this.
+            # The loop runs until the row reaches a terminal state: SUCCESS,
+            # or DEAD_LETTER — the final retry's failure transitions the row
+            # to DEAD_LETTER (next_retry_at=None) inside ``_schedule_retry``,
+            # which exits the loop. A bounded guard caps pathological
+            # reschedules at one extra attempt past the webhook budget.
+            delivery.refresh_from_db()
+            attempts_guard = 0
+            while (
+                delivery.status == DeliveryStatus.FAILED
+                and delivery.next_retry_at is not None
+                and attempts_guard <= delivery.webhook.max_retries + 1
+            ):
+                # Honor the webhook's retry_intervals instead of re-attempting
+                # back-to-back. Rapid-fire re-attempts storm the sink (and,
+                # for loopback sinks like the E2E webhook-sink, the API's OWN
+                # listener) — the burst overflowed the listen backlog
+                # (connection refused), tripped the shared circuit breaker,
+                # and the DEAD_LETTER row lost its last HTTP status (the
+                # breaker-reject error carries no http_status_code, so the
+                # E2E forced-failure contract saw NULL instead of 503).
+                now = timezone.now()
+                if delivery.next_retry_at > now:
+                    wait_seconds = min((delivery.next_retry_at - now).total_seconds(), 30)
+                    time.sleep(wait_seconds)
+                WebhookDeliveryService._attempt_delivery(delivery)
+                delivery.refresh_from_db()
+                attempts_guard += 1
 
     @staticmethod
     def _attempt_delivery(delivery: WebhookDelivery):
@@ -478,35 +520,116 @@ class WebhookDeliveryService:
             if status_code in (301, 302, 307, 308):
                 location = initial_response.headers.get("Location", "")
 
-                if getattr(django_settings, "WEBHOOK_SSRF_ENABLED", True):
-                    if location and not is_safe_url(location):
-                        ssrf_redirect_error = ODPSWebhookDeliveryError(
+                if (
+                    getattr(django_settings, "WEBHOOK_SSRF_ENABLED", True)
+                    and location
+                    and not is_safe_url(location)
+                ):
+                    # W1.19 — convention 8: the hop-2 block emits its
+                    # audit event (host only).
+                    try:
+                        from urllib.parse import urlparse
+
+                        from hub.apps.audit.utils import create_audit_event
+
+                        create_audit_event(
+                            resource_type="WEBHOOK",
+                            action="WEBHOOK_DELIVERY_SSRF_BLOCKED",
+                            tenant=webhook.tenant,
+                            resource_id=str(webhook.id),
+                            details={
+                                "tenant_id": str(webhook.tenant_id),
+                                "webhook_id": str(webhook.id),
+                                "delivery_id": str(delivery.id),
+                                "event_type": delivery.event_type,
+                                "redirect_host": (
+                                    urlparse(location).hostname or ""
+                                ),
+                                "hop": "2",
+                            },
+                        )
+                    except Exception:
+                        logger.warning("webhook_ssrf_audit_failed", exc_info=True)
+                    ssrf_redirect_error = ODPSWebhookDeliveryError(
+                        message=(
+                            f"SSRF protection blocked redirect: "
+                            f"Location '{location}' targets a "
+                            f"private/reserved address."
+                        ),
+                        error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
+                        user_message=(
+                            "SSRF protection: webhook redirect target "
+                            "is a private/reserved address and delivery "
+                            "was blocked."
+                        ),
+                        tenant_id=str(webhook.tenant_id),
+                        webhook_id=str(webhook.id),
+                        delivery_id=str(delivery.id),
+                        event_type=delivery.event_type,
+                    )
+                    WebhookDeliveryService._handle_delivery_error(delivery, ssrf_redirect_error)
+                    return
+
+                if location:
+                    # W1.13 — single-redirect policy: hop-2 was validated
+                    # above.  The follow disables auto-redirect so a
+                    # FURTHER 3xx (hop-3+) cannot smuggle an unvalidated
+                    # target — it is blocked outright.
+                    status_code, response_text = webhook_client.deliver_webhook(
+                        url=location,
+                        data=payload_json,
+                        headers=headers,
+                        follow_redirects=False,
+                    )
+                    if status_code in (301, 302, 307, 308):
+                        # W1.19 — convention 8: the enforcement emits its
+                        # audit event (host only — the full URL may carry
+                        # query-string material).
+                        try:
+                            from urllib.parse import urlparse
+
+                            from hub.apps.audit.utils import create_audit_event
+
+                            create_audit_event(
+                                resource_type="WEBHOOK",
+                                action="WEBHOOK_DELIVERY_SSRF_BLOCKED",
+                                tenant=webhook.tenant,
+                                resource_id=str(webhook.id),
+                                details={
+                                    "tenant_id": str(webhook.tenant_id),
+                                    "webhook_id": str(webhook.id),
+                                    "delivery_id": str(delivery.id),
+                                    "event_type": delivery.event_type,
+                                    "redirect_host": (
+                                        urlparse(location).hostname or ""
+                                    ),
+                                    "hop": "3",
+                                },
+                            )
+                        except Exception:
+                            logger.warning(
+                                "webhook_ssrf_audit_failed", exc_info=True
+                            )
+                        redirect_chain_error = ODPSWebhookDeliveryError(
                             message=(
-                                f"SSRF protection blocked redirect: "
-                                f"Location '{location}' targets a "
-                                f"private/reserved address."
+                                "Webhook redirect chain too long: the "
+                                "validated hop-2 target returned another "
+                                "redirect (hop-3+ not followed, W1.13)."
                             ),
                             error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
                             user_message=(
-                                "SSRF protection: webhook redirect target "
-                                "is a private/reserved address and delivery "
-                                "was blocked."
+                                "Webhook redirect chain too long and "
+                                "delivery was blocked."
                             ),
                             tenant_id=str(webhook.tenant_id),
                             webhook_id=str(webhook.id),
                             delivery_id=str(delivery.id),
                             event_type=delivery.event_type,
                         )
-                        WebhookDeliveryService._handle_delivery_error(delivery, ssrf_redirect_error)
+                        WebhookDeliveryService._handle_delivery_error(
+                            delivery, redirect_chain_error
+                        )
                         return
-
-                if location:
-                    # Follow the redirect to the validated public URL.
-                    status_code, response_text = webhook_client.deliver_webhook(
-                        url=location,
-                        data=payload_json,
-                        headers=headers,
-                    )
                 # else: no Location header — treat body as final response
 
             # ── Standard response handling ───────────────────────────────
@@ -519,6 +642,13 @@ class WebhookDeliveryService:
                 delivery.delivered_at = timezone.now()
                 delivery.next_retry_at = None
                 delivery.error_message = None
+                # Count the successful attempt: the failure path counts
+                # attempts in ``_schedule_retry``, so a first-attempt
+                # success previously parked the row at attempt_number=0
+                # ("0 attempts" on a delivered row — the tenant-context
+                # task test pinned the incoherent state).
+                # W1.17 — atomic F() increment (never read-modify-write).
+                delivery.attempt_number = F("attempt_number") + 1
                 delivery.save()
 
                 logger.info(
@@ -716,6 +846,21 @@ class WebhookDeliveryService:
     @staticmethod
     def _schedule_retry(delivery: WebhookDelivery):
         """Schedule a retry for failed delivery"""
+        # W1.17 — serialize concurrent retries on the row lock: the
+        # max_retries check + the attempt increment below are a
+        # read-modify-write that two concurrent callers could both win
+        # (lost update — one attempt never counted).  select_for_update
+        # requires an active transaction — the locked body runs inside
+        # atomic() because the retry path is invoked in autocommit mode.
+        with transaction.atomic():
+            return WebhookDeliveryService._schedule_retry_locked(delivery)
+
+    @staticmethod
+    def _schedule_retry_locked(delivery: WebhookDelivery):
+        """Body of _schedule_retry — MUST run inside transaction.atomic()."""
+        delivery = WebhookDelivery.objects.select_for_update().get(
+            pk=delivery.pk
+        )
         webhook = delivery.webhook
 
         # Check if max retries exceeded
@@ -749,8 +894,9 @@ class WebhookDeliveryService:
         next_retry_at = timezone.now() + timedelta(seconds=jittered_interval)
 
         # Update delivery (increment attempt_number after calculating interval)
+        # W1.17 — atomic F() increment under the row lock taken above.
         delivery.status = DeliveryStatus.FAILED
-        delivery.attempt_number += 1
+        delivery.attempt_number = F("attempt_number") + 1
         delivery.next_retry_at = next_retry_at
         delivery.save()
 
@@ -870,7 +1016,7 @@ class WebhookDeliveryService:
                 tenant_id=tenant_id,
             )
         except ODPSWebhookPayloadError as e:
-            logger.error(
+            logger.exception(
                 "odps_webhook_payload_validation_failed",
                 tenant_id=tenant_id,
                 event_type=event_type,

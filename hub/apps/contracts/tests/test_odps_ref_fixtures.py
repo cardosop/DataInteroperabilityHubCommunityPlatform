@@ -21,7 +21,6 @@ except ImportError:
     yaml = None
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
@@ -263,7 +262,7 @@ class ODPSRefFixturesTest(TestCase):
                 external_refs = [
                     ref_value
                     for _, ref_value in refs
-                    if ref_value.startswith("http://") or ref_value.startswith("https://")
+                    if ref_value.startswith(("http://", "https://"))
                 ]
                 self.assertGreater(
                     len(external_refs),
@@ -368,9 +367,7 @@ class ODPSRefFixturesTest(TestCase):
         internal_refs = [ref_value for _, ref_value in refs if ref_value.startswith("#")]
         local_refs = [ref_value for _, ref_value in refs if ref_value.startswith("./")]
         external_refs = [
-            ref_value
-            for _, ref_value in refs
-            if ref_value.startswith("http://") or ref_value.startswith("https://")
+            ref_value for _, ref_value in refs if ref_value.startswith(("http://", "https://"))
         ]
 
         self.assertGreater(len(internal_refs), 0, "Mixed refs file should contain internal $ref")

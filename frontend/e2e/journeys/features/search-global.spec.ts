@@ -17,7 +17,7 @@ test.describe('[Search Global] Journey', () => {
       },
     });
     if (loginRes.status() !== 200) {
-      test.skip(true, 'Test user not available');
+      test.skip(loginRes.status() !== 200, 'Test user not available');
       return;
     }
     const { access_token } = await loginRes.json();

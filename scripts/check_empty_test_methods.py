@@ -71,26 +71,26 @@ MEANINGFUL_CALL_PREFIXES = {
 # Expressions that are NOT empty: control-flow nodes that indicate a meaningful
 # test even without explicit function calls.
 NON_EMPTY_NODES = (
-    ast.Assert,       # bare assert
-    ast.Assign,       # variable assignment
-    ast.AugAssign,    # augmented assignment
-    ast.AnnAssign,    # annotated assignment (x: int = 5)
-    ast.Return,       # return statement
-    ast.Yield,        # yield
-    ast.YieldFrom,    # yield from
-    ast.Raise,        # raise
-    ast.For,          # for loop
-    ast.AsyncFor,     # async for loop
-    ast.While,        # while loop
-    ast.With,         # with context manager
-    ast.AsyncWith,    # async with context manager
-    ast.Try,          # try/except
-    ast.If,           # conditional
-    ast.Import,       # bare import (module existence check)
-    ast.ImportFrom,   # from-import (module existence check)
-    ast.Delete,       # del statement
-    ast.Global,       # global declaration
-    ast.Nonlocal,     # nonlocal declaration
+    ast.Assert,  # bare assert
+    ast.Assign,  # variable assignment
+    ast.AugAssign,  # augmented assignment
+    ast.AnnAssign,  # annotated assignment (x: int = 5)
+    ast.Return,  # return statement
+    ast.Yield,  # yield
+    ast.YieldFrom,  # yield from
+    ast.Raise,  # raise
+    ast.For,  # for loop
+    ast.AsyncFor,  # async for loop
+    ast.While,  # while loop
+    ast.With,  # with context manager
+    ast.AsyncWith,  # async with context manager
+    ast.Try,  # try/except
+    ast.If,  # conditional
+    ast.Import,  # bare import (module existence check)
+    ast.ImportFrom,  # from-import (module existence check)
+    ast.Delete,  # del statement
+    ast.Global,  # global declaration
+    ast.Nonlocal,  # nonlocal declaration
 )
 
 
@@ -152,12 +152,8 @@ def _is_meaningful_call(stmt: ast.stmt) -> bool:
     # Any other call is ALSO treated as meaningful — it represents a
     # "does not raise" test or a side-effect call.
     # The only exceptions are known no-ops like bare ``pytest.skip()``
-    # which we explicitly exclude.
-    if func_name in ("pytest.skip",):
-        return False
-
-    # Everything else is meaningful.
-    return True
+    # which we explicitly exclude; everything else is meaningful.
+    return func_name not in ("pytest.skip",)
 
 
 def _is_empty_func(node: ast.FunctionDef) -> bool:
@@ -174,9 +170,13 @@ def _is_empty_func(node: ast.FunctionDef) -> bool:
         return True
 
     # Only ``...`` (Ellipsis literal).
-    if len(body) == 1 and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
-        if body[0].value.value is Ellipsis:
-            return True
+    if (
+        len(body) == 1
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and body[0].value.value is Ellipsis
+    ):
+        return True
 
     # Check if ANY non-docstring statement is meaningful.
     for stmt in body:
@@ -206,18 +206,24 @@ class EmptyTestVisitor(ast.NodeVisitor):
     def visit_Module(self, node: ast.Module) -> None:
         """Check top-level ``def test_*`` functions (not inside a class)."""
         for item in node.body:
-            if isinstance(item, ast.FunctionDef) and item.name.startswith("test_"):
-                if _is_empty_func(item):
-                    self.violations.append((item.lineno, item.name))
+            if (
+                isinstance(item, ast.FunctionDef)
+                and item.name.startswith("test_")
+                and _is_empty_func(item)
+            ):
+                self.violations.append((item.lineno, item.name))
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         """Check ``def test_*`` methods inside a class whose name starts with 'Test'."""
         if node.name.startswith("Test"):
             for item in node.body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith("test_"):
-                    if _is_empty_func(item):
-                        self.violations.append((item.lineno, f"{node.name}.{item.name}"))
+                if (
+                    isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and item.name.startswith("test_")
+                    and _is_empty_func(item)
+                ):
+                    self.violations.append((item.lineno, f"{node.name}.{item.name}"))
         # Do NOT call generic_visit inside the class to avoid visit_FunctionDef
         # walking the same methods again (duplicate-counting bug).
 

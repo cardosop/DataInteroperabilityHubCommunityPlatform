@@ -43,6 +43,7 @@ import uuid
 from typing import Any, cast
 
 import pytest
+from django.conf import settings as _settings
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 from rest_framework.test import APIClient
@@ -133,6 +134,17 @@ def _make_user(tenant: Tenant) -> Any:
 # ---------------------------------------------------------------------------
 # The exposition test
 # ---------------------------------------------------------------------------
+
+
+# The suite drives the cross-tenant metric through the paid semantic
+# RDF ingest endpoint; the module is skipped in core-only mode.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.skipif(
+        _settings.HUB_CORE_ONLY,
+        reason="cross-tenant exposition suite uses the paid semantic ingest endpoint",
+    ),
+]
 
 
 class CrossTenantDeniedMetricExpositionTests(TransactionTestCase):

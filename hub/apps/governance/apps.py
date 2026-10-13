@@ -14,5 +14,5 @@ class GovernanceConfig(AppConfig):
 
     def ready(self):
         """Import signals and business rules when app is ready"""
-        import hub.apps.governance.signals  # noqa
-        import hub.apps.governance.business_rules  # noqa: F401 - Import to register business rules
+        import hub.apps.governance.business_rules
+        import hub.apps.governance.signals

@@ -40,24 +40,24 @@ class JSONFieldAuditor(ast.NodeVisitor):
     def visit_Assign(self, node):
         """Find JSONField field assignments."""
         for target in node.targets:
-            if isinstance(target, ast.Name):
+            # Check if assignment is a JSONField
+            if (
+                isinstance(target, ast.Name)
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "JSONField"
+            ):
                 field_name = target.id
-                # Check if assignment is a JSONField
-                if isinstance(node.value, ast.Call):
-                    if isinstance(node.value.func, ast.Attribute):
-                        if node.value.func.attr == "JSONField":
-                            self.jsonfields.append(
-                                {
-                                    "file": self.current_file,
-                                    "class": self.current_class,
-                                    "field": field_name,
-                                    "line": node.lineno,
-                                    "args": len(node.value.args),
-                                    "keywords": {
-                                        kw.arg: kw.value for kw in node.value.keywords if kw.arg
-                                    },
-                                }
-                            )
+                self.jsonfields.append(
+                    {
+                        "file": self.current_file,
+                        "class": self.current_class,
+                        "field": field_name,
+                        "line": node.lineno,
+                        "args": len(node.value.args),
+                        "keywords": {kw.arg: kw.value for kw in node.value.keywords if kw.arg},
+                    }
+                )
         self.generic_visit(node)
 
 
@@ -79,7 +79,7 @@ def find_jsonfield_files(root_dir: str) -> list[Path]:
             content = py_file.read_text()
             if "JSONField" in content and py_file not in files:
                 files.append(py_file)
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     return files
@@ -94,14 +94,14 @@ def audit_jsonfield_usage(file_path: Path) -> list[dict]:
         auditor = JSONFieldAuditor()
         auditor.current_file = str(file_path)
         auditor.visit(tree)
-
-        return auditor.jsonfields
     except SyntaxError as e:
         print(f"Warning: Syntax error in {file_path}: {e}", file=sys.stderr)
         return []
     except Exception as e:
         print(f"Warning: Error processing {file_path}: {e}", file=sys.stderr)
         return []
+    else:
+        return auditor.jsonfields
 
 
 def check_django6_optimizations(jsonfield: dict) -> list[str]:
@@ -129,7 +129,7 @@ def check_django6_optimizations(jsonfield: dict) -> list[str]:
     return recommendations
 
 
-def generate_report(all_jsonfields: list[dict], output_file: str = None):
+def generate_report(all_jsonfields: list[dict], output_file: str | None = None):
     """Generate comprehensive audit report."""
     report_lines = []
     report_lines.append("=" * 80)
@@ -199,10 +199,7 @@ def generate_report(all_jsonfields: list[dict], output_file: str = None):
 
 def main():
     """Main audit function."""
-    if len(sys.argv) > 1:
-        root_dir = sys.argv[1]
-    else:
-        root_dir = "hub"
+    root_dir = sys.argv[1] if len(sys.argv) > 1 else "hub"
 
     if not os.path.exists(root_dir):
         print(f"Error: Directory not found: {root_dir}", file=sys.stderr)

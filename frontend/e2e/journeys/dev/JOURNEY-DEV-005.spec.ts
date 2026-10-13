@@ -26,7 +26,7 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       const onSearch = page.url().includes('/search');
       const onLogin = page.url().includes('/login');
       if (onLogin) {
-        test.skip(true, 'Auth gated — skipping success assertion');
+        test.skip(onLogin, 'Auth gated — skipping success assertion');
         return;
       }
       expect(onSearch).toBe(true);
@@ -45,7 +45,7 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
       if (onLogin || on403) {
-        test.skip(true, 'Auth/role gated — skipping success assertion');
+        test.skip(onLogin || on403, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onAISearch).toBe(true);
@@ -65,7 +65,7 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       });
       const url = page.url();
       if (url.includes('/login')) {
-        test.skip(true, 'AI Search not accessible in this env — login redirect indicates missing user/token');
+        test.skip(url.includes('/login'), 'AI Search not accessible in this env — login redirect indicates missing user/token');
         return;
       }
       // Must be either capability-gated (403 or /unavailable) or the page loaded (capability enabled).

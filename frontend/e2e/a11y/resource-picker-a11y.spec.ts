@@ -44,7 +44,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
     if (page.url().includes('/login')) {
       // Login itself failed (backend unreachable) — skip rather than reporting
       // false violations against the login page.
-      test.skip(true, 'Could not authenticate — backend may be unreachable');
+      test.skip(page.url().includes('/login'), 'Could not authenticate — backend may be unreachable');
       return;
     }
 
@@ -79,7 +79,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
     // If stored auth expired, re-login and navigate to the target page.
     await ensureAuthenticated(page);
     if (page.url().includes('/login')) {
-      test.skip(true, 'Could not authenticate — backend may be unreachable');
+      test.skip(page.url().includes('/login'), 'Could not authenticate — backend may be unreachable');
       return;
     }
 

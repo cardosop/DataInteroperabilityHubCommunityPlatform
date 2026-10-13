@@ -34,12 +34,12 @@ warnings.warn(
 )
 
 __all__ = [
-    "MarketplaceInstanceConfig",
-    "get_marketplace_instance_config",
-    "get_default_test_instance",
+    "CKAN_INSTANCES",
     "MARKETPLACE_INSTANCES",
     # Backward compatibility exports (deprecated)
     "CKANInstanceConfig",
+    "MarketplaceInstanceConfig",
     "get_ckan_instance_config",
-    "CKAN_INSTANCES",
+    "get_default_test_instance",
+    "get_marketplace_instance_config",
 ]

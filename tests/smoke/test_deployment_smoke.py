@@ -19,9 +19,10 @@ def _get(path, session=None, **kwargs):
     url = f"{BASE_URL}{path}"
     try:
         r = (session or requests).get(url, timeout=TIMEOUT, **kwargs)
-        return r
     except (requests.ConnectionError, requests.Timeout):
         pytest.skip(f"Service unavailable at {url}")
+    else:
+        return r
 
 
 def _post(path, session=None, **kwargs):
@@ -29,9 +30,10 @@ def _post(path, session=None, **kwargs):
     url = f"{BASE_URL}{path}"
     try:
         r = (session or requests).post(url, timeout=TIMEOUT, **kwargs)
-        return r
     except (requests.ConnectionError, requests.Timeout):
         pytest.skip(f"Service unavailable at {url}")
+    else:
+        return r
 
 
 class TestHealthEndpoints:

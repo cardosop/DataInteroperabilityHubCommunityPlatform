@@ -171,7 +171,9 @@ class JourneyDC001DiscoverAndPurchaseTests(E2ETestBase):
 
         # Find our listing
         listings = response.data.get("results", [])
-        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
+        our_listing = next(
+            (listing for listing in listings if listing["id"] == str(listing_id)), None
+        )
         self.assertIsNotNone(our_listing, "Should find our listing")
         self.assertEqual(our_listing["status"], ListingStatus.PUBLISHED.value)
 

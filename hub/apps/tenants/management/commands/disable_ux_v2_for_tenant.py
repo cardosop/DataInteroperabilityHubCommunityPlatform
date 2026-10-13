@@ -34,14 +34,14 @@ class Command(BaseCommand):
             help="Reason for disabling UX v2 (required for audit trail)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         subdomain = options["subdomain"].strip()
         reason = options["reason"].strip()
 
         try:
             tenant = Tenant.objects.using("admin").get(slug=subdomain)
         except Tenant.DoesNotExist:
-            raise CommandError(f'Tenant with subdomain "{subdomain}" not found.')
+            raise CommandError(f'Tenant with subdomain "{subdomain}" not found.') from None
 
         if not tenant.ux_v2_enabled:
             self.stdout.write(

@@ -12,7 +12,7 @@ class JobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Job
-        fields = [
+        fields = (
             "id",
             "tenant",
             "type",
@@ -28,8 +28,8 @@ class JobSerializer(serializers.ModelSerializer):
             "timeout_seconds",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "tenant",
             "status",
@@ -40,7 +40,7 @@ class JobSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-        ]
+        )
 
 
 class JobCreateSerializer(serializers.Serializer):
@@ -61,7 +61,7 @@ class FailedJobDLQSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FailedJobDLQ
-        fields = [
+        fields = (
             "id",
             "job_id",
             "queue",
@@ -74,5 +74,5 @@ class FailedJobDLQSerializer(serializers.ModelSerializer):
             "resolved_at",
             "created_at",
             "updated_at",
-        ]
+        )
         read_only_fields = fields

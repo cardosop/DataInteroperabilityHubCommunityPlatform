@@ -50,11 +50,12 @@ export function DatasetReplaceDataModal({
 
   if (!open) return null;
 
-  const handleUploadComplete = async (_file: AppFile) => {
+  const handleUploadComplete = async (file: AppFile) => {
     setUploadError(null);
     try {
       const response = await refreshMutation.mutateAsync({
         datasetId,
+        fileId: file.id,
       });
       onSuccess(response);
     } catch {

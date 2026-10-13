@@ -125,7 +125,8 @@ class NotifyCommandTests(TestCase):
             output = out.getvalue()
             assert "Acme" in output and "Globex" in output, output
             # Dry-run reports the planned per-tenant counts.
-            assert "2" in output and "1" in output
+            assert "2" in output
+            assert "1" in output
             # Dry-run never invokes the email pipeline.
             assert mock_send.call_count == 0
         finally:

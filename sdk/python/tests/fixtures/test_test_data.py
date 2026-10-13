@@ -50,7 +50,7 @@ def test_fresh_id_falls_back_to_master_when_no_xdist(
 
 @pytest.mark.parametrize("bad", ["", "has space", "has/slash", "has.dot", "has!bang"])
 def test_fresh_id_rejects_invalid_prefix(bad: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="fresh_id prefix"):
         fresh_id(bad)
 
 

@@ -92,7 +92,7 @@ def check_test_base_classes(filepath: Path) -> tuple[list[str], list[str]]:
                             elif base_name == "E2ETestBase":
                                 # E2E test base - should be compatible
                                 pass
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         warnings.append(f"Could not parse {filepath.name}: {e}")
 
     return issues, warnings
@@ -114,7 +114,7 @@ def check_test_fixtures(filepath: Path) -> tuple[list[str], list[str]]:
         if "@pytest.fixture" in content or "def setUp(self):" in content:
             # Fixtures are present - check for compatibility
             pass
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         warnings.append(f"Could not check fixtures in {filepath.name}: {e}")
 
     return issues, warnings
@@ -134,7 +134,7 @@ def check_test_utilities(filepath: Path) -> tuple[list[str], list[str]]:
 
         # Check for Django 6 compatible patterns
         # Most utilities should work without changes
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         warnings.append(f"Could not check utilities in {filepath.name}: {e}")
 
     return issues, warnings
@@ -156,7 +156,7 @@ def check_test_patterns(filepath: Path) -> tuple[list[str], list[str]]:
         # - Use pytest.mark.django_db for database tests
         # - Use proper transaction handling
         # - Use modern Django patterns
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         warnings.append(f"Could not check patterns in {filepath.name}: {e}")
 
     return issues, warnings

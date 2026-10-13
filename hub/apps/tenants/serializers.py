@@ -22,7 +22,7 @@ class TenantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tenant
-        fields = [
+        fields = (
             "id",
             "name",
             "slug",
@@ -54,8 +54,8 @@ class TenantSerializer(serializers.ModelSerializer):
             "ml_enabled",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "status",
             "deleted_at",
@@ -68,7 +68,7 @@ class TenantSerializer(serializers.ModelSerializer):
             # path; only specific endpoints will mutate it.
             "created_at",
             "updated_at",
-        ]
+        )
 
     def validate_slug(self, value):
         """Validate slug format"""
@@ -86,7 +86,7 @@ class TenantCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tenant
-        fields = ["name", "slug", "region"]
+        fields = ("name", "slug", "region")
 
     def validate_slug(self, value):
         """Validate and normalize slug"""
@@ -145,7 +145,7 @@ class TenantUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tenant
-        fields = ["name", "slug", "kyc_status", "region"]
+        fields = ("name", "slug", "kyc_status", "region")
 
     def validate_slug(self, value):
         """Validate and normalize slug"""
@@ -209,7 +209,7 @@ class TenantConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TenantConfig
-        fields = [
+        fields = (
             "tenant_id",
             "default_dq_profile",
             "allowed_compliance_regimes",
@@ -226,8 +226,8 @@ class TenantConfigSerializer(serializers.ModelSerializer):
             "compliance_legal_basis_strict",
             "created_at",
             "updated_at",
-        ]
-        read_only_fields = ["tenant_id", "created_at", "updated_at"]
+        )
+        read_only_fields = ("tenant_id", "created_at", "updated_at")
 
     def validate_default_dq_profile(self, value):
         """Validate DQ profile"""
@@ -302,7 +302,7 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TenantConfig
-        fields = [
+        fields = (
             "default_dq_profile",
             "allowed_compliance_regimes",
             "default_compliance_regimes",
@@ -316,7 +316,7 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
             "versioning_enabled",
             "workflows_enabled",
             "compliance_legal_basis_strict",
-        ]
+        )
 
     def update(self, instance, validated_data):
         """Phase 270.C.4.5 — handle the ``compliance_legal_basis_strict``

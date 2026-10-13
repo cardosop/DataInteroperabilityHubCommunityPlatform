@@ -62,10 +62,13 @@ class CleanupWorkflowStateCommandTest(TestCase):
 
         # Verify workflow is archived
         workflow.refresh_from_db()
-        self.assertTrue(workflow.state_data.get("archived"),
-            f"Expected archived=True, state_data={workflow.state_data}")
-        self.assertIsNotNone(workflow.state_data.get("archived_at"),
-            "archived_at should be set during archival")
+        self.assertTrue(
+            workflow.state_data.get("archived"),
+            f"Expected archived=True, state_data={workflow.state_data}",
+        )
+        self.assertIsNotNone(
+            workflow.state_data.get("archived_at"), "archived_at should be set during archival"
+        )
 
     def test_dry_run_mode(self):
         """Test dry run mode doesn't make changes."""

@@ -131,9 +131,7 @@ class WorkflowExecutionValidatorIntegrationTest(TestCase):
         except (WorkflowExecutionError, ControlledWorkflowException):
             workflow.refresh_from_db()
         except Exception as exc:
-            self.fail(
-                f"Unexpected exception during workflow execution: {exc}"
-            )
+            self.fail(f"Unexpected exception during workflow execution: {exc}")
 
         # Get steps
         steps = workflow.steps.all().order_by("step_index")

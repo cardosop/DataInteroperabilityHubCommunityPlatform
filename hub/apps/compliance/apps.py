@@ -7,5 +7,6 @@ class ComplianceConfig(AppConfig):
 
     def ready(self):
         # Register @receiver-decorated signal handlers (Phase 231.x).
-        import hub.apps.compliance.signals  # noqa: F401 — registers @receiver
-        from . import business_rules  # noqa: F401 — preload @register_rule
+        import hub.apps.compliance.signals  # side-effect import: registers @receiver signal handlers
+
+        from . import business_rules  # side-effect import: registers business rules

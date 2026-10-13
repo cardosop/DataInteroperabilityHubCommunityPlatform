@@ -113,7 +113,7 @@ class Migration(migrations.Migration):
                 ],
                 "constraints": [
                     models.UniqueConstraint(
-                        fields=("tenant", "name"), name="unique_domain_name_per_tenant"
+                        fields=["tenant", "name"], name="unique_domain_name_per_tenant"
                     )
                 ],
             },

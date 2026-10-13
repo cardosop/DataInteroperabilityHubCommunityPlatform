@@ -10,11 +10,13 @@ Features:
 - Store event IDs in Redis with configurable TTL
 - Default TTL: 24 hours (configurable)
 """
-from typing import Dict, Any, Optional, Tuple
-import json
+
 import hashlib
-import structlog
+import json
+from typing import Any
+
 import redis
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -22,11 +24,28 @@ logger = structlog.get_logger(__name__)
 # Extended from 24h to 72h to support long-running workflows (Phase 96.16)
 DEFAULT_DEDUPLICATION_TTL = 72 * 60 * 60  # 259200 seconds
 
-# Redis key prefix for deduplication keys
+# Redis key prefix for deduplication keys (legacy shared namespace)
 DEDUPLICATION_KEY_PREFIX = "event:dedup"
 
+# W4.1 (R2-B3) — publisher and consumer dedup live in SEPARATE Redis
+# namespaces.  The shared namespace was the self-dedup root cause:
+# ``EventPublisher`` stored ``event:dedup:<type>:<hash>`` after publishing
+# and ``EventBus._handle_event`` checked the SAME key before processing —
+# every event published through ``EventPublisher`` was skipped by every
+# consumer as "already processed", and consumer A's consumption state
+# suppressed delivery to consumer B.
+#
+#   * ``sent`` — publisher-side keys: ``event:sent:<type>:<hash>``.
+#     Store only what THIS process published (duplicate-publish guard).
+#   * ``cons`` — consumer-side keys:
+#     ``event:cons:<subscriber>:<type>:<hash>``.  Scoped per subscriber:
+#     each subscriber tracks its OWN consumption state.
+DEFAULT_DEDUP_NAMESPACE = "dedup"  # legacy shared namespace (kept for old keys)
+PUBLISHER_DEDUP_NAMESPACE = "sent"
+CONSUMER_DEDUP_NAMESPACE = "cons"
 
-def get_redis_client() -> Optional[redis.Redis]:
+
+def get_redis_client() -> redis.Redis | None:
     """
     Get Redis client for deduplication operations.
 
@@ -41,26 +60,36 @@ def get_redis_client() -> Optional[redis.Redis]:
     """
     try:
         from hub.apps.core.redis_pools import get_redis_events_client
+
         client = get_redis_events_client()
         client.ping()
-        return client
     except redis.exceptions.RedisError as e:
         logger.warning(
             "event_deduplication_redis_unavailable",
             error=str(e),
-            message="Event deduplication will not be enforced when Redis is unavailable"
+            message="Event deduplication will not be enforced when Redis is unavailable",
         )
         return None
+    else:
+        return client
 
 
 # Keys to exclude from deduplication hash (set at publish time, differ per call)
-_VOLATILE_DEDUP_KEYS = frozenset({
-    "created_at", "updated_at", "deleted_at", "failed_at", "completed_at",
-    "tested_at", "started_at", "finished_at",
-})
+_VOLATILE_DEDUP_KEYS = frozenset(
+    {
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "failed_at",
+        "completed_at",
+        "tested_at",
+        "started_at",
+        "finished_at",
+    }
+)
 
 
-def _normalize_event_data(data: Dict[str, Any]) -> str:
+def _normalize_event_data(data: dict[str, Any]) -> str:
     """
     Normalize event data for consistent hashing.
 
@@ -80,50 +109,109 @@ def _normalize_event_data(data: Dict[str, Any]) -> str:
     try:
         # Exclude volatile fields so same logical event deduplicates
         stable = {k: v for k, v in data.items() if k not in _VOLATILE_DEDUP_KEYS}
-        normalized = json.dumps(stable, sort_keys=True, separators=(',', ':'))
-        return normalized
+        normalized = json.dumps(stable, sort_keys=True, separators=(",", ":"))
     except (TypeError, ValueError) as e:
         logger.warning(
             "event_deduplication_normalization_error",
             error=str(e),
-            message="Failed to normalize event data, using string representation"
+            message="Failed to normalize event data, using string representation",
         )
         # Fallback to string representation
         return str(data)
+    else:
+        return normalized
 
 
-def generate_deduplication_key(event_type: str, event_data: Dict[str, Any]) -> str:
+def generate_deduplication_key(
+    event_type: str,
+    event_data: dict[str, Any],
+    namespace: str = DEFAULT_DEDUP_NAMESPACE,
+    subscriber: str | None = None,
+) -> str:
     """
     Generate deduplication key from event type and data.
+
+    W4.1 (R2-B3): the key carries a *namespace* — publisher-side dedup
+    (``PUBLISHER_DEDUP_NAMESPACE``, ``event:sent:*``) and consumer-side
+    dedup (``CONSUMER_DEDUP_NAMESPACE``, ``event:cons:*``) never share a
+    key.  Consumer keys additionally carry the *subscriber* name so each
+    subscriber tracks its own consumption state.
 
     Args:
         event_type: Event type (e.g., 'contract.created')
         event_data: Event data payload dictionary
+        namespace: Dedup namespace (``sent`` / ``cons`` / legacy ``dedup``)
+        subscriber: Consumer subscriber name (scopes the ``cons`` key)
 
     Returns:
-        Redis key for deduplication (format: event:dedup:{event_type}:{hash})
+        Redis key for deduplication (format:
+        ``event:{namespace}:[{subscriber}:]{event_type}:{hash}``)
 
     Example:
         >>> generate_deduplication_key("contract.created", {"contract_id": "123"})
         'event:dedup:contract.created:abc123def456...'
+        >>> generate_deduplication_key(
+        ...     "contract.created", {"contract_id": "123"},
+        ...     namespace=CONSUMER_DEDUP_NAMESPACE, subscriber="webhook_service",
+        ... )
+        'event:cons:webhook_service:contract.created:abc123def456...'
     """
     # Normalize event data for consistent hashing
     normalized_data = _normalize_event_data(event_data)
 
     # Generate hash of normalized data
-    data_hash = hashlib.sha256(normalized_data.encode('utf-8')).hexdigest()
+    data_hash = hashlib.sha256(normalized_data.encode("utf-8")).hexdigest()
 
-    # Generate deduplication key: event:dedup:{event_type}:{hash}
+    # Generate deduplication key: event:{namespace}:[{subscriber}:]{event_type}:{hash}
     # Using colon separator for Redis key naming convention
-    key = f"{DEDUPLICATION_KEY_PREFIX}:{event_type}:{data_hash}"
+    segments = ["event", namespace]
+    if subscriber:
+        segments.append(subscriber)
+    segments.extend((event_type, data_hash))
+    key = ":".join(segments)
 
     return key
 
 
+def clear_all_dedup_namespaces(redis_client: redis.Redis | None = None) -> int:
+    """Delete every dedup key across ALL namespaces (W4.1 test/ops hygiene).
+
+    Scans the legacy ``event:dedup:*`` + publisher ``event:sent:*`` +
+    consumer ``event:cons:*`` namespaces.  Test setups must start from a
+    clean dedup state because Redis keys survive TestCase rollbacks — a
+    stale ``sent`` key from a previous test otherwise suppresses the next
+    identical publish and the deduped id points at a rolled-back row.
+
+    Returns:
+        Number of keys deleted (0 when Redis is unavailable).
+    """
+    if redis_client is None:
+        redis_client = get_redis_client()
+    if redis_client is None:
+        return 0
+
+    deleted = 0
+    for namespace in (
+        DEFAULT_DEDUP_NAMESPACE,
+        PUBLISHER_DEDUP_NAMESPACE,
+        CONSUMER_DEDUP_NAMESPACE,
+    ):
+        try:
+            for key in redis_client.scan_iter(f"event:{namespace}:*"):
+                redis_client.delete(key)
+                deleted += 1
+        except redis.exceptions.RedisError as e:
+            logger.warning(
+                "event_deduplication_clear_error",
+                namespace=namespace,
+                error=str(e),
+            )
+    return deleted
+
+
 def check_event_duplicate(
-    deduplication_key: str,
-    redis_client: Optional[redis.Redis] = None
-) -> Tuple[bool, Optional[str]]:
+    deduplication_key: str, redis_client: redis.Redis | None = None
+) -> tuple[bool, str | None]:
     """
     Check if event is duplicate by checking Redis for existing event ID.
 
@@ -148,7 +236,7 @@ def check_event_duplicate(
         logger.debug(
             "event_deduplication_check_skipped",
             reason="redis_unavailable",
-            deduplication_key=deduplication_key
+            deduplication_key=deduplication_key,
         )
         return False, None
 
@@ -158,7 +246,7 @@ def check_event_duplicate(
             logger.debug(
                 "event_duplicate_detected",
                 deduplication_key=deduplication_key,
-                existing_event_id=existing_event_id
+                existing_event_id=existing_event_id,
             )
             return True, existing_event_id
         else:
@@ -169,7 +257,7 @@ def check_event_duplicate(
             "event_deduplication_check_error",
             deduplication_key=deduplication_key,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         return False, None
 
@@ -178,7 +266,7 @@ def store_event_id(
     deduplication_key: str,
     event_id: str,
     ttl: int = DEFAULT_DEDUPLICATION_TTL,
-    redis_client: Optional[redis.Redis] = None
+    redis_client: redis.Redis | None = None,
 ) -> bool:
     """
     Store event ID in Redis for deduplication.
@@ -205,7 +293,7 @@ def store_event_id(
             "event_deduplication_store_skipped",
             reason="redis_unavailable",
             deduplication_key=deduplication_key,
-            event_id=event_id
+            event_id=event_id,
         )
         return False
 
@@ -218,9 +306,8 @@ def store_event_id(
             "event_deduplication_stored",
             deduplication_key=deduplication_key,
             event_id=event_id,
-            ttl=ttl
+            ttl=ttl,
         )
-        return True
     except redis.exceptions.RedisError as e:
         # Redis error - fail open (log error but don't block)
         logger.error(
@@ -228,17 +315,19 @@ def store_event_id(
             deduplication_key=deduplication_key,
             event_id=event_id,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         return False
+    else:
+        return True
 
 
 def check_and_store_event(
     deduplication_key: str,
     event_id: str,
     ttl: int = DEFAULT_DEDUPLICATION_TTL,
-    redis_client: Optional[redis.Redis] = None,
-) -> Tuple[bool, str]:
+    redis_client: redis.Redis | None = None,
+) -> tuple[bool, str]:
     """Atomically check-and-store an event ID for deduplication.
 
     Uses ``SET key value NX EX ttl`` — a single atomic Redis command.
@@ -259,7 +348,10 @@ def check_and_store_event(
     try:
         # SET NX EX is atomic: only sets if key doesn't exist
         was_set = redis_client.set(
-            deduplication_key, event_id, nx=True, ex=ttl,
+            deduplication_key,
+            event_id,
+            nx=True,
+            ex=ttl,
         )
         if was_set:
             return False, event_id  # New event — we stored it
@@ -270,8 +362,6 @@ def check_and_store_event(
             if isinstance(existing, bytes):
                 existing = existing.decode("utf-8")
             return True, existing
-        # Key expired between SET and GET — treat as new
-        return False, event_id
     except redis.exceptions.RedisError as e:
         logger.warning(
             "deduplication_atomic_check_failed",
@@ -279,12 +369,17 @@ def check_and_store_event(
             error=str(e),
         )
         return False, event_id
+    else:
+        # Key expired between SET and GET — treat as new
+        return False, event_id
 
 
 def is_event_duplicate(
     event_type: str,
-    event_data: Dict[str, Any],
-    redis_client: Optional[redis.Redis] = None
+    event_data: dict[str, Any],
+    namespace: str = DEFAULT_DEDUP_NAMESPACE,
+    subscriber: str | None = None,
+    redis_client: redis.Redis | None = None,
 ) -> bool:
     """
     Convenience function to check if event is duplicate.
@@ -292,6 +387,8 @@ def is_event_duplicate(
     Args:
         event_type: Event type (e.g., 'contract.created')
         event_data: Event data payload dictionary
+        namespace: Dedup namespace (``sent`` / ``cons`` / legacy ``dedup``)
+        subscriber: Consumer subscriber name (scopes the ``cons`` key)
         redis_client: Optional Redis client (creates new if not provided)
 
     Returns:
@@ -301,7 +398,8 @@ def is_event_duplicate(
         >>> is_event_duplicate("contract.created", {"contract_id": "123"})
         False
     """
-    deduplication_key = generate_deduplication_key(event_type, event_data)
+    deduplication_key = generate_deduplication_key(
+        event_type, event_data, namespace=namespace, subscriber=subscriber
+    )
     is_dup, _ = check_event_duplicate(deduplication_key, redis_client=redis_client)
     return is_dup
-

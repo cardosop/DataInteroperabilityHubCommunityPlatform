@@ -678,6 +678,8 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
             # Endpoint doesn't exist, approve via workflow
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
+
             AccessRequestWorkflow.approve_access_request(
                 access_request_id=str(access_request.id), approved_by_id=str(self.user.id)
             )

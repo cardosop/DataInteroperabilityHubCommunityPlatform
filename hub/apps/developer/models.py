@@ -129,7 +129,7 @@ class SDKDocumentation(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["language", "version"], name="unique_sdk_language_version"
-            )
+            ),
         ]
 
     def __str__(self):

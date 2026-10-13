@@ -104,7 +104,7 @@ class JobCreationTest(JobQueueRegressionTest):
 
         for job_type in job_types:
             # Determine resource_type based on job_type
-            if job_type == JobType.DQ_RUN or job_type == JobType.COMPLIANCE_RUN:
+            if job_type in (JobType.DQ_RUN, JobType.COMPLIANCE_RUN):
                 resource_type = "ASSET"
                 resource_id = self.asset.id
             else:

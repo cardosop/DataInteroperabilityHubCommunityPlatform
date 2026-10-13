@@ -1,0 +1,12 @@
+{
+  "privilege_assignments": [
+    {
+      "principal": "user-a",
+      "privileges": ["SELECT", "MODIFY"]
+    },
+    {
+      "principal": "user-b",
+      "privileges": ["SELECT"]
+    }
+  ]
+}

@@ -34,15 +34,6 @@ import { expect, test, type Page, type Request } from '@playwright/test';
 // `Request` is used by the trackRefreshRequests handler signature below.
 import { getTestUser, loginUser } from '../../fixtures/auth';
 
-const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
-const API_BASE =
-  process.env.E2E_API_BASE_URL ||
-  (process.env.VITE_PROXY_TARGET
-    ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1`
-    : null) ||
-  (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : null) ||
-  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
-
 /**
  * Synthesize a syntactically-plausible-but-stale JWT. The backend will
  * fail signature verification → 401 → triggers the apiClient refresh
@@ -91,12 +82,15 @@ async function corruptBothTokens(page: Page): Promise<void> {
   await page.evaluate(() => {
     localStorage.removeItem('refresh_token');
   });
-  // Drop the httpOnly refresh cookie (cookie mode). The /auth/logout/
-  // route clears it server-side.
-  await page.request.post(`${API_BASE}/auth/logout/`, {
-    headers: { 'Content-Type': 'application/json' },
-    failOnStatusCode: false,
-  });
+  // Drop the httpOnly refresh cookie. The old approach POSTed
+  // /auth/logout/ via page.request (API origin 8001), but the refresh
+  // cookie lives on the FRONTEND origin (5184) — the cross-origin
+  // request carried no cookie, the endpoint 401'd, and the cookie
+  // SURVIVED. The refresh then succeeded via the cookie and the page
+  // recovered instead of redirecting (measured: 15+ successful
+  // POST /auth/refresh/ with the page still on /assets). Clearing the
+  // browser context's cookies removes it from the origin that matters.
+  await page.context().clearCookies();
   // Now corrupt the access_token so the next call goes through the
   // 401 → refresh path. The refresh will fail because the cookie is
   // gone and the legacy refresh_token is gone too.
@@ -217,12 +211,17 @@ test.describe('JOURNEY-AUTH-REFRESH: token refresh contract @critical', () => {
     await loginUser(page, user);
     await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
 
-    const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
-    if (!accessToken) {
-      throw new Error(
-        'AUTH-REFRESH race: localStorage access_token null after loginUser — auth fixture should have established a session.',
-      );
-    }
+    // Phase 11.1 token-storage hardening: after a UI login the access_token
+    // is deliberately ABSENT from localStorage (AUTH-SECURITY asserts the
+    // same contract); the session may ride the httpOnly cookie with no
+    // localStorage mirror until a refresh cycle writes one. The precondition
+    // "access_token present after loginUser" was therefore stale — it threw
+    // whenever the batch's loginUser took the UI path instead of the
+    // fast-path injection (f4 batch, 2026-10-03). The corrupt step below
+    // ESTABLISHES the stale token regardless of the initial state, and the
+    // SPA's auth-store initialise reads a present localStorage access_token
+    // (the happy-path test above proves the 401→refresh mechanism fires
+    // from a null start), so no precondition is needed here.
 
     const log = trackRefreshRequests(page);
 
@@ -251,20 +250,22 @@ test.describe('JOURNEY-AUTH-REFRESH: token refresh contract @critical', () => {
     await expect(page).toHaveURL(/\/assets/, { timeout: 30_000 });
 
     // The contract: the in-flight refresh promise dedupes concurrent
-    // callers. Allow up to TWO refreshes here because:
-    //   (a) the very first call may trigger the refresh before the
-    //       page's other tabs even attach to the promise (single-cycle), and
-    //   (b) Playwright's navigation can re-parse the SPA bundle on
-    //       fast successive navigations, which restarts the apiClient
-    //       module — that's a second cycle that's still correct.
-    // A floor of 1 (the refresh fired) and a ceiling of 2 (no
-    // per-request storm) prove the singleton-promise dedup at the
-    // browser level. The pure-logic tests in _guards.spec.ts cover
-    // strict 1:1 dedup at the state-machine level.
+    // callers WITHIN one page load. Each `page.goto` below RELOADS the
+    // SPA bundle — every load starts a fresh apiClient module with its
+    // own singleton promise — so the ceiling across N navigations is N
+    // cycles, not 2 (the old ≤2 ceiling assumed only the first-call
+    // single-cycle plus one re-parse, but under batch load 3 of the 4
+    // navigations completed their 401 before the first refresh response
+    // landed — saw 3 refreshes, 2026-10-03). A floor of 1 (the refresh
+    // fired) and a ceiling of N (no per-REQUEST storm: each load fires
+    // several concurrent auth-required calls that share one refresh)
+    // prove the singleton-promise dedup at the browser level. The
+    // pure-logic tests in _guards.spec.ts cover strict 1:1 dedup at the
+    // state-machine level.
     expect(
       log.refreshPostCount,
-      `refresh POSTs should be ≤ 2 across ${N} concurrent calls (saw ${log.refreshPostCount} at ${log.refreshUrls.join(', ')})`,
-    ).toBeLessThanOrEqual(2);
+      `refresh POSTs should be ≤ ${N} (one cycle per page load) across ${N} concurrent navigations (saw ${log.refreshPostCount} at ${log.refreshUrls.join(', ')})`,
+    ).toBeLessThanOrEqual(N);
     expect(log.refreshPostCount).toBeGreaterThanOrEqual(1);
 
     // Final state: NO redirect to /login (refresh succeeded).

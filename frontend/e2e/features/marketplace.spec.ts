@@ -10,7 +10,6 @@ import {
   assertListPageLoads,
   assertNonExistentIdShowsError,
   loginAndNavigateToRoute,
-  waitForAppMainReady,
 } from '../fixtures/helpers';
 
 test.describe('Feature: Marketplace', () => {

@@ -8,9 +8,9 @@ Tests for Mesh Policy Management API methods.
 Tests policy application, listing, and removal operations with comprehensive error handling.
 """
 import asyncio
+import contextlib
 import subprocess
 import uuid
-from typing import Optional
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,7 +22,6 @@ from datahub_interoperability.errors import (
 from tests._sdk_test_helpers import (
     create_real_api_config,
 )
-import contextlib
 
 # File-specific tenant parameters
 _POLICIES_TENANT_SLUG = "mesh-policies-sdk-test-tenant"
@@ -199,7 +198,7 @@ async def test_remove_policy_method_structure(mesh_api, client):
 # Integration Tests - Real API
 
 
-async def _create_policy_for_test(tenant_slug: str) -> Optional[str]:
+async def _create_policy_for_test(tenant_slug: str) -> str | None:
     """Create a test AccessPolicy via Django shell (same approach as
     test_mesh_api.py).  Returns the policy UUID or None on failure.
 
@@ -244,7 +243,7 @@ print(policy.id)
     for compose_cmd, manage_py in _compose_attempts:
         try:
             result = subprocess.run(
-                compose_cmd + ["python", manage_py, "shell"],
+                [*compose_cmd, "python", manage_py, "shell"],
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
@@ -253,11 +252,11 @@ print(policy.id)
             )
             if result.returncode == 0:
                 output_lines = result.stdout.strip().split("\n")
-                for line in reversed(output_lines):
-                    line = line.strip()
+                for raw_line in reversed(output_lines):
+                    line = raw_line.strip()
                     if line and len(line) == 36 and "-" in line:
                         return line
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
     return None
 

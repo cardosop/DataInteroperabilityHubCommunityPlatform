@@ -71,7 +71,7 @@ class Command(BaseCommand):
             help="Actually delete. Without this flag the command is a dry-run.",
         )
 
-    def handle(self, *args, **options):  # noqa: ARG002
+    def handle(self, *_args, **options):
         from hub.apps.tenants.models import Tenant  # local import: Django setup time
 
         cutoff = timezone.now() - _parse_duration(options["older_than"])

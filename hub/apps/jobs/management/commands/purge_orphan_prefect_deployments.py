@@ -36,7 +36,7 @@ class Command(BaseCommand):
             help="List orphans without modifying them.",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         from django.conf import settings
 
         if getattr(settings, "MVP_MODE", False):

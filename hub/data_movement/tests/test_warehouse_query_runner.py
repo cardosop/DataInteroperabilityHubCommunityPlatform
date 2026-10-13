@@ -102,7 +102,7 @@ class TestReadOnlyGuard:
             ReadOnlyGuard.check("GRANT SELECT ON t TO user")
 
     def test_case_insensitive(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="INSERT"):
             ReadOnlyGuard.check("insert into t values (1)")
 
     def test_null_sql_allowed(self):

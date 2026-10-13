@@ -83,8 +83,11 @@ Helpers
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from hub.apps.observability.otel_metrics import _CounterWrapper, _HistogramWrapper
 

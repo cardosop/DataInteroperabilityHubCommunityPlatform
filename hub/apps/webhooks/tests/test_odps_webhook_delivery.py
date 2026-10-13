@@ -161,45 +161,47 @@ class ODPSWebhookDeliveryTest(TestCase):
 
     def test_odps_webhook_filtering(self):
         """Test that only webhooks subscribed to ODPS events receive deliveries (real HTTP)."""
-        with TestWebhookServer(response_status=200) as server_odps:
-            with TestWebhookServer(response_status=200) as server_contract:
-                odps_webhook = Webhook.objects.create(
-                    tenant=self.tenant,
-                    name="ODPS Webhook",
-                    url=server_odps.get_url(),
-                    secret="test-secret",
-                    event_types=[WebhookEventType.ODPS_CREATED],
-                    status=WebhookStatus.ACTIVE,
-                    created_by=self.user,
-                )
+        with (
+            TestWebhookServer(response_status=200) as server_odps,
+            TestWebhookServer(response_status=200) as server_contract,
+        ):
+            odps_webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server_odps.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
 
-                contract_webhook = Webhook.objects.create(
-                    tenant=self.tenant,
-                    name="Contract Webhook",
-                    url=server_contract.get_url(),
-                    secret="test-secret",
-                    event_types=[WebhookEventType.CONTRACT_CREATED],
-                    status=WebhookStatus.ACTIVE,
-                    created_by=self.user,
-                )
+            contract_webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="Contract Webhook",
+                url=server_contract.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.CONTRACT_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
 
-                event_data = {"contract_id": str(uuid.uuid4())}
+            event_data = {"contract_id": str(uuid.uuid4())}
 
-                count = WebhookDeliveryService.trigger_webhook(
-                    tenant_id=str(self.tenant.id),
-                    event_type=WebhookEventType.ODPS_CREATED,
-                    resource_type="ODPS",
-                    resource_id=str(uuid.uuid4()),
-                    event_data=event_data,
-                )
+            count = WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
 
-                self.assertEqual(count, 1)
+            self.assertEqual(count, 1)
 
-                odps_deliveries = WebhookDelivery.objects.filter(webhook=odps_webhook)
-                self.assertEqual(odps_deliveries.count(), 1)
+            odps_deliveries = WebhookDelivery.objects.filter(webhook=odps_webhook)
+            self.assertEqual(odps_deliveries.count(), 1)
 
-                contract_deliveries = WebhookDelivery.objects.filter(webhook=contract_webhook)
-                self.assertEqual(contract_deliveries.count(), 0)
+            contract_deliveries = WebhookDelivery.objects.filter(webhook=contract_webhook)
+            self.assertEqual(contract_deliveries.count(), 0)
 
     def test_multiple_odps_webhooks_receive_delivery(self):
         """Test that multiple webhooks subscribed to same ODPS event receive delivery (real HTTP)."""

@@ -12,6 +12,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -99,8 +100,8 @@ class SagaExecutionContext:
     saga_id: str
     step_results: list[tuple[SagaStep, SagaStepResult]] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
-    started_at: timezone.datetime | None = None
-    completed_at: timezone.datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     def add_step_result(self, step: SagaStep, result: SagaStepResult):
         """Add a step result to the context"""
@@ -180,7 +181,7 @@ class SagaOrchestrator:
             },
         )
 
-        try:
+        def _execute_steps() -> SagaExecutionContext:
             # Execute steps sequentially
             for step_index, step in enumerate(steps):
                 logger.info(
@@ -196,14 +197,13 @@ class SagaOrchestrator:
                 step_input = self._prepare_step_input(step)
 
                 # Execute forward action
-                step_failed = False
-                step_error = None
-
-                try:
+                def _execute_forward_action(
+                    step=step, step_input=step_input
+                ) -> tuple[bool, str | None]:
                     result = step.forward_action(step_input)
 
                     if not isinstance(result, SagaStepResult):
-                        raise ValueError(
+                        raise TypeError(
                             f"Step {step.name} forward_action must return SagaStepResult, "
                             f"got {type(result)}"
                         )
@@ -212,8 +212,6 @@ class SagaOrchestrator:
 
                     if not result.success:
                         # Step failed - mark for compensation
-                        step_failed = True
-                        step_error = result.error
                         logger.warning(
                             f"Saga {self.saga_id} step {step.name} failed: {result.error}",
                             extra={
@@ -223,20 +221,24 @@ class SagaOrchestrator:
                                 "error_details": result.error_details,
                             },
                         )
-                    else:
-                        # Step succeeded - merge output into state
-                        if result.output:
-                            self.context.state.update(result.output)
+                        return True, result.error
 
-                        logger.info(
-                            f"Saga {self.saga_id} step {step.name} completed successfully",
-                            extra={
-                                "saga_id": self.saga_id,
-                                "step_name": step.name,
-                                "output_keys": list(result.output.keys()) if result.output else [],
-                            },
-                        )
+                    # Step succeeded - merge output into state
+                    if result.output:
+                        self.context.state.update(result.output)
 
+                    logger.info(
+                        f"Saga {self.saga_id} step {step.name} completed successfully",
+                        extra={
+                            "saga_id": self.saga_id,
+                            "step_name": step.name,
+                            "output_keys": list(result.output.keys()) if result.output else [],
+                        },
+                    )
+                    return False, None
+
+                try:
+                    step_failed, step_error = _execute_forward_action()
                 except Exception as e:
                     # Unexpected exception in forward action
                     logger.exception(
@@ -290,6 +292,8 @@ class SagaOrchestrator:
 
             return self.context
 
+        try:
+            result = _execute_steps()
         except SagaExecutionError:
             # Re-raise execution errors (compensation already handled)
             # Don't try to compensate again in the outer exception handler
@@ -323,6 +327,8 @@ class SagaOrchestrator:
             self.status = SagaStatus.FAILED
             self.context.completed_at = timezone.now()
             raise SagaExecutionError(f"Saga execution failed: {e!s}") from e
+        else:
+            return result
 
     def _prepare_step_input(self, step: SagaStep) -> dict[str, Any]:
         """
@@ -384,7 +390,7 @@ class SagaOrchestrator:
                 extra={"saga_id": self.saga_id, "step_name": step.name},
             )
 
-            try:
+            def _compensate_one(step=step) -> None:
                 # Get step result to access output data
                 step_result = None
                 for s, result in self.context.step_results:
@@ -400,7 +406,7 @@ class SagaOrchestrator:
                     compensation_results.append(
                         {"step": step.name, "status": "skipped", "reason": "no_step_result"}
                     )
-                    continue
+                    return
 
                 # Prepare compensation input (step output + current state)
                 step_output = step_result.output or {}
@@ -414,7 +420,7 @@ class SagaOrchestrator:
                 compensation_result = step.compensation_action(compensation_input)
 
                 if not isinstance(compensation_result, SagaStepResult):
-                    raise ValueError(
+                    raise TypeError(
                         f"Step {step.name} compensation_action must return SagaStepResult, "
                         f"got {type(compensation_result)}"
                     )
@@ -442,7 +448,7 @@ class SagaOrchestrator:
 
                     # Continue compensating other steps even if one fails
                     # This is important for partial rollback
-                    continue
+                    return
 
                 # Compensation succeeded
                 logger.info(
@@ -458,6 +464,8 @@ class SagaOrchestrator:
                     }
                 )
 
+            try:
+                _compensate_one()
             except Exception as e:
                 # Unexpected exception in compensation
                 logger.exception(

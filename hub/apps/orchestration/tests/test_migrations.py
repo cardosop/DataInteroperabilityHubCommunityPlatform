@@ -9,9 +9,8 @@ Tests migration scripts to ensure:
 """
 
 import uuid
-from io import StringIO
 
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.test import TestCase
 
 from hub.apps.orchestration.models import (
@@ -40,8 +39,8 @@ class WorkflowStateMigrationTest(TestCase):
             # Check workflow_definitions table
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_name = 'workflow_definitions'
                 );
             """)
@@ -50,8 +49,8 @@ class WorkflowStateMigrationTest(TestCase):
             # Check workflow_instances table
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_name = 'workflow_instances'
                 );
             """)
@@ -60,8 +59,8 @@ class WorkflowStateMigrationTest(TestCase):
             # Check workflow_steps table
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_name = 'workflow_steps'
                 );
             """)
@@ -70,8 +69,8 @@ class WorkflowStateMigrationTest(TestCase):
             # Check workflow_states table
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_name = 'workflow_states'
                 );
             """)
@@ -124,14 +123,13 @@ class WorkflowStateMigrationTest(TestCase):
                 ) sub
                 GROUP BY tablename, indexname
             """)
-            existing_indexes = {
-                (row[0], tuple(row[2])): row[1] for row in cursor.fetchall()
-            }
+            existing_indexes = {(row[0], tuple(row[2])): row[1] for row in cursor.fetchall()}
 
             for table, columns in expected_indexes:
                 key = (table, tuple(columns))
                 self.assertIn(
-                    key, existing_indexes,
+                    key,
+                    existing_indexes,
                     f"Index on {table}({', '.join(columns)}) should exist",
                 )
 
@@ -174,7 +172,7 @@ class WorkflowStateMigrationTest(TestCase):
             # Check foreign key from workflow_instances to workflow_definitions
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM pg_constraint 
+                    SELECT FROM pg_constraint
                     WHERE conname LIKE '%workflow_instances_workflow_definition%'
                     AND contype = 'f'
                 );
@@ -187,7 +185,7 @@ class WorkflowStateMigrationTest(TestCase):
             # Check foreign key from workflow_steps to workflow_instances
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM pg_constraint 
+                    SELECT FROM pg_constraint
                     WHERE conname LIKE '%workflow_steps_workflow_instance%'
                     AND contype = 'f'
                 );
@@ -200,7 +198,7 @@ class WorkflowStateMigrationTest(TestCase):
             # Check foreign key from workflow_states to workflow_instances
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM pg_constraint 
+                    SELECT FROM pg_constraint
                     WHERE conname LIKE '%workflow_states_workflow_instance%'
                     AND contype = 'f'
                 );
@@ -336,7 +334,7 @@ class WorkflowStateMigrationTest(TestCase):
         )
 
         # Try to create duplicate (should fail)
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError):  # UniqueConstraint(name, version)
             WorkflowDefinition.objects.create(
                 name="test_workflow_unique",
                 version="1.0.0",
@@ -361,7 +359,7 @@ class WorkflowStateMigrationTest(TestCase):
         )
 
         # Try to create duplicate step (should fail)
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError):  # UniqueConstraint(workflow_instance, step_index)
             WorkflowStep.objects.create(
                 workflow_instance=instance,
                 step_index=0,

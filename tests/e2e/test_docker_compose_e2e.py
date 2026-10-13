@@ -41,7 +41,9 @@ def _running_inside_docker() -> bool:
     return False
 
 
-def _resolve_internal_service_url(service_name: str, internal_port: int, path: str = "") -> str | None:
+def _resolve_internal_service_url(
+    service_name: str, internal_port: int, path: str = ""
+) -> str | None:
     """Resolve a service URL using Docker-internal DNS names.
 
     When running inside a Docker container, services are reachable via their
@@ -54,12 +56,12 @@ def _resolve_internal_service_url(service_name: str, internal_port: int, path: s
 
     base = service_name.replace("-service", "")
     candidates = [
-        f"{service_name}-test",      # api-service-test
-        f"{base}-test",              # api-test
+        f"{service_name}-test",  # api-service-test
+        f"{base}-test",  # api-test
         # localhost fallback — works when we're exec'd inside the target container
         "localhost",
-        base,                        # api
-        service_name,                # api-service
+        base,  # api
+        service_name,  # api-service
     ]
     seen = set()
     for host in candidates:
@@ -72,10 +74,13 @@ def _resolve_internal_service_url(service_name: str, internal_port: int, path: s
             sock.close()
         except (OSError, socket.gaierror):
             continue
-        # Verify the service actually speaks HTTP (not just a proxy/sidecar)
+        # Verify the service actually speaks HTTP (not just a proxy/sidecar).
+        # 20s timeout: the semantic service's /health pings Fuseki synchronously
+        # (cold ~8s on a loaded host) — a short probe races it and falls
+        # through to the unreachable host-port fallback.
         try:
             health_url = f"http://{host}:{internal_port}/health/"
-            resp = requests.get(health_url, timeout=3)
+            resp = requests.get(health_url, timeout=20)
             if resp.status_code < 500:
                 return f"http://{host}:{internal_port}{path}"
         except requests.exceptions.RequestException:
@@ -118,9 +123,10 @@ class DockerComposeE2EManager:
                 text=True,
                 timeout=5,
             )
-            return result.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
+        else:
+            return result.returncode == 0
 
     def _run_command(
         self, command: list[str], check: bool = True, timeout: int = 600
@@ -131,7 +137,7 @@ class DockerComposeE2EManager:
                 "Docker CLI not available. These tests must run on the host with Docker installed, "
                 "not inside a container. Use --docker-compose-runtime when Docker is available."
             )
-        cmd = ["docker", "compose", "-f", str(self.compose_file), "-p", self.project_name] + command
+        cmd = ["docker", "compose", "-f", str(self.compose_file), "-p", self.project_name, *command]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=check)
         return result
 
@@ -212,10 +218,8 @@ class DockerComposeE2EManager:
                 service_base,
             ]
             for suffix in exact_suffixes:
-                if (
-                    container_name == suffix
-                    or container_name.endswith(f"-{suffix}")
-                    or container_name.endswith(f"_{suffix}")
+                if container_name == suffix or container_name.endswith(
+                    (f"-{suffix}", f"_{suffix}")
                 ):
                     return True
                 # Also handle when container name IS the suffix
@@ -295,7 +299,7 @@ class DockerComposeE2EManager:
                 state = status.get("State", "")
                 if health == "healthy" or (state == "running" and health == ""):
                     return True
-            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
         return False
 
     def wait_for_services_healthy(self, services: list[str], timeout: int = 300) -> None:
@@ -530,7 +534,10 @@ def started_services(docker_compose_manager, infrastructure_services, core_servi
                 # Log but don't fail - some services may not be available
                 import warnings
 
-                warnings.warn(f"Failed to start infrastructure services {infra_to_start}: {e}")
+                warnings.warn(
+                    f"Failed to start infrastructure services {infra_to_start}: {e}",
+                    stacklevel=2,
+                )
 
         # Start core services
         core_to_start = [s for s in core_services if s not in running_services]
@@ -541,20 +548,21 @@ def started_services(docker_compose_manager, infrastructure_services, core_servi
                 # Give services some time to start
                 import time
 
-                time.sleep(10)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(10)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
                 # Log but don't fail - some services may not be available or may take longer
                 import warnings
 
-                warnings.warn(f"Failed to start core services {core_to_start}: {e}")
-
-    yield
+                warnings.warn(
+                    f"Failed to start core services {core_to_start}: {e}",
+                    stacklevel=2,
+                )
 
     # Don't stop services - they may be shared with other tests
     # Cleanup handled by docker_compose_manager fixture only if we started them
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def api_base_url(docker_compose_manager):
     """Get the base URL for the API service running in Docker.
 
@@ -578,7 +586,7 @@ def api_base_url(docker_compose_manager):
     return api_url.rstrip("/")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def api_session(api_base_url):
     """Create an HTTP session for the API service with authentication.
 
@@ -779,7 +787,6 @@ class TestDockerComposeWorkflowExecution:
             "key": f"e2e-docker-asset-{uuid.uuid4().hex[:8]}",
             "name": "E2E Docker Compose Test Asset",
             "domain": "test",
-            "visibility": "INTERNAL",
         }
         try:
             asset_resp = api_session.post(
@@ -880,7 +887,6 @@ class TestDockerComposeEventBus:
             "key": f"e2e-event-pub-{uuid.uuid4().hex[:8]}",
             "name": "E2E Event Publishing Test Asset",
             "domain": "test",
-            "visibility": "INTERNAL",
         }
         try:
             resp = api_session.post(f"{api_base_url}/api/v1/assets/", json=asset_data, timeout=15)
@@ -916,7 +922,6 @@ class TestDockerComposeEventBus:
             "key": f"e2e-event-persist-{uuid.uuid4().hex[:8]}",
             "name": "E2E Event Persistence Test",
             "domain": "test",
-            "visibility": "INTERNAL",
         }
         try:
             resp = api_session.post(f"{api_base_url}/api/v1/assets/", json=asset_data, timeout=15)
@@ -1041,7 +1046,7 @@ class TestDockerComposeServiceLayer:
             )
             if semantic_url:
                 try:
-                    response = requests.get(semantic_url, headers=internal_headers, timeout=10)
+                    response = requests.get(semantic_url, headers=internal_headers, timeout=20)
                     assert response.status_code == 200, (
                         f"Semantic service should be accessible at {semantic_url} (got {response.status_code})"
                     )
@@ -1149,16 +1154,22 @@ class TestDockerComposeServiceLayer:
 
         # Check if Redis service is available  # noqa: skip-in-body — runtime service dependency
         if not docker_compose_manager.is_service_available("redis"):
-            pytest.skip("Redis service not available")
+            pytest.skip("Redis service not available")  # noqa: skip-in-body
 
         # When running inside Docker, use Docker DNS name; otherwise localhost
         if _running_inside_docker():
             # Test compose has multiple Redis instances (redis-cache-test, redis-queue-test, etc.).
             # Try known service names — any Redis instance works for basic operations.
             import socket as _socket
+
             redis_host = "localhost"
             redis_port = 6379
-            for _candidate in ("redis-cache-test", "redis-queue-test", "redis-events-test", "redis"):
+            for _candidate in (
+                "redis-cache-test",
+                "redis-queue-test",
+                "redis-events-test",
+                "redis",
+            ):
                 try:
                     _socket.create_connection((_candidate, 6379), timeout=1.5).close()
                     redis_host = _candidate

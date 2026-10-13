@@ -25,7 +25,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
           '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], [data-testid="listing-list-page"]',
       });
       if (page.url().includes('/login')) {
-        test.skip(true, 'Auth gated — skipping success assertion');
+        test.skip(page.url().includes('/login'), 'Auth gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/marketplace');
@@ -56,13 +56,13 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
-        contentSelector: '.search-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+        contentSelector: '.search-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
       const onSearch = url.includes('/search');
       if (onLogin) {
-        test.skip(true, 'Auth gated — skipping success assertion');
+        test.skip(onLogin, 'Auth gated — skipping success assertion');
         return;
       }
       expect(onSearch).toBe(true);
@@ -91,9 +91,10 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       // Allow extra time: visible/slowMo mode and parallel-batch backend load can delay rendering.
       await expect(searchInput.first()).toBeVisible({ timeout: 30000 });
       await searchInput.first().fill('xyznonexistent123');
-      const searchBtn = page.getByRole('button', { name: /Search/i });
-      await expect(searchBtn).toBeVisible({ timeout: 10000 });
-      await searchBtn.click();
+      // The search runs AUTOMATICALLY on the debounced query change —
+      // SearchPage executes the query from a debounced-query effect, so
+      // there is no "Search" button and no Enter to press (both were
+      // removed from the UI; a button matcher only ever timed out here).
       // Results, empty state, or error (search API can be slow or return 503)
       await Promise.race([
         page.waitForSelector('.search-page-results-meta', { timeout: 45_000 }),

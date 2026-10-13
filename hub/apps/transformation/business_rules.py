@@ -13,7 +13,7 @@ All validation methods follow engineering best practices:
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from hub.apps.assets.models import Asset
 from hub.apps.core.business_rules.base import (
@@ -22,7 +22,9 @@ from hub.apps.core.business_rules.base import (
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import register_rule
-from hub.apps.datasets.models import Dataset
+from hub.apps.datasets.models import (
+    Dataset,
+)
 from hub.apps.transformation.exceptions import (
     AssetCompatibilityError,
     ResourceQuotaExceededError,
@@ -84,11 +86,11 @@ class TransformationBusinessRules(BusinessRules):
     """
 
     # Valid node types
-    VALID_NODE_TYPES = {choice[0] for choice in NodeType.choices}
+    VALID_NODE_TYPES: ClassVar[set[str]] = {choice[0] for choice in NodeType.choices}
 
     # Node execution order constraints
     # Nodes that must come before other nodes
-    NODE_DEPENDENCIES = {
+    NODE_DEPENDENCIES: ClassVar[dict[NodeType, set[NodeType]]] = {
         NodeType.FILTER: set(),  # Filter can be first
         NodeType.JOIN: {NodeType.FILTER},  # Join should come after filter
         NodeType.AGGREGATE: {
@@ -109,7 +111,7 @@ class TransformationBusinessRules(BusinessRules):
     }
 
     # Required fields per node type
-    NODE_REQUIRED_FIELDS = {
+    NODE_REQUIRED_FIELDS: ClassVar[dict[NodeType, set[str]]] = {
         NodeType.FILTER: {"filter_expression"},
         NodeType.JOIN: {"join_keys", "join_type"},
         NodeType.AGGREGATE: {"group_by", "aggregation_functions"},
@@ -122,7 +124,7 @@ class TransformationBusinessRules(BusinessRules):
         return "TransformationBusinessRules"
 
     def validate(
-        self, context: RuleExecutionContext | None = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *_args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -184,33 +186,36 @@ class TransformationBusinessRules(BusinessRules):
         # Determine which validations to run
         validation_type = kwargs.get("validation_type", "all")
 
-        # Run appropriate validations
-        if validation_type == "structure":
-            return self.validate_pipeline_structure(pipeline, raise_on_error=False)
-        elif validation_type == "node_compatibility":
-            return self.validate_node_compatibility(pipeline, raise_on_error=False)
-        elif validation_type == "schema_alignment":
-            if not source_asset:
-                return ValidationResult(
-                    is_valid=False,
-                    errors=["Source asset is required for schema alignment validation"],
-                    details={"validation_type": "schema_alignment"},
-                )
-            return self.validate_schema_alignment(
-                pipeline, source_asset, target_asset, raise_on_error=False
+        # Run appropriate validations via a dispatch table.
+        if validation_type == "schema_alignment" and not source_asset:
+            return ValidationResult(
+                is_valid=False,
+                errors=["Source asset is required for schema alignment validation"],
+                details={"validation_type": "schema_alignment"},
             )
-        elif validation_type == "asset_compatibility":
-            if not source_asset:
-                return ValidationResult(
-                    is_valid=False,
-                    errors=["Source asset is required for asset compatibility validation"],
-                    details={"validation_type": "asset_compatibility"},
-                )
-            return self.validate_asset_compatibility(
-                pipeline, source_asset, target_asset, raise_on_error=False
+        if validation_type == "asset_compatibility" and not source_asset:
+            return ValidationResult(
+                is_valid=False,
+                errors=["Source asset is required for asset compatibility validation"],
+                details={"validation_type": "asset_compatibility"},
             )
-        else:  # 'all' or default
-            return self.validate_all(pipeline, source_asset, target_asset, raise_on_error=False)
+
+        validators = {
+            "structure": lambda: self.validate_pipeline_structure(pipeline, raise_on_error=False),
+            "node_compatibility": lambda: self.validate_node_compatibility(
+                pipeline, raise_on_error=False
+            ),
+            "schema_alignment": lambda: self.validate_schema_alignment(
+                pipeline, source_asset, target_asset, raise_on_error=False
+            ),
+            "asset_compatibility": lambda: self.validate_asset_compatibility(
+                pipeline, source_asset, target_asset, raise_on_error=False
+            ),
+            "all": lambda: self.validate_all(
+                pipeline, source_asset, target_asset, raise_on_error=False
+            ),
+        }
+        return validators.get(validation_type, validators["all"])()
 
     def validate_pipeline_structure(
         self, pipeline: TransformationPipeline, raise_on_error: bool = True
@@ -507,7 +512,7 @@ class TransformationBusinessRules(BusinessRules):
         return result
 
     # SQL/expression safety: deny dangerous patterns
-    _DANGEROUS_PATTERNS = [
+    _DANGEROUS_PATTERNS: ClassVar[list[str]] = [
         "DROP ",
         "DELETE ",
         "TRUNCATE ",
@@ -552,7 +557,7 @@ class TransformationBusinessRules(BusinessRules):
         return errors
 
     def _validate_node_config(
-        self, node_type: str, node_config: dict[str, Any], step_name: str, step_index: int
+        self, node_type: str, node_config: dict[str, Any], step_name: str, _step_index: int
     ) -> list[str]:
         """
         Validate node-specific configuration.
@@ -1607,8 +1612,8 @@ class TransformationBusinessRules(BusinessRules):
             - reason: Optional[str]
             - entitlement_required: bool
         """
+        from hub.apps.core.commercial_hooks import check_cross_tenant_entitlement
         from hub.apps.governance.abac import ABACEngine
-        from hub.apps.marketplace.access_utils import check_entitlement
 
         result = {"allowed": False, "reason": None, "entitlement_required": False}
 
@@ -1638,7 +1643,7 @@ class TransformationBusinessRules(BusinessRules):
 
         # Check marketplace entitlements for cross-tenant access
         if self.tenant_id and str(asset.tenant_id) != self.tenant_id:
-            has_access, error_code, entitlement = check_entitlement(
+            has_access, error_code, entitlement = check_cross_tenant_entitlement(
                 consumer_tenant_id=self.tenant_id,
                 asset_id=str(asset.id),
                 provider_tenant_id=str(asset.tenant_id),
@@ -1751,7 +1756,7 @@ class TransformationBusinessRules(BusinessRules):
                     dataset = source_asset.dataset
                     if hasattr(dataset, "size_bytes") and dataset.size_bytes:
                         base_storage_gb = dataset.size_bytes / (1024.0**3)  # Convert bytes to GB
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
         # If no source size available, estimate based on node count

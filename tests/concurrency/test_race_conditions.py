@@ -147,7 +147,7 @@ class RaceConditionsTest(ConcurrencyTestBase):
                 original_spec_type=OriginalSpecType.ODPS,
                 original_spec_version="4.1",
                 status=ContractStatus.ACTIVE,
-                version=1,
+                version=i + 1,  # unique_contract_version_per_asset: distinct per row
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
             contracts.append(c)

@@ -65,7 +65,7 @@ def create(
         payload["regulator_tz"] = regulator_tz
 
     try:
-        data = api_client.post("public/dsar/submit/", data=payload)
+        data = api_client.post("public/dsar-requests/", json_data=payload)
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
@@ -75,7 +75,7 @@ def create(
             click.echo("Check your email for the OTP verification code.")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dsar.command("verify-otp")
@@ -92,11 +92,8 @@ def verify_otp(request_id: str, otp: str, output_format: str):
     """Verify the OTP code sent by email"""
     try:
         data = api_client.post(
-            "public/dsar/verify-otp/",
-            data={
-                "request_id": request_id,
-                "otp": otp,
-            },
+            f"public/dsar-requests/{request_id}/verify-otp/",
+            json_data={"otp": otp},
         )
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
@@ -106,7 +103,7 @@ def verify_otp(request_id: str, otp: str, output_format: str):
                 click.echo("Access token received — use it to check status.")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dsar.command("get")
@@ -121,7 +118,7 @@ def verify_otp(request_id: str, otp: str, output_format: str):
 def get(request_id: str, output_format: str):
     """Get DSAR request status"""
     try:
-        data = api_client.get(f"public/dsar/{request_id}/status/")
+        data = api_client.get(f"dsar/{request_id}/")
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
@@ -133,7 +130,7 @@ def get(request_id: str, output_format: str):
             click.echo(f"Subject-local: {data.get('subject_local', 'N/A')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dsar.command("list")
@@ -173,7 +170,7 @@ def list_requests(
         params["type"] = filter_type
 
     try:
-        data = api_client.get("public/dsar/", params=params)
+        data = api_client.get("dsar/", params=params)
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
@@ -188,7 +185,7 @@ def list_requests(
                 )
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @dsar.command("cancel")
@@ -203,11 +200,11 @@ def list_requests(
 def cancel(request_id: str, output_format: str):
     """Cancel a pending DSAR request"""
     try:
-        data = api_client.post(f"public/dsar/{request_id}/cancel/", data={})
+        data = api_client.post(f"dsar/{request_id}/cancel/", json_data={})
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
             click.echo(f"Request {request_id}: {data.get('status', 'CANCELLED')}")
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e

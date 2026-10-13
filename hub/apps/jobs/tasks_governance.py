@@ -96,11 +96,6 @@ def _execute_retention_enforcement_sweep_job(job_obj: Job) -> dict:
 
     try:
         results = run_retention_enforcement_sweep(dry_run=dry_run)
-        return {
-            "success": True,
-            "summary": results,
-            "details": {},
-        }
     except Exception as e:
         logger.error(
             "Retention enforcement sweep job failed",
@@ -109,3 +104,9 @@ def _execute_retention_enforcement_sweep_job(job_obj: Job) -> dict:
             error=str(e),
         )
         raise
+    else:
+        return {
+            "success": True,
+            "summary": results,
+            "details": {},
+        }

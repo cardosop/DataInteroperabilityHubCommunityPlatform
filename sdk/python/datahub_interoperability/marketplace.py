@@ -6,7 +6,7 @@ mappings, and connectors.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import DataHubClient
 from .errors import (
@@ -75,7 +75,7 @@ class MarketplaceIntegrationAPI:
                 field_path=f"/{param_name}",
                 expected="valid UUID format (e.g., '123e4567-e89b-12d3-a456-426614174000')",
                 actual=value[:50] if len(value) > 50 else value,
-            )
+            ) from None
 
     def _validate_marketplace_type(self, marketplace_type: str) -> None:
         """
@@ -105,7 +105,7 @@ class MarketplaceIntegrationAPI:
                 actual=type(marketplace_type).__name__,
             )
 
-    def _validate_config(self, config: Dict[str, Any]) -> None:
+    def _validate_config(self, config: dict[str, Any]) -> None:
         """
         Validate connection configuration.
 
@@ -133,7 +133,7 @@ class MarketplaceIntegrationAPI:
                 actual=type(config).__name__,
             )
 
-    def _validate_asset_ids(self, asset_ids: List[str]) -> None:
+    def _validate_asset_ids(self, asset_ids: list[str]) -> None:
         """
         Validate asset IDs list.
 
@@ -186,16 +186,16 @@ class MarketplaceIntegrationAPI:
         """
         from .errors import DataHubError
 
-        # If it's already a marketplace error, return it
-        if isinstance(error, (MarketplaceValidationError, MarketplaceConnectionError)):
-            return error
-
-        # Preserve NotFoundError for 404 cases
-        if isinstance(error, NotFoundError):
-            return error
-
-        # Preserve ConflictError for 409 cases (e.g., duplicate connection names)
-        if isinstance(error, ConflictError):
+        # If it's already a marketplace/domain error, return it unchanged
+        if isinstance(
+            error,
+            (
+                MarketplaceValidationError,
+                MarketplaceConnectionError,
+                NotFoundError,
+                ConflictError,
+            ),
+        ):
             return error
 
         # If it's a DataHubError with 404 status, return NotFoundError
@@ -247,8 +247,8 @@ class MarketplaceIntegrationAPI:
         self,
         marketplace_type: str,
         name: str,
-        config: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Create a new marketplace connection.
 
@@ -264,8 +264,9 @@ class MarketplaceIntegrationAPI:
             MarketplaceValidationError: If parameters are invalid
             MarketplaceConnectionError: If connection creation fails
         """
+
         # Validate parameters
-        try:
+        def _validate_params() -> None:
             self._validate_marketplace_type(marketplace_type)
             if not name:
                 raise MarketplaceValidationError(
@@ -284,6 +285,9 @@ class MarketplaceIntegrationAPI:
                     actual=type(name).__name__,
                 )
             self._validate_config(config)
+
+        try:
+            _validate_params()
         except MarketplaceValidationError:
             raise
         except Exception as e:
@@ -294,7 +298,7 @@ class MarketplaceIntegrationAPI:
             ) from e
 
         # Build request data
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "marketplace_type": marketplace_type,
             "name": name,
             "config": config,
@@ -307,11 +311,11 @@ class MarketplaceIntegrationAPI:
 
     async def list_connections(
         self,
-        marketplace_type: Optional[str] = None,
-        is_active: Optional[bool] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        marketplace_type: str | None = None,
+        is_active: bool | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List marketplace connections.
 
@@ -324,7 +328,7 @@ class MarketplaceIntegrationAPI:
         Returns:
             List of connection data dictionaries
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if marketplace_type:
             self._validate_marketplace_type(marketplace_type)
@@ -366,11 +370,12 @@ class MarketplaceIntegrationAPI:
             # Handle single item wrapped in dict
             if isinstance(response, dict) and "id" in response:
                 return [response]
-            return []
         except Exception as e:
             raise self._handle_marketplace_error(e, "list_connections") from e
+        else:
+            return []
 
-    async def get_connection(self, connection_id: str) -> Dict[str, Any]:
+    async def get_connection(self, connection_id: str) -> dict[str, Any]:
         """
         Get a marketplace connection by ID.
 
@@ -396,10 +401,10 @@ class MarketplaceIntegrationAPI:
     async def update_connection(
         self,
         connection_id: str,
-        name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        is_active: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+        is_active: bool | None = None,
+    ) -> dict[str, Any]:
         """
         Update a marketplace connection.
 
@@ -418,7 +423,7 @@ class MarketplaceIntegrationAPI:
         """
         self._validate_uuid(connection_id, "connection_id")
 
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if name is not None:
             if not isinstance(name, str):
@@ -484,7 +489,7 @@ class MarketplaceIntegrationAPI:
         except Exception as e:
             raise self._handle_marketplace_error(e, "delete_connection") from e
 
-    async def test_connection(self, connection_id: str) -> Dict[str, Any]:
+    async def test_connection(self, connection_id: str) -> dict[str, Any]:
         """
         Test a marketplace connection.
 
@@ -515,8 +520,8 @@ class MarketplaceIntegrationAPI:
     async def sync_assets_to_marketplace(
         self,
         connection_id: str,
-        asset_ids: List[str],
-    ) -> Dict[str, Any]:
+        asset_ids: list[str],
+    ) -> dict[str, Any]:
         """
         Sync assets to marketplace (PUSH direction).
 
@@ -534,7 +539,7 @@ class MarketplaceIntegrationAPI:
         self._validate_uuid(connection_id, "connection_id")
         self._validate_asset_ids(asset_ids)
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "connection_id": connection_id,
             "direction": "PUSH",
             "asset_ids": asset_ids,
@@ -550,8 +555,8 @@ class MarketplaceIntegrationAPI:
     async def sync_from_marketplace(
         self,
         connection_id: str,
-        listing_ids: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        listing_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Sync from marketplace (PULL direction).
 
@@ -568,7 +573,7 @@ class MarketplaceIntegrationAPI:
         """
         self._validate_uuid(connection_id, "connection_id")
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "connection_id": connection_id,
             "direction": "PULL",
         }
@@ -594,9 +599,9 @@ class MarketplaceIntegrationAPI:
     async def sync_bidirectional(
         self,
         connection_id: str,
-        asset_ids: List[str],
-        listing_ids: List[str],
-    ) -> Dict[str, Any]:
+        asset_ids: list[str],
+        listing_ids: list[str],
+    ) -> dict[str, Any]:
         """
         Sync bidirectionally between hub and marketplace.
 
@@ -633,7 +638,7 @@ class MarketplaceIntegrationAPI:
                 actual=type(listing_ids).__name__,
             )
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "connection_id": connection_id,
             "direction": "BIDIRECTIONAL",
             "asset_ids": asset_ids,
@@ -647,7 +652,7 @@ class MarketplaceIntegrationAPI:
         except Exception as e:
             raise self._handle_marketplace_error(e, "sync_bidirectional") from e
 
-    async def get_sync_job(self, sync_job_id: str) -> Dict[str, Any]:
+    async def get_sync_job(self, sync_job_id: str) -> dict[str, Any]:
         """
         Get a sync job by ID.
 
@@ -672,12 +677,12 @@ class MarketplaceIntegrationAPI:
 
     async def list_sync_jobs(
         self,
-        connection_id: Optional[str] = None,
-        status: Optional[str] = None,
-        direction: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        connection_id: str | None = None,
+        status: str | None = None,
+        direction: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List sync jobs.
 
@@ -691,7 +696,7 @@ class MarketplaceIntegrationAPI:
         Returns:
             List of sync job data dictionaries
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if connection_id:
             self._validate_uuid(connection_id, "connection_id")
@@ -752,9 +757,10 @@ class MarketplaceIntegrationAPI:
             # Handle single item wrapped in dict
             if isinstance(response, dict) and "id" in response:
                 return [response]
-            return []
         except Exception as e:
             raise self._handle_marketplace_error(e, "list_sync_jobs") from e
+        else:
+            return []
 
     async def cancel_sync_job(self, sync_job_id: str) -> None:
         """
@@ -769,7 +775,7 @@ class MarketplaceIntegrationAPI:
         """
         self._validate_uuid(sync_job_id, "sync_job_id")
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "reason": "User requested cancellation",
         }
 
@@ -789,9 +795,13 @@ class MarketplaceIntegrationAPI:
         connection_id: str,
         hub_asset_id: str,
         external_listing_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create a mapping between a hub asset and an external marketplace listing.
+
+        NOTE: the server intentionally manages mappings via the sync flow
+        (``sync_assets_to_marketplace``) and its mapping viewset only
+        accepts GET/DELETE — a direct POST returns 405 Method Not Allowed.
 
         Args:
             connection_id: Connection UUID
@@ -826,7 +836,7 @@ class MarketplaceIntegrationAPI:
                 actual=type(external_listing_id).__name__,
             )
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "connection_id": connection_id,
             "hub_asset_id": hub_asset_id,
             "external_listing_id": external_listing_id,
@@ -839,7 +849,7 @@ class MarketplaceIntegrationAPI:
         except Exception as e:
             raise self._handle_marketplace_error(e, "create_mapping") from e
 
-    async def get_mapping(self, mapping_id: str) -> Dict[str, Any]:
+    async def get_mapping(self, mapping_id: str) -> dict[str, Any]:
         """
         Get a mapping by ID.
 
@@ -864,11 +874,11 @@ class MarketplaceIntegrationAPI:
 
     async def list_mappings(
         self,
-        connection_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        connection_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List marketplace mappings.
 
@@ -881,7 +891,7 @@ class MarketplaceIntegrationAPI:
         Returns:
             List of mapping data dictionaries
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if connection_id:
             self._validate_uuid(connection_id, "connection_id")
@@ -924,15 +934,16 @@ class MarketplaceIntegrationAPI:
             # Handle single item wrapped in dict
             if isinstance(response, dict) and "id" in response:
                 return [response]
-            return []
         except Exception as e:
             raise self._handle_marketplace_error(e, "list_mappings") from e
+        else:
+            return []
 
     async def update_mapping(
         self,
         mapping_id: str,
-        sync_metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        sync_metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Update a mapping.
 
@@ -949,7 +960,7 @@ class MarketplaceIntegrationAPI:
         """
         self._validate_uuid(mapping_id, "mapping_id")
 
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         if sync_metadata is not None:
             if not isinstance(sync_metadata, dict):
@@ -1002,7 +1013,7 @@ class MarketplaceIntegrationAPI:
 
     # Connector Methods
 
-    async def list_connectors(self) -> List[Dict[str, Any]]:
+    async def list_connectors(self) -> list[dict[str, Any]]:
         """
         List all available marketplace connectors.
 
@@ -1017,11 +1028,12 @@ class MarketplaceIntegrationAPI:
             # Handle list response
             if isinstance(response, list):
                 return response
-            return []
         except Exception as e:
             raise self._handle_marketplace_error(e, "list_connectors") from e
+        else:
+            return []
 
-    async def get_connector_info(self, connector_type: str) -> Dict[str, Any]:
+    async def get_connector_info(self, connector_type: str) -> dict[str, Any]:
         """
         Get information about a specific connector type.
 

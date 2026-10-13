@@ -190,7 +190,6 @@ class ContractViewFilteringTest(ContractsAPITestBase):
             key=f"filter-asset-{uuid.uuid4().hex[:12]}",
             name="Filter By Asset",
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
         )
         linked = Contract.objects.create(
             tenant=self.tenant,

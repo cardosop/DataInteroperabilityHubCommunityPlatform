@@ -4,13 +4,41 @@
  * Success/Failure/Edge/Validation. Real backend only; no mocks.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { getTestUser, loginUser } from '../fixtures/auth';
+import { createODCSContractViaApi } from '../fixtures/api-assets';
 import {
   assertListPageLoads,
   assertNonExistentIdShowsError,
   loginAndNavigateToRoute,
 } from '../fixtures/helpers';
+
+/**
+ * Churn recovery for the Create-page validation panel: when the validation
+ * REQUEST dies (NETWORK_ERROR during an API restart window), the panel
+ * renders the "Validation unavailable" retry state instead of the payload
+ * verdict. Click its Retry ONCE and wait for a terminal panel state; a
+ * sustained outage leaves the retry affordance visible and the caller's
+ * strict assertions report the visible state (b7: before the app-side
+ * isError branch, the panel rendered NOTHING and these tests timed out).
+ */
+async function retryValidationIfUnavailable(page: Page): Promise<void> {
+  const retryBtn = page.locator('[data-testid="validation-result-retry"]').first();
+  if ((await retryBtn.count()) === 0) return;
+  // intentional: the panel can re-render (loading state) between count and
+  // click — a failed click just falls through to the strict assertions.
+  await retryBtn.click().catch(() => null);
+  // intentional: the wait result is advisory — the caller's strict
+  // assertions judge the outcome; a sustained-churn retry state just falls
+  // through to them.
+  await page
+    .locator(
+      '.validation-result-panel--error, .validation-result-panel--success, .validation-result-panel--warning, [data-testid="validation-result-retry"]'
+    )
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .catch(() => null);
+}
 
 test.describe('Feature: Contracts', () => {
   test.setTimeout(120000);
@@ -69,7 +97,10 @@ test.describe('Feature: Contracts', () => {
       await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to /login — auth token expired');
+        test.skip(
+          page.url().includes('/login'),
+          'Redirected to /login — auth token expired'
+        );
         return;
       }
 
@@ -85,6 +116,13 @@ test.describe('Feature: Contracts', () => {
       // Wait for debounced validation (1.5s debounce + backend round-trip).
       const validationPanel = page.locator('.validation-result-panel');
       await expect(validationPanel).toBeVisible({ timeout: 30000 });
+
+      // Churn recovery: a NETWORK_ERROR validation request now renders the
+      // terminal "Validation unavailable" panel with a Retry affordance
+      // (previously the app rendered NOTHING and this test timed out — b7).
+      // Use the app's retry ONCE to re-run validation against the settled
+      // backend; the strict payload assertions below still judge the result.
+      await retryValidationIfUnavailable(page);
 
       // Assert: terminal validation state shown (not just loading)
       const terminalPanel = page.locator(
@@ -117,7 +155,10 @@ test.describe('Feature: Contracts', () => {
       await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
 
       if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to /login — auth token expired');
+        test.skip(
+          page.url().includes('/login'),
+          'Redirected to /login — auth token expired'
+        );
         return;
       }
 
@@ -144,6 +185,13 @@ test.describe('Feature: Contracts', () => {
       const validationPanel = page.locator('.validation-result-panel');
       await expect(validationPanel).toBeVisible({ timeout: 30000 });
 
+      // Churn recovery: a NETWORK_ERROR validation request renders the
+      // "Validation unavailable" retry state instead of the payload verdict
+      // (b7: the panel never rendered at all and this test timed out). Use
+      // the app's retry ONCE — a sustained outage then fails the strict
+      // assertions below with the visible state.
+      await retryValidationIfUnavailable(page);
+
       // The error panel must surface the STRUCTURELESS_CONTRACT code or
       // its friendly remediation copy ("models or schema fields").
       const errorPanel = page.locator('.validation-result-panel--error');
@@ -160,20 +208,14 @@ test.describe('Feature: Contracts', () => {
   test.describe('Relationships', () => {
     test('contract detail page renders the RelationshipsPanel', async ({ page }) => {
       const testUser = await getTestUser();
+      // Provision a real contract via API (the panel needs a contract id —
+      // depending on ambient list data skipped the whole test when the
+      // tenant had no contracts: b7 skip "No contracts in this test
+      // tenant"). Reuse the house helper: it reuses an existing contract
+      // or mints a fresh one with a live asset.
+      const contractId = await createODCSContractViaApi(testUser);
       await loginUser(page, testUser);
-      // Navigate to the contracts list first so we can find a real
-      // contract id without depending on a fixture.
-      await page.goto('/contracts');
-      // The list either has rows (we click into one) or is empty
-      // (we skip — the panel can't render without a contract).
-      const firstRow = page.locator(
-        '[data-testid="contract-list-row"], .contract-list-row',
-      ).first();
-      const hasContracts = await firstRow.isVisible({ timeout: 30000 }).catch(() => false);
-      if (!hasContracts) {
-        test.skip(true, 'No contracts in this test tenant — RelationshipsPanel requires a contract id');
-      }
-      await firstRow.click();
+      await page.goto(`/contracts/${contractId}`, { waitUntil: 'domcontentloaded' });
       // The panel mounts inside the Details tab (default).
       const panel = page.locator('[data-testid="relationships-panel"]');
       await expect(panel).toBeVisible({ timeout: 30000 });

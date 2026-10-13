@@ -181,12 +181,12 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
 
     await navigateToRouteFromApp(page, '/mesh/create', {
       timeout: 60000,
-      contentSelector: 'h1, .mesh-domain-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], [data-testid="mesh-domain-create-page"]',
+      contentSelector: 'h1, .mesh-domain-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], [data-testid="mesh-domain-create-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
     });
     // Capability-gated: may show Create form, 403, or unavailable message
     const on403 = page.url().includes('/403');
     const hasCreateHeading = (await page.getByRole('heading', { name: 'Create Mesh Domain' }).count()) > 0;
-    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
+    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
     expect(hasCreateHeading || on403 || hasUnavailable).toBe(true) /* acceptable states */;
     if (!hasCreateHeading) return;
 
@@ -229,7 +229,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
     });
     await navigateToRouteFromApp(page, '/mesh/topology', {
       timeout: 60000,
-      contentSelector: '.topology-visualization, .topology-header, .loading-spinner, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], h2, main',
+      contentSelector: '.topology-visualization, .topology-header, .loading-spinner, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], h2, main, .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
@@ -258,13 +258,13 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
 
     await navigateToRouteFromApp(page, '/virtualization/create', {
       timeout: 60000,
-      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
     const on403 = page.url().includes('/403');
     const hasCreateHeading = (await page.getByRole('heading', { name: /Create.*Virtual Dataset|Create Virtual Dataset/ }).count()) > 0;
-    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
+    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
     // Also accept redirect back to list — /virtualization/create may redirect if capability is gated
     const redirectedToList = !page.url().includes('/create') && page.url().includes('/virtualization');
     expect(hasCreateHeading || on403 || hasUnavailable || redirectedToList).toBe(true) /* acceptable states */;
@@ -333,7 +333,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
     const isDetailPage = /^\/virtualization\/[0-9a-f-]{36}$/i.test(pathname);
     if (!isDetailPage) {
       test.skip(
-        true,
+        !isDetailPage,
         'Not on virtual dataset detail (no row and API create not available); cannot test Edit'
       );
     }
@@ -389,7 +389,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
     const isDetailPage = /^\/virtualization\/[0-9a-f-]{36}$/i.test(pathname);
     if (!isDetailPage) {
       test.skip(
-        true,
+        !isDetailPage,
         'Not on virtual dataset detail (no row and API create not available); cannot test query UX'
       );
     }
@@ -403,7 +403,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
       .catch(() => false);
     if (!queryUIVisible) {
       test.skip(
-        true,
+        !queryUIVisible,
         'Query execution UI not visible (detail may show error/loading); cannot test query UX'
       );
     }
@@ -427,7 +427,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
       .catch(() => false);
     if (!queryResultVisible) {
       test.skip(
-        true,
+        !queryResultVisible,
         'No query result/progress/error UI appeared within 30s — query execution backend may be unavailable'
       );
       return;
@@ -440,12 +440,12 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
 
     if (!outcome.ok && outcome.phase === 'network') {
       // Network or authentication failure — API is unreachable; no assertions possible.
-      test.skip(true, `ODBC test skipped: network/auth failure — ${outcome.error}`);
+      test.skip(!outcome.ok && outcome.phase === 'network', `ODBC test skipped: network/auth failure — ${outcome.error}`);
       return;
     }
 
     if (!outcome.ok && outcome.phase === 'login') {
-      test.skip(true, `ODBC test skipped: login failed — ${outcome.error}`);
+      test.skip(!outcome.ok && outcome.phase === 'login', `ODBC test skipped: login failed — ${outcome.error}`);
       return;
     }
 
@@ -494,7 +494,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/virtualization/create', {
       timeout: 60000,
-      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
+      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .disabled-capability-page, [data-testid="disabled-capability-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) {
@@ -507,7 +507,7 @@ test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
       // Create page not accessible (403 or capability-gated) — verify proper gating and pass
       const isGated =
         page.url().includes('/403') ||
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"], .disabled-capability-page, [data-testid="disabled-capability-page"]').count()) > 0;
       expect(isGated).toBe(true) /* acceptable states */;
       return;
     }

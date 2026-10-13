@@ -4,6 +4,7 @@ Unit tests for event bus metrics collection.
 Tests that metrics are properly collected and recorded for all event bus operations.
 """
 
+import contextlib
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
@@ -162,8 +163,7 @@ class TestEventBusMetricsCollection:
             # event_queue_depth.labels(...).inc() at bus.py:831
             mock_event_bus._listen(pubsub, "test-subscriber", Mock())
 
-            assert mock_labels.called, (
-                "event_queue_depth.labels must be called during _listen")
+            assert mock_labels.called, "event_queue_depth.labels must be called during _listen"
             mock_gauge.inc.assert_called_once()
 
     def test_queue_depth_decremented_on_acknowledge(self, mock_event_bus):
@@ -202,7 +202,6 @@ class TestEventBusMetricsCollection:
         thread — we patch it to run synchronously so mock state is
         visible to both the test and the code under test.
         """
-        from hub.apps.core.events.bus import _run_with_timeout
         from hub.apps.core.events.metrics import event_retry_attempts_total
 
         event = {
@@ -243,10 +242,12 @@ class TestEventBusMetricsCollection:
             mock_event_bus._handle_event("test-subscriber", event, handler, retry_count=0)
 
             assert mock_labels.called, (
-                "event_retry_attempts_total.labels must be called on handler failure")
+                "event_retry_attempts_total.labels must be called on handler failure"
+            )
             # Called once per retry attempt (max_retries - retry_count + 1 = 4)
             assert mock_counter.inc.call_count == 4, (
-                f"Expected 4 inc calls, got {mock_counter.inc.call_count}")
+                f"Expected 4 inc calls, got {mock_counter.inc.call_count}"
+            )
 
     def test_failed_events_metric_recorded(self, mock_event_bus):
         """Test that failed events metric is recorded."""
@@ -263,10 +264,10 @@ class TestEventBusMetricsCollection:
             with patch.object(
                 mock_event_bus, "_persist_event", side_effect=Exception("Persistence failed")
             ):
-                try:
+                with contextlib.suppress(
+                    Exception
+                ):  # expected-failure guard: the mocked persistence failure must be swallowed
                     mock_event_bus.publish(event_type="test.event", data={"test": "data"})
-                except Exception:
-                    pass  # Expected to fail
 
                 # Verify failure metric was called
                 assert mock_labels.called

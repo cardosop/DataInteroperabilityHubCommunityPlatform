@@ -668,27 +668,52 @@ class LineageService(BaseService, LineageEventPublisher):
             as_of_set=as_of is not None,
         )
         if as_of is not None:
-            # Visualization at ``as_of`` returns the historical edge set
-            # in the same nodes-and-edges shape consumers already render.
-            edges = self._edges_at(
+            # Visualization at ``as_of`` must return the SAME
+            # ``{nodes, links}`` shape the current-state branch
+            # (``generate_lineage_json``) produces: ``links`` entries
+            # carry ``source``/``target``/``type``, and nodes carry
+            # ``id``/``type``/``name``. The previous implementation
+            # emitted ``edges`` with ``source_contract``/``target_contract``
+            # keys instead — the frontend reads ``lineage.links.length``
+            # and crashed the whole contract page with
+            # "Cannot read properties of undefined (reading 'length')"
+            # the moment a point-in-time anchor was applied
+            # (UC-LIN-TIME-TRAVEL-001 a11y run).
+            incoming = self._edges_at(
                 contract_id,
                 as_of=as_of,
                 direction="incoming",
-            ) + self._edges_at(
+            )
+            outgoing = self._edges_at(
                 contract_id,
                 as_of=as_of,
                 direction="outgoing",
             )
             nodes_set = set()
-            for e in edges:
-                if e.get("source_contract"):
-                    nodes_set.add(e["source_contract"])
-                if e.get("target_contract"):
-                    nodes_set.add(e["target_contract"])
+            links: list[dict[str, Any]] = []
+            for direction, edges in (("incoming", incoming), ("outgoing", outgoing)):
+                for e in edges:
+                    src = e.get("source_contract")
+                    tgt = e.get("target_contract")
+                    if src:
+                        nodes_set.add(src)
+                    if tgt:
+                        nodes_set.add(tgt)
+                    links.append(
+                        {
+                            "source": src,
+                            "target": tgt,
+                            "type": e.get("edge_type") or "contract_dependency",
+                            "direction": direction,
+                            "id": e.get("id"),
+                        }
+                    )
             return {
                 "format": format,
-                "nodes": [{"id": n} for n in sorted(nodes_set)],
-                "edges": edges,
+                "nodes": [
+                    {"id": n, "type": "contract", "name": n, "label": n} for n in sorted(nodes_set)
+                ],
+                "links": links,
                 "as_of": as_of.isoformat(),
             }
         contract = self.get_resource_or_raise(

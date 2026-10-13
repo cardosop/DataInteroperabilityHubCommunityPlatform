@@ -1,0 +1,44 @@
+{
+  "warehouses": {
+    "wh-STARTING": {
+      "id": "wh-STARTING",
+      "name": "matrix-starting",
+      "state": "STARTING",
+      "serverless": false,
+      "size": "S",
+      "auto_stop_mins": 30
+    },
+    "wh-RUNNING": {
+      "id": "wh-RUNNING",
+      "name": "matrix-running",
+      "state": "RUNNING",
+      "serverless": false,
+      "size": "S",
+      "auto_stop_mins": 30
+    },
+    "wh-STOPPING": {
+      "id": "wh-STOPPING",
+      "name": "matrix-stopping",
+      "state": "STOPPING",
+      "serverless": false,
+      "size": "S",
+      "auto_stop_mins": 30
+    },
+    "wh-STOPPED": {
+      "id": "wh-STOPPED",
+      "name": "matrix-stopped",
+      "state": "STOPPED",
+      "serverless": false,
+      "size": "S",
+      "auto_stop_mins": 30
+    },
+    "wh-DELETING": {
+      "id": "wh-DELETING",
+      "name": "matrix-deleting",
+      "state": "DELETING",
+      "serverless": false,
+      "size": "S",
+      "auto_stop_mins": 30
+    }
+  }
+}

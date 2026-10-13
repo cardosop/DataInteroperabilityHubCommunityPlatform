@@ -15,7 +15,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import UserStatus
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,

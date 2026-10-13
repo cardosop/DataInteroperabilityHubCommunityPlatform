@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Worker service test conftest — bridges to project-level conftest patches.
 
@@ -10,6 +13,7 @@ TenantPlan seeding) that must be active for any django_db test.
 This conftest imports both files so all patches are applied.
 """
 
+import importlib.util
 import os
 import sys
 from contextlib import contextmanager
@@ -25,19 +29,36 @@ if str(_repo_root) not in sys.path:
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
+
 # Load project-level conftest patches.
+# NOTE: this directory is a package (tests/__init__.py exists) and
+# services/worker is not, so pytest imports this module as ``tests.conftest``.
+# A plain ``import tests.conftest`` would therefore import this module itself,
+# never reaching the repo-root tests/conftest.py.  Load the root conftest by
+# file path instead.
+def _raise_conftest_load_error(path: Path) -> None:
+    raise ImportError(f"Unable to load conftest from {path}")
+
+
 try:
-    import tests.conftest  # noqa: F401
+    _tests_conftest_path = _repo_root / "tests" / "conftest.py"
+    _tests_conftest_spec = importlib.util.spec_from_file_location(
+        "root_tests_conftest", _tests_conftest_path
+    )
+    if _tests_conftest_spec is None or _tests_conftest_spec.loader is None:
+        _raise_conftest_load_error(_tests_conftest_path)
+    _root_tests_conftest = importlib.util.module_from_spec(_tests_conftest_spec)
+    _tests_conftest_spec.loader.exec_module(_root_tests_conftest)
 except ImportError:
-    pass
+    logger.warning("'dependency' import unavailable")
 
 try:
-    import hub.conftest  # noqa: F401
+    import hub.conftest
 except ImportError:
-    pass
+    logger.warning("'hub.conftest' import unavailable")
 
 
-@pytest.fixture()
+@pytest.fixture
 def runtime_db_connection():
     """Yield a context manager that points Django's default connection
     at the real runtime database (POSTGRES_DB env var) instead of the

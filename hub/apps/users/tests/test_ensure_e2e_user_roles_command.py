@@ -36,7 +36,9 @@ class EnsureE2EUserRolesCommandTest(TestCase):
         from hub.apps.users.models import User, UserRole
 
         user = User.objects.get(email="e2e_admin@example.com")
-        role_names = set(UserRole.objects.filter(user=user).values_list("role__name", flat=True))
+        role_names = set(
+            UserRole.objects.filter(user=user).values_list("role__name", flat=True)
+        )
         assert "TENANT_ADMIN" in role_names
         assert "DATA_PROVIDER" in role_names
 
@@ -50,3 +52,16 @@ class EnsureE2EUserRolesCommandTest(TestCase):
         out = StringIO()
         call_command("ensure_e2e_user_roles", "--dry-run", stdout=out)
         assert "dry" in out.getvalue().lower()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_uc_mirror_seed_dispatches_to_the_estate_command():
+    """W4.6 (oss-release-remediation, G1): the outer command seeds the UC
+    mirror through databricks_admin's ``seed_e2e_uc_mirror`` command (by
+    NAME — Django's command registry is the seam). Running the outer
+    command with the control-plane gate on (its own default) creates the
+    JOURNEY-DB-005/006 chain rows."""
+    call_command("ensure_e2e_user_roles")
+    from hub.apps.databricks_admin.models import DatabricksWorkspace
+
+    assert DatabricksWorkspace.objects.filter(name="e2e-databricks").exists()

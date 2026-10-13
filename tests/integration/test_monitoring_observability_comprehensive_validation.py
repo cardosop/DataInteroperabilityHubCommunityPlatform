@@ -11,6 +11,7 @@ All tests use real implementations (no mocks/stubs) per requirements.
 Tests follow TDD approach and fix root causes.
 """
 
+import contextlib
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -341,11 +342,11 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         http_requests_total.labels(method="GET", route="/test/", status_class="2xx").inc()
 
         # Simulate error condition (invalid labels)
-        try:
-            # This might fail, but shouldn't break metrics collection
+        # This might fail, but shouldn't break metrics collection
+        with contextlib.suppress(
+            Exception
+        ):  # invalid-label simulation: the failure must not break metrics collection
             http_requests_total.labels(method="GET", route="/test/", status_class="2xx").inc()
-        except Exception:
-            pass
 
         # Metrics should still be collectable after error
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp

@@ -14,9 +14,9 @@ Patterns handled:
 Safe to re-run — idempotent.  Only transforms ``pytest.skip()`` calls
 inside ``def test_*`` functions.
 """
+
 import ast
 import os
-import re
 import sys
 
 # ── AST helpers ──────────────────────────────────────────────────────────
@@ -24,23 +24,33 @@ import sys
 
 def _is_os_environ_get(node: ast.Call) -> bool:
     """Return True if node is ``os.environ.get(...)`` or ``os.getenv(...)``."""
-    if isinstance(node.func, ast.Attribute):
-        if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "environ":
-            if isinstance(node.func.value.value, ast.Name) and node.func.value.value.id == "os":
-                return node.func.attr == "get"
-    if isinstance(node.func, ast.Attribute):
-        if isinstance(node.func.value, ast.Name) and node.func.value.id == "os":
-            return node.func.attr == "getenv"
+    if (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "environ"
+        and isinstance(node.func.value.value, ast.Name)
+        and node.func.value.value.id == "os"
+    ):
+        return node.func.attr == "get"
+    if (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "os"
+    ):
+        return node.func.attr == "getenv"
     return False
 
 
 def _is_os_path_exists(node: ast.Call) -> bool:
     """Return True if node is ``os.path.exists(...)``."""
-    if isinstance(node.func, ast.Attribute) and node.func.attr == "exists":
-        if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "path":
-            if isinstance(node.func.value.value, ast.Name) and node.func.value.value.id == "os":
-                return True
-    return False
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "exists"
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "path"
+        and isinstance(node.func.value.value, ast.Name)
+        and node.func.value.value.id == "os"
+    )
 
 
 def _is_import_safe_call(node: ast.Call) -> bool:
@@ -49,15 +59,21 @@ def _is_import_safe_call(node: ast.Call) -> bool:
         return True
     if _is_os_path_exists(node):
         return True
-    if isinstance(node.func, ast.Name):
-        # builtins like isinstance, hasattr, etc. are import-safe
-        if node.func.id in ("isinstance", "hasattr", "callable", "len", "bool", "str", "int", "float"):
-            return True
-    # Anything else (function calls, method calls) is NOT import-safe.
-    return False
+    # builtins like isinstance, hasattr, etc. are import-safe; anything else
+    # (function calls, method calls) is NOT import-safe.
+    return isinstance(node.func, ast.Name) and node.func.id in (
+        "isinstance",
+        "hasattr",
+        "callable",
+        "len",
+        "bool",
+        "str",
+        "int",
+        "float",
+    )
 
 
-def _extract_reason(skip_call: ast.Call, source_lines: list[str]) -> str:
+def _extract_reason(skip_call: ast.Call, _source_lines: list[str]) -> str:
     """Extract the reason string from a pytest.skip() call."""
     if skip_call.args:
         first_arg = skip_call.args[0]
@@ -66,7 +82,7 @@ def _extract_reason(skip_call: ast.Call, source_lines: list[str]) -> str:
         # Try to get the source text
         try:
             return ast.unparse(first_arg)
-        except Exception:
+        except ValueError:
             pass
     # Try keyword arg
     for kw in skip_call.keywords:
@@ -75,18 +91,18 @@ def _extract_reason(skip_call: ast.Call, source_lines: list[str]) -> str:
     return "skip condition"
 
 
-def _get_condition_source(node: ast.expr, source_lines: list[str]) -> str:
+def _get_condition_source(node: ast.expr, _source_lines: list[str]) -> str:
     """Get the source text of a condition expression."""
     try:
         return ast.unparse(node)
-    except Exception:
+    except ValueError:
         return "<?>"
 
 
 # ── Skip analysis ────────────────────────────────────────────────────────
 
 
-def analyze_skip(skip_call: ast.Call, parent_stmt: ast.stmt, source_lines: list[str]) -> str:
+def analyze_skip(_skip_call: ast.Call, parent_stmt: ast.stmt, _source_lines: list[str]) -> str:
     """Analyze a pytest.skip() call and return the recommended fix type.
 
     Returns one of: 'env', 'file', 'import_guard', 'unconditional', 'runtime'.
@@ -132,7 +148,7 @@ def fix_file(filepath: str) -> dict:
     try:
         with open(filepath, encoding="utf-8") as fh:
             source = fh.read()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return {}
 
     try:
@@ -163,7 +179,7 @@ def fix_file(filepath: str) -> dict:
         fix_type = fix["type"]
         counts[fix_type] = counts.get(fix_type, 0) + 1
 
-        if fix_type == "env" or fix_type == "file":
+        if fix_type in {"env", "file"}:
             _apply_env_file_fix(fix, source_lines)
         elif fix_type == "import_guard":
             _apply_import_fix(fix, source_lines)
@@ -179,7 +195,7 @@ def fix_file(filepath: str) -> dict:
     return counts
 
 
-def _collect_skip_fixes(func_node, source_lines, fixes, tree, filepath):
+def _collect_skip_fixes(func_node, source_lines, fixes, _tree, _filepath):
     """Find pytest.skip() calls inside a test function and classify them."""
     for child in ast.walk(func_node):
         if not isinstance(child, ast.Expr):
@@ -208,58 +224,68 @@ def _collect_skip_fixes(func_node, source_lines, fixes, tree, filepath):
 
         if isinstance(parent, ast.If):
             condition = parent.test
-            cond_src = _get_condition_source(condition, source_lines)
+            _cond_src = _get_condition_source(condition, source_lines)
 
             if isinstance(condition, ast.UnaryOp) and isinstance(condition.op, ast.Not):
                 operand = condition.operand
                 if isinstance(operand, ast.Call) and _is_os_environ_get(operand):
-                    fixes.append({
-                        "type": "env",
-                        "lineno": parent.lineno,
-                        "end_lineno": parent.end_lineno,
-                        "func_node": func_node,
-                        "condition_src": _get_condition_source(condition, source_lines),
-                        "reason": reason,
-                    })
+                    fixes.append(
+                        {
+                            "type": "env",
+                            "lineno": parent.lineno,
+                            "end_lineno": parent.end_lineno,
+                            "func_node": func_node,
+                            "condition_src": _get_condition_source(condition, source_lines),
+                            "reason": reason,
+                        }
+                    )
                     continue
                 if isinstance(operand, ast.Call) and _is_os_path_exists(operand):
-                    fixes.append({
-                        "type": "file",
-                        "lineno": parent.lineno,
-                        "end_lineno": parent.end_lineno,
-                        "func_node": func_node,
-                        "condition_src": _get_condition_source(condition, source_lines),
-                        "reason": reason,
-                    })
+                    fixes.append(
+                        {
+                            "type": "file",
+                            "lineno": parent.lineno,
+                            "end_lineno": parent.end_lineno,
+                            "func_node": func_node,
+                            "condition_src": _get_condition_source(condition, source_lines),
+                            "reason": reason,
+                        }
+                    )
                     continue
 
         # Check for unconditional bare skip (Pattern D)
         if isinstance(parent, ast.Expr) and parent is child:
-            fixes.append({
-                "type": "unconditional",
-                "lineno": child.lineno,
-                "func_node": func_node,
-                "reason": reason,
-            })
+            fixes.append(
+                {
+                    "type": "unconditional",
+                    "lineno": child.lineno,
+                    "func_node": func_node,
+                    "reason": reason,
+                }
+            )
             continue
 
         # Check for import-guarded skip (Pattern C) — look at enclosing Try node
         if _is_inside_import_guard(child, func_node):
-            fixes.append({
-                "type": "import_guard",
-                "lineno": child.lineno,
-                "func_node": func_node,
-                "reason": reason,
-            })
+            fixes.append(
+                {
+                    "type": "import_guard",
+                    "lineno": child.lineno,
+                    "func_node": func_node,
+                    "reason": reason,
+                }
+            )
             continue
 
         # Runtime-dependent (Pattern E) — annotate with noqa
-        fixes.append({
-            "type": "noqa",
-            "lineno": child.lineno,
-            "func_node": func_node,
-            "reason": reason,
-        })
+        fixes.append(
+            {
+                "type": "noqa",
+                "lineno": child.lineno,
+                "func_node": func_node,
+                "reason": reason,
+            }
+        )
 
 
 def _is_inside_import_guard(skip_node: ast.stmt, func_node: ast.FunctionDef) -> bool:
@@ -290,9 +316,8 @@ def _has_noqa(lineno: int, source_lines: list[str]) -> bool:
     """Check for # noqa: skip-in-body annotation."""
     for offset in (0, 1):
         idx = lineno - 1 - offset
-        if 0 <= idx < len(source_lines):
-            if "# noqa: skip-in-body" in source_lines[idx]:
-                return True
+        if 0 <= idx < len(source_lines) and "# noqa: skip-in-body" in source_lines[idx]:
+            return True
     return False
 
 
@@ -310,17 +335,14 @@ def _apply_env_file_fix(fix: dict, source_lines: list[str]):
         source_lines[i] = ""
 
     # Add decorator before the function def
-    decorator = (
-        f'@pytest.mark.skipif({fix["condition_src"]}, '
-        f'reason="{fix["reason"]}")\n'
-    )
+    decorator = f'@pytest.mark.skipif({fix["condition_src"]}, reason="{fix["reason"]}")\n'
     func_def_idx = func.lineno - 1
     source_lines.insert(func_def_idx, decorator)
 
     # Adjust fix lineno for subsequent fixes in this file (handled by reverse order)
 
 
-def _apply_unconditional_fix(fix: dict, source_lines: list[str], tree: ast.AST, filepath: str):
+def _apply_unconditional_fix(fix: dict, source_lines: list[str], _tree: ast.AST, _filepath: str):
     """Replace bare pytest.skip() with @pytest.mark.skip decorator."""
     func = fix["func_node"]
     skip_idx = fix["lineno"] - 1
@@ -370,7 +392,8 @@ def main() -> int:
             continue
         for dirpath, dirnames, filenames in os.walk(p):
             dirnames[:] = [
-                d for d in dirnames
+                d
+                for d in dirnames
                 if d not in ("__pycache__", ".git", "migrations", ".venv", "venv", "node_modules")
             ]
             for fn in filenames:

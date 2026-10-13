@@ -189,10 +189,7 @@ class ODPSWebhookDeliveryError(ODPSWebhookError):
             else:
                 recovery_strategy = RecoveryStrategy.FAIL
                 recoverable = False
-        elif (
-            error_code == self.ERROR_CODE_SSL_ERROR
-            or error_code == self.ERROR_CODE_AUTHENTICATION_FAILED
-        ):
+        elif error_code in (self.ERROR_CODE_SSL_ERROR, self.ERROR_CODE_AUTHENTICATION_FAILED):
             recovery_strategy = RecoveryStrategy.FAIL
             recoverable = False
 

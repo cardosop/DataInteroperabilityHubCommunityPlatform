@@ -50,7 +50,7 @@ def fix_file(filepath: str) -> int:
     try:
         with open(filepath, encoding="utf-8") as fh:
             source = fh.read()
-    except Exception:
+    except (OSError, ValueError):
         return 0
 
     try:
@@ -97,11 +97,11 @@ def fix_file(filepath: str) -> int:
                 # Search from line_idx to ctx_end_line for the pattern
                 # Build remaining source from the with start
                 remaining = ""
-                for l in range(line_idx, len(source_lines)):
-                    if l == line_idx:
-                        remaining += source_lines[l]
+                for range_item in range(line_idx, len(source_lines)):
+                    if range_item == line_idx:
+                        remaining += source_lines[range_item]
                     else:
-                        remaining += source_lines[l]
+                        remaining += source_lines[range_item]
 
                 import re
 
@@ -111,8 +111,8 @@ def fix_file(filepath: str) -> int:
                 if match:
                     # Calculate absolute position in the full source
                     prefix_len = 0
-                    for l in range(line_idx):
-                        prefix_len += len(source_lines[l])
+                    for range_item in range(line_idx):
+                        prefix_len += len(source_lines[range_item])
                     abs_start = prefix_len + match.start()
                     abs_end = prefix_len + match.end()
 

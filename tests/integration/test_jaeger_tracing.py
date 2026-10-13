@@ -70,10 +70,7 @@ class TestJaegerTracing:
             if name not in services:
                 continue
             env = services[name].get("environment", {})
-            if isinstance(env, list):
-                env_str = " ".join(str(e) for e in env)
-            else:
-                env_str = str(env)
+            env_str = " ".join(str(e) for e in env) if isinstance(env, list) else str(env)
             assert (
                 "JAEGER_AGENT_HOST" in env_str
                 or "OTEL" in env_str

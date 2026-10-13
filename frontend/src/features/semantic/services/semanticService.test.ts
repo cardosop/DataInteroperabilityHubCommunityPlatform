@@ -30,8 +30,6 @@ describe('semanticService', () => {
     await expect(semanticService.querySPARQL({query: 'SELECT'} as never)).rejects.toThrow('Network Error');
   });
 
-});
-
   // Phase 277.3.4 — semantic feature flag error test.
   it('handles 403 SEMANTIC_FEATURE_DISABLED', async () => {
     vi.mocked(mock.post).mockRejectedValue({
@@ -49,3 +47,4 @@ describe('semanticService', () => {
       semanticService.querySPARQL({ query: 'SELECT * { ?s ?p ?o }', format: 'json' }),
     ).rejects.toMatchObject({ status: 403 });
   });
+});

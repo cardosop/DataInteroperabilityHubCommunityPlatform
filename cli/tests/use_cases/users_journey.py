@@ -56,9 +56,8 @@ def test_user_has_email_and_roles():
 
     body = resp.json()
     assert "email" in body, f"User profile missing 'email'. Keys: {list(body.keys())}"
-    assert isinstance(body["email"], str) and "@" in body["email"], (
-        f"Email field is not a valid email: {body.get('email')}"
-    )
+    assert isinstance(body["email"], str), f"Email field is not a valid email: {body.get('email')}"
+    assert "@" in body["email"], f"Email field is not a valid email: {body.get('email')}"
 
     # Roles may be a list or a single string field
     has_roles = "roles" in body or "role" in body or "groups" in body or "permissions" in body

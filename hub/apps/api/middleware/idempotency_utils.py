@@ -52,9 +52,10 @@ def validate_idempotency_key(key: str) -> bool:
     # Check UUID format first
     try:
         uuid.UUID(key)
-        return True
     except (ValueError, AttributeError):
         pass
+    else:
+        return True
 
     # Check custom format: 8-256 characters, alphanumeric, hyphens, underscores, forward slashes
     if len(key) < 8 or len(key) > 256:
@@ -114,7 +115,6 @@ def get_redis_client() -> redis.Redis:
         client = get_redis_cache_client()
         # Test connection
         client.ping()
-        return client
     except ImportError:
         # Fallback to direct connection if redis_pools not available
         redis_url = getattr(settings, "REDIS_CACHE_URL", None)
@@ -126,13 +126,15 @@ def get_redis_client() -> redis.Redis:
             )
             # Test connection
             client.ping()
-            return client
         except Exception as e:
-            logger.error("idempotency_redis_connection_error", error=str(e), redis_url=redis_url)
+            logger.exception(
+                "idempotency_redis_connection_error", error=str(e), redis_url=redis_url
+            )
             raise redis.ConnectionError(f"Failed to connect to Redis: {e}") from e
     except Exception as e:
-        logger.error("idempotency_redis_connection_error", error=str(e))
+        logger.exception("idempotency_redis_connection_error", error=str(e))
         raise redis.ConnectionError(f"Failed to connect to Redis: {e}") from e
+    return client
 
 
 def build_idempotency_key(
@@ -318,10 +320,11 @@ def get_idempotency_record(redis_client: redis.Redis, redis_key: str) -> dict[st
                 # Invalid timestamp format - treat as valid record
                 pass
 
-        return record
     except json.JSONDecodeError as e:
-        logger.error("idempotency_record_decode_error", error=str(e), redis_key=redis_key)
+        logger.exception("idempotency_record_decode_error", error=str(e), redis_key=redis_key)
         return None
+    else:
+        return record
 
 
 def check_idempotency_key_expired(redis_client: redis.Redis, redis_key: str) -> bool:
@@ -365,9 +368,10 @@ def check_idempotency_key_expired(redis_client: redis.Redis, redis_key: str) -> 
             except (ValueError, TypeError):
                 pass
 
-        return False
     except Exception as e:
-        logger.error("idempotency_ttl_check_error", error=str(e), redis_key=redis_key)
+        logger.exception("idempotency_ttl_check_error", error=str(e), redis_key=redis_key)
+        return False
+    else:
         return False
 
 
@@ -459,10 +463,7 @@ def should_process_idempotency(request: HttpRequest) -> bool:
         return False
 
     # Must have Idempotency-Key header
-    if not request.headers.get("Idempotency-Key"):
-        return False
-
-    return True
+    return request.headers.get("Idempotency-Key")
 
 
 def get_endpoint_pattern(path: str) -> str:

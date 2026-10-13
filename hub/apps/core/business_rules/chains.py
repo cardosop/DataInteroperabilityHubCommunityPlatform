@@ -14,13 +14,15 @@ from __future__ import annotations
 import contextlib
 import logging
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 
 from hub.apps.core.business_rules.base import RuleExecutionContext, ValidationResult
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 

@@ -40,9 +40,12 @@ def _has_tenant_id(node: ast.ClassDef) -> bool:
     for item in ast.walk(node):
         if isinstance(item, ast.Call):
             for kw in getattr(item, "keywords", []):
-                if kw.arg in ("to",) and hasattr(kw.value, "id"):
-                    if kw.value.id == "Tenant" or "Tenant" in str(getattr(kw.value, "attr", "")):
-                        return True
+                if (
+                    kw.arg in ("to",)
+                    and hasattr(kw.value, "id")
+                    and (kw.value.id == "Tenant" or "Tenant" in str(getattr(kw.value, "attr", "")))
+                ):
+                    return True
     return False
 
 
@@ -56,7 +59,7 @@ def _is_abstract(node: ast.ClassDef) -> bool:
                             try:
                                 if ast.literal_eval(stmt.value) is True:
                                     return True
-                            except Exception:
+                            except ValueError:
                                 pass
     return False
 
@@ -72,7 +75,7 @@ def _find_tenant_models(apps_dir: Path) -> dict[str, str]:
             continue
         try:
             tree = ast.parse(models_file.read_text())
-        except Exception:
+        except (OSError, ValueError, SyntaxError):
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and _is_django_model(node):

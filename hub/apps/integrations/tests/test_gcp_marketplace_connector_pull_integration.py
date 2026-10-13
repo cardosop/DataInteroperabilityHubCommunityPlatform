@@ -50,7 +50,7 @@ def get_test_credentials():
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping") from None
 
 
 class TestGCPMarketplaceConnectorPullIntegration(TestCase):
@@ -277,9 +277,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
 
             # Should handle empty options gracefully
             self.assertIsInstance(result, SyncResult)
-            self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
-            )
+            self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except NotFoundError:
@@ -292,9 +290,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
 
             # Should handle None filters gracefully
             self.assertIsInstance(result, SyncResult)
-            self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
-            )
+            self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except NotFoundError:
@@ -314,7 +310,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
             marketplace_id="test-id",
             marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
             title=None,  # type: ignore[arg-type]  # Missing title
-            description=None,  # type: ignore[arg-type]  # Missing description
+            description=None,  # Missing description
             metadata={},  # Empty metadata
         )
 
@@ -350,9 +346,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
 
             # Should handle large limit gracefully (may be capped internally)
             self.assertIsInstance(result, SyncResult)
-            self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
-            )
+            self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
             # Total items should not exceed reasonable bounds
             self.assertLessEqual(result.total_items, 1000000)
         except ImportError:

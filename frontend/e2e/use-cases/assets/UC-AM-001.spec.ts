@@ -34,13 +34,16 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow @critical', () => {
 
     test('create asset via form: fill name, key, description, submit', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/assets/create', {
+      // Phase 250.6.B — bypass the type-picker step via the deep-link; the
+      // form fields render only after a pick/skip (picker coverage lives in
+      // journeys/dpo/asset-type-picker.spec.ts).
+      await loginAndNavigateToRoute(page, user, '/assets/create?skip=picker', {
         timeout: 60000,
-        contentSelector: 'form, .asset-form',
+        contentSelector: '[data-testid="asset-create-form"], form',
       });
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Redirected to login — auth not available');
-      }
+      const onLogin = page.url().includes('/login');
+      test.skip(onLogin, 'Redirected to login — auth not available');
+      if (onLogin) return;
       expect(page.url()).toContain('/assets/create');
       await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -49,23 +52,23 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow @critical', () => {
       const assetName = `E2E Asset ${uniqueSuffix}`;
 
       // Fill key first (matches form order: key appears before name in the DOM)
-      const keyInput = page.locator('#key').first();
+      const keyInput = page.locator('[data-testid="asset-create-key"], input[id="asset-key"]').first();
       await keyInput.waitFor({ state: 'visible', timeout: 10000 });
       await keyInput.fill(assetKey);
       // Verify React state updated by checking input value
       await expect(keyInput).toHaveValue(assetKey);
 
-      const nameInput = page.locator('#name').first();
+      const nameInput = page.locator('[data-testid="asset-create-name"], input[id="asset-name"]').first();
       await nameInput.waitFor({ state: 'visible', timeout: 10000 });
       await nameInput.fill(assetName);
       await expect(nameInput).toHaveValue(assetName);
 
-      const descInput = page.locator('#description').first();
+      const descInput = page.locator('[data-testid="asset-create-description"], textarea[id="asset-description"]').first();
       if ((await descInput.count()) > 0 && await descInput.isVisible()) {
         await descInput.fill('Automated E2E test asset');
       }
 
-      const submitBtn = page.locator('button[type="submit"]').first();
+      const submitBtn = page.locator('[data-testid="asset-create-submit"]').first();
       await submitBtn.waitFor({ state: 'visible', timeout: 10000 });
       // Ensure submit button is enabled (not in loading state)
       await expect(submitBtn).toBeEnabled({ timeout: 5000 });
@@ -88,14 +91,15 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow @critical', () => {
 
     test('assets create route loads', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/assets/create', {
+      // Phase 250.6.B — picker bypass; see the create test above.
+      await loginAndNavigateToRoute(page, user, '/assets/create?skip=picker', {
         timeout: 60000,
-        contentSelector: 'form, .asset-form',
+        contentSelector: '[data-testid="asset-create-form"], form',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/assets/create');
       const hasForm =
-        (await page.locator('form, .asset-form').count()) > 0;
+        (await page.locator('[data-testid="asset-create-form"], form').count()) > 0;
       expect(hasForm).toBe(true);
     });
   });

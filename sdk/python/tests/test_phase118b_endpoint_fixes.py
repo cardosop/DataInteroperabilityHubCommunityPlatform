@@ -1,5 +1,5 @@
 """
-Phase 118B — Python SDK Endpoint & Method Fixes (GF-22.8–22.13)
+Phase 118B — Python SDK Endpoint & Method Fixes (GF-22.8-22.13)
 
 TDD tests verifying SDK methods send correct endpoint paths and parameters
 to match the backend ViewSet implementations.

@@ -31,7 +31,7 @@ from hub.apps.observability.otel_metrics import dataset_inference_retries_total
 logger = logging.getLogger(__name__)
 
 
-def _emit_retry_metric(retry_state) -> None:
+def _emit_retry_metric(_retry_state) -> None:
     """Tenacity ``before_sleep`` callback — increments the retry counter.
 
     Fires once per retry attempt (i.e., between attempt N and attempt
@@ -182,8 +182,8 @@ def _attempt_get_content(
     retry=retry_if_exception(_is_transient_download_error),
     # Phase 260.7.D — tightened from ``stop_after_attempt(5)`` +
     # ``wait_exponential(multiplier=0.5, max=8)`` per task spec. The
-    # net wall-clock is similar (3 attempts × ~3.3s avg backoff vs.
-    # 5 × ~3s) but the failure shape is more predictable: max 3
+    # net wall-clock is similar (3 attempts x ~3.3s avg backoff vs.
+    # 5 x ~3s) but the failure shape is more predictable: max 3
     # attempts means callers know the upper-bound latency.
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, max=5),
@@ -257,7 +257,7 @@ def fetch_file_content_for_dataset_schema_safe(
         raise ValidationError(
             "File blob missing from storage; cannot infer schema.",
             details={"storage_path": storage_path},
-        )
+        ) from None
     except RetryError as exc:
         cause = exc.last_attempt.exception()
         logger.warning(

@@ -13,7 +13,7 @@ from hub.apps.breach.models import (
 class BreachNotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = BreachNotification
-        fields = [
+        fields = (
             "id",
             "incident",
             "regime",
@@ -32,7 +32,7 @@ class BreachNotificationSerializer(serializers.ModelSerializer):
             "sent_at",
             "created_at",
             "updated_at",
-        ]
+        )
         read_only_fields = fields
 
 
@@ -41,7 +41,7 @@ class BreachIncidentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BreachIncident
-        fields = [
+        fields = (
             "id",
             "title",
             "summary",
@@ -57,8 +57,8 @@ class BreachIncidentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "notifications",
-        ]
-        read_only_fields = [
+        )
+        read_only_fields = (
             "id",
             "status",
             "statutory_authority_deadline_utc",
@@ -67,7 +67,7 @@ class BreachIncidentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "notifications",
-        ]
+        )
 
 
 class BreachIncidentCreateSerializer(serializers.Serializer):
@@ -89,7 +89,7 @@ class BreachMarkSentSerializer(serializers.Serializer):
 class BreachTenantTemplateOverrideSerializer(serializers.ModelSerializer):
     class Meta:
         model = BreachTenantTemplateOverride
-        fields = [
+        fields = (
             "id",
             "tenant",
             "regime",
@@ -98,8 +98,8 @@ class BreachTenantTemplateOverrideSerializer(serializers.ModelSerializer):
             "template_version",
             "updated_by",
             "updated_at",
-        ]
-        read_only_fields = ["id", "tenant", "template_version", "updated_by", "updated_at"]
+        )
+        read_only_fields = ("id", "tenant", "template_version", "updated_by", "updated_at")
 
 
 class BreachTenantTemplateWriteSerializer(serializers.Serializer):

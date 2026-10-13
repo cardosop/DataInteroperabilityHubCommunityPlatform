@@ -406,6 +406,39 @@ class AuthenticationFlowsTest(TestCase):
         invited_user.refresh_from_db()
         self.assertIsNone(invited_user.invitation_token)
 
+    def test_accept_invitation_establishes_a_working_session(self):
+        """Phase U / U.5 — pins the invariant the E2E race canary guards:
+        acceptance must establish a session the very NEXT authenticated
+        call can use (the E2E skip "accepted but redirected to /login"
+        fires when this breaks — token rotation / cookie-mode detection).
+        """
+        from django.conf import settings
+
+        invited_user, raw_token = self._make_invited_user()
+
+        response = self.client.post(
+            "/api/v1/auth/accept-invitation/",
+            {"token": raw_token, "password": "newpass123"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+        # The refresh httpOnly cookie must be set on the response — the
+        # session half the SPA relies on in cookie-auth mode.
+        cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
+        assert cookie_name in response.cookies
+
+        # The access token must immediately authenticate /auth/me/ — the
+        # "session established" invariant end-to-end.
+        access_token = response.data.get("access_token")
+        assert access_token is not None
+        me = self.client.get(
+            "/api/v1/auth/me/",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+        assert me.status_code == status.HTTP_200_OK
+        assert me.data["email"] == invited_user.email
+
     def test_accept_invitation_sets_token_used_at(self):
         """Test invitation acceptance sets token_used_at."""
         invited_user, raw_token = self._make_invited_user()

@@ -12,7 +12,7 @@ All tests run against real Docker Compose services - no mocks or stubs.
 """
 
 import structlog
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.ai.llm_client import LLMClient
 from hub.apps.core.bug_prevention.services import IdempotencyService, RequestDeduplicationService

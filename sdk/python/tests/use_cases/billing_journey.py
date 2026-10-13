@@ -44,7 +44,7 @@ def test_get_billing_plan():
     assert isinstance(body, dict), f"Expected dict, got {type(body)}"
 
     # Should contain plan identification
-    keys_lower = {k.lower() for k in body.keys()}
+    keys_lower = {k.lower() for k in body}
     has_plan = any(
         k in keys_lower for k in ("plan", "tier", "name", "subscription", "plan_name", "plan_id")
     )
