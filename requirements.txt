@@ -100,7 +100,7 @@ pyarrow>=22.0.0; python_version >= "3.13"  # first with cp314 wheels
 # dependency of requests, but pinned here as a direct top-level
 # dep so a future requests version that swaps it back to chardet
 # doesn't silently lose the platform's encoding-detection gate.
-charset-normalizer>=3.4.0,<4.0
+charset-normalizer>=3.4.9,<4.0
 
 # HTTP Client
 httpx==0.28.1
