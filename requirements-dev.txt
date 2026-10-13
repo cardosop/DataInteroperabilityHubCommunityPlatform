@@ -8,12 +8,12 @@
 delta-sharing>=1.0,<2.0                   # Apache 2.0
 
 # Development Tools (compatible with Django 6)
-pytest>=7.4.0
-pytest-django>=4.11.0
+pytest>=7.4.4
+pytest-django>=4.14.0
 pytest-cov>=4.1.0
-pytest-mock>=3.12.0
-pytest-asyncio>=0.21.0
-pytest-xdist>=3.5.0  # -n auto for parallel test execution
+pytest-mock>=3.15.1
+pytest-asyncio>=0.26.0
+pytest-xdist>=3.8.0  # -n auto for parallel test execution
 # Optional (evidence collection; uncomment if needed — see docs/EVIDENCE_COLLECTION_PLAN.md):
 # pytest-html>=4.0.0
 # pytest-json-report>=1.5.0
@@ -33,7 +33,7 @@ pip-audit>=2.6.1
 
 # Testing Utilities
 daphne>=4.1.0  # Required for channels.testing (WebsocketCommunicator)
-factory-boy>=3.3.0
+factory-boy>=3.3.3
 # Phase 227 Wave 1 (227.L2.6) — property-based tests for the recursive
 # nested-properties walker (test_odcs_nested_properties.py). The test
 # uses pytest.importorskip so missing dep skips gracefully.
@@ -55,8 +55,8 @@ pact-python>=3.4.0,<4.0
 #   * 50000-field analytics contract: < 5 s, < 500 MB resident
 # CI wiring fails on >20% regression vs. saved baseline.
 pytest-benchmark>=4.0.0
-pytest-timeout>=2.2.0
-faker>=20.0.0
+pytest-timeout>=2.4.0
+faker>=20.1.0
 freezegun>=1.4.0
 locust>=2.17.0
 moto>=5.0.0  # AWS service mocking (S3, SQS, SES, etc.)
