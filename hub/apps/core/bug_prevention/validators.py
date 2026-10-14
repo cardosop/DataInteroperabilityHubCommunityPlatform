@@ -231,7 +231,12 @@ class UUIDValidator(BaseModel):
         elif isinstance(value, UUID):
             return value
         else:
-            raise TypeError("UUID must be string or UUID instance")
+            # ValueError, not TypeError: this pydantic build does NOT
+            # wrap TypeError raised inside a mode="before" field
+            # validator (the raw exception escapes the model
+            # constructor — the wrong-type pin caught it), while
+            # ValueError converts to ValidationError by contract.
+            raise ValueError("UUID must be string or UUID instance")
 
 
 class IdempotencyKeyValidator(BaseModel):
