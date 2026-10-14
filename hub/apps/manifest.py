@@ -106,6 +106,10 @@ _PAID_MODULES: frozenset[str] = frozenset(
         "hub.apps.graphql",
         "hub.apps.graphql_ld",
         "hub.apps.graphql_graphene",
+        # W7.3 — the Databricks control-plane ESTATE is paid (per-provider
+        # app, provider-boundary contract): it must not install in core
+        # mode and must not ship in the public tree.
+        "hub.apps.databricks_admin",
     }
 )
 

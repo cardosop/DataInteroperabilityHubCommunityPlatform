@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 if TYPE_CHECKING:
+    # core-guard: full-mode-only — TYPE_CHECKING-only import (no runtime coupling)
     from hub.apps.databricks_admin.models import DatabricksWorkspace
     from hub.apps.warehouses.models import WarehouseConnection
 

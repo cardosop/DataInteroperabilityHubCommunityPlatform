@@ -14,7 +14,10 @@ import pytest
 @pytest.fixture
 def local_http_server():
     """A real local HTTP server on an ephemeral port (no mocks)."""
-    from hub.apps.databricks_admin.tests._http import RecordingHandler
+    try:
+        from hub.apps.databricks_admin.tests._http import RecordingHandler
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("databricks estate (paid) not installed in core-only mode")
 
     RecordingHandler.script = []
     RecordingHandler.requests = []

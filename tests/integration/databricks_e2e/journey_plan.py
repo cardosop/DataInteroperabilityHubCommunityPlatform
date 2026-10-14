@@ -18,6 +18,7 @@ import os
 import re
 from typing import Any
 
+# core-guard: full-mode-only — tests/integration never collects in core CI
 from hub.apps.databricks_admin.e2e_tooling.sandbox import SANDBOX_PREFIX
 
 # ── The environment gate (the 9.4 conftest's shared contract) ─────────

@@ -14,6 +14,7 @@ import threading
 import pytest
 
 from envpolicy import environment_guard
+# core-guard: full-mode-only — tests/integration never collects in core CI
 from hub.apps.databricks_admin.tests._http import RecordingHandler
 
 
@@ -53,6 +54,7 @@ def live_workspace_client():
     """The PRODUCTION workspace client against the live sandbox (W16)."""
     import os
 
+    # core-guard: full-mode-only — tests/integration never collects in core CI
     from hub.apps.databricks_admin.client import DatabricksApiClient
 
     _require_live_sandbox()

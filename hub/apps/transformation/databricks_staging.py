@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    # core-guard: full-mode-only — TYPE_CHECKING-only import (no runtime coupling)
     from hub.apps.databricks_admin.client import DatabricksApiClient
 
 import structlog

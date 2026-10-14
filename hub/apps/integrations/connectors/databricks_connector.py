@@ -31,7 +31,13 @@ from hub.apps.core.resilience.circuit_breaker import (
     get_redis_client,
 )
 from hub.apps.core.services.base import NotFoundError
-from hub.apps.databricks_admin.client import DatabricksApiClient, DatabricksApiError
+try:
+    from hub.apps.databricks_admin.client import DatabricksApiClient, DatabricksApiError
+except (RuntimeError, ModuleNotFoundError):
+    # The estate (paid) is absent in core mode — the connector is
+    # marketplace-path-only there and never constructed.
+    DatabricksApiClient = None  # type: ignore[assignment]
+    DatabricksApiError = None  # type: ignore[assignment]
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
