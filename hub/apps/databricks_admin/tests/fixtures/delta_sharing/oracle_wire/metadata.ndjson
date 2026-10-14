@@ -1,2 +1,0 @@
-{"protocol": {"minReaderVersion": 1}}
-{"metaData": {"id": "75ff3e5d24be4623bdb945dc459983ce", "name": "catalog.schema.orders", "description": "asset-af17abed", "format": {"provider": "parquet"}, "schemaString": "", "partitionColumns": [], "configuration": {}}}

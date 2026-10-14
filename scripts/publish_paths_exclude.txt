@@ -54,6 +54,7 @@ docker-compose.override.memory.yml
 docker-compose.override.test-run.yml
 docker-compose.test.marquez.yml
 docker-compose.test.mvp.yml
+hub/apps/databricks_admin/
 hub/apps/auth/tests/test_impersonation_w16.py
 scripts/validate_odps_final_checklist.py
 scripts/provision_smoke_fixtures.py
