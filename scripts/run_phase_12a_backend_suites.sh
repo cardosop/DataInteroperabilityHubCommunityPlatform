@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase 12A.1 — Run backend test suites with artifact collection
-# Per docs/TEST_EXECUTION_PLAN.md and openspec/changes/testreview1/tasks.md
+# Per docs/TEST_EXECUTION_PLAN.md and openspec/changes/archive/testreview1/tasks.md
 # No mocks/stubs; root-cause fixes only.
 #
 # Unit phase: batched + parallel (pytest-xdist -n) for ~18k tests. Set PYTEST_PARALLEL_WORKERS=0 to disable parallel.

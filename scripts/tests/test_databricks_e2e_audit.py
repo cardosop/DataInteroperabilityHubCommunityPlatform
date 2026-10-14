@@ -6,7 +6,7 @@ Pins three layers against the landed reality:
    are real constants in `hub.apps/audit/event_types.py` (name == value
    convention) AND ride `__all__` (the vocabulary catalogue every emit
    site's tests pin against).
-2. The EMITTER (`scripts/databricks_e2e/audit.py`) — real behavior, no
+2. The EMITTER (`hub/apps/databricks_admin/e2e_tooling/audit.py`) — real behavior, no
    mocks: one envelope per run with the run outcome, the sandbox identity
    (derived through the ONE naming convention in `sandbox.py`, never
    hardcoded), and the duration; best-effort — a missing or corrupt
@@ -33,7 +33,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.databricks_e2e import audit, sandbox
+from hub.apps.databricks_admin.e2e_tooling import audit
+from hub.apps.databricks_admin.e2e_tooling import sandbox
 
 WORKFLOW_PATH = REPO_ROOT / ".github/workflows/databricks-e2e-nightly.yml"
 
@@ -212,7 +213,7 @@ class TestWorkflowSteps:
         )
 
     def test_the_audit_emission_step_runs_always(self, steps):
-        emission = self._step(steps, "scripts.databricks_e2e.audit")
+        emission = self._step(steps, "hub.apps.databricks_admin.e2e_tooling.audit")
         assert "always()" in str(emission.get("if", "")), (
             "the audit envelope is best-effort on every path — a failed run "
             "still emits the FAILED event"
@@ -231,7 +232,7 @@ class TestWorkflowSteps:
         emission_idx = next(
             i
             for i, s in enumerate(steps)
-            if "scripts.databricks_e2e.audit" in str(s.get("run", ""))
+            if "hub.apps.databricks_admin.e2e_tooling.audit" in str(s.get("run", ""))
         )
         publish_idx = next(
             i for i, s in enumerate(steps) if "upload-artifact" in str(s.get("uses", ""))
@@ -243,7 +244,7 @@ class TestWorkflowSteps:
         emission_idx = next(
             i
             for i, s in enumerate(steps)
-            if "scripts.databricks_e2e.audit" in str(s.get("run", ""))
+            if "hub.apps.databricks_admin.e2e_tooling.audit" in str(s.get("run", ""))
         )
         assert destroy_idx > 0
         assert emission_idx > destroy_idx, (

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run Phase 6.7 E2E workflow error recovery and compensation tests (openspec/changes/workflows1/tasks.md).
+# Run Phase 6.7 E2E workflow error recovery and compensation tests (openspec/changes/archive/workflows1/tasks.md).
 #
 # Reuses the same test DB as Phase 6.6 (suffix phase66) so migrations are NOT re-run. Use --keepdb (default).
 #

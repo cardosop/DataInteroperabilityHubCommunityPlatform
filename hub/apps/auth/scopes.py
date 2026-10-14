@@ -59,6 +59,11 @@ ROLE_SCOPE_MAP: dict[str, frozenset[str]] = {
             "ml:write",
             "transformation:read",
             "transformation:write",
+            # W7.5 — the virtualization write views gate on BOTH
+            # HasAnyRole([DATA_PROVIDER, TENANT_ADMIN]) AND
+            # HasScope("virtualization:write"); the scope must be
+            # grantable or the flip 403s the whole legitimate surface.
+            "virtualization:write",
         }
     ),
     "DATA_PROVIDER": frozenset(
@@ -83,6 +88,8 @@ ROLE_SCOPE_MAP: dict[str, frozenset[str]] = {
             "ml:write",
             "transformation:read",
             "transformation:write",
+            # W7.5 — see the TENANT_ADMIN entry above.
+            "virtualization:write",
         }
     ),
     "DATA_CONSUMER": frozenset(

@@ -1,0 +1,16 @@
+{
+  "drill": "dr-restore-drill",
+  "label": "pilot 4.4",
+  "operator": "drill-runner",
+  "timestamp": "2026-10-06T18:30:58Z",
+  "environment": "test",
+  "compose_file": "docker-compose.test.yml",
+  "database": "hub_test_test_shared",
+  "backup_file": "hub_test_test_shared_2026-10-06T183053Z.dump",
+  "rto_seconds": 5,
+  "target_rto_seconds": 14400,
+  "rto_within_target": true,
+  "status": "PASSED",
+  "parity": [{"table": "tenants", "live_count": 43, "scratch_count": 43, "match": true},{"table": "users", "live_count": 66, "scratch_count": 66, "match": true},{"table": "audit_events", "live_count": 691, "scratch_count": 691, "match": true},{"table": "files", "live_count": 8, "scratch_count": 8, "match": true},{"table": "assets", "live_count": 12, "scratch_count": 12, "match": true}],
+  "anomalies": []
+}

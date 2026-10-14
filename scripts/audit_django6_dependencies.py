@@ -319,7 +319,7 @@ def main():
     # Generate report
     print_header("Generating Report")
 
-    report_file = project_root / "openspec/changes/fullcontract/DJANGO6_DEPENDENCY_AUDIT.md"
+    report_file = project_root / "openspec/changes/archive/fullcontract/DJANGO6_DEPENDENCY_AUDIT.md"
     report_file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(report_file, "w") as f:

@@ -27,7 +27,7 @@ from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -58,6 +58,17 @@ class AssetActivationTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # W7.5 — enforced scope contract: asset views gate on
+        # HasScope("assets:read"/"assets:write"); the pre-flip fixture
+        # user had no role and the flip 403s role-less users.  Grant
+        # DATA_PROVIDER (carries both asset scopes).
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=data_provider_role)
+
 
     def test_activate_asset_with_all_requirements_met(self):
         """Test DRAFT → ACTIVE transition with all requirements met.
@@ -444,6 +455,15 @@ class AssetActivationTest(TestCase):
                 tenant=self.tenant,
                 status=UserStatus.ACTIVE,
             )
+            # W7.5 — enforced scope contract: assign DATA_PROVIDER so the
+            # E2E helper's asset-write endpoints pass HasScope("assets:write").
+            _e2e_provider_role, _ = Role.objects.get_or_create(
+                tenant=self.tenant,
+                name="DATA_PROVIDER",
+                defaults={"description": "Data Provider Role"},
+            )
+            e2e_user.user_roles.create(role=_e2e_provider_role)
+
             self.client.force_authenticate(user=e2e_user)
 
             asset = Asset.objects.create(
@@ -507,6 +527,15 @@ class AssetActivationTest(TestCase):
                 tenant=self.tenant,
                 status=UserStatus.ACTIVE,
             )
+            # W7.5 — enforced scope contract: assign DATA_PROVIDER so the
+            # E2E helper's asset-write endpoints pass HasScope("assets:write").
+            _e2e_provider_role, _ = Role.objects.get_or_create(
+                tenant=self.tenant,
+                name="DATA_PROVIDER",
+                defaults={"description": "Data Provider Role"},
+            )
+            e2e_user.user_roles.create(role=_e2e_provider_role)
+
             self.client.force_authenticate(user=e2e_user)
 
             asset = Asset.objects.create(
@@ -607,6 +636,15 @@ class AssetActivationTest(TestCase):
                 tenant=self.tenant,
                 status=UserStatus.ACTIVE,
             )
+            # W7.5 — enforced scope contract: assign DATA_PROVIDER so the
+            # E2E helper's asset-write endpoints pass HasScope("assets:write").
+            _e2e_provider_role, _ = Role.objects.get_or_create(
+                tenant=self.tenant,
+                name="DATA_PROVIDER",
+                defaults={"description": "Data Provider Role"},
+            )
+            e2e_user.user_roles.create(role=_e2e_provider_role)
+
             self.client.force_authenticate(user=e2e_user)
 
             asset = Asset.objects.create(

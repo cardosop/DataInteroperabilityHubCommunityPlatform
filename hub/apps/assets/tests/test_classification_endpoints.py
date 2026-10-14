@@ -45,6 +45,15 @@ class AssetClassificationEndpointsTest(TestCase):
             status=AssetStatus.DRAFT,
             created_by=self.user,
         )
+        # W7.5 — enforced scope contract: classify gates on asset scopes.
+        from hub.apps.users.models import Role
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=provider_role)
         self.client.force_authenticate(user=self.user)
 
     def test_classification_list_empty(self):

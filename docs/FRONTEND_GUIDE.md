@@ -14322,8 +14322,14 @@ frontend/src/integration/
 
 ### Tenant Identity
 - Use `useActiveTenantId()` from `features/auth/hooks/useActiveTenantId.ts`
-  instead of reading `user.tenant_id` directly. The hook re-decodes the JWT
-  claim on every render and reacts to cross-tab tenant switches.
+  instead of reading `user.tenant_id` directly. The hook derives the ACTIVE
+  tenant with the request-path precedence: the cross-tab persisted override
+  (`auth:tenant-switch` storage event) → `active_tenant_id` (tenant-switch
+  override) → `user.tenant_id` → the JWT `tenant_id` claim of the real
+  access token in `apiClient`. It reacts to store changes and cross-tab
+  tenant switches. (W5.3 — the pre-fix hook read a phantom
+  `authStore.accessToken` field that was never written, so it always
+  returned null.)
 
 ### Error Handling
 - Use `useRetryAfter()` from `shared/hooks/useRetryAfter.ts` for 429
@@ -14331,7 +14337,13 @@ frontend/src/integration/
 
 ### Real-Time Notifications
 - Use `useNotificationStream()` from `features/notifications/hooks/useNotificationStream.ts`
-  to subscribe to SSE events from `/notifications/stream/`.
+  to subscribe to SSE events from `/notifications/stream/`. The hook is
+  tenant-gated by `useActiveTenantId` (re-opens on tenant switch), builds
+  the URL from `apiClient.baseURL`, sends `withCredentials`, invalidates
+  the `notifications` query cache on every `notification.created` push,
+  and reconnects with capped exponential backoff (giving up after a few
+  consecutive failures — the bearer-mode 401-storm guard; the 60s polling
+  fallback keeps the inbox fresh).
 
 ### Theming
 - Use `useTheme()` from `features/shell/ThemeProvider.tsx` for dark mode.

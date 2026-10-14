@@ -17,6 +17,7 @@ This document catalogs all event types emitted by the Hub platform.
 - `asset.deleted` — Emitted when an asset is deleted
 - `asset.activated` — Emitted when an asset is activated
 - `asset.deactivated` — Emitted when an asset is deactivated
+- `asset.retired` — Emitted when an asset is retired
 
 ## ODPS Events
 

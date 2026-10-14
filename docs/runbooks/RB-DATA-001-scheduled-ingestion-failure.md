@@ -30,6 +30,24 @@ Scheduled ingestion pulls data from external sources (S3, GCS, HTTP, databases) 
 3. Monitor next run: verify COMPLETED within expected window
 4. Audit: `SCHEDULED_INGESTION_RUN_COMPLETED` event
 
+## 5.5 Crash recovery (W3.5 heartbeat lease)
+
+Every worker claims its run with a `heartbeat_at` liveness lease (the RQ
+task and the dlt spine at the RUNNING transition; the Prefect flow via
+the internal PATCH's `heartbeat_at` field). The stuck-run detector
+recovers a run ONLY when its lease expired: RUNNING runs older than the
+threshold with a stale or missing heartbeat (NULL `started_at` never
+hides a run), and PENDING runs the worker never picked up.
+
+**Scheduling:**
+- Kubernetes: `detect-stuck-scheduled-runs` CronJob (helm,
+  `helm/templates/cronjob/detect-stuck-scheduled-runs.yaml`), every 15
+  minutes, `detectStuckScheduledRuns.thresholdHours` (default 2).
+- Compose deployments: run the sweep on a cron from the host, e.g.
+  `*/15 * * * * cd <checkout> && docker compose exec -T api-service python manage.py detect_and_remediate_stuck_runs`
+
+Manual invocation: `python manage.py detect_and_remediate_stuck_runs [--dry-run] [--threshold-hours N]`.
+
 ## 6. dlt Migration Path (Phase 285.6)
 
 Scheduled ingestions migrated from legacy Prefect-only pipelines to the

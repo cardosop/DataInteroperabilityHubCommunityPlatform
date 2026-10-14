@@ -138,6 +138,18 @@ for path in staging.rglob("*"):
     path.write_text(content, encoding="utf-8")
 PYEOF
 
+    # W7.2 (D5) — paid-annotation scrub assertion: the PAID column must
+    # survive the sanitize pass (it is public metadata, not a secret), so
+    # the public tree's traceability registries stay annotated. The
+    # PREVIEW builder defers this check until after its working-tree
+    # overlay (the index tree legitimately lacks unstaged annotations).
+    if [ "${PUBLISH_SKIP_PAID_ASSERTION:-0}" != "1" ]; then
+        "${PYTHON:-python3}" scripts/assert_paid_annotations.py "$out" || {
+            echo "W7.2 scrub assertion failed — paid annotations must survive the build" >&2
+            exit 1
+        }
+    fi
+
     log "tree built: $(find "$out" -type f | wc -l) files (sanitized)"
 
     # Best-effort cleanup of the renamed-aside previous build; root-owned

@@ -29,7 +29,7 @@ API: `GET /api/v1/tenants/`, `GET /api/v1/users/`
 | Feature | Tier | Notes |
 |---------|------|-------|
 | Token/key-based AuthN (JWT, API keys) | Fully included | Multi-tenant scoping |
-| SSO integration (SAML / OIDC) | Partial | Provider skeleton in place; full IdP integration and token parsing require `python3-saml`/`authlib` (post-MVP) |
+| SSO integration (OIDC) | Fully included | OIDC callback verifies ID tokens via JWKS (signature, issuer, audience, expiry) — oss-release-remediation W1.5; the SAML stub is deleted |
 | Role-based AuthZ | Fully included | Coarse-grained, enforced |
 | Encryption in transit (TLS) and at rest | Fully included | Cloud-provider encryption |
 | Basic rate limiting (per key / tenant) | Partial | 429 responses; plan-based limits later |

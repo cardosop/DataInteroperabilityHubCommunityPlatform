@@ -333,8 +333,19 @@ def check(root: Path) -> list[str]:
     cli_setup = root / "cli/setup.py"
     if not cli_setup.exists():
         problems.append("cli/setup.py missing")
-    elif "License :: OSI Approved :: MIT License" not in cli_setup.read_text():
-        problems.append("cli/setup.py has no MIT classifier")
+    else:
+        cli_setup_text = cli_setup.read_text()
+        # W7.4 root fix: PEP 639 retired the PyPI license classifier —
+        # the W6.1 build cleanup removed it from cli/setup.py on purpose.
+        # Accept EITHER the legacy classifier OR the modern SPDX
+        # declaration (setup.py `license=` or pyproject `license = "MIT"`).
+        has_classifier = "License :: OSI Approved :: MIT License" in cli_setup_text
+        has_spdx = 'license="MIT"' in cli_setup_text or 'license = "MIT"' in cli_setup_text
+        pyproject = root / "cli/pyproject.toml"
+        if pyproject.exists():
+            has_spdx = has_spdx or 'license = "MIT"' in pyproject.read_text()
+        if not (has_classifier or has_spdx):
+            problems.append("cli/setup.py has no MIT license declaration (classifier or SPDX)")
 
     for api_source in (
         "hub/apps/api/openapi_validation.py",

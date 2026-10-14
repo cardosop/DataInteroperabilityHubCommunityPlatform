@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Regenerate sdk/typescript from the committed OpenAPI baseline (Phase 231.9+).
+# Regenerate the OpenAPI TypeScript client from the committed baseline.
+# Output lands in generated/typescript (gitignored — the checked-in
+# sdk/typescript tree was DELETED by oss-release-remediation W12.1/D3).
 #
 # Why not package.json → api/openapi-hub-v1.yaml?
 #   That file is often absent locally (not committed / generated elsewhere).
@@ -27,7 +29,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "${ROOT}/sdk/typescript"
+mkdir -p "${ROOT}/generated/typescript"
 
 exec docker run --rm \
   -u "$(id -u):$(id -g)" \
@@ -36,5 +38,5 @@ exec docker run --rm \
   --skip-validate-spec \
   -i /local/docs/api/openapi-baseline.json \
   -g typescript-axios \
-  -o /local/sdk/typescript \
+  -o /local/generated/typescript \
   --additional-properties=typescriptThreePlus=true,withInterfaces=true

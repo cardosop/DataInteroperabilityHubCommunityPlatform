@@ -20,7 +20,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "${ROOT}/sdk/python_generated"
+mkdir -p "${ROOT}/generated/python"
 
 docker run --rm \
   -u "$(id -u):$(id -g)" \
@@ -29,7 +29,7 @@ docker run --rm \
   --skip-validate-spec \
   -i /local/docs/api/openapi-baseline.json \
   -g python \
-  -o /local/sdk/python_generated \
-  --additional-properties=packageName=datahub_interoperability,projectName=datahub-interoperability-sdk,packageVersion="${SDK_VERSION:-0.0.0-dev}"
+  -o /local/generated/python \
+  --additional-properties=packageName=datahub_generated_sdk,projectName=datahub-interoperability-sdk,packageVersion="${SDK_VERSION:-0.0.0-dev}"
 
-echo "Python SDK regenerated at sdk/python_generated/"
+echo "Python SDK regenerated at generated/python/"

@@ -171,7 +171,7 @@ def main():
 
     # Generate report
     project_root = Path(__file__).parent.parent
-    report_file = project_root / "openspec/changes/fullcontract/DJANGO6_DEPRECATION_CHECK.md"
+    report_file = project_root / "openspec/changes/archive/fullcontract/DJANGO6_DEPRECATION_CHECK.md"
     report_file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(report_file, "w") as f:

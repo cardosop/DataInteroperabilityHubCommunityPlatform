@@ -30,7 +30,8 @@ if REPO_ROOT not in sys.path:
 
 from hub.apps.databricks_admin.account_client import DatabricksAccountClient
 from hub.apps.databricks_admin.tests._http import RecordingHandler
-from scripts.databricks_e2e import budget, sandbox
+from scripts.databricks_e2e import budget
+from hub.apps.databricks_admin.e2e_tooling import sandbox
 
 WORKFLOW_PATH = Path(REPO_ROOT) / ".github/workflows/databricks-e2e-nightly.yml"
 
@@ -118,7 +119,7 @@ class TestWorkflowContract:
         assert destroy_idx > suite_idx, "destroy follows the suite"
 
     def test_the_sandbox_naming_convention_is_wired(self, workflow):
-        # The convention lives ONLY in scripts/databricks_e2e/sandbox.py —
+        # The convention lives ONLY in hub/apps/databricks_admin/e2e_tooling/sandbox.py —
         # no workflow step may hardcode the prefix in a command (the doc
         # header may NAME the convention; a run value may not).
         run_values = " ".join(

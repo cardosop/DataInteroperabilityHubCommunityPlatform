@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run Phase 18.7 REST–business-rules alignment tests (openspec/changes/workflows1/tasks.md).
+# Run Phase 18.7 REST–business-rules alignment tests (openspec/changes/archive/workflows1/tasks.md).
 #
 # Usage:
 #   ./scripts/run_phase18_rest_business_rules_tests.sh              # use TEST_DB_SUFFIX=phase18, --keepdb

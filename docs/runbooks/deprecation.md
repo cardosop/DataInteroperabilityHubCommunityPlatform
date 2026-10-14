@@ -106,10 +106,10 @@ The command queries tenants with active API keys that have called the endpoint i
 If the deprecated endpoint has SDK coverage:
 
 - **Python SDK** (`sdk/python/`): Add `warnings.warn(DeprecationWarning("..."))` in the affected method. Reference PR.
-- **TypeScript SDK** (`sdk/typescript/`): Annotate the generated method with `@deprecated` JSDoc tag.
+- **TypeScript SDK** (`sdk/js/`): Annotate the method with `@deprecated` JSDoc tag.
 - **CLI** (`cli/`): Add `click.echo("Warning: ...", err=True)` for deprecated commands.
 
-**Validation**: Run `sdk/python/tests/`, `sdk/typescript/tests/`, `cli/tests/` and verify deprecation warnings are emitted.
+**Validation**: Run `sdk/python/tests/`, `sdk/js` (jest), `cli/tests/` and verify deprecation warnings are emitted.
 
 ---
 
@@ -225,7 +225,7 @@ The `GET /api/v1/search/` endpoint (legacy `SearchViewSet`) was deprecated in fa
 - `CHANGELOG.md` — `### Deprecated` and `### Removed` entries
 - `frontend/src/shared/components/DeprecationBanner.tsx` — in-app notice
 - `sdk/python/` — `DeprecationWarning` in search methods
-- `sdk/typescript/` — `@deprecated` JSDoc annotations
+- `sdk/js/` — `@deprecated` JSDoc annotations
 
 ---
 
@@ -237,7 +237,7 @@ The `GET /api/v1/search/` endpoint (legacy `SearchViewSet`) was deprecated in fa
 | 2 | FE banner | `frontend/src/shared/components/DeprecationBanner.tsx` | Banner visible on page, dismissible |
 | 3a | Internal announcement | Slack `#eng-announcements` | Message sent |
 | 3b | Consumer email | `manage.py notify_deprecated_endpoint` | Dry-run recipient list correct |
-| 3c | SDK warnings | `sdk/python/`, `sdk/typescript/`, `cli/` | Warnings emitted in tests |
+| 3c | SDK warnings | `sdk/python/`, `sdk/js/`, `cli/` | Warnings emitted in tests |
 | 4 | CHANGELOG | `CHANGELOG.md` | `### Deprecated` entry present |
 | 5 | Monitor | Audit log queries | Usage declining |
 | 6 | Hard removal | Views/URLs | `410 Gone` with `Link` header |

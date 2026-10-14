@@ -52,6 +52,18 @@ def _make_user(tenant: Tenant, email: str | None = None, is_platform_admin: bool
     )
     user.status = UserStatus.ACTIVE
     user.save(update_fields=["status"])
+    # W7.5 — enforced scope contract: the isolation pins use real JWT
+    # Bearer clients; a role-less user would 403 at the scope check
+    # before the tenant-isolation 404 the tests pin.  DATA_PROVIDER
+    # carries the asset scopes.
+    from hub.apps.users.models import Role
+
+    provider_role, _ = Role.objects.get_or_create(
+        tenant=tenant,
+        name="DATA_PROVIDER",
+        defaults={"description": "Data Provider Role"},
+    )
+    user.user_roles.create(role=provider_role)
     return user
 
 

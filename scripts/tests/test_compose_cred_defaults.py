@@ -5,9 +5,11 @@ Contract test: compose files carry NO real-looking Stripe literals
 The tracked tree shipped the LEAKED Stripe test key pair as hardcoded
 defaults in docker-compose.test.yml (secret + publishable) and the
 publishable key in docker-compose.staging/dev.yml — the same values the
-W0.2 scan found in git history. The defaults are now empty
-``${STRIPE_SECRET_KEY:-}`` / ``${STRIPE_PUBLISHABLE_KEY:-}`` (env-only),
-matching the pre-existing docker-compose.dev.yml secret pattern.
+W0.2 scan found in git history.  The defaults were made env-only; as of
+W2.10 the test stack's Stripe keys flow in via env_file (.env.test)
+with NO ``environment:`` override at all — an empty ``${VAR:-}``
+override would silently blank the env_file values (compose precedence:
+environment > env_file).
 
 Pin: no docker-compose*.yml line may carry a Stripe key literal of the
 real shape (sk_test_/sk_live_/pk_test_/pk_live_ followed by key

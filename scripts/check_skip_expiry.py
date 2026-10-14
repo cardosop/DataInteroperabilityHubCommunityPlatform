@@ -170,6 +170,59 @@ def _decorator_sites(tree: ast.AST, file: str) -> tuple[list[_Site], list[_Site]
     return skips, skipifs
 
 
+def _is_guard_contract_skip(tree: ast.AST, node: ast.AST) -> bool:
+    """True when a pytest.skip site is env-gated by the SANCTIONED guard
+    contract instead of being skip/placeholder debt (W7.4):
+
+    * an enclosing ``try`` whose handlers cover BOTH absence forms
+      (RuntimeError, ModuleNotFoundError — the core/paid guard pattern
+      from docs/test-infrastructure/guard-contract.md), or
+    * an enclosing ``if`` testing ``is_core_only()`` / ``HUB_CORE_ONLY`` /
+      ``apps.is_installed(...)`` with the skip inside that branch.
+
+    These skips are permanent env-gating — they never expire and carry no
+    TICKET/EXPIRES by design (the W16 carve-out principle: the governing
+    policy is the guard contract + GATE-29, not the debt gate).
+    """
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    child = node
+    while True:
+        parent = parents.get(child)
+        if parent is None:
+            return False
+        if isinstance(parent, ast.Try):
+            covered = set()
+            for handler in parent.handlers:
+                if handler.type is None:
+                    covered.update({"RuntimeError", "ModuleNotFoundError"})
+                    continue
+                names = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+                for n in names:
+                    if isinstance(n, ast.Name) and n.id in ("Exception", "BaseException", "ImportError"):
+                        if n.id in ("Exception", "BaseException"):
+                            covered.update({"RuntimeError", "ModuleNotFoundError"})
+                        else:
+                            covered.add("ModuleNotFoundError")
+                    elif isinstance(n, ast.Name) and n.id in ("RuntimeError", "ModuleNotFoundError"):
+                        covered.add(n.id)
+            if {"RuntimeError", "ModuleNotFoundError"} <= covered:
+                return True
+        if isinstance(parent, ast.If):
+            test_text = ast.unparse(parent.test) if hasattr(ast, "unparse") else ""
+            # The skip must be in the guarded branch's body (not a
+            # sibling or the else-of-a-core-branch).
+            if (
+                "is_core_only" in test_text
+                or "HUB_CORE_ONLY" in test_text
+                or "is_installed" in test_text
+            ) and any(c is child for c in parent.body):
+                return True
+        child = parent
+
+
 def _call_sites(tree: ast.AST, file: str) -> list[_Site]:
     """pytest.skip(...) / pytest.xfail(...) call sites."""
     sites: list[_Site] = []
@@ -182,6 +235,8 @@ def _call_sites(tree: ast.AST, file: str) -> list[_Site]:
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "pytest"
         ):
+            continue
+        if _is_guard_contract_skip(tree, node):
             continue
         reason = ""
         if node.args:

@@ -500,11 +500,12 @@ class TestBaselineShrink313H2:
     hook-converted the virtualization one — see TestH3HookConversions.)"""
 
     SITES: ClassVar[list[str]] = [
-        "hub/apps/contracts/cache_invalidation.py:166",
+        "hub/apps/contracts/cache_invalidation.py:165",
         # The campaign's hub edits shifted these sites (W3.4's 2477→2479→2478
         # history plus pilot-1.2's import-sort pass); the try-covered import
-        # guards themselves are unchanged.
-        "hub/apps/assets/views.py:2522",
+        # guards themselves are unchanged.  W7.1 re-anchored the drifted
+        # lines (166→165, 2522→2539).
+        "hub/apps/assets/views.py:2539",
     ]
 
     @pytest.mark.parametrize("site", SITES)

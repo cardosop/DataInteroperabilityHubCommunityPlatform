@@ -82,6 +82,12 @@ EXTRA = (
     "docker-compose.override.test-run.yml",
     "docker-compose.test.marquez.yml",
     "docker-compose.test.mvp.yml",
+    # The Databricks control-plane ESTATE is paid (per-provider app,
+    # CLAUDE.md control-plane boundary): its chains/estate models must
+    # never register in the public core tree. The manifest PAID_APPS
+    # omission is tracked in the W4.6 sweep — this exclusion is the
+    # shipping-side backstop until then.
+    "hub/apps/databricks_admin/",
     # W5.1 impersonation WIP (2026-10-13): the session-revocation
     # enforcement does not exist yet — this RED TDD draft asserts
     # session.end() revokes JWTs (401 IMPERSONATION_SESSION_ENDED) with

@@ -38,7 +38,7 @@ services/api-gateway/TEST_RESULTS.md
 services/api-gateway/TEST_RESULTS_FINAL.md
 
 # Scratch openspec dirs carrying credential examples (W12.1 ghost artifacts).
-openspec/changes/testreview1/
-openspec/changes/workflows1/artifacts/
+openspec/changes/archive/testreview1/
+openspec/changes/archive/workflows1/artifacts/
 
 .claude/settings.json

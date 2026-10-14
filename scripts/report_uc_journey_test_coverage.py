@@ -3,7 +3,7 @@
 Report which use cases (USE_CASES.md) and user journeys (USER_JOURNEYS.md)
 have at least one test, and scenario coverage (Success/Failure/Edge) per UC/journey.
 Output: Markdown or JSON with UC→test mapping and scenario coverage column.
-Integrates with Traceability CI Gate (openspec/changes/testsfix1 T.1-T.4): --ci-mode
+Integrates with Traceability CI Gate (openspec/changes/archive/testsfix1 T.1-T.4): --ci-mode
 exits 0 only when no critical gaps and coverage >= threshold; JSON artifact includes
 scenario_coverage_use_cases and scenario_coverage_user_journeys for gate/PR use.
 

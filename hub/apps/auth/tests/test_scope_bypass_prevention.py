@@ -1,7 +1,18 @@
-"""Phase 87: Tests for JWT scope bypass prevention."""
+"""Phase 87: Tests for JWT scope bypass prevention.
 
+W7.5 (oss-release-remediation, S1) added the default-flip pins in
+``TestEnforceJwtScopesDefault``: the settings code-default enforces, the
+backend suite itself runs under enforcement (soak), and the explicit
+``ENFORCE_JWT_SCOPES=false`` env var remains the rollback hatch.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 
 from hub.apps.auth.permissions import (
@@ -172,3 +183,60 @@ class TestRoleScopeMapConsistency(TestCase):
             dp.issubset(ta),
             f"DATA_PROVIDER scopes not a subset of TENANT_ADMIN: {dp - ta}",
         )
+
+
+class TestEnforceJwtScopesDefault(TestCase):
+    """W7.5 (S1) — the ENFORCE_JWT_SCOPES default-flip pins.
+
+    Two contracts:
+
+    * the backend test suite itself runs UNDER enforcement — after the
+      flip, every test that authenticates a JWT user exercises the
+      enforced path unless it explicitly opts into the legacy hatch
+      (``override_settings(ENFORCE_JWT_SCOPES=False)``).  A run whose
+      runner env disables enforcement fails loudly here instead of
+      silently soaking the legacy path.
+    * the settings CODE-DEFAULT enforces — a subprocess with the env
+      var removed reports True (immune to the runner's own env), and a
+      subprocess with the var explicitly "false" reports False (the
+      rollback hatch stays a hatch).
+    """
+
+    def test_suite_runs_under_enforcement(self):
+        self.assertIs(settings.ENFORCE_JWT_SCOPES, True)
+
+    def test_code_default_is_true(self):
+        """The default in settings.py enforces even when the env var is
+        absent — the W7.5 flip, pinned against the real settings module
+        in a clean subprocess (no mocks)."""
+        env = {k: v for k, v in os.environ.items() if k != "ENFORCE_JWT_SCOPES"}
+        self.assertEqual(_settings_flag_in_subprocess(env), "True")
+
+    def test_explicit_false_env_keeps_the_rollback_hatch(self):
+        """ENFORCE_JWT_SCOPES=false must still restore the legacy
+        permissive path — the emergency-rollback contract."""
+        env = dict(os.environ)
+        env["ENFORCE_JWT_SCOPES"] = "false"
+        self.assertEqual(_settings_flag_in_subprocess(env), "False")
+
+
+def _settings_flag_in_subprocess(env):
+    """Import the real hub.settings in a subprocess (inheriting the
+    runner's DB/service env so the module-level connectivity probe
+    passes) and print the flag."""
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[4])
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import hub.settings; print(hub.settings.ENFORCE_JWT_SCOPES)",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(Path(__file__).resolve().parents[4]),
+        timeout=300,
+        check=False,
+    )
+    assert proc.returncode == 0, f"settings import failed: {proc.stderr}"
+    return proc.stdout.strip()

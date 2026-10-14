@@ -420,15 +420,11 @@ class TransformationPipelineViewSetTest(TestCase):
         )
 
     def test_authorization_read_operations(self):
-        """Test read operations work for authenticated users"""
-        # Create user without DATA_PROVIDER role
-        regular_user = User.objects.create_user(
-            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        """W7.5: reads follow the enforced role-scope contract.
 
+        A role-less user is denied (no transformation:read scope); a
+        DATA_CONSUMER (which carries transformation:read) can read.
+        """
         # Create pipeline
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
@@ -438,12 +434,37 @@ class TransformationPipelineViewSetTest(TestCase):
             status=PipelineStatus.DRAFT,
         )
 
+        # Role-less user: no scopes -> 403 (the legacy permissive path
+        # is retired with the ENFORCE_JWT_SCOPES default flip).
+        regular_user = User.objects.create_user(
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
         self.client.force_authenticate(user=regular_user)
+        response = self.client.get("/api/v1/transformation/pipelines/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        response = self.client.get(f"/api/v1/transformation/pipelines/{pipeline.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Should be able to read
+        # DATA_CONSUMER carries transformation:read -> reads work.
+        uid2 = uuid.uuid4().hex[:8]
+        consumer = User.objects.create_user(
+            email=f"consumer-{uid2}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        consumer_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_CONSUMER",
+            defaults={"description": "Data Consumer"},
+        )
+        consumer.user_roles.create(role=consumer_role)
+        self.client.force_authenticate(user=consumer)
         response = self.client.get("/api/v1/transformation/pipelines/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-
         response = self.client.get(f"/api/v1/transformation/pipelines/{pipeline.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 

@@ -31,6 +31,23 @@ Scheduled export pushes Hub datasets to external destinations (S3, Snowflake, Bi
 3. Verify destination has expected row count
 4. Audit: `SCHEDULED_EXPORT_RUN_COMPLETED` event
 
+## 5.5 Crash recovery (W3.5 heartbeat lease)
+
+Export workers claim their runs with a `heartbeat_at` liveness lease
+(the internal PATCH's `heartbeat_at` field). The stuck-run detector
+recovers a run ONLY when its lease expired: RUNNING runs older than the
+threshold with a stale or missing heartbeat (NULL `started_at` never
+hides a run).
+
+**Scheduling:**
+- Kubernetes: `detect-stuck-export-runs` CronJob (helm,
+  `helm/templates/cronjob/detect-stuck-export-runs.yaml`), every 15
+  minutes.
+- Compose deployments: run the sweep on a cron from the host, e.g.
+  `*/15 * * * * cd <checkout> && docker compose exec -T api-service python manage.py detect_and_remediate_stuck_export_runs`
+
+Manual invocation: `python manage.py detect_and_remediate_stuck_export_runs [--dry-run] [--threshold-hours N]`.
+
 ## 6. Escalation
 - **P3:** Single export failure (destination-specific)
 - **P2:** All exports for a tenant failing

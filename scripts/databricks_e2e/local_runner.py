@@ -11,7 +11,7 @@ so a local operator reproduces the CI run exactly:
 2. **BUDGET**  — ``python -m scripts.databricks_e2e.budget``: the hard
                  ceiling pre-flight BEFORE any create call (fail-closed:
                  a missing ceiling resolves to zero and refuses);
-3. **CREATE**  — ``python -m scripts.databricks_e2e.sandbox create`` with
+3. **CREATE**  — ``python -m hub.apps.databricks_admin.e2e_tooling.sandbox create`` with
                  ``GITHUB_RUN_ID`` pinned to this run's id so the
                  convention name matches the audit envelope;
 4. **SUITE**   — ``pytest tests/integration/databricks_e2e -q
@@ -55,9 +55,7 @@ RUN_ID_ENV = "DATABRICKS_E2E_RUN_ID"
 
 BUDGET_MARKER = "[13-8] Budget pre-flight (hard ceiling BEFORE any create)..."
 CREATE_MARKER = "[13-8] Creating the sandbox workspace..."
-SUITE_MARKER = (
-    "[13-8] Running the live suite: pytest tests/integration/databricks_e2e -q --timeout=1800"
-)
+SUITE_MARKER = "[13-8] Running the live suite: pytest tests/integration/databricks_e2e -q --timeout=1800"
 DESTROY_MARKER = "[13-8] Auto-destroy (always)..."
 AUDIT_MARKER = "[13-8] Audit envelope (always)..."
 
@@ -76,7 +74,9 @@ def gate_skip_reason(env: Mapping[str, str]) -> str | None:
             "(see the databricks-e2e-nightly workflow + the P9 operations runbook)"
         )
     missing = [
-        name for name in (ACCOUNT_ID_ENV, ACCOUNT_TOKEN_ENV) if not str(env.get(name, "")).strip()
+        name
+        for name in (ACCOUNT_ID_ENV, ACCOUNT_TOKEN_ENV)
+        if not str(env.get(name, "")).strip()
     ]
     if missing:
         return (
@@ -118,7 +118,9 @@ def _child_env(env: Mapping[str, str]) -> dict[str, str]:
     module mains resolve from any cwd."""
     child = dict(env)
     existing = child.get("PYTHONPATH", "")
-    child["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{existing}" if existing else str(REPO_ROOT)
+    child["PYTHONPATH"] = (
+        f"{REPO_ROOT}{os.pathsep}{existing}" if existing else str(REPO_ROOT)
+    )
     return child
 
 
@@ -159,14 +161,21 @@ def run(env: Mapping[str, str] | None = None, *, cwd: Path | None = None) -> int
     report_dir = workdir / REPORT_REL_DIR
 
     print(BUDGET_MARKER)
-    budget_rc = _step([sys.executable, "-m", "scripts.databricks_e2e.budget"], child_env, workdir)
+    budget_rc = _step(
+        [sys.executable, "-m", "scripts.databricks_e2e.budget"], child_env, workdir
+    )
 
     create_rc: int | None = None
     suite_rc: int | None = None
     if budget_rc == 0:
         print(CREATE_MARKER)
         create_rc = _step(
-            [sys.executable, "-m", "scripts.databricks_e2e.sandbox", "create"],
+            [
+                sys.executable,
+                "-m",
+                "hub.apps.databricks_admin.e2e_tooling.sandbox",
+                "create",
+            ],
             child_env,
             workdir,
         )
@@ -179,7 +188,12 @@ def run(env: Mapping[str, str] | None = None, *, cwd: Path | None = None) -> int
     # nightly's `if: always()` steps.
     print(DESTROY_MARKER)
     destroy_rc = _step(
-        [sys.executable, "-m", "scripts.databricks_e2e.sandbox", "destroy"],
+        [
+            sys.executable,
+            "-m",
+            "hub.apps.databricks_admin.e2e_tooling.sandbox",
+            "destroy",
+        ],
         child_env,
         workdir,
     )
@@ -189,7 +203,7 @@ def run(env: Mapping[str, str] | None = None, *, cwd: Path | None = None) -> int
         [
             sys.executable,
             "-m",
-            "scripts.databricks_e2e.audit",
+            "hub.apps.databricks_admin.e2e_tooling.audit",
             "--report",
             str(report_dir / "e2e_report.json"),
             "--run-id",

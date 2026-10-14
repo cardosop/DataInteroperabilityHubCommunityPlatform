@@ -28,17 +28,31 @@ Trace map for `260.B-RLS-2` per-table rollout:
 
 ## Runtime Context
 
-- HTTP path: `TenantScopingMiddleware` applies tenant GUC and all `RLS_*_ENABLED` table flags.
+- HTTP path: `TenantScopingMiddleware` applies the tenant GUC and every
+  `RLS_*_ENABLED` table flag, transaction-locally inside the request's
+  transaction, gated behind the `RLS_REQUEST_PATH_ENABLED` master kill
+  switch (W1.20 / oss-release-remediation D2). Transaction-local GUCs
+  are mandatory under PgBouncer transaction pooling.
 - Worker path: table access expected under explicit `tenant_context(...)` wrappers.
 - Management command path: admin alias routing with explicit per-tenant loops where required.
 
-## Users Login Special-Case
+## Pre-Tenant Identity Resolution
 
-- Login endpoint user lookup now uses `User.objects.using("admin")` to preserve anonymous email lookup semantics even when `users` table RLS is enabled and request has no tenant GUC yet.
-- This is intentionally scoped to login lookup only; post-auth access remains tenant-scoped.
+- Any lookup that must see identity rows BEFORE a tenant GUC exists
+  (login, API-key extraction, JWT user resolution, membership checks)
+  routes through `hub.apps.auth.db_aliases.user_lookup_alias()` — the
+  BYPASSRLS admin alias in the production role shape
+  (`meshant_app` default / `meshant_admin` admin), the default
+  connection everywhere else. The middleware's own resolution queries
+  use the same seam (W1.20).
+- This is intentionally scoped to pre-tenant identity lookups only;
+  post-auth access remains tenant-scoped.
 
 ## Validation
 
 - Cross-tenant baseline harness: `tests/integration/test_rls_baseline.py`.
 - Phase-2 table coverage assertion includes all rollout tables listed above.
-- Middleware table-flag propagation remains validated by `hub/apps/auth/tests/test_rls_middleware_guc.py`.
+- Middleware GUC arming + table-flag propagation are validated by
+  `hub/apps/auth/tests/test_rls_middleware_guc.py` (real `current_setting`
+  probes) and the settings ↔ deployed-policy inventory sync in
+  `hub/apps/auth/tests/test_rls_guc_settings_sync.py` (W1.20).

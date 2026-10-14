@@ -108,6 +108,19 @@ if [ ! -d "$PUBLIC_REPO_DIR" ]; then
 fi
 
 pushd "$PUBLIC_REPO_DIR" >/dev/null
+# Fast-forward precondition (W7.3): the sync commits must CONTINUE the
+# remote mirror line. A divergent local mirror (e.g. one rebuilt on the
+# wrong repo's history — the 2026-10-13 finding) fails HERE with a
+# clear message instead of at push time.
+git fetch -q "$PUBLIC_REMOTE" mirror/public-core
+if ! git merge-base --is-ancestor FETCH_HEAD mirror/public-core 2>/dev/null; then
+  log "ERROR: local mirror/public-core diverged from $PUBLIC_REMOTE/mirror/public-core"
+  log "       realign:  git checkout main &&"
+  log "                 git fetch $PUBLIC_REMOTE mirror/public-core &&"
+  log "                 git branch -f mirror/public-core FETCH_HEAD &&"
+  log "                 git checkout mirror/public-core"
+  exit 1
+fi
 git checkout -q mirror/public-core 2>/dev/null || git checkout -q -b mirror/public-core
 # replace tracked content with the new tree (sync commit = full snapshot)
 git ls-files | while IFS= read -r f; do rm -f "$f"; done

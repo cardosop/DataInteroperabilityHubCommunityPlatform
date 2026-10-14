@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run Phase 6.6 E2E workflow security + business rules tests (openspec/changes/workflows1/tasks.md).
+# Run Phase 6.6 E2E workflow security + business rules tests (openspec/changes/archive/workflows1/tasks.md).
 #
 # Usage:
 #   ./scripts/run_phase66_workflow_security_e2e_tests.sh              # --keepdb (faster if DB exists)

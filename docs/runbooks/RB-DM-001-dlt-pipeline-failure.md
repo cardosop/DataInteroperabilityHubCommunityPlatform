@@ -45,7 +45,7 @@
 ## Related
 
 - `hub/data_movement/dlt_pipeline.py` — DataMovementPipeline
-- `hub/data_movement/dlt_retry.py` — retry_failed()
+- `hub/data_movement/retry_policy.py` — `call_with_bounded_retry()` (W3.9 — the dead `dlt_retry` was deleted; its `retry_failed` referenced the removed dlt 1.30 `LoadInfo.loads` and could never run)
 - `hub/data_movement/dlt_metrics.py` — health_status()
 - `docs/dlt-MIGRATION.md` — developer guide
 

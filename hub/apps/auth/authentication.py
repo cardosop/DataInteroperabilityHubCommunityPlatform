@@ -125,9 +125,20 @@ class APIKeyAuthentication(BaseAuthentication):
         # Hash the provided key
         key_hash = APIKey.hash_key(api_key)
 
-        # Look up API key
+        # Look up API key.  W1.20 (R2 contract): the api_keys table carries
+        # an RLS policy and this is a pre-tenant identity read — the
+        # request-path GUCs are armed fail-closed (no tenant yet → policies
+        # hide every row), so the lookup MUST route through the pre-tenant
+        # alias (BYPASSRLS admin in production, default everywhere else),
+        # exactly like TenantScopingMiddleware._extract_tenant_id_from_api_key.
+        # A plain .get() here 401s every API key on any deployment where
+        # user_lookup_alias() resolves to the default connection.
         try:
-            api_key_obj = APIKey.objects.get(key_hash=key_hash)
+            from hub.apps.auth.db_aliases import user_lookup_alias
+
+            api_key_obj = APIKey.objects.using(user_lookup_alias()).get(
+                key_hash=key_hash
+            )
         except APIKey.DoesNotExist:
             raise AuthenticationFailed("Invalid API key") from None
 

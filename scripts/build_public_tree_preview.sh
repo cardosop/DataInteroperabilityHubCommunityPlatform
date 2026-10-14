@@ -23,7 +23,7 @@ cd "$(dirname "$0")/.."
 source scripts/publish_tree.sh
 "${PYTHON:-python3}" scripts/build_replace_text.py --out "$REPLACE_FILE"
 rm -rf "$OUT" && mkdir -p "$OUT"
-build_publish_tree "$OUT" "$REPLACE_FILE"
+PUBLISH_SKIP_PAID_ASSERTION=1 build_publish_tree "$OUT" "$REPLACE_FILE"
 
 # Working-tree delta: tracked-but-modified + untracked-but-not-gitignored.
 git diff --name-only > /tmp/preview_delta.txt
@@ -55,10 +55,19 @@ def excluded(rel: str) -> bool:
     return False
 
 overlaid = 0
+deleted = 0
 for rel in subprocess.run(["git", "diff", "--name-only"], capture_output=True, text=True).stdout.splitlines():
     if excluded(rel):
         continue
     dst = out / rel
+    if not Path(rel).exists():
+        # tracked-file deletion — simulate the post-commit tree: the
+        # file must NOT ship (pre-fix this crashed the overlay with
+        # FileNotFoundError, W7.2 dup-EXPORT-001 removal).
+        if dst.exists():
+            dst.unlink()
+            deleted += 1
+        continue
     if dst.exists():
         dst.write_text(Path(rel).read_text(encoding="utf-8"))
         overlaid += 1
@@ -84,5 +93,12 @@ for path in out.rglob("*"):
         content = content.replace(old, new)
     path.write_text(content, encoding="utf-8")
 
-print(f"overlaid {overlaid} working-tree files; sanitized")
+print(f"overlaid {overlaid} working-tree files; dropped {deleted} deleted files; sanitized")
 PYEOF
+
+# W7.2 (D5) — after the working-tree overlay, the built tree's
+# registries must carry the PAID annotations (public metadata).
+"${PYTHON:-python3}" scripts/assert_paid_annotations.py "$OUT" || {
+    echo "W7.2 scrub assertion failed on the preview tree" >&2
+    exit 1
+}

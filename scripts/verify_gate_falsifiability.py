@@ -476,6 +476,19 @@ GATES: dict[str, tuple[str, str, list[tuple[str, str]]]] = {
             ),
         ],
     ),
+    # W4.6 (oss-release-remediation, G1) — renaming the estate prefix makes
+    # the checker blind: the planted-violation + real-tree pins in the suite
+    # flip RED (a checker that reports nothing detects nothing).
+    "gate-54-provider-boundary": (
+        "{python} -m pytest scripts/tests/test_check_provider_boundary.py -p no:django -q -c /dev/null",
+        "scripts/check_provider_boundary.py",
+        [
+            (
+                "rename-estate-prefix",
+                'sed -i \'s/_ESTATE_APP = "hub.apps.databricks_admin"/_ESTATE_APP = "hub.apps.databricks_admin-DISABLED"/\' {target}',
+            ),
+        ],
+    ),
     # The 1.1 pin: proven end-to-end in Q.5.1 (rename weakening -> 17->0).
     # Requires the Django test env, so the no-django suite skips it; the
     # entry documents the proof.
@@ -541,10 +554,22 @@ def verify(checker: str, target: str, weakenings: list[str]) -> tuple[bool, list
     Each weakening command MUTATES the target; the gate is then RE-RUN and
     its result compared against the baseline. The target is backed up and
     restored between weakenings so they stay independent.
+
+    W7.4: when the BASELINE run is already failing (e.g. the honest
+    credential-rotation gate blocking on PENDING-U surfaces), a weakening
+    cannot change the outcome by construction — the weakenings are
+    classified PRE-RED (not measurable, not vacuous) and the owning
+    ledger documents why the gate is red.  A green-at-baseline gate
+    whose weakening survives is the VACUOUS signal this harness exists
+    to catch.
     """
     baseline = _outcome(*run_check(checker, target))
     report: list[str] = []
     for spec in weakenings:
+        if baseline[0] != 0:
+            label, _, _command = spec.partition(":")
+            report.append(f"{label}: PRE-RED (gate failing at baseline — not measurable)")
+            continue
         label, _, command = spec.partition(":")
         backup = target + ".falsifiability-backup"
         shutil.copy2(target, backup)
@@ -557,7 +582,7 @@ def verify(checker: str, target: str, weakenings: list[str]) -> tuple[bool, list
         report.append(
             f"{label}: {'BITES' if bites else 'VACUOUS'} (baseline {baseline} -> {weakened})"
         )
-    return all("BITES" in line for line in report), report
+    return all("VACUOUS" not in line for line in report), report
 
 
 def _run_and_report(

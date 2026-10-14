@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run Phase 6.9 E2E workflow use case integration tests (openspec/changes/workflows1/tasks.md).
+# Run Phase 6.9 E2E workflow use case integration tests (openspec/changes/archive/workflows1/tasks.md).
 #
 # Tests workflows in use cases: UC-AM-001, UC-CM-001, UC-MKT-001, Data Quality, Compliance.
 #

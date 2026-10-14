@@ -86,6 +86,11 @@
 | `WAREHOUSE_COST_BUDGET_EXCEEDED` | 429 | add-databricks-cost-guardrails P7 | The tenant's rolling-hour cost window reached the BLOCK-mode budget — the query failed closed BEFORE any warehouse work. | Raise the budget or wait for the rolling window to drain; the 429 carries the audit row, never a warehouse query. |
 | `WAREHOUSE_COST_BUDGET_NEAR_EXCEEDED` | 200 | add-databricks-cost-guardrails P7 | The ALERT-mode budget was reached (or the window cache was unavailable and the ledger fallback ran) — the query proceeded and the near-exceeded alert fired. | Review the tenant's budget; the alert path never blocks the movement. |
 | `DATABRICKS_WORKSPACE_PROVISIONING_DISABLED` | 403 | add-databricks-account-plane P8 | The target tenant's `databricks_workspace_provisioning_enabled` flag is off — provisioning refused with ZERO network calls (registration-first stays the default). | A tenant admin enables the flag (and a DPO/Legal signoff is recorded on the account row) before any provisioning. |
+| `SOURCE_DOWNLOAD_FAILED` | 500 | oss-release-remediation W3.8 | The dlt ingestion spine could not download a source file's content for catalog-record creation (the connector failed or returned a non-SUCCESS status). The file counts as failed and the run retries it. | Fix the source connector credentials/config; the processed keys stay unmarked so the next run retries the whole batch. |
+| `CATALOG_RECORD_CREATION_FAILED` | 500 | oss-release-remediation W3.8 | The dlt spine's catalog-record creation for an ingested file failed (plan limits, schema inference rejection, storage outage, …). The file counts as failed and the run retries it. | Inspect the run's error_message for the classified cause; the per-source-key idempotency guard keeps the retry duplicate-free. |
+| `CATALOG_FILE_NAME_COLLISION` | 400 | oss-release-remediation W3.8 | An ingested file's basename collides with an existing ACTIVE file for the tenant (the unique-active-name constraint) — the File/Dataset creation is refused loudly instead of leaking an IntegrityError. | Rename the source file or retire the existing catalog entry; never a silent skip. |
+| `CONTRACT_VERSION_CONFLICT` | 409 | oss-release-remediation W4.4 | A contract version for the asset was allocated twice concurrently — the `unique_contract_version_per_asset` constraint fired and the deterministic translation answered 409 instead of a raw 500. | Retry the request — the locked allocation serializes concurrent creates per asset. |
+| `EMPTY_FILE` | 400 | oss-release-remediation W3.8 | The shared catalog-record core refused a zero-byte file payload before creating any File/Dataset row. | Fix the source file; an empty payload never becomes a catalog row. |
 | `DATABRICKS_PROVISIONING_SIGNOFF_MISSING` | 403 | add-databricks-account-plane P8 | The account row carries no COMPLETE DPO/Legal signoff (by + at + evidence URL) — provisioning refused with ZERO network calls. | Record the signoff on the account row with its evidence URL before any provisioning. |
 | `DATABRICKS_ACCOUNT_ALREADY_LINKED` | 409 | add-databricks-account-plane P8 | The Databricks account id is already linked (the platform table's unique constraint — a duplicate link is refused, never re-linked). | Reuse the existing linked account; a re-link requires deleting the existing row first. |
 | `DATABRICKS_DLT_SPEC_UNMAPPABLE` | 400 | add-databricks-dlt-pipelines P10 | The Hub-config → DLT-spec mapping compiler refused a config bit it cannot represent in a DLT spec (a key outside the mappable set, a wrong source/destination type, a missing target, an unmappable ODCS rule) — the refusal names the bit; a spec with the setting silently absent is never emitted. | Correct the config (or the contract rule) to the mappable set and recompile. |
@@ -164,6 +169,8 @@
 | `VALIDATION_ERROR` | 400 | (existing) | Generic validator-failed. `details` enumerates field-level errors. | Fix the request body. |
 | `RATE_LIMIT_EXCEEDED` | 429 | (existing) | DRF throttle scope exceeded. | Honour `Retry-After`. |
 | `CONNECTION_ERROR` | 503 | (existing) | The service layer's connection-error default — a backend service could not be reached. | Retry; verify the target service's health and connectivity. |
+| `INVALID_TRANSITION` | 400 | oss-release-remediation W3.1 | A status write violated the resource's guarded state-machine matrix (e.g. a terminal scheduled run PATCHed to COMPLETED). `details.from_status` / `details.to_status` name the rejected hop. | Terminal states are final — reconcile manually or create a new resource. |
+| `RUN_CANCELLED` | 400 | oss-release-remediation W3.1 | A worker attempted to process items for a cancelled scheduled run. | The run was cancelled; no further items are accepted. 
 
 ---
 
@@ -416,6 +423,7 @@ from the code name (NOT_FOUND→404, TIMEOUT→504, RATE_LIMIT→429, DENIED/FOR
 | `EXTERNAL_REF_NOT_API_SETTABLE` | 400 | (existing) | External Ref Not Api Settable. | See the app's runbook / logs for the failure detail. |
 | `FILE_ENCODING_UNSUPPORTED` | 400 | (existing) | File Encoding Unsupported. | See the app's runbook / logs for the failure detail. |
 | `FILE_INFECTED` | 400 | (existing) | File Infected. | See the app's runbook / logs for the failure detail. |
+| `FILE_NOT_IN_STORAGE` | 409 | W7.4 | File Not In Storage. The object's upload was never completed in object storage — complete the upload before retrying. | Re-run the upload completion flow (init → PUT → complete); see the files runbook. |
 | `FILE_NOT_FOUND` | 404 | (existing) | File Not Found. | See the app's runbook / logs for the failure detail. |
 | `FILE_NOT_READY` | 400 | (existing) | File Not Ready. | See the app's runbook / logs for the failure detail. |
 | `FILE_NOT_READY_FOR_DATASET` | 400 | (existing) | File Not Ready For Dataset. | See the app's runbook / logs for the failure detail. |
@@ -813,7 +821,10 @@ from the code name (NOT_FOUND→404, TIMEOUT→504, RATE_LIMIT→429, DENIED/FOR
 | `SOURCE_CONNECTIVITY_FAILED` | 500 | (existing) | Source Connectivity Failed. | See the app's runbook / logs for the failure detail. |
 | `SOURCE_EXECUTION_FAILED` | 500 | (existing) | Source Execution Failed. | See the app's runbook / logs for the failure detail. |
 | `SPARQL_EXECUTION_FAILED` | 500 | (existing) | Sparql Execution Failed. | See the app's runbook / logs for the failure detail. |
+| `SQL_SAFETY_REJECTED` | 400 | W7.4 | SQL Safety Rejected. The submitted SQL failed the warehouse safety validation gate. | Rewrite the query within the allowed operations; see the DQ runbook. |
 | `SQL_EXECUTION_FAILED` | 500 | (existing) | Sql Execution Failed. | See the app's runbook / logs for the failure detail. |
+| `STORAGE_SIZE_CHECK_FAILED` | 502 | W7.4 | Storage Size Check Failed. The stored object's size does not match the uploaded metadata. | Re-upload the object; see the files runbook. |
+| `STORAGE_VERIFICATION_FAILED` | 502 | W7.4 | Storage Verification Failed. The stored object's checksum does not match the uploaded metadata. | Re-upload the object; see the files runbook. |
 | `STORAGE_RETRIEVAL_FAILED` | 500 | (existing) | Storage Retrieval Failed. | See the app's runbook / logs for the failure detail. |
 | `UNSUPPORTED_DATABASE_TYPE` | 400 | (existing) | Unsupported Database Type. | See the app's runbook / logs for the failure detail. |
 | `UNSUPPORTED_FILE_FORMAT` | 400 | (existing) | Unsupported File Format. | See the app's runbook / logs for the failure detail. |

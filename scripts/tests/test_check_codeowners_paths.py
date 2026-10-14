@@ -125,8 +125,13 @@ class TestRealRepo:
         assert violations == [], violations
 
     def test_real_codeowners_owns_both_sdk_trees(self):
+        # W12.1 (oss-release-remediation) deleted the generated
+        # sdk/typescript tree (D3); the published SDK trees are
+        # sdk/python/ and sdk/js/. A rule for a deleted directory would
+        # fail the path-resolution gate itself.
         entries = gate.parse_codeowners(REPO_ROOT / ".github" / "CODEOWNERS")
         patterns = {e.pattern for e in entries}
         assert "sdk/python/" in patterns
-        assert "sdk/typescript/" in patterns
+        assert "sdk/js/" in patterns
+        assert "sdk/typescript/" not in patterns
         assert "sdk/py/" not in patterns

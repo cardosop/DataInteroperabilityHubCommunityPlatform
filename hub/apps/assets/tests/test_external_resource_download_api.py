@@ -319,6 +319,19 @@ class ExternalResourceDownloadAPITest(TestCase):
         other_user = User.objects.create_user(
             email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
+        # W7.5 — enforced scope contract: grant DATA_PROVIDER in the
+        # OTHER tenant so the request passes the scope check and reaches
+        # the endpoint's own tenant-queryset 404 (the no-leak design
+        # this test pins); a role-less user would 403 at the scope gate
+        # before the 404.
+        from hub.apps.users.models import Role
+
+        other_provider_role, _ = Role.objects.get_or_create(
+            tenant=other_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        other_user.user_roles.create(role=other_provider_role)
 
         # Switch to other user
         self.client.force_authenticate(user=other_user)
@@ -592,6 +605,15 @@ class ExternalResourceDownloadSecurityTest(TestCase):
         other_user = User.objects.create_user(
             email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
+        # W7.5 — enforced scope contract (see the sibling test's note).
+        from hub.apps.users.models import Role
+
+        other_provider_role, _ = Role.objects.get_or_create(
+            tenant=other_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        other_user.user_roles.create(role=other_provider_role)
 
         self.client.force_authenticate(user=other_user)
 

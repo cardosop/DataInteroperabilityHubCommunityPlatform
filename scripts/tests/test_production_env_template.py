@@ -90,3 +90,15 @@ class TestCookieDomainTemplate:
             "and when to set an explicit domain."
         )
 
+
+
+class TestJwtKeyPairTemplate:
+    """Asymmetric-JWT key entries exist so RS256 mode is provisionable (W1.18)."""
+
+    def test_jwt_key_pair_entries_present(self):
+        template = _read_template()
+        for key in ("JWT_PRIVATE_KEY", "JWT_PUBLIC_KEY"):
+            assert _key_value(template, key) is not None, (
+                f"{key} must be documented in the template (blank under HS256; "
+                "required when JWT_ALGORITHM is RS256)."
+            )

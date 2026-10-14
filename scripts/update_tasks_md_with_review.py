@@ -268,7 +268,7 @@ def update_tasks_md(tasks_file: str, report: dict):
 def main():
     """Main entry point"""
     report = load_review_report()
-    update_tasks_md("openspec/changes/testreview1/tasks.md", report)
+    update_tasks_md("openspec/changes/archive/testreview1/tasks.md", report)
     print("Tasks.md updated successfully!")
 
 

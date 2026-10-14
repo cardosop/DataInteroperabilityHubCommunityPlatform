@@ -271,6 +271,7 @@ All multi-tenant list and detail views **MUST** filter by the current request's 
 
 - **Helper**: Use `hub.apps.tenants.request_tenant.get_request_tenant_id(request)` or `get_request_tenant(request)` to obtain the current tenant ID (and optionally the tenant instance).
 - **Request attributes**: Middleware (`TenantScopingMiddleware` in `hub.apps.auth.middleware`) sets `request.tenant_id` and `request.tenant` before views run. Views may use these when set, but **must** use the central helper so fallback order is consistent and testable.
+- **Database enforcement (W1.20)**: the same middleware arms PostgreSQL RLS on the request path — the request runs inside `transaction.atomic()` with transaction-local GUCs (`app.current_tenant_id` + the per-table `app.rls_<table>_enabled` flags), gated behind the `RLS_REQUEST_PATH_ENABLED` master kill switch (default armed). Arming fails closed: no tenant → NULL/empty GUC → policies hide every row. See `docs/runbooks/RB-SEC-004-rls-policies.md`.
 
 ### 1.1 Fallback order (standardized)
 
@@ -725,7 +726,7 @@ Query bodies are NEVER logged — only a SHA-256 `query_hash` prefix
 ## 6. References
 
 - **Helper**: `hub.apps.tenants.request_tenant.get_request_tenant_id`, `get_request_tenant`
-- **Middleware**: `hub.apps.auth.middleware.TenantScopingMiddleware` (sets request.tenant_id / request.tenant)
+- **Middleware**: `hub.apps.auth.middleware.TenantScopingMiddleware` (sets request.tenant_id / request.tenant; W1.20 — arms the transaction-local RLS GUCs behind `RLS_REQUEST_PATH_ENABLED`)
 - **Suspension Middleware**: `hub.apps.tenants.middleware.TenantSuspensionMiddleware` (enforces suspension)
 - **Plan Limits**: `hub.apps.tenants.services.PlanLimitService` (enforces plan limits)
 - **Tests**: `tests/integration/test_tenant_isolation.py` (no mocks; real DB and auth)

@@ -59,16 +59,16 @@ ALL = (
 def leaf(name: str, files: list[str]) -> str:
     recipe = f"{name}: ## domain\n"
     for f in files:
-        recipe += (
-            f"\tdocker compose exec api python -m pytest hub/apps/databricks_admin/tests/{f} \\\n"
-        )
+        recipe += f"\tdocker compose exec api python -m pytest hub/apps/databricks_admin/tests/{f} \\\n"
     recipe += "\t--reuse-db -q --timeout=300\n"
     return recipe
 
 
 class TestParseRecipes:
     def test_recipes_map_batch_targets_to_text(self):
-        text = PHONY + leaf("test-batch-13-1", ["test_account_models.py"]) + UMBRELLA + ALL
+        text = (
+            PHONY + leaf("test-batch-13-1", ["test_account_models.py"]) + UMBRELLA + ALL
+        )
         recipes = parse_recipes(text)
         # parse_recipes tracks only test-batch-13* targets; the
         # test-batch-all recipe is parsed separately by find_problems.
@@ -146,7 +146,9 @@ class TestFindProblemsFixtures:
         # set must be injected explicitly (deriving it from the leaves
         # would silently put the ghost on disk).
         problems = find_problems(text, {"test_a.py"}, gated={})
-        assert any("test_ghost.py" in p and "does not exist on disk" in p for p in problems)
+        assert any(
+            "test_ghost.py" in p and "does not exist on disk" in p for p in problems
+        )
 
     def test_budget_violation_is_reported(self):
         files = [f"test_f{i}.py" for i in range(27)]
@@ -214,7 +216,9 @@ class TestFindProblemsFixtures:
             self._disk(leaves),
             gated={"test-batch-13-8": "DATABRICKS_E2E-gated; out of the umbrella"},
         )
-        assert not any("umbrella does not invoke" in p and "13-8" in p for p in problems)
+        assert not any(
+            "umbrella does not invoke" in p and "13-8" in p for p in problems
+        )
         assert problems == []
 
     def test_gated_leaf_still_requires_phony(self):
@@ -251,7 +255,9 @@ class TestFindProblemsFixtures:
             self._disk(leaves),
             gated={"test-batch-13-9": "ghost gated leaf"},
         )
-        assert any("test-batch-13-9" in p and "stale GATED_LEAVES entry" in p for p in problems)
+        assert any(
+            "test-batch-13-9" in p and "stale GATED_LEAVES entry" in p for p in problems
+        )
 
 
 class TestLiveMakefileDrift:
@@ -270,7 +276,7 @@ class TestLiveMakefileDrift:
         "test-batch-13-5": (13, 238),
         "test-batch-13-6": (13, 125),
         "test-batch-13-6a": (11, 164),
-        "test-batch-13-7": (18, 216),
+        "test-batch-13-7": (20, 224),
     }
 
     def test_live_makefile_has_no_problems(self):
@@ -292,4 +298,4 @@ class TestLiveMakefileDrift:
     def test_live_disk_files_all_exist(self):
         assert APP_TESTS.is_dir()
         files = {p.name for p in APP_TESTS.glob("test_*.py")}
-        assert len(files) == 114
+        assert len(files) == 116

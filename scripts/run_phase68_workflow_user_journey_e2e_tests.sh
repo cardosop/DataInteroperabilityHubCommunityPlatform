@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run Phase 6.8 E2E workflow user journey integration tests (openspec/changes/workflows1/tasks.md).
+# Run Phase 6.8 E2E workflow user journey integration tests (openspec/changes/archive/workflows1/tasks.md).
 #
 # Tests workflows in user journeys: DPO (DPO-001, DPO-002, DPO-015), DE (DE-001, DE-014),
 # Compliance Officer, Data Consumer, Data Mesh Domain Owner, Data Quality.

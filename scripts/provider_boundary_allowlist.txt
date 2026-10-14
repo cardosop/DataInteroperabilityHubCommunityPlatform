@@ -1,0 +1,4 @@
+# GATE-54 control-plane provider-boundary allowlist — audited sanctioned seams.
+# Format: path:lineno:reason (exact match; a dead anchor fails the gate, and
+# the ratchet asserts per-file entry counts only ever shrink vs git HEAD).
+hub/apps/integrations/connectors/databricks_connector.py:34:Sanctioned seam (add-databricks-control-plane task 1.7) — the ONE sanctioned DatabricksApiClient consumer outside databricks_admin; DELEGATION MODE only (request_path, client=, use_breaker=False, backoff_waiter=)

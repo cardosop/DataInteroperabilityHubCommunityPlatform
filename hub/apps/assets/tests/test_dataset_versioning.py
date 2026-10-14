@@ -18,7 +18,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserStatus
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -43,6 +43,17 @@ class DatasetVersioningTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # W7.5 — enforced scope contract: asset views gate on
+        # HasScope("assets:read"/"assets:write"); the pre-flip fixture
+        # user had no role and the flip 403s role-less users.  Grant
+        # DATA_PROVIDER (carries both asset scopes).
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=data_provider_role)
+
         self.client.force_authenticate(user=self.user)
         self.asset = Asset.objects.create(
             tenant=self.tenant,

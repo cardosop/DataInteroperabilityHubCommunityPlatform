@@ -33,7 +33,7 @@ if str(REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from scripts.databricks_e2e import local_runner as runner
-from scripts.databricks_e2e.sandbox import sandbox_name
+from hub.apps.databricks_admin.e2e_tooling.sandbox import sandbox_name
 
 
 def _armed_env(port: int | None = None, budget_dbus: str = "0") -> dict[str, str]:
@@ -185,7 +185,7 @@ class TestWorkflowParity:
 
     Occurrence-aware matching: the driver builds argv as lists, so the
     literal ``"sandbox destroy"`` pair never appears in its source — the
-    FIRST ``scripts.databricks_e2e.sandbox`` occurrence is the create
+    FIRST ``hub.apps.databricks_admin.e2e_tooling.sandbox`` occurrence is the create
     step, the SECOND is the destroy step (the nightly spells both out).
     """
 
@@ -201,10 +201,10 @@ class TestWorkflowParity:
 
         return {
             "budget": idx_of("scripts.databricks_e2e.budget"),
-            "create": idx_of("scripts.databricks_e2e.sandbox", 1),
+            "create": idx_of("hub.apps.databricks_admin.e2e_tooling.sandbox", 1),
             "suite": idx_of("pytest tests/integration/databricks_e2e"),
-            "destroy": idx_of("scripts.databricks_e2e.sandbox", 2),
-            "audit": idx_of("scripts.databricks_e2e.audit"),
+            "destroy": idx_of("hub.apps.databricks_admin.e2e_tooling.sandbox", 2),
+            "audit": idx_of("hub.apps.databricks_admin.e2e_tooling.audit"),
         }
 
     def _ordered_steps(self, text: str) -> list[str]:

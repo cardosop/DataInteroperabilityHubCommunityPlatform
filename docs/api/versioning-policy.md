@@ -91,8 +91,8 @@ The GraphQL-LD endpoint at `/graphql/` is the designated v2 surface for semantic
 | SDK | Package | Version Strategy |
 |---|---|---|
 | Python | `datahub-interoperability` | Semver: MAJOR.MINOR.PATCH. Major bumps when API v2 ships or client-breaking changes occur. |
-| JavaScript | `@datahub/interoperability-sdk` | Same. Published to npm with corresponding version tags. |
-| TypeScript | `sdk/typescript/` | OpenAPI-generated. Regenerated on every API change. Version matches OpenAPI spec version. |
+| JavaScript | `@meshant/interoperability-sdk` | Same. Published to npm with corresponding version tags. |
+| TypeScript | `sdk/js/` | The published TS SDK (handwritten client). The OpenAPI-generated tree was deleted (W12.1). |
 | CLI | `datahub-cli` | Follows Python SDK major version. Deprecated command flags emit warnings for 2 minor releases before removal. |
 
 ### 7. Breaking Change Detection

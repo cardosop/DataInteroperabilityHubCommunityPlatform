@@ -26,8 +26,15 @@ class Migration(migrations.Migration):
             CREATE POLICY tenant_isolation_<table_name>
             ON <table_name>
             FOR ALL
-            USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
-            WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid);
+            USING (
+                current_setting('app.rls_<table_name>_enabled', true) <> 'true'
+                OR tenant_id::text =
+                   current_setting('app.current_tenant_id', true)
+            )
+            WITH CHECK (
+                tenant_id::text =
+                current_setting('app.current_tenant_id', true)
+            );
             """,
             reverse_sql="""
             DROP POLICY IF EXISTS tenant_isolation_<table_name> ON <table_name>;
@@ -51,13 +58,15 @@ migrations.RunSQL(
     USING (
         <parent_fk_column> IN (
             SELECT id FROM <parent_table>
-            WHERE tenant_id = current_setting('app.current_tenant_id')::uuid
+            WHERE tenant_id::text =
+                  current_setting('app.current_tenant_id', true)
         )
     )
     WITH CHECK (
         <parent_fk_column> IN (
             SELECT id FROM <parent_table>
-            WHERE tenant_id = current_setting('app.current_tenant_id')::uuid
+            WHERE tenant_id::text =
+                  current_setting('app.current_tenant_id', true)
         )
     );
     """,
@@ -74,8 +83,9 @@ migrations.RunSQL(
 |------|--------|
 | **Order** | `ENABLE ROW LEVEL SECURITY` MUST be in the same transaction as `CREATE POLICY`. Do NOT enable RLS without a policy — it would immediately block all access. |
 | **Naming** | Policy name: `tenant_isolation_<table_name>`. Use the exact table name from `db_table` Meta option. |
-| **Direct FK** | `USING (tenant_id = current_setting('app.current_tenant_id')::uuid)` with matching `WITH CHECK`. |
-| **Indirect FK** | Subquery through the parent chain to the table that has the `tenant_id`. Include both `USING` and `WITH CHECK`. |
+| **Direct FK** | `USING (current_setting('app.rls_<table>_enabled', true) <> 'true' OR tenant_id::text = current_setting('app.current_tenant_id', true))` with the tenant-match `WITH CHECK`. The string compare is the deployed convention — do NOT introduce `::uuid` casts. |
+| **Indirect FK** | Subquery through the parent chain to the table that has the `tenant_id` (string compare). Include both `USING` and `WITH CHECK`. |
+| **Kill-switch setting** | Every `app.rls_<table>_enabled` GUC needs the paired `RLS_<TABLE>_ENABLED` settings entry (default True) — the W1.20 inventory sync test fails the suite otherwise. |
 | **Reverse SQL** | Always provide `reverse_sql` with `DROP POLICY IF EXISTS` before `DISABLE ROW LEVEL SECURITY`. |
 | **Idempotency** | Use `DROP POLICY IF EXISTS` before `CREATE POLICY` when retrofitting RLS to an existing table. |
 
@@ -102,7 +112,8 @@ Before enabling RLS on any table:
      - views.py:123 — TenantConfigViewSet.usage() → uses get_request_tenant_id()
        which resolves the tenant from the JWT and routes through
        TenantScopedThrottle — the request's DB connection has
-       app.current_tenant_id set by TenantMiddleware.
+       app.current_tenant_id set transaction-locally by
+       TenantScopingMiddleware (W1.20 request-path arming).
      - services.py:456 — BillingService.record_usage() → wrapped in
        tenant_context(tenant_id) by the caller.
      - management/commands/reconcile_stripe.py — uses

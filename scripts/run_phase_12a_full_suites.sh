@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase 12A full — Run backend (12A.1), frontend (12A.2), security/performance/concurrency/regression (12A.3)
-# Per docs/TEST_EXECUTION_PLAN.md and openspec/changes/testreview1/tasks.md, gapfix1 Phase 7.2.4.
+# Per docs/TEST_EXECUTION_PLAN.md and openspec/changes/archive/testreview1/tasks.md, gapfix1 Phase 7.2.4.
 # Invokes run_phase_12a_backend_suites.sh then frontend and other suites; aggregates evidence under test_reports_comprehensive/{date}/.
 # Default: fail fast (exit on first phase failure). Use --continue-on-failure to run all phases and exit non-zero at end if any failed.
 

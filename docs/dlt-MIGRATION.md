@@ -34,7 +34,7 @@ built-in primitives for incremental loading, schema management, retry, and monit
 | `hub/data_movement/dlt_credentials.py` | Credential resolution (AWS SM / Prefect / toml) |
 | `hub/data_movement/dlt_resources.py` | @dlt.resource definitions for ingestion |
 | `hub/data_movement/dlt_incremental.py` | Incremental loading via dlt cursor state |
-| `hub/data_movement/dlt_retry.py` | Failed load retry with exponential backoff |
+| `hub/data_movement/retry_policy.py` | Bounded retry for retryable failures (W3.9 — replaces the dead `dlt_retry`) |
 | `hub/data_movement/dlt_metrics.py` | Prometheus metrics export from dlt LoadInfo |
 
 ## Migration Steps
