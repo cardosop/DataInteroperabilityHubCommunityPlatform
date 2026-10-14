@@ -13,6 +13,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from hub.settings import HUB_CORE_ONLY
 
 
 class WarehouseType(models.TextChoices):
@@ -72,22 +73,27 @@ class WarehouseConnection(models.Model):
     # linkage to the control-plane registry. SET_NULL: the connection owns
     # its encrypted config; deleting the workspace/credential unlinks but
     # never destroys the connection.
-    databricks_workspace = models.ForeignKey(
-        "databricks_admin.DatabricksWorkspace",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="warehouse_connections",
-        help_text="Control-plane workspace this connection derives from",
-    )
-    databricks_credential = models.ForeignKey(
-        "databricks_admin.DatabricksCredential",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="warehouse_connections",
-        help_text="Control-plane credential this connection mirrors",
-    )
+    # W7.3 core-mode conditioning: the estate app is not installed in
+    # core/public trees, so the FK fields exist in FULL mode only (the
+    # 313.1 conditional-paid-FK contract; the W4.6 sweep owns the
+    # serializer/query guards for the full-mode surface).
+    if not HUB_CORE_ONLY:
+        databricks_workspace = models.ForeignKey(
+            "databricks_admin.DatabricksWorkspace",
+            null=True,
+            blank=True,
+            on_delete=models.SET_NULL,
+            related_name="warehouse_connections",
+            help_text="Control-plane workspace this connection derives from",
+        )
+        databricks_credential = models.ForeignKey(
+            "databricks_admin.DatabricksCredential",
+            null=True,
+            blank=True,
+            on_delete=models.SET_NULL,
+            related_name="warehouse_connections",
+            help_text="Control-plane credential this connection mirrors",
+        )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -150,8 +156,14 @@ class WarehouseConnection(models.Model):
             name=name or f"{workspace.name} live connection",
             warehouse_type=WarehouseType.DATABRICKS,
             region=workspace.region,
-            databricks_workspace=workspace,
-            databricks_credential=credential,
+            **(
+                {
+                    "databricks_workspace": workspace,
+                    "databricks_credential": credential,
+                }
+                if not HUB_CORE_ONLY
+                else {}
+            ),
         )
         conn.set_config(
             {
