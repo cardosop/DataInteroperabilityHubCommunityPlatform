@@ -2,6 +2,7 @@ from django.urls import include, path, re_path
 
 # Phase P.8 D4 — business-rules subsystem health at the documented path.
 from hub.apps.health.views import business_rules_health
+from hub.settings import HUB_CORE_ONLY
 
 # Phase 273.x hardening — path-derived capability manifest (parity contract
 # with the SPA's OpenAPI derivation, see capabilities.py).
@@ -108,7 +109,18 @@ urlpatterns = [
     path("workflows/", include("hub.apps.orchestration.urls")),
     path("transformation/", include("hub.apps.api.transformation_urls")),
     path("warehouses/", include("hub.apps.warehouses.urls")),
-    path("databricks/", include("hub.apps.databricks_admin.urls")),
+    # W7.3 — the databricks estate is PAID: the direct include escaped the
+    # 313.1 paid-registry split. In core mode the app is not installed, so
+    # the include is skipped entirely (the estate's ready() registers its
+    # own URLs in full mode via register_paid_urlpatterns once the W4.6
+    # sweep converts this include).
+    *(
+        [
+            path("databricks/", include("hub.apps.databricks_admin.urls")),
+        ]
+        if not HUB_CORE_ONLY
+        else []
+    ),
     path("breach/", include("hub.apps.breach.urls")),
     path("gdpr/", include("hub.apps.gdpr.urls")),
     path("dsar/", include("hub.apps.dsar.urls")),
