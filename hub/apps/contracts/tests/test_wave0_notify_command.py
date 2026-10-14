@@ -87,7 +87,7 @@ def _write_jsonl(tmp_path: Path, rows: list[dict]) -> Path:
 
 @pytest.mark.django_db(transaction=True)
 class NotifyCommandTests(TestCase):
-    def _cleanup(self):
+    def _cleanup(self, tmp_path: Path):
         shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
     # --------------------------------------------------------------

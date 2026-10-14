@@ -303,5 +303,5 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def _cleanup(self):
+    def _cleanup(self, tmp_path: Path):
         shutil.rmtree(tmp_path.parent, ignore_errors=True)
