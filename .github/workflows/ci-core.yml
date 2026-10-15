@@ -115,7 +115,9 @@ jobs:
         # on idempotent re-runs — the target's host-side health loop is the
         # sanctioned readiness signal.
         run: make test-core-stack-up
-        timeout-minutes: 10
+        # The frontend image builds FROM SCRATCH on fresh runners (no
+        # layer cache) — observed 10+ min (the 2026-10-14 timeout).
+        timeout-minutes: 20
       - name: Run core-only tests
         run: |
           docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml exec -T \
