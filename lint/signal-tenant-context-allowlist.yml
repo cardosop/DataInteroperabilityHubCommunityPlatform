@@ -1,0 +1,150 @@
+# Allowlist for `scripts/lint_signal_tenant_context.py`
+# (P0-17 / W105-SIGNAL-TENANT-CONTEXT-LINT).
+#
+# Every entry is a (path, line, reason) triple. The scanner treats ANY
+# ``<obj>.connect(...)`` call as a candidate signal registration; the
+# sites below are NOT Django signal registrations — they are
+# warehouse/socket/database-driver connection opens (a ``connect()``
+# method on a connector or driver object), which have no signal
+# receiver and therefore nothing that could be wrapped in
+# ``tenant_context``. They are the scanner's documented
+# "unresolvable" class and are allowlisted here rather than rewritten
+# (rewriting working connector calls to appease the AST scanner would
+# be a gratuitous refactor).
+#
+# Entries MUST stay in sync with the source: when one of these call
+# sites is removed or moved, delete or update its entry. Do NOT add
+# entries for real ``@receiver`` / ``<signal>.connect(...)``
+# registrations — those must carry tenant_context wrap evidence.
+
+- path: hub/apps/compliance/services.py
+  line: 1048
+  reason: |
+    Warehouse connector open for a compliance scan
+    (``connector.connect()`` on a resolved warehouse connector) — not a
+    Django signal registration; no receiver exists to wrap.
+
+- path: hub/apps/databricks_admin/delta_sharing_service.py
+  line: 160
+  reason: |
+    Warehouse connector open for a Delta Sharing table query
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/databricks_admin/delta_sharing_snapshot.py
+  line: 311
+  reason: |
+    Warehouse connector open for a Delta Sharing snapshot
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/datasets/views.py
+  line: 1653
+  reason: |
+    Warehouse connector open for the dataset preview endpoint
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/dq/services.py
+  line: 654
+  reason: |
+    Warehouse connector open for a DQ rule scan
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/health/services.py
+  line: 119
+  reason: |
+    TCP socket probe of the ClamAV daemon (``sock.connect((host,
+    port))`` on a raw socket) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/integrations/connectors/snowflake_connector.py
+  line: 215
+  reason: |
+    Snowflake driver connection open
+    (``snowflake.connector.connect(**params)``) — not a Django signal
+    registration; no receiver exists to wrap.
+
+- path: hub/apps/virtualization/services/query_service.py
+  line: 3203
+  reason: |
+    PostgreSQL driver connection open (``psycopg2.connect(**params)``)
+    for the query service — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/virtualization/services/query_service.py
+  line: 3249
+  reason: |
+    MySQL driver connection open (``pymysql.connect(**params)``) for
+    the query service — not a Django signal registration; no receiver
+    exists to wrap.
+
+- path: hub/apps/virtualization/services/query_service.py
+  line: 3301
+  reason: |
+    SQLAlchemy engine connection open (``engine.connect()``) for the
+    SQL Server path of the query service — not a Django signal
+    registration; no receiver exists to wrap.
+
+- path: hub/apps/virtualization/services/query_service.py
+  line: 3412
+  reason: |
+    ODBC driver connection open (``pyodbc.connect(conn_str, ...)``) for
+    the query service — not a Django signal registration; no receiver
+    exists to wrap.
+
+- path: hub/apps/warehouses/base.py
+  line: 104
+  reason: |
+    ``self.connect()`` inside the warehouse connector base class
+    ``__enter__`` (the abstract connector's own connect method) — not a
+    Django signal registration; no receiver exists to wrap.
+
+- path: hub/apps/warehouses/connectors/databricks.py
+  line: 154
+  reason: |
+    Databricks SQL driver connection open (``sql.connect(...)``) — not
+    a Django signal registration; no receiver exists to wrap.
+
+- path: hub/apps/warehouses/connectors/snowflake.py
+  line: 59
+  reason: |
+    Snowflake driver connection open
+    (``snowflake.connector.connect(**params)``) — not a Django signal
+    registration; no receiver exists to wrap.
+
+- path: hub/apps/warehouses/schema_drift.py
+  line: 42
+  reason: |
+    Warehouse connector open for the schema drift check
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/warehouses/schema_reflection.py
+  line: 59
+  reason: |
+    Warehouse connector open for schema reflection
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/warehouses/views.py
+  line: 176
+  reason: |
+    Warehouse connector open for the connectivity test endpoint
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/warehouses/views.py
+  line: 262
+  reason: |
+    Warehouse connector open for the table schema endpoint
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.
+
+- path: hub/apps/warehouses/views.py
+  line: 498
+  reason: |
+    Warehouse connector open for the table preview endpoint
+    (``connector.connect()``) — not a Django signal registration; no
+    receiver exists to wrap.

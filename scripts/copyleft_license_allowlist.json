@@ -1,0 +1,19 @@
+{
+  "_comment": "Verified-license allowlist for wheels whose METADATA carries no license information (UNKNOWN to every tool). Each entry cites its source; entries apply to UNRESOLVED classifications ONLY and can never override a detected GPL/AGPL/SSPL. Adding an entry requires re-verifying the cited source. G7 / P0-13.",
+  "flask-cors": {
+    "license": "MIT",
+    "note": "https://pypi.org/project/Flask-Cors/ (License: MIT) — verified 2026-10-19"
+  },
+  "google-crc32c": {
+    "license": "Apache-2.0",
+    "note": "https://pypi.org/project/google-crc32c/ (License: Apache-2.0) — verified 2026-10-19"
+  },
+  "soda-core-pandas-dask": {
+    "license": "Apache-2.0",
+    "note": "https://pypi.org/project/soda-core-pandas-dask/ (License: Apache-2.0) — verified 2026-10-19"
+  },
+  "matplotlib-inline": {
+    "license": "BSD-3-Clause",
+    "note": "https://pypi.org/project/matplotlib-inline/ (License: BSD-3-Clause) — verified 2026-10-19"
+  }
+}

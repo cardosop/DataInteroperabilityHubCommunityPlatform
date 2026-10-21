@@ -1,0 +1,64 @@
+- path: hub/apps/audit/management/commands/export_audit_trail.py
+  reason: read-only audit-trail dump (DB reads only; JSONL to stdout or a user-supplied
+    output file)
+- path: hub/apps/audit/management/commands/verify_tamper_evidence.py
+  reason: read-only Merkle-chain verification of audit rows (hash rebuild + compare,
+    no writes)
+- path: hub/apps/auth/management/commands/show_jwt_key_info.py
+  reason: read-only JWT signing-key metadata probe (length + truncated hash only,
+    no key material, no writes)
+- path: hub/apps/compliance/management/commands/create_regulator_audit_package.py
+  reason: read-only regulator evidence dump (DB reads zipped to a user-supplied file;
+    no tenant-scoped writes)
+- path: hub/apps/contracts/management/commands/f5_soak_status.py
+  reason: read-only F5 soak-window status gate (audit-row counts + file reads, JSON
+    verdict to stdout)
+- path: hub/apps/contracts/management/commands/lineage_drift_check.py
+  reason: 'read-only lineage drift verification gate (docstring invariant: never modifies
+    LineageEdge rows)'
+- path: hub/apps/contracts/management/commands/lineage_soak_status.py
+  reason: read-only soak-period status reporter (audit-row counts per rule, JSON to
+    stdout)
+- path: hub/apps/contracts/management/commands/schema_editor_adoption_report.py
+  reason: read-only schema-editor adoption-metric report (contract + audit-row reads,
+    stdout/JSONL output)
+- path: hub/apps/contracts/management/commands/validate_migration.py
+  reason: read-only ODCS->ODPS migration validation report (reads + optional report
+    file; no model writes)
+- path: hub/apps/core/management/commands/check_idor_coverage.py
+  reason: DB-free static CI gate re-enumerating routes against the checked-in manifest
+    (optional report file under --write-report)
+- path: hub/apps/core/management/commands/check_services.py
+  reason: read-only service availability readiness probe (HTTP health checks only)
+- path: hub/apps/core/management/commands/validate_config.py
+  reason: read-only startup configuration validation probe (exit-code only, no writes)
+- path: hub/apps/dq/management/commands/collect_dq_s3_metrics.py
+  reason: read-only S3 bucket walk that sets a Prometheus gauge; no database writes
+- path: hub/apps/dq/management/commands/sample_dq_queue_depth.py
+  reason: read-only RQ queue-depth sampler that sets a Prometheus gauge; no database
+    writes
+- path: hub/apps/health/management/commands/run_synthetic_probes.py
+  reason: read-only synthetic API probe harness (HTTP probes + structlog metrics;
+    no hub-database writes)
+- path: hub/apps/jobs/management/commands/emit_rq_queue_metrics.py
+  reason: read-only RQ queue-depth metrics sampler (Redis reads, Prometheus gauge
+    only)
+- path: hub/apps/observability/management/commands/benchmark_views.py
+  reason: read-only EXPLAIN ANALYZE benchmarks (local baseline JSON file written only
+    under --baseline)
+- path: hub/apps/observability/management/commands/check_throttle_coverage.py
+  reason: DB-free static AST throttle-coverage CI gate (file reads and stdout only)
+- path: hub/apps/observability/management/commands/n_plus_1_check.py
+  reason: read-only N+1 query inspection (persists only a local ratchet baseline file,
+    no database writes)
+- path: hub/apps/orchestration/management/commands/check_workflow_v1_removal_readiness.py
+  reason: read-only v1-handler removal readiness check (WorkflowInstance reads, stdout
+    verdict)
+- path: hub/apps/orchestration/management/commands/report_workflow_post_deployment_metrics.py
+  reason: read-only post-deployment metrics report (database reads, stdout/JSON output)
+- path: hub/apps/orchestration/management/commands/report_workflow_validation_rollout.py
+  reason: read-only validation-rollout status report (only invalidates the feature-flag
+    cache; no database writes)
+- path: hub/apps/tenants/management/commands/validate_plan_config.py
+  reason: read-only plan/feature-flag config integrity validation (exit-code probe,
+    no writes)

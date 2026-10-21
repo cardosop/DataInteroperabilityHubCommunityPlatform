@@ -28,6 +28,16 @@ from __future__ import annotations
 #: Pin once so audit-replay queries never need to UNION across drift.
 DQ_ALERT_RESOURCE_TYPE: str = "DQ_ALERTING_RULE"
 
+#: P0-17 (W105-MGMT-COMMAND-AUDIT) — ``resource_type`` for the management-
+#: command chokepoint rows (hub/apps/audit/command_audit.py). System-scoped:
+#: tenant=NULL (commands run before any request context exists).
+MANAGEMENT_COMMAND_RESOURCE_TYPE: str = "MANAGEMENT_COMMAND"
+
+#: Management-command lifecycle actions (one row per invocation).
+MANAGEMENT_COMMAND_EXECUTED: str = "MANAGEMENT_COMMAND_EXECUTED"
+MANAGEMENT_COMMAND_FAILED: str = "MANAGEMENT_COMMAND_FAILED"
+
+
 #: Phase 250.1.A.7 — ``resource_type`` value used on every asset-related
 #: audit row. The asset-creation workflow, the data-first endpoint and
 #: the saga-rollback path all emit rows under this single string so
@@ -1631,6 +1641,10 @@ __all__ = [
     "IMPERSONATION_TENANT_SWITCH_BLOCKED",
     "LISTING_CONTRACT_DRIFT",
     "LISTING_REPUBLISHED_AFTER_DRIFT",
+    # P0-17 (W105-MGMT-COMMAND-AUDIT) — command chokepoint rows
+    "MANAGEMENT_COMMAND_EXECUTED",
+    "MANAGEMENT_COMMAND_FAILED",
+    "MANAGEMENT_COMMAND_RESOURCE_TYPE",
     "MARKETPLACE_RATE_LIMIT_EXCEEDED",
     "ML_PREDICTION_PERFORMED",
     # Phase 285.13.9 — Plan lifecycle audit events
