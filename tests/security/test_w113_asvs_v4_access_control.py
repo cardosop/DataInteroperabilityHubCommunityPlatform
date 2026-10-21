@@ -33,7 +33,6 @@ from django.db.models import (
     Model,
 )
 from django.test import TestCase, override_settings
-from django.urls import NoReverseMatch, reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -285,12 +284,11 @@ class W113AccessControlMatrix(TestCase):
                     values[param] = str(getattr(obj, "tenant_id", None) or obj.id)
             else:
                 values[param] = str(getattr(obj, param, obj.pk if obj is not None else ""))
-        url_name = route.get("url_name")
-        if url_name and route.get("url_mode") == "reverse":
-            try:
-                return reverse(url_name, kwargs=values)
-            except NoReverseMatch:
-                pass
+        # P3-2 (sibling-red-gates, GATE-06): the reverse-mode branch was
+        # DEAD CODE — no matrix route ever sets url_mode="reverse" (the
+        # only two url_mode references are this check and the probe-dict
+        # pass-through), so the try/except NoReverseMatch could never
+        # run. Removed: URL-name bugs must surface, not be swallowed.
         template = route["path_template"]
         for param, value in values.items():
             template = template.replace(f"{{{param}}}", str(value))

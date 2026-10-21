@@ -90,6 +90,25 @@ def test_no_stale_makefile_duplicate_in_overlay():
     assert not (REPO_ROOT / "scripts" / "publish_public_overlay" / "Makefile").exists()
 
 
+def test_worker_dockerfile_overlay_tracks_the_stage_split(built_tree):
+    """P3-2b finding: the public CI's `make test-core-stack-up` failed with
+    `target stage "dev" could not be found` — the overlay worker Dockerfile
+    predated the W8.1 dev/production split while docker-compose.test.yml
+    builds `target: dev`. The overlay must track the private Dockerfile's
+    stages, minus the compliance-engine COPY (the core-only adaptation)."""
+    dockerfile = (built_tree / "services" / "worker" / "Dockerfile").read_text()
+    assert "FROM python:3.12-slim AS dev" in dockerfile, \
+        "the shipped worker Dockerfile must declare the dev stage (compose builds target: dev)"
+    assert "FROM python:3.12-slim AS production" in dockerfile, \
+        "the shipped worker Dockerfile must declare the production stage (the GHCR job's default target)"
+    for line in dockerfile.splitlines():
+        stripped = line.strip()
+        assert not (stripped.startswith("COPY") and "compliance-service" in stripped), \
+            "the paid compliance engine must never be COPYed into the public worker image"
+        assert not (stripped.startswith("RUN") and "apt-get upgrade" in stripped), \
+            "the overlay must not regress the U.6 no-upgrade root fix"
+
+
 def test_core_files_ship_and_paid_layer_is_absent(built_tree):
     for rel in (
         "docker-compose.yml",

@@ -15,11 +15,12 @@ Personas:
 - Data Mesh Domain Owner (DMO): e2e_dmo@example.com (TENANT_ADMIN + DATA_PROVIDER)
 """
 
+from django.apps import apps
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from hub.apps.audit.command_audit import AuditedCommand
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
@@ -127,7 +128,7 @@ ROLE_DESCRIPTIONS = {
 }
 
 
-class Command(BaseCommand):
+class Command(AuditedCommand):
     help = (
         "Ensure E2E test users exist with role-specific personas (DPO, DC, TA, PA, AUD, CPO, DEV, DMO) "
         "so frontend E2E tests can access role-gated routes."
@@ -246,7 +247,17 @@ class Command(BaseCommand):
             # models, so it lives in databricks_admin's
             # ``seed_e2e_uc_mirror`` command — invoked by NAME through
             # Django's command registry (no estate import here).
-            if not dry_run and default_tenant.databricks_control_plane_enabled:
+            if (
+                not dry_run
+                and default_tenant.databricks_control_plane_enabled
+                # P3-1 (B-1): the command registry must contain the
+                # seed — databricks_admin is not installed in core-only
+                # mode and the by-name invocation crashed the quickstart
+                # seed with CommandError. apps.is_installed() matches the
+                # AppConfig NAME (the full dotted path — the label form
+                # is always False; pinned).
+                and apps.is_installed("hub.apps.databricks_admin")
+            ):
                 # The tenant id is a POSITIONAL argument — Django's
                 # call_command cannot pass positional args through
                 # **options (min() on the empty option_strings tuple

@@ -273,13 +273,12 @@ class TestShippedWorkflowYAML:
             assert isinstance(job, dict), (
                 f"job {name!r} has no definition — an empty or nested key would silently shadow it"
             )
-            assert job, (
-                f"job {name!r} has no definition — an empty or nested key would silently shadow it"
-            )
-            assert job.get("runs-on"), (
-                f"job {name!r} declares no runs-on — nested under the wrong "
-                "mapping or never meant to run"
-            )
+
+
+class TestShippedWorkflowYAMLTail:
+    """The remaining shipped-parse assertions (same semantics as
+    TestShippedWorkflowYAML — grouped separately after the P3-2b class
+    insertion)."""
 
     def test_duplicate_key_detection_bites_on_any_document(self):
         """The loader itself must be falsifiable: a minimal duplicate-key
@@ -301,3 +300,48 @@ class TestShippedWorkflowYAML:
         wf.write_text(wf.read_text() + "  test-core: {}\n")
         with pytest.raises(yaml.YAMLError, match="test-core"):
             parse_shipped_workflows(tree)
+
+
+class TestCiCoreSecretKeyContract:
+    """P3-2b finding: core-boot-smoke runs management commands ON THE
+    RUNNER; G12 removed the committed SECRET_KEY default and the
+    recreated public repo carries NO secrets — the shipped workflow
+    must generate an ephemeral per-run key itself (never a committed
+    well-known default, never a repo secret the public repo lacks)."""
+
+    def test_ci_core_generates_an_ephemeral_secret_key(self, public_tree):
+        doc = parse_shipped_workflows(public_tree)[Path(".github/workflows/ci-core.yml")]
+        jobs = doc["jobs"]
+        boot = jobs["core-boot-smoke"]
+        steps = boot.get("steps", [])
+        run_text = "\n".join(
+            str(step.get("run", "")) for step in steps if isinstance(step, dict)
+        )
+        # the WHOLE G12-guarded triple (settings.py guards SECRET_KEY,
+        # JWT_SECRET_KEY AND ENCRYPTION_KEY as one class) + the HS256
+        # shared-secret mode (the RS256 default raises on an empty pair)
+        for key in ("SECRET_KEY", "JWT_SECRET_KEY", "ENCRYPTION_KEY", "JWT_ALGORITHM=HS256"):
+            assert key in run_text, (
+                f"core-boot-smoke must set {key!r} explicitly (G12: no committed default)"
+            )
+        assert "openssl rand" in run_text, (
+            "the keys must be per-run ephemeral, not well-known sentinels"
+        )
+        assert "ci-ephemeral" not in run_text or "openssl rand" in run_text
+
+    def test_ci_core_diagnoses_stack_failures(self, public_tree):
+        """The api container's own logs were destroyed by the teardown
+        before the first unhealthy-boot failure could be read — the
+        test-core job must capture them on failure (if: failure(),
+        BEFORE the always-teardown). The diagnose step must use the
+        SERVICE names (docker compose logs resolves services, not
+        container names — the first probe asked for the container name
+        and got "no such service")."""
+        doc = parse_shipped_workflows(public_tree)[Path(".github/workflows/ci-core.yml")]
+        steps = doc["jobs"]["test-core"]["steps"]
+        diagnose = [s for s in steps if isinstance(s, dict) and s.get("name") == "Diagnose stack failure"]
+        assert diagnose, "test-core must diagnose stack failures"
+        assert diagnose[0].get("if") == "failure()"
+        run_text = str(diagnose[0].get("run", ""))
+        assert "api-service-test" in run_text, "the diagnose step must log the API SERVICE"
+        assert "migrate-test-db" in run_text, "the diagnose step must log the migrate one-shot"

@@ -40,7 +40,7 @@ class FileViewSetTest(FilesAPITestBase):
         except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
-        def test_w1111_files_list_rejects_fuzzed_search_without_500(self):
+    def test_w1111_files_list_rejects_fuzzed_search_without_500(self):
         """W11.11 DAST finding: ``search_fields = "name"`` (a bare string)
         made DRF iterate its characters as search fields — fuzzed search
         terms surfaced ``Cannot resolve keyword 'n'`` as a 500. The list
@@ -56,7 +56,7 @@ class FileViewSetTest(FilesAPITestBase):
         self.assertNotEqual(response.status_code, 500, response.content)
 
 
-def test_list_files_success_returns_200(self):
+    def test_list_files_success_returns_200(self):
         """Test listing files successfully returns 200 with results list."""
         response = self.client.get("/api/v1/files/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)

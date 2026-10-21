@@ -1,14 +1,14 @@
 {
   "files": {
     "hub/apps/ai/llm_client.py": [
-      136,
-      201
+      370,
+      443
     ],
     "hub/apps/ai/throttles.py": [
       54
     ],
     "hub/apps/ai/views.py": [
-      382
+      61
     ],
     "hub/apps/api/analytics/analytics.py": [
       83,
@@ -24,11 +24,11 @@
       62
     ],
     "hub/apps/api/capabilities.py": [
-      662
+      663
     ],
     "hub/apps/api/middleware/idempotency.py": [
-      339,
-      354
+      333,
+      348
     ],
     "hub/apps/api/middleware/idempotency_utils.py": [
       129,
@@ -39,8 +39,8 @@
       77
     ],
     "hub/apps/api/views.py": [
-      143,
-      210
+      144,
+      212
     ],
     "hub/apps/api/webhook_sink_views.py": [
       197
@@ -60,34 +60,38 @@
       781
     ],
     "hub/apps/assets/views.py": [
-      774,
-      1651,
-      1899,
-      1911,
-      1998,
-      2010,
-      3001,
-      3023,
-      3043,
-      3054,
-      3351,
-      3433,
-      3466,
-      3777,
-      3809,
-      3882
+      778,
+      1655,
+      1903,
+      1915,
+      2002,
+      2014,
+      3005,
+      3027,
+      3047,
+      3058,
+      3355,
+      3437,
+      3470,
+      3781,
+      3813,
+      3886
+    ],
+    "hub/apps/audit/command_audit.py": [
+      63,
+      81
     ],
     "hub/apps/audit/involvement.py": [
       131
     ],
     "hub/apps/audit/management/commands/audit_merkle_snapshot_sweep.py": [
-      146
+      147
     ],
     "hub/apps/audit/management/commands/audit_permanent_delete_sweep.py": [
-      126
+      127
     ],
     "hub/apps/audit/management/commands/backfill_audit_chain.py": [
-      139
+      140
     ],
     "hub/apps/audit/merkle.py": [
       485
@@ -105,14 +109,14 @@
       145
     ],
     "hub/apps/audit/utils.py": [
-      507
+      516
     ],
     "hub/apps/auth/idp_metadata.py": [
       56,
       130
     ],
     "hub/apps/auth/management/commands/api_key_rotation_reminder.py": [
-      212
+      274
     ],
     "hub/apps/auth/oidc_verifier.py": [
       100
@@ -128,21 +132,22 @@
       101
     ],
     "hub/apps/auth/sso_views.py": [
-      235
+      267
     ],
     "hub/apps/auth/throttles.py": [
-      75
+      82
     ],
     "hub/apps/auth/views.py": [
       137,
-      637,
-      755,
-      1352,
-      1452,
-      1724,
-      1743,
-      1786,
-      2193
+      256,
+      681,
+      807,
+      1383,
+      1499,
+      1769,
+      1788,
+      1831,
+      2281
     ],
     "hub/apps/baas/billing_email.py": [
       54,
@@ -160,8 +165,8 @@
       203,
       363,
       437,
-      594,
-      620
+      595,
+      621
     ],
     "hub/apps/baas/management/commands/generate_billing_reports.py": [
       167
@@ -175,12 +180,13 @@
     ],
     "hub/apps/baas/throttles.py": [
       74,
-      108
+      108,
+      172
     ],
     "hub/apps/baas/views.py": [
-      210,
-      290,
-      359
+      211,
+      291,
+      360
     ],
     "hub/apps/baas/workflows/api_key_management.py": [
       279,
@@ -206,13 +212,13 @@
       164
     ],
     "hub/apps/billing/services.py": [
-      206
+      224
     ],
     "hub/apps/billing/views.py": [
-      830,
-      1105,
-      1862,
-      1868
+      832,
+      1107,
+      1864,
+      1870
     ],
     "hub/apps/breach/management/commands/breach_notification_clock_check.py": [
       54
@@ -244,17 +250,17 @@
       1159
     ],
     "hub/apps/compliance/signals.py": [
-      96,
-      141,
-      152,
-      213
+      99,
+      153,
+      164,
+      225
     ],
     "hub/apps/compliance/tasks.py": [
       140,
       157
     ],
     "hub/apps/compliance/views.py": [
-      1030
+      1040
     ],
     "hub/apps/compliance/webhook_emission.py": [
       132,
@@ -268,11 +274,11 @@
       48
     ],
     "hub/apps/contracts/cache_invalidation.py": [
-      63,
-      85,
-      120,
-      197,
-      224
+      66,
+      84,
+      119,
+      192,
+      219
     ],
     "hub/apps/contracts/caching.py": [
       279,
@@ -327,28 +333,28 @@
       814
     ],
     "hub/apps/contracts/lineage_sync.py": [
-      109,
-      364,
-      380,
-      490,
-      601,
-      626,
-      922,
-      940
+      106,
+      352,
+      368,
+      482,
+      593,
+      623,
+      913,
+      931
     ],
     "hub/apps/contracts/management/commands/archive_lineage_edges.py": [
-      73
+      75
     ],
     "hub/apps/contracts/management/commands/backfill_lineage_edges.py": [
-      225,
-      240
+      226,
+      241
     ],
     "hub/apps/contracts/management/commands/delete_lineage_edges_for_tenant.py": [
-      43,
-      118
+      45,
+      120
     ],
     "hub/apps/contracts/management/commands/migrate_contracts.py": [
-      154
+      153
     ],
     "hub/apps/contracts/management/commands/migrate_contracts_to_odps.py": [
       166,
@@ -376,30 +382,30 @@
       572
     ],
     "hub/apps/contracts/management/commands/seed_contract_lineage.py": [
-      373,
-      455
+      374,
+      456
     ],
     "hub/apps/contracts/management/commands/validate_migration.py": [
       135
     ],
     "hub/apps/contracts/management/commands/warm_odps_ref_cache.py": [
-      102,
-      139
+      103,
+      140
     ],
     "hub/apps/contracts/management/commands/wave2_send_schema_editor_available_notifications.py": [
-      203,
-      336
+      217,
+      350
     ],
     "hub/apps/contracts/management/commands/wave4_escalate_residue.py": [
       353
     ],
     "hub/apps/contracts/management/commands/wave4_send_residue_reminders.py": [
-      239,
-      412
+      250,
+      423
     ],
     "hub/apps/contracts/management/commands/wave5_send_final_warning_notifications.py": [
-      235,
-      420
+      245,
+      430
     ],
     "hub/apps/contracts/migration.py": [
       308,
@@ -439,7 +445,7 @@
       139
     ],
     "hub/apps/contracts/normalization_engine.py": [
-      1410
+      1483
     ],
     "hub/apps/contracts/normalization_service.py": [
       132,
@@ -591,11 +597,11 @@
       4203
     ],
     "hub/apps/contracts/signals.py": [
-      121,
-      161,
-      211,
-      339,
-      403
+      124,
+      164,
+      223,
+      351,
+      415
     ],
     "hub/apps/contracts/structural_floor.py": [
       291,
@@ -651,8 +657,8 @@
       1587
     ],
     "hub/apps/contracts/views_lineage.py": [
-      47,
-      99
+      48,
+      92
     ],
     "hub/apps/contracts/views_odps.py": [
       130,
@@ -666,7 +672,7 @@
       737
     ],
     "hub/apps/contracts/views_schema_editor_metrics.py": [
-      177
+      189
     ],
     "hub/apps/contracts/views_validation.py": [
       111,
@@ -773,6 +779,10 @@
       1456,
       1530
     ],
+    "hub/apps/core/events/deduplication.py": [
+      457,
+      496
+    ],
     "hub/apps/core/events/dlq_processor.py": [
       236,
       287
@@ -827,10 +837,8 @@
       357
     ],
     "hub/apps/core/events/views.py": [
-      184,
-      228,
-      483,
-      515
+      392,
+      428
     ],
     "hub/apps/core/events/write_behind.py": [
       181,
@@ -844,22 +852,29 @@
       426,
       474
     ],
+    "hub/apps/core/idor_inventory.py": [
+      278,
+      338,
+      588
+    ],
     "hub/apps/core/limit_registry.py": [
       329
     ],
+    "hub/apps/core/management/commands/generate_idor_probes.py": [
+      219,
+      256
+    ],
     "hub/apps/core/management/commands/replay_events.py": [
-      254,
-      322,
-      365
+      260
     ],
     "hub/apps/core/management/commands/seed_demo_data.py": [
-      325,
-      350
+      326,
+      351
     ],
     "hub/apps/core/management/commands/warm_cache.py": [
-      72,
-      101,
-      151
+      73,
+      102,
+      152
     ],
     "hub/apps/core/rate_limiting/utils.py": [
       219,
@@ -876,7 +891,7 @@
       703
     ],
     "hub/apps/core/resilience/service_breakers.py": [
-      94
+      105
     ],
     "hub/apps/core/services/availability.py": [
       103
@@ -924,8 +939,8 @@
       572
     ],
     "hub/apps/databricks_admin/delta_sharing_views.py": [
-      298,
-      321
+      312,
+      335
     ],
     "hub/apps/databricks_admin/dlt_lifecycle.py": [
       64
@@ -1015,10 +1030,10 @@
       145
     ],
     "hub/apps/databricks_admin/sql_warehouse_views.py": [
-      186
+      194
     ],
     "hub/apps/databricks_admin/sso_views.py": [
-      239
+      232
     ],
     "hub/apps/databricks_admin/throttles.py": [
       76,
@@ -1045,10 +1060,10 @@
       662
     ],
     "hub/apps/databricks_admin/views.py": [
-      104,
-      154,
-      265,
-      430
+      106,
+      156,
+      267,
+      438
     ],
     "hub/apps/datasets/business_rules.py": [
       1073
@@ -1075,15 +1090,15 @@
       886
     ],
     "hub/apps/datasets/services.py": [
-      440,
-      463
+      460,
+      483
     ],
     "hub/apps/datasets/signals.py": [
-      46,
-      67,
-      88,
-      167,
-      198
+      49,
+      73,
+      97,
+      176,
+      210
     ],
     "hub/apps/datasets/storage_fetch.py": [
       49,
@@ -1107,10 +1122,10 @@
       352,
       454,
       523,
-      1206,
-      1465,
-      1517,
-      1569
+      1212,
+      1471,
+      1523,
+      1575
     ],
     "hub/apps/dpia/management/commands/dpia_review_due_scan.py": [
       44
@@ -1148,7 +1163,7 @@
       507,
       739,
       742,
-      997
+      996
     ],
     "hub/apps/dq/tasks.py": [
       297,
@@ -1180,7 +1195,7 @@
       108
     ],
     "hub/apps/files/magic_bytes.py": [
-      208
+      215
     ],
     "hub/apps/files/management/commands/cleanup_orphan_files.py": [
       89
@@ -1207,9 +1222,9 @@
     ],
     "hub/apps/files/storage.py": [
       344,
-      1124,
-      1140,
-      1181
+      1142,
+      1158,
+      1199
     ],
     "hub/apps/files/tasks.py": [
       69,
@@ -1217,9 +1232,12 @@
       175,
       195
     ],
+    "hub/apps/files/throttles.py": [
+      58
+    ],
     "hub/apps/files/views.py": [
-      336,
-      995
+      356,
+      1093
     ],
     "hub/apps/gdpr/services.py": [
       116,
@@ -1232,7 +1250,7 @@
       889
     ],
     "hub/apps/gdpr/views.py": [
-      148
+      154
     ],
     "hub/apps/governance/abac.py": [
       141,
@@ -1243,16 +1261,16 @@
       156,
       221,
       283,
-      537
+      542
     ],
     "hub/apps/governance/access_requests.py": [
       114
     ],
     "hub/apps/governance/admin_abac.py": [
-      63,
-      83,
-      142,
-      165
+      65,
+      85,
+      144,
+      167
     ],
     "hub/apps/governance/classification.py": [
       263
@@ -1297,8 +1315,8 @@
     "hub/apps/graphql/views.py": [
       150,
       197,
-      625,
-      667
+      655,
+      697
     ],
     "hub/apps/graphql_graphene/schema.py": [
       341,
@@ -1334,13 +1352,13 @@
       2054
     ],
     "hub/apps/graphql_graphene/views.py": [
-      143,
-      211
+      157,
+      225
     ],
     "hub/apps/graphql_ld/views.py": [
       268,
       511,
-      654
+      657
     ],
     "hub/apps/health/services.py": [
       51,
@@ -1354,7 +1372,7 @@
       230
     ],
     "hub/apps/health/views.py": [
-      76
+      81
     ],
     "hub/apps/integrations/base.py": [
       770,
@@ -1490,8 +1508,8 @@
       684
     ],
     "hub/apps/integrations/federated_import_views.py": [
-      217,
-      312
+      243,
+      349
     ],
     "hub/apps/integrations/logging_utils.py": [
       40,
@@ -1499,15 +1517,15 @@
       68
     ],
     "hub/apps/integrations/management/commands/create_demo_ckan_federated_asset.py": [
-      126,
-      164
+      127,
+      165
     ],
     "hub/apps/integrations/management/commands/harvest_ckan.py": [
-      229,
-      275
+      230,
+      276
     ],
     "hub/apps/integrations/management/commands/harvest_dados_gov_br_direct.py": [
-      304
+      305
     ],
     "hub/apps/integrations/management/commands/rotate_openlineage_keys.py": [
       44
@@ -1521,13 +1539,13 @@
       759
     ],
     "hub/apps/integrations/openlineage/tasks.py": [
-      180
+      183
     ],
     "hub/apps/integrations/openlineage/views.py": [
-      156,
-      328,
-      463,
-      486
+      159,
+      336,
+      468,
+      491
     ],
     "hub/apps/integrations/services/connection_service.py": [
       225,
@@ -1677,10 +1695,10 @@
       1140,
       1288,
       1595,
-      1682,
-      1699,
-      1837,
-      1852
+      1683,
+      1700,
+      1839,
+      1854
     ],
     "hub/apps/jobs/latency_metrics.py": [
       48,
@@ -1688,7 +1706,7 @@
       90
     ],
     "hub/apps/jobs/management/commands/check_job_timeouts.py": [
-      20
+      19
     ],
     "hub/apps/jobs/management/commands/detect_stuck_dq_compliance_runs.py": [
       177,
@@ -1788,7 +1806,7 @@
     ],
     "hub/apps/jobs/tasks_prefect_sync.py": [
       119,
-      177
+      190
     ],
     "hub/apps/jobs/tasks_ropa.py": [
       23
@@ -1803,8 +1821,8 @@
       297,
       521,
       566,
-      781,
-      800
+      823,
+      842
     ],
     "hub/apps/marketplace/caching.py": [
       53,
@@ -1842,7 +1860,7 @@
     "hub/apps/marketplace/order_views.py": [
       592,
       699,
-      1158
+      1164
     ],
     "hub/apps/marketplace/payment_gateway_service.py": [
       170
@@ -1851,14 +1869,14 @@
       60
     ],
     "hub/apps/marketplace/payment_gateway_views.py": [
-      114,
-      141,
-      214,
-      308
+      120,
+      147,
+      220,
+      323
     ],
     "hub/apps/marketplace/payment_service.py": [
       323,
-      741
+      774
     ],
     "hub/apps/marketplace/recommendations.py": [
       53,
@@ -1875,33 +1893,33 @@
       1277
     ],
     "hub/apps/marketplace/signals.py": [
-      142,
-      167,
-      220,
-      234,
-      301,
-      310
+      151,
+      176,
+      232,
+      246,
+      316,
+      325
     ],
     "hub/apps/marketplace/throttles.py": [
       23,
       47
     ],
     "hub/apps/marketplace/views.py": [
-      402,
-      456,
-      553,
-      606,
-      789,
-      1031,
-      1105,
-      1170,
-      1218,
-      1238,
-      1465,
-      1897
+      409,
+      463,
+      560,
+      613,
+      796,
+      1037,
+      1111,
+      1176,
+      1224,
+      1244,
+      1471,
+      1903
     ],
     "hub/apps/marketplace/webhook_views.py": [
-      356
+      368
     ],
     "hub/apps/marketplace/workflows/marketplace_publication.py": [
       640,
@@ -1972,8 +1990,8 @@
       2052
     ],
     "hub/apps/mesh/signals.py": [
-      40,
-      63
+      43,
+      69
     ],
     "hub/apps/ml/apps.py": [
       25,
@@ -2003,7 +2021,7 @@
     ],
     "hub/apps/ml/inference_service.py": [
       86,
-      586
+      600
     ],
     "hub/apps/ml/services.py": [
       92,
@@ -2047,16 +2065,15 @@
       411
     ],
     "hub/apps/ml/views.py": [
-      408,
-      583,
-      718,
-      769,
-      894,
-      1001,
-      1060,
-      1122,
-      1169,
-      1268
+      118,
+      558,
+      746,
+      884,
+      931,
+      1047,
+      1141,
+      1187,
+      1312
     ],
     "hub/apps/ml/workflows/model_inference.py": [
       172,
@@ -2091,7 +2108,7 @@
       437
     ],
     "hub/apps/notifications/stream_views.py": [
-      156
+      177
     ],
     "hub/apps/notifications/tasks.py": [
       341,
@@ -2112,7 +2129,7 @@
       139
     ],
     "hub/apps/notifications/views.py": [
-      128
+      131
     ],
     "hub/apps/observability/apps.py": [
       22
@@ -2232,12 +2249,12 @@
       144
     ],
     "hub/apps/orchestration/management/commands/process_workflows.py": [
-      98,
-      143,
-      195,
-      206,
-      238,
-      251
+      99,
+      144,
+      196,
+      207,
+      239,
+      252
     ],
     "hub/apps/orchestration/management/commands/recover_failed_workflows.py": [
       71
@@ -2252,15 +2269,15 @@
       469
     ],
     "hub/apps/orchestration/trigger_engine.py": [
-      44,
-      92,
-      168,
-      346,
-      380,
-      435
+      43,
+      93,
+      173,
+      351,
+      385,
+      440
     ],
     "hub/apps/orchestration/views.py": [
-      180
+      192
     ],
     "hub/apps/orchestration/workflow_engine.py": [
       185,
@@ -2363,16 +2380,16 @@
       429,
       476,
       528,
-      682,
-      921,
-      1025,
-      1037,
-      1173,
-      1274,
-      1323,
-      1407,
-      1466,
-      1521
+      686,
+      925,
+      1029,
+      1041,
+      1177,
+      1278,
+      1327,
+      1411,
+      1470,
+      1525
     ],
     "hub/apps/orchestration/workflows/version_creation.py": [
       637,
@@ -2389,12 +2406,12 @@
       534,
       558,
       580,
-      664,
-      723,
-      812,
-      1096,
-      1228,
-      1306
+      676,
+      735,
+      824,
+      1108,
+      1240,
+      1318
     ],
     "hub/apps/platform/views.py": [
       199,
@@ -2416,11 +2433,11 @@
     ],
     "hub/apps/scheduled_export/internal_views.py": [
       217,
-      340,
-      455,
-      558,
-      565,
-      599
+      324,
+      473,
+      576,
+      583,
+      617
     ],
     "hub/apps/scheduled_export/management/commands/detect_and_remediate_stuck_export_runs.py": [
       151
@@ -2432,7 +2449,7 @@
       73
     ],
     "hub/apps/scheduled_export/services.py": [
-      799
+      806
     ],
     "hub/apps/scheduled_export/throttles.py": [
       49
@@ -2440,7 +2457,7 @@
     "hub/apps/scheduled_export/views.py": [
       88,
       143,
-      752
+      755
     ],
     "hub/apps/scheduled_export/worker_run_lifecycle.py": [
       110,
@@ -2461,18 +2478,18 @@
       230,
       244,
       298,
-      375,
-      508,
+      394,
       527,
-      563,
-      586
+      546,
+      582,
+      613
     ],
     "hub/apps/scheduled_ingestion/credential_manager.py": [
       195,
       211
     ],
     "hub/apps/scheduled_ingestion/dead_letter_queue.py": [
-      134
+      146
     ],
     "hub/apps/scheduled_ingestion/ingestion.py": [
       154,
@@ -2484,16 +2501,16 @@
       691
     ],
     "hub/apps/scheduled_ingestion/internal_views.py": [
-      362,
-      457,
-      495,
-      651,
-      728,
-      745,
-      751,
-      768,
-      801,
-      812
+      371,
+      475,
+      513,
+      686,
+      763,
+      780,
+      786,
+      803,
+      836,
+      847
     ],
     "hub/apps/scheduled_ingestion/management/commands/detect_and_remediate_stuck_runs.py": [
       212,
@@ -2510,7 +2527,7 @@
       309
     ],
     "hub/apps/scheduled_ingestion/services.py": [
-      186
+      194
     ],
     "hub/apps/scheduled_ingestion/stuck_run_detection.py": [
       71
@@ -2520,16 +2537,16 @@
       132
     ],
     "hub/apps/scheduled_ingestion/views.py": [
-      108,
-      163,
-      250,
-      343,
-      465,
-      784,
-      817,
-      1090,
-      1225,
-      1244
+      114,
+      169,
+      259,
+      352,
+      472,
+      801,
+      834,
+      1134,
+      1269,
+      1288
     ],
     "hub/apps/scheduled_ingestion/worker_run_lifecycle.py": [
       100,
@@ -2540,7 +2557,7 @@
       197
     ],
     "hub/apps/search/apps.py": [
-      40
+      53
     ],
     "hub/apps/search/business_rules.py": [
       270,
@@ -2569,9 +2586,9 @@
       338,
       349,
       409,
-      496,
-      505,
-      528
+      499,
+      508,
+      531
     ],
     "hub/apps/search/tasks.py": [
       177,
@@ -2587,9 +2604,9 @@
       305,
       366,
       440,
-      887,
-      970,
-      984
+      892,
+      975,
+      989
     ],
     "hub/apps/security/url_validators.py": [
       124,
@@ -2597,10 +2614,10 @@
     ],
     "hub/apps/semantic/business_rules.py": [
       200,
-      916,
-      1055,
-      1066,
-      1072
+      914,
+      1053,
+      1064,
+      1070
     ],
     "hub/apps/semantic/caching.py": [
       78,
@@ -2624,16 +2641,16 @@
       287
     ],
     "hub/apps/semantic/management/commands/migrate_triples_to_named_graphs.py": [
-      127
+      129
     ],
     "hub/apps/semantic/management/commands/rebuild_fuseki.py": [
-      161,
-      179,
-      195
+      162,
+      180,
+      196
     ],
     "hub/apps/semantic/management/commands/rotate_ldn_keys.py": [
-      108,
-      147
+      113,
+      152
     ],
     "hub/apps/semantic/ontology_validator.py": [
       119,
@@ -2677,28 +2694,28 @@
     ],
     "hub/apps/semantic/signals.py": [
       53,
-      96,
-      102,
-      139,
-      176,
-      244,
-      304
+      99,
+      105,
+      142,
+      179,
+      255,
+      327
     ],
     "hub/apps/semantic/tasks.py": [
       159,
-      400
+      402
     ],
     "hub/apps/semantic/tasks_ldn.py": [
       87,
       184,
-      231,
-      279,
-      296,
-      334,
-      396
+      233,
+      281,
+      298,
+      336,
+      398
     ],
     "hub/apps/semantic/throttles.py": [
-      56
+      62
     ],
     "hub/apps/semantic/tombstone.py": [
       159,
@@ -2720,39 +2737,39 @@
       861
     ],
     "hub/apps/semantic/views.py": [
-      341,
-      385,
+      343,
+      386,
       787,
-      884,
-      907,
-      1022,
-      1106,
-      1552,
-      1591,
-      1623
+      887,
+      910,
+      1025,
+      1108,
+      1554,
+      1593,
+      1625
     ],
     "hub/apps/semantic/views_ldn.py": [
-      79,
-      101,
-      450
+      80,
+      102,
+      477
     ],
     "hub/apps/semantic/views_ontology.py": [
-      231,
-      278,
-      317,
-      360,
-      404
+      238,
+      285,
+      324,
+      367,
+      411
     ],
     "hub/apps/social/throttles.py": [
       49
     ],
     "hub/apps/social/views.py": [
-      168,
-      369,
-      738,
-      993,
-      1230,
-      1270
+      171,
+      376,
+      758,
+      1024,
+      1261,
+      1301
     ],
     "hub/apps/tenants/admin_dashboard_summary.py": [
       288,
@@ -2778,11 +2795,11 @@
     ],
     "hub/apps/tenants/impersonation_middleware.py": [
       89,
-      116
+      122
     ],
     "hub/apps/tenants/management/commands/backfill_enterprise_limits.py": [
-      119,
-      156
+      114,
+      151
     ],
     "hub/apps/tenants/management/commands/disable_ux_v2_for_tenant.py": [
       75
@@ -2797,7 +2814,7 @@
       91
     ],
     "hub/apps/tenants/management/commands/seed_default_plans.py": [
-      234
+      263
     ],
     "hub/apps/tenants/management/commands/seed_pilot_exit_drill_tenant.py": [
       121
@@ -2821,14 +2838,14 @@
       1259
     ],
     "hub/apps/tenants/signals.py": [
-      121,
-      206,
-      383,
-      392,
-      451,
-      475,
-      583,
-      628
+      127,
+      225,
+      408,
+      417,
+      476,
+      500,
+      624,
+      669
     ],
     "hub/apps/tenants/tasks.py": [
       51,
@@ -2841,9 +2858,9 @@
       337
     ],
     "hub/apps/tenants/views.py": [
-      600,
-      689,
-      1058
+      593,
+      680,
+      1033
     ],
     "hub/apps/transformation/apps.py": [
       16,
@@ -2897,31 +2914,31 @@
       975,
       998,
       1091,
-      1359,
-      1519,
-      1557,
-      1632,
-      1688,
-      1706,
-      1740,
-      1781,
-      1799,
-      1862,
-      1886,
-      1925,
-      2006,
-      2136,
-      2316,
-      2542,
-      2583,
-      2605,
-      2899,
-      2919,
-      3074,
-      3293,
-      3353,
-      3377,
-      3681
+      1409,
+      1546,
+      1584,
+      1659,
+      1715,
+      1733,
+      1767,
+      1808,
+      1826,
+      1889,
+      1913,
+      1952,
+      2033,
+      2163,
+      2343,
+      2569,
+      2610,
+      2632,
+      2926,
+      2946,
+      3101,
+      3320,
+      3380,
+      3404,
+      3708
     ],
     "hub/apps/transformation/signals.py": [
       91,
@@ -2936,22 +2953,22 @@
       611
     ],
     "hub/apps/users/views.py": [
-      167,
-      596
+      160,
+      589
     ],
     "hub/apps/virtualization/business_rules.py": [
-      637,
-      1643,
-      1937,
-      2527,
-      2660,
-      2794,
-      3177,
-      3351
+      655,
+      1661,
+      1955,
+      2545,
+      2678,
+      2812,
+      3195,
+      3369
     ],
     "hub/apps/virtualization/cross_tenant_helpers.py": [
-      156,
-      223
+      158,
+      225
     ],
     "hub/apps/virtualization/services/dataset_service.py": [
       396,
@@ -2964,40 +2981,40 @@
       933
     ],
     "hub/apps/virtualization/services/query_service.py": [
-      415,
-      433,
-      753,
-      824,
-      1843,
-      1866,
-      1907,
-      2042,
-      2061,
-      2114,
-      2340,
-      2424,
-      2523,
-      2708,
-      2774,
-      2863,
-      2914,
-      2960,
-      2990,
-      2999,
-      3033,
-      3304,
-      3426,
-      3497,
-      3601,
-      3685,
-      3759,
+      426,
+      444,
+      764,
+      835,
+      1854,
+      1877,
+      1918,
+      2053,
+      2072,
+      2125,
+      2362,
+      2446,
+      2545,
+      2730,
+      2796,
+      2885,
+      2936,
+      2982,
+      3012,
+      3021,
+      3055,
+      3326,
+      3448,
+      3519,
+      3623,
+      3707,
       3781,
-      3962,
-      4148,
-      4388,
-      4415,
-      4709,
-      4726
+      3803,
+      3984,
+      4170,
+      4410,
+      4437,
+      4731,
+      4748
     ],
     "hub/apps/virtualization/views.py": [
       334,
@@ -3015,8 +3032,8 @@
       2119,
       2272,
       2355,
-      2516,
-      2662
+      2519,
+      2665
     ],
     "hub/apps/warehouses/base.py": [
       180
@@ -3058,22 +3075,22 @@
       77
     ],
     "hub/apps/warehouses/schema_reflection.py": [
-      66
+      77
     ],
     "hub/apps/warehouses/signals.py": [
-      33
+      36
     ],
     "hub/apps/warehouses/tasks.py": [
       145
     ],
     "hub/apps/warehouses/views.py": [
-      195,
-      209,
-      278,
-      335,
-      458,
-      498,
-      518
+      199,
+      213,
+      287,
+      347,
+      490,
+      531,
+      551
     ],
     "hub/apps/webhooks/asset_event_subscriber.py": [
       127,
@@ -3107,15 +3124,16 @@
       253,
       296,
       342,
-      551,
-      609,
-      676
+      567,
+      625,
+      692,
+      960
     ],
     "hub/apps/webhooks/tasks.py": [
       76
     ],
     "hub/apps/webhooks/views.py": [
-      263
+      266
     ],
     "hub/apps/webhooks/virtualization_event_subscriber.py": [
       118,
@@ -3193,14 +3211,14 @@
     "hub/data_movement/worker_run_lifecycle.py": [
       38,
       66,
-      94
+      96
     ],
     "hub/db_router.py": [
       124
     ],
     "hub/settings.py": [
-      415,
-      1194
+      384,
+      1188
     ]
   }
 }

@@ -610,11 +610,11 @@ def create_file_and_dataset_records(
                     },
                     exc_info=True,
                 )
-        except Exception as e:  # noqa: BLE001 - best-effort enrichment, never blocks the run
-            logger.warning(
-                "Unexpected error during semantic mapping",
-                extra={"dataset_id": str(dataset.id), "error_type": type(e).__name__},
-                exc_info=True,
-            )
+            except Exception as e:  # noqa: BLE001 - best-effort enrichment, never blocks the run
+                logger.warning(
+                    "Unexpected error during semantic mapping",
+                    extra={"dataset_id": str(dataset.id), "error_type": type(e).__name__},
+                    exc_info=True,
+                )
 
     return CatalogRecordResult(file=file_obj, dataset=dataset, asset=asset, created=True)

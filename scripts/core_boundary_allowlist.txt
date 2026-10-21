@@ -15,6 +15,7 @@ hub/apps/core/caching/warming.py:37:Phase 313.2 long-tail inversion (lazy import
 hub/apps/core/caching/warming.py:40:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/core/caching/warming.py:43:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/core/management/commands/seed_demo_data.py:257:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
+hub/apps/scheduled_ingestion/catalog_records.py:597:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — P3-1 enrichment path, guarded for both core-mode absence forms (audited 2026-10-21, P3-2b re-publish)
 hub/apps/dq/views.py:1532:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/dq/views.py:1533:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/gdpr/services.py:342:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)

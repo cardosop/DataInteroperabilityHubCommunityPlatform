@@ -46,7 +46,8 @@ except Exception:
 # which is what made the W7.1 guard work necessary.
 _PAID_MODULE_IMPORT_RE = re.compile(
     r"^(?:from|import)\s+hub\.apps\.(?:semantic|marketplace|billing|baas"
-    r"|rate_limiting|ai|ml|social|graphql|graphql_ld|graphql_graphene)\b",
+    r"|rate_limiting|ai|ml|social|graphql|graphql_ld|graphql_graphene"
+    r"|databricks_admin)\b",
     flags=re.MULTILINE,
 )
 
